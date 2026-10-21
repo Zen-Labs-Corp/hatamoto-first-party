@@ -1,0 +1,27 @@
+body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: var(--color-shiro); color: var(--color-sumi); }
+main { padding: 16px; max-width: 980px; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+.muted { color: var(--color-hai); }
+.notice { padding: 8px 12px; border-radius: 6px; background: var(--color-accent-soft); }
+.notice.error { background: var(--color-danger-soft); color: var(--color-danger); }
+table { width: 100%; border-collapse: collapse; background: var(--color-paper); }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--color-kinu); vertical-align: top; }
+code { word-break: break-all; }
+form { display: grid; gap: 8px; max-width: 560px; }
+label { display: grid; gap: 2px; }
+input { padding: 6px 8px; border: 1px solid var(--color-nezumi); border-radius: 4px; background: var(--color-paper); color: inherit; }
+fieldset { border: 1px solid var(--color-kinu); display: flex; flex-wrap: wrap; gap: 4px 16px; }
+fieldset label { display: flex; gap: 6px; align-items: center; }
+button { padding: 4px 10px; border: 1px solid var(--color-nezumi); border-radius: 4px; background: var(--color-paper); color: inherit; cursor: pointer; }
+button.primary { background: var(--color-sumi); color: var(--color-paper); }
+.status-delivered { color: var(--color-success); }
+.status-failed { color: var(--color-danger); }
+.status-pending { color: var(--color-warning); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.row input[type=url], .row select { min-width: 280px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; }
+dt { color: var(--color-hai); }
+dd { margin: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
