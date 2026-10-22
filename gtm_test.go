@@ -69,7 +69,8 @@ func TestSettingsErrorNeverFailsTheRender(t *testing.T) {
 	}
 }
 
-func TestManifestAsksForSettingsOnly(t *testing.T) {
+// The loader is browser JavaScript, so core links it only with site.scripts.
+func TestManifestAsksForSettingsAndSiteScripts(t *testing.T) {
 	raw, err := os.ReadFile("plugin.json")
 	if err != nil {
 		t.Fatal(err)
@@ -78,8 +79,8 @@ func TestManifestAsksForSettingsOnly(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Permissions) != 1 || m.Permissions[0] != sdk.PermSettings {
-		t.Fatalf("permissions = %v, want [settings]", m.Permissions)
+	if len(m.Permissions) != 2 || m.Permissions[0] != sdk.PermSettings || m.Permissions[1] != "site.scripts" {
+		t.Fatalf("permissions = %v, want [settings site.scripts]", m.Permissions)
 	}
 }
 

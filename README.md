@@ -11,7 +11,7 @@ Loads your Google Tag Manager container on every public page. No theme edits.
    turn the tag off.
 3. Save. Cached pages are refreshed.
 
-The plugin asks for the `settings` permission only.
+The plugin asks for `settings` and `site.scripts`. Since Hatamoto core added `site.scripts`, a plugin's browser JavaScript (`assets/plugin.js`) runs only after the owner grants it under Plugins > Permissions. Without the grant the GTM loader is never linked. Core versions older than `site.scripts` refuse this release; stay on 0.1.0 there.
 
 ## How it works
 
