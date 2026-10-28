@@ -1,0 +1,21 @@
+{
+  "name": "google-analytics",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Google Analytics: adds the Google tag (gtag.js) for your GA4 measurement ID to every public page, with a way to leave your own visits out.",
+  "permissions": ["settings", "site.scripts"],
+  "ui": { "title": "Google Analytics" },
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "measurement_id": {
+        "type": "string",
+        "title": "Measurement ID",
+        "description": "From analytics.google.com > Admin > Data streams, e.g. G-ABC123XYZ9. A Google tag ID (GT-...) also works. Leave empty to turn the tag off.",
+        "pattern": "^(|\\s*([Gg]|[Gg][Tt])-[A-Za-z0-9]{4,16}\\s*)$",
+        "maxLength": 32
+      }
+    }
+  }
+}

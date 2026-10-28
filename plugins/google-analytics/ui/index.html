@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Google Analytics</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="status" class="notice">Checking the tag...</p>
+
+    <section>
+      <h2>Leave your own visits out</h2>
+      <p>
+        Add this to any public page address of your site and open it once in each browser you use.
+        That browser stops sending visits to Google Analytics until you undo it.
+      </p>
+      <div class="row">
+        <input id="exclude" type="text" readonly value="https://your-site/#ga-exclude" aria-label="Exclude this browser address">
+        <button id="copy-exclude" type="button">Copy</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Count a browser again</h2>
+      <div class="row">
+        <input id="include" type="text" readonly value="https://your-site/#ga-include" aria-label="Count this browser again address">
+        <button id="copy-include" type="button">Copy</button>
+      </div>
+    </section>
+
+    <p id="copy-note" class="muted" hidden></p>
+    <p class="muted">
+      This is stored only in that browser. Clearing site data undoes it.
+      Replace <code>your-site</code> with your site address.
+    </p>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

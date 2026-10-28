@@ -7,6 +7,7 @@ listed in the plugin directory at hatamoto.dev/plugins.
 | Plugin | Folder | What it does |
 |---|---|---|
 | `gtm` | [plugins/gtm](plugins/gtm) | Google Tag Manager: loads your GTM container on every public page |
+| `google-analytics` | [plugins/google-analytics](plugins/google-analytics) | Google Analytics: loads the Google tag (GA4) on every public page, with a way to leave your own visits out |
 | `searchconsole` | [plugins/searchconsole](plugins/searchconsole) | Google Search Console: OAuth, sitemap submit, URL inspection, daily search performance |
 | `stats` | [plugins/stats](plugins/stats) | Receives the opt-in install stats ping and shows the counts (runs on hatamoto.dev only) |
 
