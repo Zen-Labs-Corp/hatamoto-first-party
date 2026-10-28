@@ -1,8 +1,8 @@
 {
   "name": "google-analytics",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "sdk": "^0.8",
-  "description": "Google Analytics: adds the Google tag (gtag.js) for your GA4 measurement ID to every public page, with a way to leave your own visits out.",
+  "description": "Google Analytics: adds the Google tag for your GA4 measurement ID to every public page, with a way to leave your own visits out.",
   "permissions": ["settings", "site.scripts"],
   "ui": { "title": "Google Analytics" },
   "limits": { "memory_pages": 256, "max_instances": 4 },
