@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"hatamoto.dev/sdk"
@@ -80,5 +81,30 @@ func TestManifestAsksForSettingsAndSiteScripts(t *testing.T) {
 	}
 	if len(m.Permissions) != 2 || m.Permissions[0] != sdk.PermSettings || m.Permissions[1] != "site.scripts" {
 		t.Fatalf("permissions = %v, want [settings site.scripts]", m.Permissions)
+	}
+}
+
+// plugin.js is plain browser JS; loader_test.js runs it, this pins its contract.
+func TestLoaderScriptContract(t *testing.T) {
+	raw, err := os.ReadFile("assets/plugin.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(raw)
+	for _, want := range []string{
+		`meta[name="google-analytics-id"]`,
+		`/^(G|GT)-[A-Z0-9]{4,16}$/`,
+		`gtag/js?id=`,
+		`hatamoto-ga-exclude`,
+		`#ga-exclude`, `#ga-include`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("plugin.js lacks %q", want)
+		}
+	}
+	for _, bad := range []string{"noscript", "<iframe", "=>", "const ", "let ", ".style", "cssText", "innerHTML"} {
+		if strings.Contains(js, bad) {
+			t.Errorf("plugin.js must not contain %q", bad)
+		}
 	}
 }
