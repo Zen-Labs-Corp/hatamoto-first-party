@@ -1,0 +1,11 @@
+body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: var(--color-shiro, #fafaf8); color: var(--color-sumi, #1a1a1a); }
+main { padding: 16px; max-width: 760px; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+p { margin: 8px 0; }
+.muted { color: var(--color-hai, #6b6b6b); }
+.notice { padding: 8px 12px; border-radius: 6px; background: var(--color-accent-soft, #e8eef6); }
+.notice.warn { background: var(--color-danger-soft, #fbe9e7); color: var(--color-danger, #b3261e); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+input { flex: 1 1 280px; min-width: 0; padding: 6px 8px; border: 1px solid var(--color-nezumi, #b5b3ad); border-radius: 4px; background: var(--color-paper, #ffffff); color: inherit; font: inherit; }
+button { padding: 4px 10px; border: 1px solid var(--color-nezumi, #b5b3ad); border-radius: 4px; background: var(--color-paper, #ffffff); color: inherit; cursor: pointer; }
+code { word-break: break-all; }
