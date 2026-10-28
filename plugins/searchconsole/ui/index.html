@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Search Console</title>
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+
+    <section>
+      <h2>Connection</h2>
+      <dl id="status"></dl>
+      <div id="setup" class="notice" hidden></div>
+      <div class="row">
+        <button id="connect" class="primary" hidden>Connect to Google</button>
+        <button id="disconnect" hidden>Disconnect</button>
+      </div>
+      <p id="connect-help" class="muted" hidden>
+        The browser cannot open Google from inside this page. Open
+        <code>/api/v1/p/searchconsole/oauth/start</code> on this site in a new tab (you are signed in there),
+        approve access, and come back here.
+      </p>
+    </section>
+
+    <section id="connected" hidden>
+      <h2>Property</h2>
+      <div class="row">
+        <select id="sites" aria-label="Search Console property"></select>
+        <button id="pick">Use this property</button>
+      </div>
+
+      <h2>Sitemap</h2>
+      <form id="sitemap" class="row">
+        <input name="sitemap_url" type="url" placeholder="Default: the site's /sitemap.xml" aria-label="Sitemap address">
+        <button type="submit">Submit sitemap</button>
+      </form>
+
+      <h2>URL inspection</h2>
+      <form id="inspect" class="row">
+        <input name="url" type="url" required placeholder="https://example.com/blog/post" aria-label="Address to inspect">
+        <button type="submit">Inspect</button>
+      </form>
+      <dl id="inspection"></dl>
+
+      <h2>Search performance <span id="range" class="muted"></span></h2>
+      <div class="row"><button id="import">Import now</button></div>
+      <div class="two">
+        <table id="queries"><thead><tr><th>Top queries</th><th class="num">Clicks</th><th class="num">Impr.</th><th class="num">CTR</th><th class="num">Pos.</th></tr></thead><tbody></tbody></table>
+        <table id="pages"><thead><tr><th>Top pages</th><th class="num">Clicks</th><th class="num">Impr.</th><th class="num">CTR</th><th class="num">Pos.</th></tr></thead><tbody></tbody></table>
+      </div>
+      <p id="no-data" class="muted" hidden>No data yet. The import runs hourly and fetches the days Google has finalised (about two days behind).</p>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

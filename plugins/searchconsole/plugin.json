@@ -1,0 +1,33 @@
+{
+  "name": "searchconsole",
+  "version": "1.0.0",
+  "sdk": "^0.8",
+  "description": "Google Search Console: connect with OAuth, submit the sitemap, inspect URLs and import daily search performance.",
+  "permissions": ["db", "kv", "http.fetch", "settings", "log"],
+  "allowed_hosts": ["oauth2.googleapis.com", "www.googleapis.com", "searchconsole.googleapis.com", "accounts.google.com"],
+  "routes": [
+    { "method": "GET", "path": "/status" },
+    { "method": "GET", "path": "/oauth/start" },
+    { "method": "GET", "path": "/oauth/callback", "public": true },
+    { "method": "POST", "path": "/disconnect" },
+    { "method": "GET", "path": "/sites" },
+    { "method": "POST", "path": "/site" },
+    { "method": "POST", "path": "/sitemap" },
+    { "method": "POST", "path": "/inspect" },
+    { "method": "GET", "path": "/performance" },
+    { "method": "POST", "path": "/import" }
+  ],
+  "cron": [ { "name": "import", "every": "1h" } ],
+  "ui": { "title": "Search Console" },
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "client_id": { "type": "string", "title": "Google OAuth client ID", "description": "From a Google Cloud OAuth client of type Web application." },
+      "client_secret": { "type": "string", "title": "Google OAuth client secret", "writeOnly": true, "description": "Stored here and never shown again." },
+      "public_url": { "type": "string", "title": "Public address of this site", "description": "For example https://example.com. Google redirects back to <address>/p/searchconsole/oauth/callback; add that address to the OAuth client." },
+      "encryption_key": { "type": "string", "title": "Token encryption key", "writeOnly": true, "description": "Optional extra secret mixed into the key that encrypts the Google tokens at rest (with the client secret). Changing it or the client secret means connecting again." },
+      "import_days": { "type": "integer", "title": "Days of performance data to keep importing", "default": 7, "minimum": 1, "maximum": 30 }
+    }
+  }
+}
