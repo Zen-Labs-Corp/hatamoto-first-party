@@ -1,0 +1,14 @@
+{
+  "name": "stats",
+  "version": "1.0.0",
+  "sdk": "^0.8",
+  "description": "Receives the opt-in install stats ping and shows the owner how many installs are active, on which versions and channels.",
+  "permissions": ["db"],
+  "routes": [
+    { "method": "POST", "path": "/v1/ping", "public": true },
+    { "method": "GET", "path": "/overview" }
+  ],
+  "cron": [ { "name": "rollup", "every": "1h" } ],
+  "ui": { "title": "Install stats" },
+  "limits": { "memory_pages": 256, "max_instances": 4, "hook_timeouts_ms": { "on_cron_rollup": 10000 } }
+}
