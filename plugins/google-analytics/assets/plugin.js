@@ -71,8 +71,9 @@
   }
   if (hash === '#ga-include') {
     setFlag(false);
-    clearFragment();
-    w.location.reload();
+    // replace() drops the fragment even when history.replaceState is blocked,
+    // so the reload cannot land back on #ga-include.
+    w.location.replace(w.location.pathname + w.location.search);
     return;
   }
   if (flagged()) {

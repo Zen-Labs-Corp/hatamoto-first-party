@@ -29,11 +29,12 @@ function run(opts) {
   var scripts = [];
   var store = {};
   if (opts.flag) store[KEY] = opts.flag;
-  var log = { replace: [], reload: 0, listeners: [] };
+  var log = { replace: [], nav: [], reload: 0, listeners: [] };
   var window = {
     location: {
       hash: opts.hash || '', pathname: '/page', search: '?a=1',
       reload: function () { log.reload++; },
+      replace: function (url) { log.nav.push(url); },
     },
     history: {
       replaceState: function (s, t, url) {
@@ -139,7 +140,7 @@ check('exclude without valid id: no flag', !(KEY in run({ meta: 'nonsense', hash
 // include
 var inc = run({ meta: 'G-ABC123XYZ9', hash: '#ga-include', flag: '1', once: true });
 check('include: flag removed', !(KEY in inc.store));
-check('include: fragment cleared and page reloaded', inc.log.replace.length === 1 && inc.log.reload === 1);
+check('include: navigates once to the URL without fragment', inc.log.nav.length === 1 && inc.log.nav[0] === '/page?a=1' && inc.log.reload === 0);
 check('include: no notice', inc.body.children.length === 0);
 
 // flag set
@@ -162,5 +163,8 @@ var te = run({ meta: 'G-ABC123XYZ9', hash: '#ga-exclude', throwStorage: true, on
 check('throwing localStorage on exclude: still no script, notice shown', te.gtag.length === 0 && te.body.children.length === 1);
 var th = run({ meta: 'G-ABC123XYZ9', hash: '#ga-exclude', throwHistory: true, once: true });
 check('throwing replaceState: flag set, notice shown', th.store[KEY] === '1' && th.body.children.length === 1);
+var ti = run({ meta: 'G-ABC123XYZ9', hash: '#ga-include', flag: '1', throwHistory: true, once: true });
+check('include with throwing replaceState: one navigation, no fragment, flag removed',
+  ti.log.nav.length === 1 && ti.log.nav[0].indexOf('#') < 0 && ti.log.reload === 0 && !(KEY in ti.store));
 
 if (failures) { console.error(failures + ' check(s) failed'); process.exit(1); }
