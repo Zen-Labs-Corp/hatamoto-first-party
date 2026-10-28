@@ -1,0 +1,42 @@
+# The build needs the public Hatamoto SDK (hatamoto.dev/sdk), so it passes only
+# once the SDK is fetchable. ubuntu-latest ships Node, so no setup-node step.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: go1.27.3
+      GOWORK: 'off'
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.27.3'
+      - run: go vet ./...
+      - run: go test ./...
+      - run: node loader_test.js
+      - name: Build the plugin
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          CGO_ENABLED=0 GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o build/plugin.wasm .
+          cp plugin.json build/plugin.json
+          cp -r assets build/assets
+          test -s build/plugin.wasm
+          built=$(jq -r .name build/plugin.json)
+          if [ "$built" != "gtm" ]; then
+            echo "plugin.json name $built does not match gtm" >&2
+            exit 1
+          fi

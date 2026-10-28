@@ -1,0 +1,20 @@
+{
+  "name": "gtm",
+  "version": "0.2.0",
+  "sdk": "^0.8",
+  "description": "Google Tag Manager: loads your GTM container on every public page from a container ID set in the plugin's settings.",
+  "permissions": ["settings", "site.scripts"],
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "container_id": {
+        "type": "string",
+        "title": "Container ID",
+        "description": "From tagmanager.google.com, e.g. GTM-ABC1234. Leave empty to turn the tag off.",
+        "pattern": "^(|\\s*[Gg][Tt][Mm]-[A-Za-z0-9]{4,12}\\s*)$",
+        "maxLength": 32
+      }
+    }
+  }
+}
