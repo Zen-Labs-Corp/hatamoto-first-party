@@ -70,7 +70,7 @@ the plugin whose manifest also allows that server's address.
 ## Build, test, install
 
 Needs Go 1.27.3 and the public SDK (`hatamoto.dev/sdk`, see
-https://github.com/zenlabscorp/hatamoto-sdk).
+https://github.com/Zen-Labs-Corp/hatamoto-sdk).
 
 ```sh
 go vet ./... && go test ./...    # token encryption, PKCE

@@ -1,4 +1,4 @@
-module github.com/Zen-Labs-Corp/hatamoto-plugin-stats
+module github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/stats
 
 go 1.27
 

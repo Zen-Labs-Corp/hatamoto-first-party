@@ -1,4 +1,4 @@
-module github.com/zenlabscorp/hatamoto-plugin-searchconsole
+module github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/searchconsole
 
 go 1.27
 

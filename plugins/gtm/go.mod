@@ -1,4 +1,4 @@
-module github.com/zenlabscorp/hatamoto-plugin-gtm
+module github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/gtm
 
 go 1.27
 

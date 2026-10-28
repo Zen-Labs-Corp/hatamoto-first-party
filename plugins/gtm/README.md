@@ -67,7 +67,7 @@ read, or sign with your own key (`hatamoto keys generate --name mykey`, then add
 `--key mykey.key` to `pack`; the core must trust that key). Once the plugin is
 listed in the registry you can install it from Admin > Plugins directly. See
 the docs at [hatamoto.dev](https://hatamoto.dev) and the
-[SDK](https://github.com/zenlabscorp/hatamoto-sdk).
+[SDK](https://github.com/Zen-Labs-Corp/hatamoto-sdk).
 
 ## License
 

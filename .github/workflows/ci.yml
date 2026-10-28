@@ -1,0 +1,76 @@
+# Vets, tests and builds every plugin a change touches (a change outside
+# plugins/ touches all of them), with the same script developers run:
+# scripts/build-plugin.sh. Also proves the template still scaffolds and builds.
+# Needs the public Hatamoto SDK (hatamoto.dev/sdk) to be fetchable.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: go1.27.3
+  GOWORK: 'off'
+  GOFLAGS: -mod=readonly
+
+jobs:
+  changed:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.list.outputs.plugins }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: list
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ]; then
+            plugins=$(scripts/changed-plugins.sh --json "$BASE_SHA" HEAD)
+          else
+            plugins=$(scripts/changed-plugins.sh --json)
+          fi
+          echo "plugins=$plugins" >>"$GITHUB_OUTPUT"
+          echo "plugins: $plugins"
+
+  build:
+    needs: changed
+    if: needs.changed.outputs.plugins != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.changed.outputs.plugins) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Build ${{ matrix.plugin }}
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+        run: scripts/build-plugin.sh "$PLUGIN"
+
+  template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Scaffold and build a plugin from template/
+        run: scripts/new-plugin.sh template-check "Template check."
