@@ -100,3 +100,14 @@ func TestUIStatesAndCopyFallbacks(t *testing.T) {
 		}
 	}
 }
+
+// The host drops requests sent before the bridge handshake, so the first
+// host call must come after `await hatamoto.ready`.
+func TestAppWaitsForBridgeBeforeHostCalls(t *testing.T) {
+	js := readUI(t, "app.js")
+	ready := strings.Index(js, "await hatamoto.ready")
+	host := strings.Index(js, "hatamoto.host(")
+	if ready < 0 || host < 0 || ready > host {
+		t.Fatalf("app.js must await hatamoto.ready before the first hatamoto.host call (ready=%d host=%d)", ready, host)
+	}
+}

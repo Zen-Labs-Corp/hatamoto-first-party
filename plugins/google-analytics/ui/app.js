@@ -12,6 +12,7 @@ function showStatus(text, warn) {
 }
 
 async function loadStatus() {
+  await hatamoto.ready;
   let granted = [];
   try {
     const p = await hatamoto.host("permissions", {});
