@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Install stats</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main>
+    <header class="head">
+      <select id="days" aria-label="Time window">
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </header>
+    <p id="notice" class="notice" hidden></p>
+
+    <section class="cards">
+      <div class="card"><div class="muted">Active installs</div><div id="active" class="big">-</div></div>
+      <div class="card"><div class="muted">Seen today</div><div id="today" class="big">-</div></div>
+      <div class="card"><div class="muted">New (<span id="new-window">30</span>d)</div><div id="new" class="big">-</div></div>
+    </section>
+
+    <section class="two">
+      <div>
+        <h2>By version</h2>
+        <div id="versions"></div>
+      </div>
+      <div>
+        <h2>By channel</h2>
+        <div id="channels"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Active installs, last 13 months</h2>
+      <div id="trend"></div>
+    </section>
+
+    <footer class="muted">Stored: install ID, version, channel, day. No IP addresses.</footer>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
