@@ -74,3 +74,15 @@ jobs:
           cache: false
       - name: Scaffold and build a plugin from template/
         run: scripts/new-plugin.sh template-check "Template check."
+
+  # One stable check name for the branch ruleset (the matrix jobs are named per item), so
+  # GitHub auto-merge waits for the whole workflow. A skipped job (nothing changed) counts as passed.
+  ci-ok:
+    if: always()
+    needs: [changed, build, template]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$NEEDS"
