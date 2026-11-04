@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -36,8 +37,8 @@ type formCfg struct {
 var now = time.Now
 
 // loadConfig reads and normalises the forms setting: slugs are trimmed, empty
-// and duplicate slugs dropped, unknown kinds become poll and unknown
-// visibility becomes never (the safe value).
+// and duplicate slugs dropped, unknown kinds become poll, unknown visibility
+// becomes never (the safe value) and answer key rows without a field are dropped.
 func loadConfig() ([]formCfg, error) {
 	var raw struct {
 		Forms []formCfg `json:"forms"`
@@ -64,6 +65,7 @@ func loadConfig() ([]formCfg, error) {
 			c.ShowResults = showNever
 		}
 		c.ClosesAt = strings.TrimSpace(c.ClosesAt)
+		c.Key = slices.DeleteFunc(slices.Clone(c.Key), func(k keyPair) bool { return strings.TrimSpace(k.Field) == "" })
 		out = append(out, c)
 	}
 	return out, nil

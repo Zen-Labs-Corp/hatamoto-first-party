@@ -88,3 +88,16 @@ func TestLoadConfigEmptyAndHostError(t *testing.T) {
 		t.Fatal("host error must be returned")
 	}
 }
+
+func TestBlankAnswerKeyRowsAreIgnored(t *testing.T) {
+	f := &fake{t: t, settings: `{"forms":[{"form_slug":"fw","kind":"quiz","answer_key":[{"field":"fw","value":"go"},{},{"field":"  ","value":"x"}]}]}`}
+	f.install()
+	cfgs, err := loadConfig()
+	if err != nil || len(cfgs) != 1 || len(cfgs[0].Key) != 1 {
+		t.Fatalf("cfgs %+v err %v", cfgs, err)
+	}
+	_, max := score(cfgs[0], nil, nil)
+	if max != 1 {
+		t.Fatalf("max %d, want 1", max)
+	}
+}
