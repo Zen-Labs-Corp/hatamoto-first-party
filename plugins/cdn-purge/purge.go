@@ -96,7 +96,7 @@ func onPublished(s settings, ev sdk.EntityEvent) {
 	old := kvURL(ev.ID)
 	page, origin := pageURL(e, s, old)
 	if page == "" {
-		purgeOrSkip("published", s, nil, false)
+		purgeNoPage("published", s, origin)
 		return
 	}
 	purgeOrSkip("published", s, collect(origin, s, page, old), true)
@@ -113,7 +113,7 @@ func onUpdated(s settings, ev sdk.EntityEvent) {
 	if found && e.Status == statusPublished {
 		page, origin := pageURL(e, s, old)
 		if page == "" {
-			purgeOrSkip("updated", s, nil, false)
+			purgeNoPage("updated", s, origin)
 			return
 		}
 		purgeOrSkip("updated", s, collect(origin, s, page, old), true)
@@ -223,6 +223,15 @@ func resolve(origin string, paths []string) []string {
 		}
 	}
 	return dedupe(out)
+}
+
+// purgeNoPage handles an entity with no public path. With a known origin only
+// the also_purge paths are purged; without one it is the "set Site URL" skip.
+func purgeNoPage(trigger string, s settings, origin string) {
+	if origin != "" {
+		logf("warn", "cdn-purge: the entity has no public path on %s; purging only the extra paths", trigger)
+	}
+	purgeOrSkip(trigger, s, collect(origin, s), origin != "")
 }
 
 // purgeOrSkip purges urls, or everything when the toggle is on. Without an

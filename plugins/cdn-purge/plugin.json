@@ -67,6 +67,7 @@
       "site_url": {
         "type": "string",
         "title": "Site URL",
+        "pattern": "^https?://",
         "description": "Origin such as https://example.com; used only when the host gives a path without an origin"
       }
     }

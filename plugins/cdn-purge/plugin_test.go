@@ -441,6 +441,23 @@ func TestNoOriginSkips(t *testing.T) {
 	}
 }
 
+func TestNoPathWithOriginPurgesAlsoPurgeOnly(t *testing.T) {
+	f := newFake(t, map[string]any{"also_purge": []string{"/", "/blog"}})
+	f.setEntity("e1", "published", "", "")
+	f.fire(sdk.EntityPublished, "e1")
+	if got := filesOf(t, f.fetches()[0]); !slices.Equal(got, []string{"https://example.com/", "https://example.com/blog"}) {
+		t.Fatalf("files = %v", got)
+	}
+	for _, l := range append(f.logLines("warn"), f.logLines("error")...) {
+		if strings.Contains(l, "Site URL") {
+			t.Fatalf("misleading message %q", l)
+		}
+	}
+	if len(f.logLines("warn")) != 1 || len(f.kv) != 0 {
+		t.Fatalf("warn %v, kv %v", f.logLines("warn"), f.kv)
+	}
+}
+
 func TestNotConfiguredDoesNothing(t *testing.T) {
 	f := newFake(t, map[string]any{"api_token": ""})
 	f.setEntity("e1", "published", "/x", "https://example.com/x")
@@ -636,8 +653,9 @@ type manifest struct {
 	} `json:"limits"`
 	Schema struct {
 		Properties map[string]struct {
-			WriteOnly bool `json:"writeOnly"`
-			MaxItems  int  `json:"maxItems"`
+			WriteOnly bool   `json:"writeOnly"`
+			Pattern   string `json:"pattern"`
+			MaxItems  int    `json:"maxItems"`
 		} `json:"properties"`
 	} `json:"settings_schema"`
 }
@@ -688,6 +706,9 @@ func TestManifest(t *testing.T) {
 	}
 	if !m.Schema.Properties["api_token"].WriteOnly || m.Schema.Properties["also_purge"].MaxItems != 20 {
 		t.Fatalf("schema %+v", m.Schema.Properties)
+	}
+	if m.Schema.Properties["site_url"].Pattern != "^https?://" {
+		t.Fatalf("site_url pattern %q", m.Schema.Properties["site_url"].Pattern)
 	}
 	// The sdk range matches the module's sdk version (^0.8 with v0.11).
 	mod, err := os.ReadFile("go.mod")
