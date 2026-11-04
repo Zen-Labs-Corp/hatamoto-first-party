@@ -1,37 +1,70 @@
-// Command event-calendar is a Hatamoto plugin. Events with dates, venue and ticket link: upcoming and past lists for the page builder, an iCal feed and Event structured data.
+// Command event-calendar is a Hatamoto plugin. Events with dates, venue and
+// ticket link: upcoming and past lists for the page builder, an iCal feed and
+// Event structured data.
 //
-// Starting point from the first-party template: a render.head filter that
-// reads one setting and adds a meta tag. Replace it with the real hooks; keep
-// the logic in plain Go (this file) and the //go:wasmexport lines in
-// exports_wasip1.go, so everything but the exports builds and tests on the host.
+// The logic lives in plain Go files and the //go:wasmexport lines in
+// exports_wasip1.go, so everything but the exports builds and tests on the
+// host. Host calls go through the callHost seam.
 package main
 
 import (
+	"regexp"
 	"strings"
+	"time"
+	_ "time/tzdata" // zone names work without a filesystem
 
 	"hatamoto.dev/sdk"
-	"hatamoto.dev/sdk/guest"
 )
 
-func init() {
-	guest.OnFilter(sdk.RenderHead, addMeta)
+const (
+	defaultSchemaSlug = "event"
+	defaultTimeZone   = "UTC"
+	defaultDateFormat = "short"
+)
+
+var slugRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+
+// settings are the plugin's own settings, always usable: every field falls
+// back to its default.
+type settings struct {
+	SchemaSlug string
+	TimeZone   string
+	DateFormat string
 }
 
-// addMeta never fails the render: an unreadable or empty setting adds nothing.
-func addMeta(c sdk.HeadContext) (sdk.HeadContext, error) {
-	var s struct {
-		Greeting string `json:"greeting"`
+func defaultSettings() settings {
+	return settings{SchemaSlug: defaultSchemaSlug, TimeZone: defaultTimeZone, DateFormat: defaultDateFormat}
+}
+
+// loadSettings never fails: an unreadable or invalid setting yields its default.
+func loadSettings() settings {
+	s := defaultSettings()
+	var raw struct {
+		SchemaSlug string `json:"schema_slug"`
+		TimeZone   string `json:"time_zone"`
+		DateFormat string `json:"date_format"`
 	}
-	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return c, nil
+	if err := callHost(sdk.FnSettingsGet, struct{}{}, &raw); err != nil {
+		return s
 	}
-	g := strings.TrimSpace(s.Greeting)
-	if g == "" {
-		return c, nil
+	if slug := strings.TrimSpace(raw.SchemaSlug); slugRe.MatchString(slug) {
+		s.SchemaSlug = slug
 	}
-	c.Tags = append(c.Tags, sdk.HeadTag{
-		Kind:  "meta",
-		Attrs: map[string]string{"name": "event-calendar", "content": g},
-	})
-	return c, nil
+	if tz := strings.TrimSpace(raw.TimeZone); tz != "" {
+		s.TimeZone = tz
+	}
+	switch raw.DateFormat {
+	case "short", "us", "iso":
+		s.DateFormat = raw.DateFormat
+	}
+	return s
+}
+
+// location is the configured zone, UTC when the name is unknown.
+func (s settings) location() *time.Location {
+	loc, err := time.LoadLocation(s.TimeZone)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }

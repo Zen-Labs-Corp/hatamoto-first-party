@@ -1,18 +1,50 @@
 {
   "name": "event-calendar",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.11",
   "description": "Events with dates, venue and ticket link: upcoming and past lists for the page builder, an iCal feed and Event structured data.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["entities.read", "builder.data", "settings"],
+  "builder_sources": [
+    { "name": "upcoming", "label": "Upcoming events", "kind": "items" },
+    { "name": "past", "label": "Past events", "kind": "items" }
+  ],
+  "funcs": ["when"],
+  "routes": [
+    { "method": "GET", "path": "/events.ics", "public": true },
+    { "method": "GET", "path": "/event/{file}", "public": true }
+  ],
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "max_output_bytes": 2097152,
+    "hook_timeouts_ms": {
+      "builder.data": 2000,
+      "jsonld.enrich": 2000,
+      "func_when": 1000
+    }
+  },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
+      "schema_slug": {
         "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+        "title": "Event content type",
+        "description": "Slug of the content type that holds your events.",
+        "default": "event",
+        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+      },
+      "time_zone": {
+        "type": "string",
+        "title": "Time zone",
+        "description": "IANA name of the zone the stored event times are in and the zone dates are shown in, for example Europe/London. An unknown name means UTC.",
+        "default": "UTC"
+      },
+      "date_format": {
+        "type": "string",
+        "title": "Date format",
+        "description": "How dates read: Sat 14 Feb, Sat, Feb 14 or 2026-02-14.",
+        "enum": ["short", "us", "iso"],
+        "default": "short"
       }
     }
   }

@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-
-	"hatamoto.dev/sdk"
-	"hatamoto.dev/sdk/guest"
 )
 
-// head runs the registered render.head filter with a fake settings.get.
-func head(t *testing.T, settings string, hostErr error) []sdk.HeadTag {
+// fakeSettings answers settings.get with raw, or fails with hostErr.
+func fakeSettings(t *testing.T, raw string, hostErr error) {
 	t.Helper()
 	callHost = func(fn string, _, out any) error {
 		if fn != "settings.get" {
@@ -19,32 +16,45 @@ func head(t *testing.T, settings string, hostErr error) []sdk.HeadTag {
 		if hostErr != nil {
 			return hostErr
 		}
-		return json.Unmarshal([]byte(settings), out)
-	}
-	in, _ := json.Marshal(sdk.HeadContext{Path: "/"})
-	out, err := guest.Handle(sdk.RenderHead.Export(), in)
-	if err != nil {
-		t.Fatalf("filter returned an error: %v", err)
-	}
-	var c sdk.HeadContext
-	if err := json.Unmarshal(out, &c); err != nil {
-		t.Fatal(err)
-	}
-	return c.Tags
-}
-
-func TestGreetingEmitsOneMeta(t *testing.T) {
-	tags := head(t, `{"greeting":" hello "}`, nil)
-	if len(tags) != 1 || tags[0].Kind != "meta" || tags[0].Attrs["content"] != "hello" {
-		t.Fatalf("tags = %+v", tags)
+		return json.Unmarshal([]byte(raw), out)
 	}
 }
 
-func TestEmptyOrFailingSettingAddsNothing(t *testing.T) {
-	if tags := head(t, `{"greeting":"  "}`, nil); len(tags) != 0 {
-		t.Fatalf("empty greeting: tags = %+v", tags)
+func TestSettingsDefaults(t *testing.T) {
+	fakeSettings(t, `{}`, nil)
+	if got, want := loadSettings(), defaultSettings(); got != want {
+		t.Fatalf("settings = %+v, want %+v", got, want)
 	}
-	if tags := head(t, "", errors.New("host down")); len(tags) != 0 {
-		t.Fatalf("host error: tags = %+v", tags)
+}
+
+func TestSettingsValues(t *testing.T) {
+	fakeSettings(t, `{"schema_slug":" gig ","time_zone":"Europe/Berlin","date_format":"iso"}`, nil)
+	got := loadSettings()
+	if got.SchemaSlug != "gig" || got.TimeZone != "Europe/Berlin" || got.DateFormat != "iso" {
+		t.Fatalf("settings = %+v", got)
+	}
+}
+
+func TestSettingsBadSlugAndFormat(t *testing.T) {
+	fakeSettings(t, `{"schema_slug":"Bad Slug!","date_format":"weird"}`, nil)
+	got := loadSettings()
+	if got.SchemaSlug != "event" || got.DateFormat != "short" {
+		t.Fatalf("settings = %+v", got)
+	}
+}
+
+func TestSettingsHostErrorGivesDefaults(t *testing.T) {
+	fakeSettings(t, "", errors.New("host down"))
+	if got, want := loadSettings(), defaultSettings(); got != want {
+		t.Fatalf("settings = %+v, want %+v", got, want)
+	}
+}
+
+func TestLocationFallsBackToUTC(t *testing.T) {
+	if loc := (settings{TimeZone: "Not/AZone"}).location(); loc.String() != "UTC" {
+		t.Fatalf("bad zone: %v", loc)
+	}
+	if loc := (settings{TimeZone: "Europe/Berlin"}).location(); loc.String() != "Europe/Berlin" {
+		t.Fatalf("good zone: %v", loc)
 	}
 }
