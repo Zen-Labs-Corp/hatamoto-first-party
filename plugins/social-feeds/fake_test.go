@@ -164,12 +164,25 @@ func (f *fake) db(fn, sql string, rawArgs json.RawMessage, reply func(any) error
 		f.items = slices.DeleteFunc(f.items, func(it item) bool { return it.Source == src })
 	case strings.HasPrefix(sql, "DELETE FROM source_status WHERE source"):
 		delete(f.status, argStr(0))
-	case strings.HasPrefix(sql, "INSERT INTO item"):
+	case strings.HasPrefix(sql, "WITH fresh AS"):
+		// Upsert the listed rows, delete the others of the source, in one go.
+		src := argStr(0)
 		var in []item
-		if err := json.Unmarshal([]byte(argStr(0)), &in); err != nil {
+		if err := json.Unmarshal([]byte(argStr(1)), &in); err != nil {
 			f.t.Fatalf("fake: bad item json: %v", err)
 		}
-		f.items = append(f.items, in...)
+		ids := map[string]bool{}
+		for _, it := range in {
+			if strings.ContainsRune(it.Title+it.Excerpt+it.URL+it.Image+it.ID, 0) {
+				return errors.New("fake: unsupported Unicode escape sequence")
+			}
+			ids[it.ID] = true
+		}
+		f.items = slices.DeleteFunc(f.items, func(it item) bool { return it.Source == src })
+		for _, it := range in {
+			it.Source = src
+			f.items = append(f.items, it)
+		}
 	case strings.Contains(sql, "FROM item WHERE source"):
 		src := argStr(0)
 		var limit int

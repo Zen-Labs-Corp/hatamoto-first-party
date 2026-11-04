@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -20,27 +21,41 @@ type item struct {
 	PublishedAt string `json:"published_at"`
 }
 
-// replaceItems swaps the rows of one source for items. Callers fetch first and
-// call this only on success, so a failed fetch never empties a feed.
+// replaceItems swaps the rows of one source for items in a single statement
+// (each db.exec is its own transaction): rows are upserted and the ones no
+// longer listed are deleted, so a failure leaves the old rows and a concurrent
+// reader never sees the feed empty. Callers fetch first and call this only on
+// success.
 func replaceItems(source string, items []item) error {
-	if err := dbExec(`DELETE FROM item WHERE source = $1`, source); err != nil {
-		return err
-	}
-	const chunk = 500
-	for i := 0; i < len(items); i += chunk {
-		part := items[i:min(i+chunk, len(items))]
-		for j := range part {
-			part[j].Source = source
+	seen := map[string]bool{}
+	clean := make([]item, 0, len(items))
+	for _, it := range items {
+		it.Source = source
+		it.ID, it.Title, it.Excerpt, it.URL, it.Image, it.Type =
+			cleanText(it.ID), cleanText(it.Title), cleanText(it.Excerpt), cleanText(it.URL), cleanText(it.Image), cleanText(it.Type)
+		if it.ID == "" || seen[it.ID] {
+			continue
 		}
-		b, _ := json.Marshal(part)
-		if err := dbExec(`INSERT INTO item (source, id, position, title, excerpt, url, image, type, published_at)
-			SELECT x.source, x.id, x.position, x.title, x.excerpt, x.url, x.image, x.type, nullif(x.published_at, '')::timestamptz
-			  FROM jsonb_to_recordset($1::jsonb) AS x(source text, id text, position integer, title text, excerpt text, url text, image text, type text, published_at text)
-			ON CONFLICT (source, id) DO NOTHING`, string(b)); err != nil {
-			return err
-		}
+		seen[it.ID] = true
+		clean = append(clean, it)
 	}
-	return nil
+	b, _ := json.Marshal(clean)
+	return dbExec(`WITH fresh AS (
+			SELECT x.id, x.position, x.title, x.excerpt, x.url, x.image, x.type, nullif(x.published_at, '')::timestamptz AS published_at
+			  FROM jsonb_to_recordset($2::jsonb) AS x(id text, position integer, title text, excerpt text, url text, image text, type text, published_at text)
+		), up AS (
+			INSERT INTO item (source, id, position, title, excerpt, url, image, type, published_at)
+			SELECT $1::text, id, position, title, excerpt, url, image, type, published_at FROM fresh
+			ON CONFLICT (source, id) DO UPDATE SET position = EXCLUDED.position, title = EXCLUDED.title, excerpt = EXCLUDED.excerpt,
+				url = EXCLUDED.url, image = EXCLUDED.image, type = EXCLUDED.type, published_at = EXCLUDED.published_at
+			RETURNING id
+		)
+		DELETE FROM item WHERE source = $1 AND id NOT IN (SELECT id FROM fresh)`, source, string(b))
+}
+
+// cleanText drops what Postgres text and jsonb refuse: NUL and invalid UTF-8.
+func cleanText(s string) string {
+	return strings.ReplaceAll(strings.ToValidUTF8(s, ""), "\x00", "")
 }
 
 // listItems returns up to limit items of a source, newest first.

@@ -187,6 +187,32 @@ func TestDBFailureOnReplaceKeepsErrorAndNoLeak(t *testing.T) {
 	}
 }
 
+func TestFailedReplaceKeepsTheOldRows(t *testing.T) {
+	f := useFake(t)
+	connect(t, f)
+	f.on(igMedia, 200, igBody(2, "a"))
+	if got := runRefresh(time.Second)["instagram"]; got != "ok" {
+		t.Fatalf("first run = %q", got)
+	}
+	f.on(igMedia, 200, igBody(3, "b"))
+	f.failDB = "INSERT INTO item"
+	if got := runRefresh(time.Second)["instagram"]; got == "ok" {
+		t.Fatal("second run should fail")
+	}
+	if rows := f.rows("instagram"); len(rows) != 2 || rows[0].ID != "a0" {
+		t.Fatalf("old rows lost: %+v", rows)
+	}
+}
+
+func TestReplaceStripsNULAndInvalidUTF8(t *testing.T) {
+	f := useFake(t)
+	err := replaceItems("youtube", []item{{ID: "v1", Title: "a\x00b", Excerpt: "bad\xffbyte", Type: "video"}})
+	rows := f.rows("youtube")
+	if err != nil || len(rows) != 1 || rows[0].Title != "ab" || rows[0].Excerpt != "badbyte" {
+		t.Fatalf("err = %v rows = %+v", err, rows)
+	}
+}
+
 func TestCronRefreshNeverReturnsAnError(t *testing.T) {
 	f := useFake(t)
 	connect(t, f)
