@@ -1,19 +1,36 @@
 {
   "name": "social-feeds",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.11",
   "description": "Shows your latest Instagram posts and YouTube videos from a copy refreshed every few hours, as page-builder data sources.",
-  "permissions": ["settings"],
+  "permissions": ["settings", "http.fetch", "db", "kv", "builder.data", "log"],
+  "allowed_hosts": ["api.instagram.com", "graph.instagram.com", "www.googleapis.com"],
+  "routes": [
+    { "method": "GET", "path": "/status" },
+    { "method": "GET", "path": "/connect/instagram" },
+    { "method": "POST", "path": "/disconnect" },
+    { "method": "POST", "path": "/refresh-now" },
+    { "method": "GET", "path": "/oauth/callback", "public": true }
+  ],
+  "cron": [
+    { "name": "refresh", "every": "3h" },
+    { "name": "token", "every": "24h" }
+  ],
+  "builder_sources": [
+    { "name": "instagram", "label": "Instagram posts", "kind": "items" },
+    { "name": "youtube", "label": "YouTube videos", "kind": "items" }
+  ],
+  "ui": { "title": "Social feeds" },
   "limits": { "memory_pages": 256, "max_instances": 4 },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
-      }
+      "instagram_app_id": { "type": "string", "title": "Instagram app ID", "description": "From the Instagram product of your Meta app (business or creator account)." },
+      "instagram_app_secret": { "type": "string", "title": "Instagram app secret", "writeOnly": true, "description": "Stored here and never shown again." },
+      "youtube_api_key": { "type": "string", "title": "YouTube API key", "writeOnly": true, "description": "A Google API key with the YouTube Data API enabled. Stored here and never shown again." },
+      "youtube_channel_id": { "type": "string", "title": "YouTube channel ID", "description": "The channel ID, starting with UC." },
+      "items": { "type": "integer", "title": "Items per feed", "description": "How many items a page loop gets at most.", "default": 9, "minimum": 1, "maximum": 48 },
+      "public_url": { "type": "string", "title": "Public address of this site", "description": "For example https://example.com. Instagram redirects back to <address>/p/social-feeds/oauth/callback; add that address to the Instagram app." }
     }
   }
 }

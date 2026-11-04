@@ -4,4 +4,7 @@ package main
 
 import "hatamoto.dev/sdk/guest"
 
-func init() { callHost = guest.Call }
+func init() {
+	callHost = guest.Call
+	config = guest.Config
+}
