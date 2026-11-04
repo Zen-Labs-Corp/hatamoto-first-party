@@ -2,49 +2,80 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
+	"os"
+	"slices"
 	"testing"
 
 	"hatamoto.dev/sdk"
-	"hatamoto.dev/sdk/guest"
 )
 
-// head runs the registered render.head filter with a fake settings.get.
-func head(t *testing.T, settings string, hostErr error) []sdk.HeadTag {
+type manifest struct {
+	Name         string   `json:"name"`
+	Permissions  []string `json:"permissions"`
+	AllowedHosts []string `json:"allowed_hosts"`
+	Routes       []struct {
+		Method string   `json:"method"`
+		Path   string   `json:"path"`
+		Public bool     `json:"public"`
+		Roles  []string `json:"roles"`
+	} `json:"routes"`
+	Cron []struct {
+		Name  string `json:"name"`
+		Every string `json:"every"`
+	} `json:"cron"`
+	UI map[string]any `json:"ui"`
+}
+
+func loadManifest(t *testing.T) manifest {
 	t.Helper()
-	callHost = func(fn string, _, out any) error {
-		if fn != "settings.get" {
-			t.Fatalf("unexpected host call %q", fn)
-		}
-		if hostErr != nil {
-			return hostErr
-		}
-		return json.Unmarshal([]byte(settings), out)
-	}
-	in, _ := json.Marshal(sdk.HeadContext{Path: "/"})
-	out, err := guest.Handle(sdk.RenderHead.Export(), in)
+	raw, err := os.ReadFile("plugin.json")
 	if err != nil {
-		t.Fatalf("filter returned an error: %v", err)
-	}
-	var c sdk.HeadContext
-	if err := json.Unmarshal(out, &c); err != nil {
 		t.Fatal(err)
 	}
-	return c.Tags
+	var m manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
 }
 
-func TestGreetingEmitsOneMeta(t *testing.T) {
-	tags := head(t, `{"greeting":" hello "}`, nil)
-	if len(tags) != 1 || tags[0].Kind != "meta" || tags[0].Attrs["content"] != "hello" {
-		t.Fatalf("tags = %+v", tags)
+func TestManifestPermissionsHostsAndRoutes(t *testing.T) {
+	m := loadManifest(t)
+	if m.Name != "payment-links" {
+		t.Fatalf("name %q", m.Name)
+	}
+	perms := slices.Clone(m.Permissions)
+	slices.Sort(perms)
+	want := []string{"db", "http.fetch", "log", "mail.send", "settings"}
+	if !slices.Equal(perms, want) {
+		t.Fatalf("permissions %v, want %v", perms, want)
+	}
+	if !slices.Equal(m.AllowedHosts, []string{"api.stripe.com"}) {
+		t.Fatalf("allowed_hosts %v", m.AllowedHosts)
+	}
+	var public []string
+	for _, r := range m.Routes {
+		if r.Public {
+			public = append(public, r.Method+" "+r.Path)
+		}
+		if len(r.Roles) != 0 {
+			t.Errorf("route %s %s sets roles", r.Method, r.Path)
+		}
+	}
+	if !slices.Equal(public, []string{"POST /webhook"}) {
+		t.Fatalf("public routes %v", public)
+	}
+	if _, ok := m.UI["roles"]; ok {
+		t.Fatal("ui.roles must be absent (owner only)")
+	}
+	if len(m.Cron) != 1 || m.Cron[0].Name != "prune" {
+		t.Fatalf("cron %+v", m.Cron)
 	}
 }
 
-func TestEmptyOrFailingSettingAddsNothing(t *testing.T) {
-	if tags := head(t, `{"greeting":"  "}`, nil); len(tags) != 0 {
-		t.Fatalf("empty greeting: tags = %+v", tags)
-	}
-	if tags := head(t, "", errors.New("host down")); len(tags) != 0 {
-		t.Fatalf("host error: tags = %+v", tags)
+func TestUnknownRouteIs404(t *testing.T) {
+	res, err := serve(sdk.HTTPRequest{Method: "GET", Pattern: "/nope"})
+	if err != nil || res.Status != 404 {
+		t.Fatalf("%v %v", res, err)
 	}
 }

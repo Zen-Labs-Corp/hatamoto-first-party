@@ -1,37 +1,47 @@
-// Command payment-links is a Hatamoto plugin. Take payments and donations through Stripe Payment Links: payment buttons for your pages, an owner email per payment and a payments log.
+// Command payment-links is a Hatamoto plugin. Take payments and donations
+// through Stripe Payment Links: payment buttons for your pages, an owner email
+// per payment and a payments log.
 //
-// Starting point from the first-party template: a render.head filter that
-// reads one setting and adds a meta tag. Replace it with the real hooks; keep
-// the logic in plain Go (this file) and the //go:wasmexport lines in
-// exports_wasip1.go, so everything but the exports builds and tests on the host.
+// Logic stays in plain Go so it tests on the host; the //go:wasmexport lines
+// live in exports_wasip1.go.
 package main
 
 import (
-	"strings"
+	"encoding/json"
+	"net/http"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
 
 func init() {
-	guest.OnFilter(sdk.RenderHead, addMeta)
+	guest.OnHTTP(serve)
+	guest.OnCron("prune", onPrune)
 }
 
-// addMeta never fails the render: an unreadable or empty setting adds nothing.
-func addMeta(c sdk.HeadContext) (sdk.HeadContext, error) {
-	var s struct {
-		Greeting string `json:"greeting"`
+func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
+	switch r.Method + " " + r.Pattern {
 	}
-	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return c, nil
+	return status(http.StatusNotFound), nil
+}
+
+// onPrune fails open: it never returns an error.
+func onPrune(sdk.CronEvent) error { return nil }
+
+// status answers with a code and an empty body.
+func status(code int) sdk.HTTPResponse { return sdk.HTTPResponse{Status: code} }
+
+func reply(code int, v any) (sdk.HTTPResponse, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return sdk.HTTPResponse{}, err
 	}
-	g := strings.TrimSpace(s.Greeting)
-	if g == "" {
-		return c, nil
+	return sdk.HTTPResponse{Status: code, Headers: map[string]string{"Content-Type": "application/json"}, Body: string(b)}, nil
+}
+
+func first(v []string) string {
+	if len(v) == 0 {
+		return ""
 	}
-	c.Tags = append(c.Tags, sdk.HeadTag{
-		Kind:  "meta",
-		Attrs: map[string]string{"name": "payment-links", "content": g},
-	})
-	return c, nil
+	return v[0]
 }
