@@ -37,6 +37,9 @@ const (
 	kindUpdated = "updated"
 	kindRetry   = "retry"
 	kindFail    = "fail"
+	// kindBudget: the time budget ran out before the delivery was done. The
+	// provider did not fail, so it is neither logged nor counted as an attempt.
+	kindBudget = "budget"
 )
 
 // result is the outcome of one delivery. reason is a fixed short word, never

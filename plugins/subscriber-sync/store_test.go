@@ -38,8 +38,11 @@ func TestDoFetchStopsWhenBudgetIsSpent(t *testing.T) {
 	h.install(t)
 	callHost = func(string, any, any) error { t.Fatal("request started past the budget"); return nil }
 	budgetEnd = now().Add(minCall / 2)
-	if r := doFetch(fetchReq{}); r.Code != sdk.ErrTimeout {
+	if r := doFetch(fetchReq{}); r.Code != budgetCode {
 		t.Fatalf("%+v", r)
+	}
+	if got := hostResult(budgetCode).kind; got != kindBudget {
+		t.Fatalf("kind %s", got)
 	}
 }
 

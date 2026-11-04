@@ -14,6 +14,10 @@ const (
 	minCall = 1500 * time.Millisecond
 )
 
+// budgetCode is the fetchResp code of a request that was not started because
+// the time budget is spent. It is not a host error code.
+const budgetCode = "budget_exhausted"
+
 // budgetEnd, when set, is the time by which the running call must be done:
 // no request starts that cannot finish before it, and a request timeout is cut
 // to what is left.
@@ -26,7 +30,7 @@ func doFetch(req fetchReq) fetchResp {
 	if !budgetEnd.IsZero() {
 		left := budgetEnd.Sub(now())
 		if left < minCall {
-			return fetchResp{Code: sdk.ErrTimeout}
+			return fetchResp{Code: budgetCode}
 		}
 		timeout = min(timeout, left)
 	}
@@ -57,6 +61,8 @@ func hostCode(err error) string {
 // rate_limited, internal, unknown) is tried again later.
 func hostResult(code string) result {
 	switch code {
+	case budgetCode:
+		return result{kind: kindBudget, reason: "timeout"}
 	case sdk.ErrCapabilityDenied, sdk.ErrBlocked:
 		return result{kind: kindFail, reason: "blocked"}
 	case sdk.ErrInvalidArgument:

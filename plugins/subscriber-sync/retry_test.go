@@ -158,3 +158,23 @@ func TestRetryLogsNoEmail(t *testing.T) {
 		}
 	}
 }
+
+func TestSettleBudgetCutReleasesLeaseWithoutAttemptOrLog(t *testing.T) {
+	h := &fakeHost{settings: baseSettings}
+	h.install(t)
+	settle(job{SubmissionID: "sub-1", FormSlug: "contact", Attempts: 2}, result{kind: kindBudget, reason: "timeout"})
+	if len(h.logRows()) != 0 || h.dbWrites() != 1 {
+		t.Fatalf("calls %+v", h.calls)
+	}
+	c := h.calls[0]
+	if strings.Contains(c.sql, "attempts") || !strings.HasPrefix(c.sql, "UPDATE queue SET lease_until") || c.args[1] != ts(now()) {
+		t.Fatalf("%+v", c)
+	}
+}
+
+func TestKitDeliveryCutByBudgetIsNotAFailure(t *testing.T) {
+	f := newFake(t, fetchResp{Status: 201}, fetchResp{Code: budgetCode})
+	if r := (kit{}).upsert(job{Email: "a@b.co"}, kitCfg(), f.fetch); r.kind != kindBudget {
+		t.Fatalf("%+v", r)
+	}
+}

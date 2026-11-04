@@ -51,9 +51,14 @@ ON CONFLICT (submission_id) DO NOTHING`,
 }
 
 // settle applies one delivery outcome: finished jobs leave the queue, a
-// retryable one waits with backoff, and every outcome gets a log row.
+// retryable one waits with backoff, and every outcome gets a log row. A job cut
+// short by the time budget is only released for the next run.
 func settle(j job, r result) {
 	switch r.kind {
+	case kindBudget:
+		if err := dbExec(`UPDATE queue SET lease_until = $2::timestamptz WHERE submission_id = $1`, j.SubmissionID, ts(now())); err != nil {
+			logf("warn", "subscriber-sync: could not release a submission")
+		}
 	case kindSent, kindUpdated, kindFail:
 		if err := dbExec(`DELETE FROM queue WHERE submission_id = $1`, j.SubmissionID); err != nil {
 			logf("warn", "subscriber-sync: could not clear a delivered submission")
