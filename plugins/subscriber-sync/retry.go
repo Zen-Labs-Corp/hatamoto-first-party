@@ -50,19 +50,14 @@ func onRetry(sdk.CronEvent) error {
 	return nil
 }
 
-// expire deletes rows older than 24 h and logs each one, without the email.
+// expire deletes rows older than 24 h and logs each one, without the email,
+// in a single statement so a large backlog cannot outlast the cron run.
 func expire(t time.Time) {
-	var rows []struct {
-		FormSlug string `json:"form_slug"`
-	}
-	err := dbJSON(`WITH d AS (DELETE FROM queue WHERE created_at < $1::timestamptz RETURNING form_slug)
-SELECT coalesce(jsonb_agg(to_jsonb(d)), '[]'::jsonb) FROM d`, &rows, ts(t.Add(-maxAge)))
+	err := dbExec(`WITH d AS (DELETE FROM queue WHERE created_at < $1::timestamptz RETURNING form_slug)
+INSERT INTO log (created_at, form_slug, status, reason) SELECT $2::timestamptz, form_slug, 'expired', 'too old' FROM d`,
+		ts(t.Add(-maxAge)), ts(now()))
 	if err != nil {
 		logf("warn", "subscriber-sync: could not purge the queue")
-		return
-	}
-	for _, r := range rows {
-		record(r.FormSlug, "expired", "too old", 0)
 	}
 }
 

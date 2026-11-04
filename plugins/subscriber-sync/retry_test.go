@@ -13,8 +13,7 @@ import (
 // claim queries, everything else is recorded.
 type queueHost struct {
 	*fakeHost
-	expired []string // form slugs the expiry query returns
-	due     int      // rows the claim query returns
+	due     int // rows the claim query returns
 	queries []hostCallRec
 }
 
@@ -30,12 +29,6 @@ func (q *queueHost) install(t *testing.T) {
 		q.queries = append(q.queries, rec)
 		var cell any = []any{}
 		switch {
-		case strings.Contains(rec.sql, "DELETE FROM queue"):
-			rows := []map[string]any{}
-			for _, s := range q.expired {
-				rows = append(rows, map[string]any{"form_slug": s})
-			}
-			cell = rows
 		case strings.Contains(rec.sql, "FOR UPDATE SKIP LOCKED"):
 			rows := []map[string]any{}
 			for i := 0; i < q.due && i < batchSize; i++ {
@@ -54,24 +47,32 @@ func newQueueHost(t *testing.T) *queueHost {
 	return q
 }
 
-func TestRetryExpiresOldRowsAndLogsThem(t *testing.T) {
+func TestRetryExpiresOldRowsAndLogsThemInOneStatement(t *testing.T) {
 	q := newQueueHost(t)
-	q.expired = []string{"contact", "news"}
 	_ = onRetry(sdk.CronEvent{Name: "retry"})
-	want := ts(now().Add(-24 * time.Hour))
-	if got := q.queries[0].args[0]; got != want {
-		t.Fatalf("queue cutoff %v, want %v", got, want)
+	var stmts []hostCallRec
+	for _, c := range q.calls {
+		if c.fn == "db.exec" && strings.Contains(c.sql, "DELETE FROM queue") {
+			stmts = append(stmts, c)
+		}
 	}
-	rows := q.logRows()
-	if len(rows) != 2 || rows[0] != [2]string{"expired", "too old"} {
-		t.Fatalf("log rows %v", rows)
+	if len(stmts) != 1 || !strings.Contains(stmts[0].sql, "INSERT INTO log") {
+		t.Fatalf("expiry statements %+v", stmts)
+	}
+	if want := ts(now().Add(-24 * time.Hour)); stmts[0].args[0] != want {
+		t.Fatalf("queue cutoff %v, want %v", stmts[0].args[0], want)
+	}
+	for _, c := range q.queries {
+		if strings.Contains(c.sql, "DELETE FROM queue") {
+			t.Fatalf("expiry read back per row: %s", c.sql)
+		}
 	}
 }
 
 func TestRetryClaimCutoffKeepsRowsUnder24Hours(t *testing.T) {
 	q := newQueueHost(t)
 	_ = onRetry(sdk.CronEvent{Name: "retry"})
-	claimQ := q.queries[1]
+	claimQ := q.queries[0]
 	if claimQ.args[1] != ts(now().Add(-24*time.Hour)) {
 		t.Fatalf("claim cutoff %v", claimQ.args[1])
 	}
@@ -97,7 +98,7 @@ func TestRetryClaimIsAtomicLeaseWithBatchCap(t *testing.T) {
 	delivered := 0
 	deliverFn = func(cfg, job) result { delivered++; return result{kind: kindSent} }
 	_ = onRetry(sdk.CronEvent{Name: "retry"})
-	claimQ := q.queries[1]
+	claimQ := q.queries[0]
 	if !strings.Contains(claimQ.sql, "FOR UPDATE SKIP LOCKED") || !strings.Contains(claimQ.sql, "UPDATE queue") {
 		t.Fatalf("claim sql %s", claimQ.sql)
 	}
@@ -136,7 +137,7 @@ func TestRetrySkipsDeliveryWhenNotConfigured(t *testing.T) {
 	q.due = 3
 	deliverFn = func(cfg, job) result { t.Fatal("delivered"); return result{} }
 	_ = onRetry(sdk.CronEvent{Name: "retry"})
-	if len(q.queries) != 1 {
+	if len(q.queries) != 0 {
 		t.Fatalf("queries %d", len(q.queries))
 	}
 }
