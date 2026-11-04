@@ -60,9 +60,16 @@ func providerFor(name string) provider {
 		return mailchimp{}
 	case "brevo":
 		return brevo{}
+	case "mailerlite":
+		return mailerlite{}
+	case "kit":
+		return kit{}
 	}
 	return nil
 }
+
+// maxPages bounds how many pages a lookup reads.
+const maxPages = 5
 
 // deliver sends one job through the configured provider.
 func deliver(c cfg, j job) result {
