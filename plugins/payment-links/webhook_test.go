@@ -309,3 +309,9 @@ func TestSecretKeyNeverLeaves(t *testing.T) {
 		}
 	}
 }
+
+func TestWebhookAcceptsARealisticLargeEventBody(t *testing.T) {
+	w := newWorld(t)
+	body := `{"id":"evt_1","type":"checkout.session.completed","data":{"object":{"metadata":{"note":"` + strings.Repeat("a", 20<<10) + `"}}}}`
+	wantStatus(t, w, body, 200, "recorded")
+}

@@ -10,7 +10,8 @@ import (
 	"hatamoto.dev/sdk"
 )
 
-const maxWebhookBody = 4096
+// Stripe posts the whole event, which can pass 4 KiB; only the id is read.
+const maxWebhookBody = 256 << 10
 
 // The trust model: core does not pass the Stripe-Signature header to plugin
 // routes, so the posted body is not believed. Only its event id is read, and
