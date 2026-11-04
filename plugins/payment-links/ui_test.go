@@ -69,3 +69,20 @@ func TestUIRolesNotSet(t *testing.T) {
 		t.Fatal("ui.roles must stay absent (owner only)")
 	}
 }
+
+// The page editor has no fields for the section, so the copy must not send the
+// owner there.
+func TestUICopyDoesNotPromiseASectionEditor(t *testing.T) {
+	for _, name := range []string{"index.html", "app.js"} {
+		if strings.Contains(strings.ToLower(readUI(t, name)), "page editor") {
+			t.Errorf("ui/%s mentions the page editor", name)
+		}
+	}
+	b, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "in the page editor and set") {
+		t.Error("README promises label and url fields in the page editor")
+	}
+}

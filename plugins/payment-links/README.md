@@ -25,9 +25,13 @@ straight to Stripe, so card data never touches your site.
    {{ template "plugin/payment_links/button" (dict "label" "Donate" "url" "https://buy.stripe.com/your-link") }}
    ```
 
-   or add the **Payment button** section in the page editor and set its `label` and
-   `url`. The button is a plain link with the class `pl-button`; a URL that does not
-   start with `https://` renders as plain text. No script is loaded.
+   The partial is the supported way to show a button. The plugin also registers a
+   **Payment button** section, but the page editor has no fields for it, so you
+   cannot set its `label` and `url` there. It renders from section content that has
+   `label` and `url` keys, for example content you pass through `render.page` or the
+   API; with no content it shows an inert, empty element. The button is a plain link
+   with the class `pl-button`; a URL that does not start with `https://` renders as
+   plain text. No script is loaded.
 
 The plugin page shows whether the key is set, the webhook path, the button code for
 each link, totals per month and currency, and the payments. The CSV export is at
