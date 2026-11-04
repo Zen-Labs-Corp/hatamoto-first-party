@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Meta Conversions API</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+
+    <section>
+      <dl id="summary">
+        <dt>Status</dt><dd id="status">Loading…</dd>
+        <dt>Forms</dt><dd id="forms"></dd>
+        <dt>Test event code</dt><dd id="testcode"></dd>
+      </dl>
+      <p id="forms-hint" class="notice error" hidden>
+        The forms.read permission is not granted, so the host delivers no form submissions to this plugin. Grant it on the plugin's card.
+      </p>
+      <div class="row">
+        <button id="send-test" class="primary">Send test event</button>
+        <span id="test-result"></span>
+      </div>
+      <p class="muted">
+        Note: the host never passes the visitor's IP address or browser to plugins,
+        so Meta matches on hashed email and phone only.
+      </p>
+    </section>
+
+    <section>
+      <h2>Delivery log <span class="muted">(last 200, kept 30 days)</span></h2>
+      <table id="log">
+        <thead><tr><th>Time</th><th>Form</th><th>Submission</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="muted" hidden>No form submissions yet.</p>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
