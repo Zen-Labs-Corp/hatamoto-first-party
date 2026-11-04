@@ -152,3 +152,14 @@ func TestSingleEventHostDown(t *testing.T) {
 		t.Fatalf("response = %+v", r)
 	}
 }
+
+func TestHeadAnswersLikeGet(t *testing.T) {
+	(&fakeHost{entities: []string{evFuture}}).install(t)
+	for _, c := range []struct{ pattern, file string }{{"/events.ics", ""}, {"/event/{file}", "future.ics"}} {
+		g := call(t, "GET", c.pattern, c.file)
+		h := call(t, "HEAD", c.pattern, c.file)
+		if h.Status != 200 || h.Headers["Content-Type"] != g.Headers["Content-Type"] || h.Headers["Cache-Control"] != g.Headers["Cache-Control"] {
+			t.Errorf("%s: HEAD = %d %v, GET = %d %v", c.pattern, h.Status, h.Headers, g.Status, g.Headers)
+		}
+	}
+}

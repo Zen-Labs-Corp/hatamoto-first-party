@@ -16,11 +16,15 @@ func init() { guest.OnHTTP(serve) }
 // serve answers the two public routes. It never returns a Go error and never
 // puts host error text in a body.
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
-	switch r.Method + " " + r.Pattern {
-	case "GET /events.ics":
-		return serveFeed(), nil
-	case "GET /event/{file}":
-		return serveEvent(r.PathValues["file"]), nil
+	// Core mounts GET routes, which also match HEAD; it drops the body of a
+	// HEAD answer itself.
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		switch r.Pattern {
+		case "/events.ics":
+			return serveFeed(), nil
+		case "/event/{file}":
+			return serveEvent(r.PathValues["file"]), nil
+		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil
 }
