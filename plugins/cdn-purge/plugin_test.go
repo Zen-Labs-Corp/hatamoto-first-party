@@ -393,6 +393,17 @@ func TestProviderError500(t *testing.T) {
 	}
 }
 
+func TestTokenRedactedBeforeTruncation(t *testing.T) {
+	f := newFake(t, nil)
+	f.fetchStatus = 500
+	f.fetchBody = strings.Repeat("a", errBodyChars-5) + testToken
+	f.setEntity("e1", "published", "/x", "https://example.com/x")
+	f.fire(sdk.EntityPublished, "e1")
+	if len(f.rows) != 1 || strings.Contains(f.rows[0].Error, testToken[:4]) {
+		t.Fatalf("row error leaks part of the token: %q", f.rows[0].Error)
+	}
+}
+
 func TestNoOriginSkips(t *testing.T) {
 	f := newFake(t, map[string]any{"site_url": ""})
 	f.setEntity("e1", "published", "/x", "/x")

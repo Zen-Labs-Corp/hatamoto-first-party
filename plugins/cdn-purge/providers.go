@@ -73,16 +73,25 @@ func truncate(s string, n int) string {
 	return s
 }
 
+// redact hides the token in text. It runs before any truncation, so a token cut
+// in half by the limit cannot survive.
+func redact(text, token string) string {
+	if token == "" {
+		return text
+	}
+	return strings.ReplaceAll(text, token, "***")
+}
+
 // call runs one request and reduces the answer to a batchResult.
 func call(s settings, method, rawURL string, headers map[string]string, body string, urls []string) batchResult {
 	res, err := fetch(method, rawURL, headers, body)
 	out := batchResult{URLs: urls, Status: res.Status}
 	switch {
 	case err != nil:
-		out.Err = truncate(strings.ReplaceAll(err.Error(), s.APIToken, "***"), maxErrChars)
+		out.Err = truncate(redact(err.Error(), s.APIToken), maxErrChars)
 	case res.Status < 200 || res.Status > 299:
 		out.Err = truncate(strings.TrimSpace(fmt.Sprintf("%d %s",
-			res.Status, strings.ReplaceAll(truncate(res.Body, errBodyChars), s.APIToken, "***"))), maxErrChars)
+			res.Status, truncate(redact(res.Body, s.APIToken), errBodyChars))), maxErrChars)
 	}
 	return out
 }
