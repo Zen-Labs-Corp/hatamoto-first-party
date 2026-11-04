@@ -4,10 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
+
+// testBudget is how long Test connection keeps starting requests; the route's
+// own limit is 10 s.
+const testBudget = 8 * time.Second
 
 func init() { guest.OnHTTP(serve) }
 
@@ -67,6 +72,8 @@ func testRoute() (sdk.HTTPResponse, error) {
 	if p == nil || !c.configured() {
 		return reply(http.StatusOK, map[string]any{"ok": false, "error": "not configured"}), nil
 	}
+	budgetEnd = now().Add(testBudget)
+	defer func() { budgetEnd = time.Time{} }()
 	name, r := p.test(c, doFetch)
 	if r.kind == kindSent || r.kind == kindUpdated {
 		return reply(http.StatusOK, map[string]any{"ok": true, "list_name": name}), nil

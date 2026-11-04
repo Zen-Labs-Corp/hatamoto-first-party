@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -111,5 +112,32 @@ func TestUnknownRouteIs404(t *testing.T) {
 	routeHost(t, `{}`, 0, "", nil)
 	if code, _, _ := call(t, "GET", "/nope"); code != 404 {
 		t.Fatalf("%d", code)
+	}
+}
+
+func TestTestRouteIgnoresBudgetLeftByHook(t *testing.T) {
+	h := &fakeHost{settings: baseSettings}
+	h.install(t)
+	deliverFn = func(cfg, job) result { return result{kind: kindSent, status: 200} }
+	if err := onFormSubmitted(event("contact", map[string]any{"email": "ada@example.com"})); err != nil {
+		t.Fatal(err)
+	}
+	start := now()
+	now = func() time.Time { return start.Add(time.Minute) }
+	fetches := 0
+	inner := callHost
+	callHost = func(fn string, a, out any) error {
+		if fn != "http.fetch" {
+			return inner(fn, a, out)
+		}
+		fetches++
+		return json.Unmarshal([]byte(`{"status":200,"body":"{\"name\":\"Newsletter\"}"}`), out)
+	}
+	_, m, body := call(t, "POST", "/test")
+	if fetches != 1 || m["ok"] != true {
+		t.Fatalf("%d fetches: %s", fetches, body)
+	}
+	if !budgetEnd.IsZero() {
+		t.Fatal("budget left set")
 	}
 }

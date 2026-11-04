@@ -67,6 +67,7 @@ func onFormSubmitted(ev sdk.FormSubmittedEvent) error {
 		return nil
 	}
 	budgetEnd = now().Add(hookBudget)
+	defer func() { budgetEnd = time.Time{} }()
 	settle(j, deliverFn(c, j))
 	return nil
 }
