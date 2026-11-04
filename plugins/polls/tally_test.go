@@ -16,6 +16,7 @@ type hostCall struct {
 	fn   string
 	sql  string
 	args []any
+	raw  any // the arguments as the plugin passed them
 }
 
 // fake is a scriptable host: canned settings, forms and errors, and a record of
@@ -26,12 +27,13 @@ type fake struct {
 	forms    string
 	errs     map[string]error // by host function
 	calls    []hostCall
-	answer   func(fn, sql string, args []any, out any) error // db.query and others, optional
+	answer   func(c hostCall, out any) error // optional: other host functions, and results for db.exec
+
 }
 
 func (f *fake) install() {
 	callHost = func(fn string, a, out any) error {
-		c := hostCall{fn: fn}
+		c := hostCall{fn: fn, raw: a}
 		if m, ok := a.(map[string]any); ok {
 			c.sql, _ = m["sql"].(string)
 			c.args, _ = m["args"].([]any)
@@ -50,12 +52,12 @@ func (f *fake) install() {
 			return json.Unmarshal([]byte(f.forms), out)
 		case "log", "mail.send", "db.exec":
 			if f.answer != nil {
-				return f.answer(fn, c.sql, c.args, out)
+				return f.answer(c, out)
 			}
 			return nil
 		}
 		if f.answer != nil {
-			return f.answer(fn, c.sql, c.args, out)
+			return f.answer(c, out)
 		}
 		f.t.Fatalf("unexpected host call %q", fn)
 		return nil
