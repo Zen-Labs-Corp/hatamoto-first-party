@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -134,6 +135,9 @@ func TestMigrationShape(t *testing.T) {
 	}
 	if regexp.MustCompile(`(?i)\bCREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|TRIGGER|PROCEDURE|EXTENSION)\b`).MatchString(sql) {
 		t.Fatal("functions, triggers and extensions are refused")
+	}
+	if strings.Contains(sql, "items_pub") {
+		t.Fatal("no query orders by a plain published_at, so the index is never used")
 	}
 	if regexp.MustCompile(`(?i)\bpg_|\bGRANT\b`).MatchString(sql) {
 		t.Fatal("pg_ names and GRANT are refused")

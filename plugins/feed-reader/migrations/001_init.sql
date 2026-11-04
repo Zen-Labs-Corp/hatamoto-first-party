@@ -22,5 +22,3 @@ CREATE TABLE items (
     fetched_at   timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (feed_key, guid)
 );
-
-CREATE INDEX items_pub ON items (published_at);
