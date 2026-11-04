@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -414,6 +416,13 @@ var errSiteChoice = errors.New("Bing lists no single verified site for this key.
 // errSiteInvalid is an invalid Site URL setting.
 var errSiteInvalid = errors.New("Site URL must start with http:// or https://, exactly as it is verified in Bing Webmaster Tools.")
 
+// keyTag is a short fingerprint of the key (never the key), stored with the
+// cached site so that a site resolved for another key is not reused.
+func keyTag(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:4])
+}
+
 // resolveSite returns the site to ask Bing about and where it came from
 // ("setting" or "bing"). The Site URL is kept as written: Bing matches the
 // verified string, a trailing slash included.
@@ -432,9 +441,12 @@ func resolveSite(s settings) (site, source string, err error) {
 		Value json.RawMessage `json:"value"`
 	}
 	if callHost("kv.get", map[string]string{"key": "site"}, &got) == nil && got.Found {
-		var cached string
-		if json.Unmarshal(got.Value, &cached) == nil && cached != "" {
-			return cached, "bing", nil
+		var cached struct {
+			Site string `json:"site"`
+			Key  string `json:"key"`
+		}
+		if json.Unmarshal(got.Value, &cached) == nil && cached.Site != "" && cached.Key == keyTag(s.APIKey) {
+			return cached.Site, "bing", nil
 		}
 	}
 	sites, err := getUserSites(s)
@@ -450,7 +462,7 @@ func resolveSite(s settings) (site, source string, err error) {
 	if len(verified) != 1 {
 		return "", "none", errSiteChoice
 	}
-	_ = callHost("kv.set", map[string]any{"key": "site", "value": verified[0], "ttl_seconds": siteCacheTTL}, nil)
+	_ = callHost("kv.set", map[string]any{"key": "site", "value": map[string]string{"site": verified[0], "key": keyTag(s.APIKey)}, "ttl_seconds": siteCacheTTL}, nil)
 	return verified[0], "bing", nil
 }
 

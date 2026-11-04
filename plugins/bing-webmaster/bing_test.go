@@ -316,6 +316,22 @@ func TestResolveSite(t *testing.T) {
 			t.Fatalf("cache: %q %v", got, err)
 		}
 	})
+	t.Run("cached site is not reused for another key", func(t *testing.T) {
+		h := newHost(t)
+		h.bing["GetUserSites"] = sites("https://example.com/")
+		if _, _, err := resolveSite(h.settings); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(h.kv["site"]), testKey) {
+			t.Fatal("the key must not be stored")
+		}
+		h.bing["GetUserSites"] = sites("https://other.example.org/")
+		h.settings.APIKey = "another-key"
+		got, _, err := resolveSite(h.settings)
+		if err != nil || got != "https://other.example.org/" {
+			t.Fatalf("%q %v", got, err)
+		}
+	})
 	for name, list := range map[string]fetched{
 		"none verified": sites("!https://example.com/"),
 		"two verified":  sites("https://example.com/", "https://other.example.com/"),
