@@ -4,15 +4,36 @@
   "sdk": "^0.8",
   "description": "Share links for posts and pages (LinkedIn, X, Facebook, WhatsApp, Bluesky, email) as a partial and a section, with no tracking scripts.",
   "permissions": ["settings"],
+  "funcs": ["network", "style", "page_url"],
   "limits": { "memory_pages": 256, "max_instances": 4 },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
+      "networks": {
+        "type": "array",
+        "title": "Networks",
+        "description": "Networks to show, in display order. Allowed: linkedin, x, facebook, whatsapp, bluesky, email. Leave empty for the defaults (linkedin, x, facebook, whatsapp, email).",
+        "uniqueItems": true,
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "enum": ["linkedin", "x", "facebook", "whatsapp", "bluesky", "email"]
+        },
+        "default": ["linkedin", "x", "facebook", "whatsapp", "email"]
+      },
+      "style": {
         "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+        "title": "Style",
+        "description": "Icons and labels, icons only (the label stays available to screen readers) or labels only.",
+        "enum": ["icons", "labels", "both"],
+        "default": "both"
+      },
+      "site_url": {
+        "type": "string",
+        "title": "Site URL",
+        "description": "For example https://example.com. Used only by the Share buttons section to make page paths absolute. Leave empty to render the section only when it has its own url.",
+        "format": "uri",
+        "maxLength": 200
       }
     }
   }
