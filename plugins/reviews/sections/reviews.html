@@ -1,0 +1,25 @@
+{{define "plugin/reviews/card"}}<article class="review">
+<p class="review-stars">{{plugin_reviews_field . "stars"}}</p>
+<p class="review-text">{{plugin_reviews_field . "text"}}</p>
+<p class="review-meta">{{if plugin_reviews_field . "author_url"}}<a href="{{plugin_reviews_field . "author_url"}}" rel="noopener nofollow">{{plugin_reviews_field . "author"}}</a>{{else}}{{plugin_reviews_field . "author"}}{{end}} · {{plugin_reviews_field . "date"}}</p>
+<p class="review-source">{{plugin_reviews_field . "source_label"}}</p>
+</article>{{end}}
+
+{{define "section-reviews"}}{{if ne (plugin_reviews_count) "0"}}<section class="reviews">
+<header class="reviews-header">{{if plugin_reviews_summary}}<p class="reviews-summary">{{plugin_reviews_summary}}</p>{{end}}</header>
+<div class="reviews-list">
+{{if plugin_reviews_field 0 "author"}}{{template "plugin/reviews/card" 0}}{{end}}
+{{if plugin_reviews_field 1 "author"}}{{template "plugin/reviews/card" 1}}{{end}}
+{{if plugin_reviews_field 2 "author"}}{{template "plugin/reviews/card" 2}}{{end}}
+{{if plugin_reviews_field 3 "author"}}{{template "plugin/reviews/card" 3}}{{end}}
+{{if plugin_reviews_field 4 "author"}}{{template "plugin/reviews/card" 4}}{{end}}
+{{if plugin_reviews_field 5 "author"}}{{template "plugin/reviews/card" 5}}{{end}}
+{{if plugin_reviews_field 6 "author"}}{{template "plugin/reviews/card" 6}}{{end}}
+{{if plugin_reviews_field 7 "author"}}{{template "plugin/reviews/card" 7}}{{end}}
+{{if plugin_reviews_field 8 "author"}}{{template "plugin/reviews/card" 8}}{{end}}
+{{if plugin_reviews_field 9 "author"}}{{template "plugin/reviews/card" 9}}{{end}}
+{{if plugin_reviews_field 10 "author"}}{{template "plugin/reviews/card" 10}}{{end}}
+{{if plugin_reviews_field 11 "author"}}{{template "plugin/reviews/card" 11}}{{end}}
+</div>
+<p class="reviews-attribution">{{if ne (plugin_reviews_count "google") "0"}}{{if plugin_reviews_profile "google"}}<a href="{{plugin_reviews_profile "google"}}" rel="noopener nofollow">Reviews from Google</a>{{else}}Reviews from Google{{end}} {{end}}{{if ne (plugin_reviews_count "trustpilot") "0"}}{{if plugin_reviews_profile "trustpilot"}}<a href="{{plugin_reviews_profile "trustpilot"}}" rel="noopener nofollow">Reviews from Trustpilot</a>{{else}}Reviews from Trustpilot{{end}} {{end}}</p>
+</section>{{end}}{{end}}
