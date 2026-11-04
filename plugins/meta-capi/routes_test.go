@@ -179,3 +179,21 @@ func TestUnknownRouteIs404(t *testing.T) {
 		t.Fatalf("status = %d", status)
 	}
 }
+
+func TestFetchHostErrorCodeIsStored(t *testing.T) {
+	h := routeHost(t, `[]`, nil)
+	h.configured(`"test_event_code":"TEST1"`)
+	h.fetchErr = &sdk.HostError{Code: sdk.ErrCapabilityDenied, Capability: "http.fetch", Message: "secret detail " + sampleToken}
+	status, body, raw := request(t, "POST", "/test")
+	if status != 502 || body["error"] != "host: capability_denied http.fetch" {
+		t.Fatalf("%d %s", status, raw)
+	}
+	for _, r := range h.rows {
+		if r.reason != "http_error" || r.message != "host: capability_denied http.fetch" {
+			t.Fatalf("row = %+v", r)
+		}
+	}
+	if strings.Contains(raw, sampleToken) {
+		t.Fatal("token in the response")
+	}
+}

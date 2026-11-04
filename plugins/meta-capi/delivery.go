@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/url"
 	"strings"
 	"time"
@@ -145,11 +146,25 @@ func finishDelivery(submissionID string, o outcome) error {
 WHERE submission_id = $1`, submissionID, o.Status, o.Reason, code, msg)
 }
 
+// hostReason names why the host refused http.fetch by its stable error code
+// (and the capability it names), never by its free text.
+func hostReason(err error) string {
+	var he *sdk.HostError
+	if !errors.As(err, &he) || he.Code == "" {
+		return ""
+	}
+	m := "host: " + he.Code
+	if he.Capability != "" {
+		m += " " + he.Capability
+	}
+	return cut(m, maxMessage)
+}
+
 // sendEvent posts the event once, without retries.
 func sendEvent(s settings, ev sdk.FormSubmittedEvent, ud userData, testCode string) outcome {
 	res, err := postJSON(s.endpoint(), buildEvent(s, ev, ud, testCode))
 	if err != nil {
-		return outcome{Status: "failed", Reason: "http_error", Err: cut(err.Error(), maxHostErr)}
+		return outcome{Status: "failed", Reason: "http_error", Message: hostReason(err), Err: cut(err.Error(), maxHostErr)}
 	}
 	return parseMeta(res)
 }
