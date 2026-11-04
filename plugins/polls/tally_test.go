@@ -50,6 +50,14 @@ func (f *fake) install() {
 			return json.Unmarshal([]byte(f.settings), out)
 		case "forms.list":
 			return json.Unmarshal([]byte(f.forms), out)
+		case "db.query":
+			if c.sql == upsertSubmission && f.answer == nil {
+				return json.Unmarshal([]byte(`{"rows":[[1]]}`), out)
+			}
+			if f.answer != nil {
+				return f.answer(c, out)
+			}
+			f.t.Fatalf("unexpected host call %q", fn)
 		case "log", "mail.send", "db.exec":
 			if f.answer != nil {
 				return f.answer(c, out)
@@ -155,7 +163,7 @@ func TestSubmissionIsOneUpsertStatement(t *testing.T) {
 	f := &fake{settings: `{"forms":[{"form_slug":"fw","kind":"poll"}]}`, forms: formsJSON}
 	runSubmit(t, f, sdk.FormSubmittedEvent{FormSlug: "fw", SubmissionID: "s1",
 		Fields: map[string]any{"fw": "go", "tools": []any{"vim", "zed"}, "note": "x"}})
-	execs := f.named("db.exec")
+	execs := f.named("db.query")
 	if len(execs) != 1 || execs[0].sql != upsertSubmission {
 		t.Fatalf("db calls: %+v", f.calls)
 	}
@@ -187,14 +195,14 @@ func TestSubmissionNotCounted(t *testing.T) {
 	} {
 		f := &fake{settings: c.settings, forms: formsJSON, errs: c.errs}
 		runSubmit(t, f, sdk.FormSubmittedEvent{FormSlug: c.slug, SubmissionID: "s", SubmittedAt: c.at, Fields: map[string]any{"fw": "go"}})
-		if n := len(f.named("db.exec")); n != 0 {
+		if n := len(f.named("db.query")); n != 0 {
 			t.Errorf("%s: %d db calls", name, n)
 		}
 	}
 	// Just before closing still counts.
 	f := &fake{settings: `{"forms":[{"form_slug":"fw","closes_at":"2026-11-04T12:00"}]}`, forms: formsJSON}
 	runSubmit(t, f, sdk.FormSubmittedEvent{FormSlug: "fw", SubmissionID: "s", SubmittedAt: end.Add(-time.Second), Fields: map[string]any{"fw": "go"}})
-	if len(f.named("db.exec")) != 1 {
+	if len(f.named("db.query")) != 1 {
 		t.Fatal("submission before closes_at not counted")
 	}
 }
@@ -206,7 +214,7 @@ func TestQuizStoresScoreAndMailsOnce(t *testing.T) {
 	}
 	runSubmit(t, f, sdk.FormSubmittedEvent{FormSlug: "fw", SubmissionID: "q1",
 		Fields: map[string]any{"fw": "go", "tools": []any{"vim"}, "mail": "a@example.org"}})
-	a := f.named("db.exec")[0].args
+	a := f.named("db.query")[0].args
 	if a[2] != 1 || a[3] != 2 {
 		t.Fatalf("score args %v", a)
 	}
@@ -231,7 +239,7 @@ func TestQuizMailRateLimitedFailsOpen(t *testing.T) {
 	if n := len(f.named("mail.send")); n != 1 {
 		t.Fatalf("%d mail.send calls, want 1 and no retry", n)
 	}
-	if len(f.named("db.exec")) != 1 {
+	if len(f.named("db.query")) != 1 {
 		t.Fatal("tally must stay")
 	}
 	for _, l := range f.named("log") {
@@ -266,8 +274,35 @@ func TestEveryStatementIsTheUpsert(t *testing.T) {
 		if c.sql != "" && c.sql != upsertSubmission {
 			t.Errorf("unexpected statement %q", c.sql)
 		}
-		if c.fn == "db.query" {
-			t.Error("the live path must not read before it writes")
+		if c.fn == "db.exec" {
+			t.Error("the live path is one statement")
+		}
+	}
+}
+
+func TestQuizMailsOnlyWhenTheResponseWasInserted(t *testing.T) {
+	settings := `{"forms":[{"form_slug":"fw","kind":"quiz","email_score":true,"answer_key":[{"field":"fw","value":"go"}]}]}`
+	for name, c := range map[string]struct {
+		rows string
+		err  error
+	}{
+		"redelivered event": {rows: `{"rows":[[0]]}`},
+		"database error":    {err: errors.New("db down")},
+	} {
+		f := &fake{settings: settings, forms: formsJSON}
+		f.answer = func(h hostCall, out any) error {
+			if h.fn == "db.query" {
+				if c.err != nil {
+					return c.err
+				}
+				return json.Unmarshal([]byte(c.rows), out)
+			}
+			return nil
+		}
+		runSubmit(t, f, sdk.FormSubmittedEvent{FormSlug: "fw", SubmissionID: "q1",
+			Fields: map[string]any{"fw": "go", "mail": "a@example.org"}})
+		if n := len(f.named("mail.send")); n != 0 {
+			t.Errorf("%s: %d mail.send calls, want 0", name, n)
 		}
 	}
 }

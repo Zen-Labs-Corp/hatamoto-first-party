@@ -154,16 +154,19 @@ func score(cfg formCfg, fields []fieldDef, data map[string]any) (got, max int) {
 // upsertSubmission records one submission and its choices in a single
 // statement: the response row is inserted once per submission id and only a
 // new row bumps the tallies, so a redelivered event changes nothing and two
-// concurrent submissions never overwrite each other. The CTE runs even when the
-// tally list is empty.
+// concurrent submissions never overwrite each other. It returns how many
+// response rows it inserted (0 or 1); the CTEs run even when the tally list is
+// empty.
 const upsertSubmission = `WITH r AS (
   INSERT INTO poll_response (form, submission_id, score, max_score)
   VALUES ($1::text, $2::text, $3::int, $4::int)
-  ON CONFLICT DO NOTHING RETURNING 1)
-INSERT INTO poll_tally (form, field, option, n)
-SELECT $1::text, t.field, t.option, 1
-FROM jsonb_to_recordset($5::jsonb) AS t(field text, option text), r
-ON CONFLICT (form, field, option) DO UPDATE SET n = poll_tally.n + 1`
+  ON CONFLICT DO NOTHING RETURNING 1),
+t AS (
+  INSERT INTO poll_tally (form, field, option, n)
+  SELECT $1::text, t.field, t.option, 1
+  FROM jsonb_to_recordset($5::jsonb) AS t(field text, option text), r
+  ON CONFLICT (form, field, option) DO UPDATE SET n = poll_tally.n + 1)
+SELECT to_jsonb(count(*)) FROM r`
 
 type tallyRow struct {
 	Field  string `json:"field"`
@@ -223,10 +226,13 @@ func onSubmitted(e sdk.FormSubmittedEvent) error {
 		sc, mx = got, max
 	}
 	rows := sortedRows(countFor(choiceFields(form.Fields), e.Fields))
-	if err := dbExec(upsertSubmission, cfg.Slug, e.SubmissionID, sc, mx, rows); err != nil {
+	var inserted int
+	if err := dbJSON(upsertSubmission, &inserted, cfg.Slug, e.SubmissionID, sc, mx, rows); err != nil {
 		_ = logf("warn", "polls: submission not counted: %v", err)
+		return nil
 	}
-	if cfg.Kind == kindQuiz && cfg.EmailScore && max > 0 {
+	// A redelivered event finds its row and must not mail the score again.
+	if inserted > 0 && cfg.Kind == kindQuiz && cfg.EmailScore && max > 0 {
 		mailScore(form.Fields, e.Fields, got, max)
 	}
 	return nil
