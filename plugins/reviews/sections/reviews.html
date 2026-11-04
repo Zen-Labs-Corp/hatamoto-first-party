@@ -5,7 +5,7 @@
 <p class="review-source">{{plugin_reviews_field . "source_label"}}</p>
 </article>{{end}}
 
-{{define "section-reviews"}}{{if ne (plugin_reviews_count) "0"}}<section class="reviews">
+{{define "section-reviews"}}{{if plugin_reviews_field 0 "author"}}<section class="reviews">
 <header class="reviews-header">{{if plugin_reviews_summary}}<p class="reviews-summary">{{plugin_reviews_summary}}</p>{{end}}</header>
 <div class="reviews-list">
 {{if plugin_reviews_field 0 "author"}}{{template "plugin/reviews/card" 0}}{{end}}
@@ -21,5 +21,5 @@
 {{if plugin_reviews_field 10 "author"}}{{template "plugin/reviews/card" 10}}{{end}}
 {{if plugin_reviews_field 11 "author"}}{{template "plugin/reviews/card" 11}}{{end}}
 </div>
-<p class="reviews-attribution">{{if ne (plugin_reviews_count "google") "0"}}{{if plugin_reviews_profile "google"}}<a href="{{plugin_reviews_profile "google"}}" rel="noopener nofollow">Reviews from Google Maps</a>{{else}}Reviews from Google Maps{{end}} {{end}}{{if ne (plugin_reviews_count "trustpilot") "0"}}{{if plugin_reviews_profile "trustpilot"}}<a href="{{plugin_reviews_profile "trustpilot"}}" rel="noopener nofollow">Reviews from Trustpilot</a>{{else}}Reviews from Trustpilot{{end}} {{end}}</p>
+<p class="reviews-attribution">{{if or (plugin_reviews_count "google") (plugin_reviews_summary "google")}}{{if plugin_reviews_profile "google"}}<a href="{{plugin_reviews_profile "google"}}" rel="noopener nofollow">Reviews from Google Maps</a>{{else}}Reviews from Google Maps{{end}} {{end}}{{if or (plugin_reviews_count "trustpilot") (plugin_reviews_summary "trustpilot")}}{{if plugin_reviews_profile "trustpilot"}}<a href="{{plugin_reviews_profile "trustpilot"}}" rel="noopener nofollow">Reviews from Trustpilot</a>{{else}}Reviews from Trustpilot{{end}} {{end}}</p>
 </section>{{end}}{{end}}

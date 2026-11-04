@@ -91,7 +91,7 @@ func TestFuncsWithoutKeysOrDbAreEmpty(t *testing.T) {
 	f := newFake(t)
 	f.dbDown = true
 	for _, c := range []struct{ name, args, want string }{
-		{"summary", `[]`, ""}, {"count", `[]`, "0"}, {"field", `[0,"author"]`, ""}, {"profile", `["google"]`, ""},
+		{"summary", `[]`, ""}, {"count", `[]`, ""}, {"field", `[0,"author"]`, ""}, {"profile", `["google"]`, ""},
 	} {
 		if got := fn(t, c.name, c.args); got != c.want {
 			t.Fatalf("%s = %q", c.name, got)
@@ -125,11 +125,11 @@ func TestRefreshInvalidatesTheCache(t *testing.T) {
 	f := newFake(t)
 	f.setBoth()
 	bothAPIs(f)
-	if got := fn(t, "count", `[]`); got != "0" {
+	if got := fn(t, "count", `[]`); got != "" {
 		t.Fatal(got)
 	}
 	_ = refreshAll(true)
-	if got := fn(t, "count", `[]`); got == "0" {
+	if got := fn(t, "count", `[]`); got == "" {
 		t.Fatal("refresh must drop the empty snapshot")
 	}
 }
@@ -163,7 +163,7 @@ func TestUnconfiguredSourceIsHiddenEverywhere(t *testing.T) {
 	}
 	f.set("trustpilot_business_unit_id", "")
 	invalidateCache()
-	if got := fn(t, "count", `[]`); got != "0" || fn(t, "summary", `[]`) != "" {
+	if got := fn(t, "count", `[]`); got != "" || fn(t, "summary", `[]`) != "" {
 		t.Fatalf("nothing is set up but %q shown", got)
 	}
 }

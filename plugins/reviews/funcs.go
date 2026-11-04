@@ -80,7 +80,9 @@ func funcSummary(args []json.RawMessage) (string, error) {
 	return strings.Join(parts, ", "), nil
 }
 
-// funcCount is the number of shown reviews, of one source when named.
+// funcCount is the number of shown reviews, of one source when named; empty
+// when there are none, so {{if plugin_reviews_count}} is false on no data and
+// on a failed call alike.
 func funcCount(args []json.RawMessage) (string, error) {
 	only := sourceArg(args)
 	n := 0
@@ -88,6 +90,9 @@ func funcCount(args []json.RawMessage) (string, error) {
 		if only == "" || r.Source == only {
 			n++
 		}
+	}
+	if n == 0 {
+		return "", nil
 	}
 	return itoa(n), nil
 }

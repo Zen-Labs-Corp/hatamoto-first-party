@@ -35,7 +35,7 @@ Show the reviews in one of three ways:
   `plugin_reviews_summary` (for example `4.8 from 132 Google reviews`; with both
   sources `4.8 from 132 Google reviews, 4.6 from 210 on Trustpilot`; an argument
   `"google"` or `"trustpilot"` picks one; empty when nothing is cached),
-  `plugin_reviews_count` (shown reviews, optional source argument),
+  `plugin_reviews_count` (shown reviews, optional source argument; empty when none),
   `plugin_reviews_field N "key"` (the N-th shown review, counting from 0; keys
   `author`, `author_url`, `photo`, `text`, `date`, `rating`, `stars`, `source`,
   `source_label`, `url`) and `plugin_reviews_profile "google"` (the profile or

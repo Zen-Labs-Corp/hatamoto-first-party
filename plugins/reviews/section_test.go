@@ -101,7 +101,7 @@ func TestSectionMarkupRules(t *testing.T) {
 
 func TestSectionEmptyCacheRendersNothing(t *testing.T) {
 	tpl := parseSection(t, map[string]func(...any) (string, error){
-		"count": func(...any) (string, error) { return "0", nil },
+		"count": func(...any) (string, error) { return "", nil },
 	})
 	var b strings.Builder
 	if err := tpl.ExecuteTemplate(&b, "section-reviews", nil); err != nil {
@@ -109,6 +109,19 @@ func TestSectionEmptyCacheRendersNothing(t *testing.T) {
 	}
 	if strings.TrimSpace(b.String()) != "" {
 		t.Fatalf("empty cache rendered %q", b.String())
+	}
+}
+
+// A failing func renders as "": the section must then show nothing, not an
+// empty box with attributions.
+func TestSectionAllFuncsEmptyRendersNothing(t *testing.T) {
+	tpl := parseSection(t, nil)
+	var b strings.Builder
+	if err := tpl.ExecuteTemplate(&b, "section-reviews", nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(b.String()) != "" {
+		t.Fatalf("failing funcs rendered %q", b.String())
 	}
 }
 
@@ -120,11 +133,16 @@ func TestSectionRendersGoogleReviews(t *testing.T) {
 	tpl := parseSection(t, map[string]func(...any) (string, error){
 		"count": func(a ...any) (string, error) {
 			if len(a) == 1 && a[0] == "trustpilot" {
-				return "0", nil
+				return "", nil
 			}
 			return "2", nil
 		},
-		"summary": func(...any) (string, error) { return "4.8 from 132 Google reviews", nil },
+		"summary": func(a ...any) (string, error) {
+			if len(a) == 1 && a[0] == "trustpilot" {
+				return "", nil
+			}
+			return "4.8 from 132 Google reviews", nil
+		},
 		"profile": func(a ...any) (string, error) {
 			if a[0] == "google" {
 				return "https://maps.example.test/acme", nil
