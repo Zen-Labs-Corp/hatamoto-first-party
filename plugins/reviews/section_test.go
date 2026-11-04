@@ -202,3 +202,35 @@ func TestManifestFuncsMatchTheTemplate(t *testing.T) {
 		t.Fatalf("template uses %v, manifest lists %v", want, have)
 	}
 }
+
+func TestSectionAttributionSeparator(t *testing.T) {
+	render := func(google, trustpilot bool) string {
+		tpl := parseSection(t, map[string]func(...any) (string, error){
+			"count": func(a ...any) (string, error) {
+				if a[0] == "google" && google || a[0] == "trustpilot" && trustpilot {
+					return "1", nil
+				}
+				return "", nil
+			},
+			"field": func(a ...any) (string, error) {
+				if i, _ := a[0].(int); i == 0 {
+					return "x", nil
+				}
+				return "", nil
+			},
+		})
+		var b strings.Builder
+		if err := tpl.ExecuteTemplate(&b, "section-reviews", nil); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	if out := render(true, true); !strings.Contains(out, "Maps · Reviews from Trustpilot") {
+		t.Fatalf("no separator between both attributions:\n%s", out)
+	}
+	for _, out := range []string{render(true, false), render(false, true)} {
+		if strings.Contains(out, " · Reviews") || strings.Contains(out, "Maps · ") || strings.Contains(out, "Trustpilot · ") {
+			t.Fatalf("separator with a single attribution:\n%s", out)
+		}
+	}
+}
