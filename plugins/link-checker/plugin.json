@@ -1,18 +1,57 @@
 {
   "name": "link-checker",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "title": "Broken link checker",
+  "sdk": "^0.11",
   "description": "Finds broken outbound and internal links in your published content on a schedule and lists each one with the page it is on and a link to fix it.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": [
+    "entities.read",
+    "redirects.read",
+    "http.fetch",
+    "http.fetch.any",
+    "db",
+    "kv",
+    "settings",
+    "log"
+  ],
+  "allowed_hosts": ["*"],
+  "cron": [{ "name": "scan", "every": "5m" }],
+  "routes": [
+    { "method": "GET", "path": "/links" },
+    { "method": "POST", "path": "/recheck/{id}" },
+    { "method": "POST", "path": "/ignore/{id}" }
+  ],
+  "ui": { "title": "Broken link checker" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 2,
+    "hook_timeouts_ms": { "on_cron_scan": 10000 }
+  },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+      "exclude": {
+        "type": "array",
+        "title": "Links never checked",
+        "description": "URL prefixes to skip: a full address such as https://example.org/private or a site path such as /members.",
+        "items": { "type": "string", "maxLength": 500 },
+        "maxItems": 100,
+        "default": []
+      },
+      "recheck_days": {
+        "type": "integer",
+        "title": "Days between checks of a working link",
+        "default": 7,
+        "minimum": 1,
+        "maximum": 90
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "title": "Timeout per outbound request (ms)",
+        "description": "Also capped by what is left of the scan's time budget.",
+        "default": 5000,
+        "minimum": 1000,
+        "maximum": 10000
       }
     }
   }
