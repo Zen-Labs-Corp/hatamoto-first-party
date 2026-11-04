@@ -32,7 +32,7 @@
       "feeds": {
         "type": "array",
         "title": "Feeds",
-        "description": "RSS or Atom feeds to fetch every 30 minutes. At most 20.",
+        "description": "RSS or Atom feeds to fetch every 30 minutes. At most 20. Only http and https URLs on ports 80 and 443 work.",
         "default": [],
         "maxItems": 20,
         "items": {

@@ -36,8 +36,9 @@ type manifest struct {
 	} `json:"limits"`
 	Settings struct {
 		Properties map[string]struct {
-			WriteOnly bool `json:"writeOnly"`
-			MaxItems  int  `json:"maxItems"`
+			WriteOnly   bool   `json:"writeOnly"`
+			MaxItems    int    `json:"maxItems"`
+			Description string `json:"description"`
 		} `json:"properties"`
 	} `json:"settings_schema"`
 }
@@ -114,6 +115,9 @@ func TestManifestRoutesCronTimeoutsSources(t *testing.T) {
 
 func TestManifestSettings(t *testing.T) {
 	m := loadManifest(t)
+	if d := m.Settings.Properties["feeds"].Description; !strings.Contains(d, "ports 80 and 443") {
+		t.Fatalf("the feeds description must say only ports 80 and 443 work: %q", d)
+	}
 	if len(m.Settings.Properties) != 1 || m.Settings.Properties["feeds"].MaxItems != 20 {
 		t.Fatalf("settings %+v", m.Settings.Properties)
 	}
