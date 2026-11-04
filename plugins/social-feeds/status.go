@@ -13,6 +13,7 @@ const refreshNowBudget = 8 * time.Second
 type instagramStatus struct {
 	Configured     bool   `json:"configured"`
 	Connected      bool   `json:"connected"`
+	Expired        bool   `json:"expired"`
 	Username       string `json:"username"`
 	TokenExpiresAt string `json:"token_expires_at"`
 	RefreshedAt    string `json:"refreshed_at"`
@@ -80,6 +81,7 @@ func buildStatus(s settings, refresh map[string]string) statusDoc {
 		doc.Instagram.Username = tok.Username
 		if !tok.ExpiresAt.IsZero() {
 			doc.Instagram.TokenExpiresAt = tok.ExpiresAt.UTC().Format(time.RFC3339)
+			doc.Instagram.Expired = !tok.ExpiresAt.After(now())
 		}
 	}
 

@@ -70,6 +70,9 @@ func TestStatusReportsStateWithoutSecrets(t *testing.T) {
 	if !ig.Configured || !ig.Connected || ig.Username != "shop" || ig.Count != 3 || ig.Error != "boom" || ig.RefreshedAt != "2026-01-02T10:00:00Z" {
 		t.Errorf("instagram = %+v", ig)
 	}
+	if ig.Expired {
+		t.Error("a token with time left must not be expired")
+	}
 	if ig.TokenExpiresAt != exp.Format(time.RFC3339) {
 		t.Errorf("expiry = %q", ig.TokenExpiresAt)
 	}
@@ -157,5 +160,16 @@ func TestRefreshNowWithNothingConfigured(t *testing.T) {
 	res := send(t, "POST", "/refresh-now", nil, nil)
 	if res.Status != 200 || f.fetchCount() != 0 {
 		t.Fatalf("status=%d fetches=%d", res.Status, f.fetchCount())
+	}
+}
+
+func TestStatusFlagsAnExpiredToken(t *testing.T) {
+	f := useFake(t)
+	f.settings = igSettings
+	if err := saveToken(igToken{AccessToken: "OLD", ObtainedAt: f.clock.Add(-61 * 24 * time.Hour), ExpiresAt: f.clock.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if ig := decodeStatus(t, send(t, "GET", "/status", nil, nil).Body).Instagram; !ig.Connected || !ig.Expired {
+		t.Fatalf("instagram = %+v", ig)
 	}
 }

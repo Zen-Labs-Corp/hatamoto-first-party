@@ -58,7 +58,8 @@ function fillSources(st) {
   if (ig.connected) {
     row(dl, "Instagram",
       text(`Connected${ig.username ? ` as @${ig.username}` : ""}`),
-      ig.token_expires_at ? text(`, token renews before ${day(ig.token_expires_at)}`) : null,
+      ig.expired ? el("div", { className: "error-text", textContent: "Token expired: connect again." })
+        : ig.token_expires_at ? text(`, token renews before ${day(ig.token_expires_at)}`) : null,
       ig.refreshed_at ? el("div", { className: "muted", textContent: `refreshed ${ago(ig.refreshed_at)}` }) : null,
       ig.error ? failure(ig.error) : null);
   } else if (ig.configured) {
@@ -75,7 +76,7 @@ function fillSources(st) {
   } else {
     row(dl, "YouTube", text("Not set up: add the API key and channel ID in Settings"));
   }
-  $("#connect").hidden = ig.connected || !ig.configured;
+  $("#connect").hidden = (ig.connected && !ig.expired) || !ig.configured;
   $("#connect-help").hidden = true;
   $("#disconnect").hidden = !ig.connected;
   $("#disconnect").textContent = "Disconnect";
