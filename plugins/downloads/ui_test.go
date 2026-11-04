@@ -65,7 +65,7 @@ func TestUIShowsClientViewTexts(t *testing.T) {
 	for _, want := range []string{
 		"All time", "Last 30 days", "Trend (30 days)", ">File<", ">Size<", ">Total<", ">Previous<", ">Next<",
 		"No files in the media library yet. Upload a file, then link to it with /p/downloads/f/&lt;file id&gt;.",
-		"Link format: /p/downloads/f/&lt;file id&gt;. Bots are not counted (Settings: Count bots).",
+		"Link format: /p/downloads/f/&lt;file id&gt;. Bots are counted only when Settings &gt; Count bots is on.",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("index.html lacks %q", want)
