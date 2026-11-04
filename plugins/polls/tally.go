@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"net/mail"
 	"slices"
 	"strconv"
 	"strings"
@@ -239,7 +240,7 @@ func onSubmitted(e sdk.FormSubmittedEvent) error {
 }
 
 // recipient finds the submitter's address: the first filled email field, else
-// the field named email.
+// the field named email. Only a plain address is returned.
 func recipient(fields []fieldDef, data map[string]any) string {
 	for _, match := range []func(fieldDef) bool{
 		func(f fieldDef) bool { return f.Type == "email" },
@@ -247,11 +248,23 @@ func recipient(fields []fieldDef, data map[string]any) string {
 	} {
 		for _, f := range fields {
 			if v := answers(data[f.Name]); match(f) && len(v) > 0 {
-				return strings.TrimSpace(v[0])
+				return plainAddress(strings.TrimSpace(v[0]))
 			}
 		}
 	}
 	return ""
+}
+
+// plainAddress returns s when it is one bare address (no display name, no
+// comment, no line breaks), else "".
+func plainAddress(s string) string {
+	if strings.ContainsAny(s, "\r\n") {
+		return ""
+	}
+	if a, err := mail.ParseAddress(s); err != nil || a.Address != s {
+		return ""
+	}
+	return s
 }
 
 // mailScore sends the score once. Any failure, a rate limit included, is logged

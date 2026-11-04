@@ -306,3 +306,21 @@ func TestQuizMailsOnlyWhenTheResponseWasInserted(t *testing.T) {
 		}
 	}
 }
+
+func TestRecipientNeedsAPlainAddress(t *testing.T) {
+	fields := []fieldDef{{Name: "mail", Type: "email"}, {Name: "email", Type: "textarea"}}
+	for in, want := range map[string]string{
+		"a@example.org":                "a@example.org",
+		" a@example.org ":              "a@example.org",
+		"Bob <a@example.org>":          "",
+		"a@example.org, b@example.org": "",
+		"a@example.org\r\nBcc: x@y.z":  "",
+		"not an address":               "",
+	} {
+		for _, name := range []string{"mail", "email"} {
+			if got := recipient(fields, map[string]any{name: in}); got != want {
+				t.Errorf("%s=%q: got %q, want %q", name, in, got, want)
+			}
+		}
+	}
+}
