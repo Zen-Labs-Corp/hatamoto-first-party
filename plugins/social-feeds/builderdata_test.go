@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"hatamoto.dev/sdk"
@@ -122,5 +123,17 @@ func TestFilterFailsOpenOnDatabaseError(t *testing.T) {
 	}
 	if len(f.logs) == 0 {
 		t.Error("the failure was not logged")
+	}
+}
+
+func TestFilterHidesStaleInstagramRows(t *testing.T) {
+	f := useFake(t)
+	f.items = feedRows(2)
+	q := sdk.BuilderDataQuery{ID: "r1", Source: "ext.social-feeds.instagram"}
+	for age, want := range map[time.Duration]int{48 * time.Hour: 2, 73 * time.Hour: 0} {
+		f.status["instagram"] = sourceStatus{Source: "instagram", RefreshedAt: f.clock.Add(-age).Format(time.RFC3339)}
+		if got := len(runFilter(t, q).Results[0].Items); got != want {
+			t.Fatalf("refreshed %v ago: %d items, want %d", age, got, want)
+		}
 	}
 }

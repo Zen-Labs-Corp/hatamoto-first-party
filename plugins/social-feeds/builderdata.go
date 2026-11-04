@@ -2,9 +2,14 @@ package main
 
 import (
 	"strings"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
+
+// instagramMaxAge is how long cached Instagram rows are served after the last
+// successful refresh: their image addresses are signed and expire after days.
+const instagramMaxAge = 3 * 24 * time.Hour
 
 // maxFieldBytes is the host's limit for one string of a data item.
 const maxFieldBytes = 2048
@@ -29,6 +34,9 @@ func filterData(req sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 				logf("warn", "builder.data: %s", redact(err.Error()))
 				return req, nil
 			}
+			if name == "instagram" && instagramStale() {
+				rows = nil
+			}
 			for _, it := range rows {
 				res.Items = append(res.Items, dataItem(it))
 			}
@@ -37,6 +45,17 @@ func filterData(req sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	}
 	req.Results = append(req.Results, out...)
 	return req, nil
+}
+
+// instagramStale tells whether the last successful Instagram refresh is too old
+// for its cached image addresses to still work. Unknown counts as fresh.
+func instagramStale() bool {
+	st, err := getStatus("instagram")
+	if err != nil {
+		return false
+	}
+	at, err := time.Parse(time.RFC3339, st.RefreshedAt)
+	return err == nil && now().Sub(at) > instagramMaxAge
 }
 
 func dataItem(it item) sdk.BuilderDataItem {
