@@ -1,0 +1,19 @@
+{
+  "name": "pagespeed",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "PageSpeed and Core Web Vitals: tracks field data from the Chrome UX Report and Lighthouse lab scores for your key pages, with daily trends.",
+  "permissions": ["settings"],
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "title": "Greeting",
+        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
+        "maxLength": 64
+      }
+    }
+  }
+}
