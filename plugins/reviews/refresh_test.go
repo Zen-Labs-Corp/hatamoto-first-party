@@ -178,7 +178,9 @@ func TestRefreshFailsOpenWhenDbIsDown(t *testing.T) {
 func TestFailedSourceIsRetriedAfterAnHour(t *testing.T) {
 	f := newFake(t)
 	f.setBoth()
-	f.fetch = func(string, map[string]string) (int, string, error) { return 403, `{"error":{"message":"bad key"}}`, nil }
+	f.fetch = func(string, map[string]string) (int, string, error) {
+		return 403, `{"error":{"message":"bad key"}}`, nil
+	}
 	_ = refreshAll(false)
 	f.requests = nil
 
