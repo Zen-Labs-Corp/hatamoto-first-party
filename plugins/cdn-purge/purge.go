@@ -240,7 +240,7 @@ func purgeOrSkip(trigger string, s settings, urls []string, haveOrigin bool) {
 }
 
 // runPurge sends the purge and writes one log row per request batch, and one
-// log line per failed batch.
+// log line per event when any batch failed.
 func runPurge(trigger string, s settings, urls []string) {
 	var results []batchResult
 	if s.PurgeEverything {
@@ -248,10 +248,17 @@ func runPurge(trigger string, s settings, urls []string) {
 	} else {
 		results = purgeURLs(s, urls)
 	}
+	failed, firstErr := 0, ""
 	for _, r := range results {
 		insertLog(trigger, s.Provider, r.URLs, r.Status, r.Err)
 		if !r.ok() {
-			logf("error", "cdn-purge: %s purge on %s failed: %s", s.Provider, trigger, r.Err)
+			if failed == 0 {
+				firstErr = r.Err
+			}
+			failed++
 		}
+	}
+	if failed > 0 {
+		logf("error", "cdn-purge: %s purge on %s failed (%d of %d requests): %s", s.Provider, trigger, failed, len(results), firstErr)
 	}
 }

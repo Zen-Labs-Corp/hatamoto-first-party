@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -114,7 +115,8 @@ func chunk(urls []string, n int) [][]string {
 
 // purgeURLs purges absolute URLs: Cloudflare in calls of up to 30 files, Bunny
 // and Fastly one call per URL. When the time budget runs out, the rest is one
-// "skipped" result.
+// "skipped" result. A 401 or 403 answer ends the run: the rest would fail the
+// same way.
 func purgeURLs(s settings, urls []string) []batchResult {
 	var batches [][]string
 	if s.Provider == providerCloudflare {
@@ -134,6 +136,9 @@ func purgeURLs(s settings, urls []string) []batchResult {
 			break
 		}
 		results = append(results, r)
+		if r.Status == http.StatusUnauthorized || r.Status == http.StatusForbidden {
+			break // the token is refused; the other URLs would be refused too
+		}
 	}
 	return results
 }

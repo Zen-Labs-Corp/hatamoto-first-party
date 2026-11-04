@@ -256,6 +256,28 @@ func TestBunnyFastlyPerURL(t *testing.T) {
 	}
 }
 
+func TestAuthErrorStopsTheLoopAndLogsOnce(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		f := newFake(t, map[string]any{"provider": "bunny"})
+		f.fetchStatus = status
+		f.setEntity("e1", "published", "/x", "https://example.com/x")
+		f.fire(sdk.EntityPublished, "e1")
+		if len(f.fetches()) != 1 || len(f.rows) != 1 || len(f.logLines("error")) != 1 {
+			t.Fatalf("%d: fetches %d, rows %d, error lines %v", status, len(f.fetches()), len(f.rows), f.logLines("error"))
+		}
+	}
+}
+
+func TestOtherErrorsLogOneLinePerEvent(t *testing.T) {
+	f := newFake(t, map[string]any{"provider": "fastly"})
+	f.fetchStatus = 500
+	f.setEntity("e1", "published", "/x", "https://example.com/x")
+	f.fire(sdk.EntityPublished, "e1")
+	if len(f.fetches()) != 5 || len(f.logLines("error")) != 1 {
+		t.Fatalf("fetches %d, error lines %v", len(f.fetches()), f.logLines("error"))
+	}
+}
+
 func TestBudgetSkipsTheRest(t *testing.T) {
 	f := newFake(t, map[string]any{"provider": "bunny"})
 	s, _ := loadSettings()

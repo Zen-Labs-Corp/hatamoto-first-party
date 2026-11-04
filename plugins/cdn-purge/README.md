@@ -30,7 +30,7 @@ What each change purges:
 - `http.fetch`: calls the provider's purge API. `allowed_hosts` are exactly `api.cloudflare.com`, `api.bunny.net` and `api.fastly.com`.
 - `kv`: remembers the last public URL of each entity, so a deleted, moved or unpublished page can still be purged.
 - `db`: keeps the purge log.
-- `log`: one log line per failed purge, and one when no origin is known. The token is never logged.
+- `log`: one log line per event with a failed purge, and one when no origin is known. The token is never logged.
 
 ## Data kept
 
@@ -44,7 +44,7 @@ From the repository root: `scripts/build-plugin.sh plugins/cdn-purge`.
 
 ## Limits
 
-- One attempt per request: no retries and no queue. A failed request is logged once and shown in the purge log.
+- One attempt per request: no retries and no queue. Each failed request is shown in the purge log, and an event writes one server log line however many requests failed. When Bunny or Fastly answers 401 or 403, the remaining URLs of the event are not tried.
 - No coalescing: publishing a page can fire both a published and an updated event, and each purges. URLs within one event are de-duplicated.
 - Cloudflare gets one request per 30 URLs. Bunny and Fastly purge one URL per request, so an event costs up to about 22 requests (the page, its old URL and 20 extra paths), and each request is one row in the purge log.
 - The plugin spends at most 8 seconds of the 10 second hook time on provider calls, with 3 seconds per call. When time runs out, the remaining URLs are logged as one "skipped" row and not purged; use **Purge everything** or save again.
