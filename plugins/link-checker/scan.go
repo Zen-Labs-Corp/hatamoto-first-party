@@ -28,6 +28,10 @@ const (
 	// maxListRetries is how many runs in a row may fail to list one entity
 	// before the pass starts over.
 	maxListRetries = 3
+	// passInterval is the least time between the end of a pass and the start
+	// of the next: a published page is read at once by its hook, so reading
+	// every page again right away only churns the database.
+	passInterval = time.Hour
 
 	entitiesPerRun = 200
 	listLimit      = 50
@@ -86,7 +90,7 @@ func loadPass() passInfo {
 		logf("warn", "pass state unreadable: %v", err)
 		return passInfo{}
 	}
-	return passInfo{Done: ok && d.FinishedAt != "", StartedAt: d.StartedAt, Locales: d.Locales}
+	return passInfo{Done: ok && d.FinishedAt != "", StartedAt: d.StartedAt, FinishedAt: d.FinishedAt, Locales: d.Locales}
 }
 
 // recent reports whether the last completed pass started within the
@@ -169,9 +173,16 @@ func indexEntity(e entityWire, exclude []string, origin string) error {
 // a new pass.
 func extractBatch(s settings, until time.Time) {
 	var st scanState
-	if _, err := kvGet(cursorKey, &st); err != nil {
+	found, err := kvGet(cursorKey, &st)
+	if err != nil {
 		logf("warn", "scan cursor unreadable, starting a pass: %v", err)
-		st = scanState{}
+		st, found = scanState{}, true
+	}
+	if !found {
+		// No pass is running: start the next one only after passInterval.
+		if fin, err := time.Parse(time.RFC3339, loadPass().FinishedAt); err == nil && now().Sub(fin) < passInterval {
+			return
+		}
 	}
 	if st.PassStart == "" {
 		st.PassStart = ts(now())

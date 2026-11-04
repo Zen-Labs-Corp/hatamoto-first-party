@@ -116,6 +116,8 @@ collects the package in `plugins/link-checker/build/`.
 - Internal redirects are matched by exact source path only, not by pattern.
 - Connection errors are not told apart: a failed DNS lookup, a refused
   connection and a TLS error all show as `connection failed`.
+- After a pass over all pages ends, the next one starts at least an hour
+  later; a page you publish is read at once.
 - Throughput is small by design: about 10 to 20 outbound checks per 5-minute
   run, and at most one request per host per second. A large site needs days for
   a full pass.

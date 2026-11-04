@@ -526,3 +526,22 @@ func TestScanDoesNotSleepPastTheBudget(t *testing.T) {
 		t.Fatalf("fetched %v took %v", w.fetched, w.clock.Sub(start))
 	}
 }
+
+func TestScanWaitsAnHourBetweenPasses(t *testing.T) {
+	w := newScanWorld(t)
+	w.pages = [][]string{{`{}`}}
+	runScan() // a first pass, finished at the fake clock
+	if len(w.listArgs) != 1 {
+		t.Fatalf("first pass: %d list calls", len(w.listArgs))
+	}
+	w.clock = w.clock.Add(59 * time.Minute)
+	runScan()
+	if len(w.listArgs) != 1 {
+		t.Fatalf("a new pass must not start within the hour: %d list calls", len(w.listArgs))
+	}
+	w.clock = w.clock.Add(2 * time.Minute)
+	runScan()
+	if len(w.listArgs) != 2 {
+		t.Fatalf("a new pass starts after the hour: %d list calls", len(w.listArgs))
+	}
+}
