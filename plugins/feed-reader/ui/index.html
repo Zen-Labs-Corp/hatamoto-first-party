@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Feeds</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header class="head">
+      <h1>Feeds</h1>
+      <button id="fetch" class="primary">Fetch now</button>
+    </header>
+    <p id="notice" class="notice" hidden></p>
+
+    <p id="empty" class="empty muted" hidden>No feeds yet. Add an RSS or Atom feed URL in Settings.</p>
+    <table id="feeds" hidden>
+      <thead><tr><th>Name</th><th>Group</th><th>Last fetch</th><th>Status</th><th class="num">Items</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="muted">Feeds are fetched every 30 minutes. Add or edit feeds in Settings.</p>
+    <p class="muted">Page builder sources: "Feed items" (all), "Feed group 1" .. "Feed group 7".</p>
+
+    <section id="latest-section" hidden>
+      <h2>Latest items</h2>
+      <ul id="latest" class="latest"></ul>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
