@@ -193,6 +193,23 @@ test('bar: region, textContent, safe link, dismiss stays dismissed', function ()
   assert.strictEqual(bars(again).length, 0);
 });
 
+test('bar: clicking the link records the dismissal', function () {
+  var s = setup({ campaigns: [bar] });
+  p.run(s.win, s.doc);
+  var a = find(bars(s)[0], function (e) { return e.tag === 'a'; })[0];
+  assert.ok(!('hm-popups:b1' in s.win.sessionStorage.data));
+  a.emit('click');
+  assert.ok('hm-popups:b1' in s.win.sessionStorage.data);
+});
+
+test('popup: clicking the link records the dismissal', function () {
+  var s = setup({ campaigns: [Object.assign({}, pop, { link_label: 'Go', link_url: '/x' })] });
+  p.run(s.win, s.doc);
+  var a = find(dialogs(s)[0], function (e) { return e.tag === 'a'; })[0];
+  a.emit('click');
+  assert.ok('hm-popups:p1' in s.win.localStorage.data);
+});
+
 test('bar: unsafe link is not rendered', function () {
   var s = setup({ campaigns: [Object.assign({}, bar, { link_url: 'javascript:alert(1)' })] });
   p.run(s.win, s.doc);

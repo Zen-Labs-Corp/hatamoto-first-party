@@ -148,7 +148,8 @@
     b.textContent = '\u00d7';
     return b;
   }
-  function content(doc, c) {
+  // Following the link counts as dismissing: record it before navigating.
+  function content(doc, c, onDismiss) {
     var wrap = doc.createElement('div');
     wrap.className = 'hm-popups-body';
     var msg = doc.createElement('span');
@@ -160,6 +161,7 @@
       a.className = 'hm-popups-link';
       a.setAttribute('href', c.link_url);
       a.textContent = c.link_label;
+      a.addEventListener('click', function () { onDismiss(c); });
       wrap.appendChild(a);
     }
     return wrap;
@@ -170,7 +172,7 @@
     bar.setAttribute('role', 'region');
     bar.setAttribute('aria-label', 'Announcement');
     bar.className = 'hm-popups-bar hm-popups-' + (c.position === 'bottom' ? 'bottom' : 'top');
-    bar.appendChild(content(doc, c));
+    bar.appendChild(content(doc, c, onDismiss));
     var close = closeButton(doc);
     close.addEventListener('click', function () {
       if (bar.parentNode) bar.parentNode.removeChild(bar);
@@ -190,7 +192,7 @@
     var close = closeButton(doc);
     close.addEventListener('click', function () { dlg.close(); });
     dlg.appendChild(close);
-    dlg.appendChild(content(doc, c));
+    dlg.appendChild(content(doc, c, onDismiss));
     // close fires for the button, for Esc and for dlg.close() alike.
     dlg.addEventListener('close', function () {
       if (dlg.parentNode) dlg.parentNode.removeChild(dlg);
