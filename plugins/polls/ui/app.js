@@ -93,7 +93,10 @@ function card(f) {
     c.append(el("p", { className: "muted", textContent: `Average ${f.average} / ${f.max_score}` }));
   }
   const recountBtn = el("button", { type: "button", textContent: "Recount" });
-  recountBtn.addEventListener("click", () => run(() => recount(f.slug)));
+  recountBtn.addEventListener("click", async () => {
+    recountBtn.disabled = true;
+    try { await run(() => recount(f.slug)); } finally { recountBtn.disabled = false; }
+  });
   const csvBtn = el("button", { type: "button", textContent: "Export CSV" });
   csvBtn.addEventListener("click", () => run(() => exportCSV(f.slug)));
   c.append(el("div", { className: "actions" }, recountBtn, csvBtn));

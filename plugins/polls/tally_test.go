@@ -30,6 +30,7 @@ type fake struct {
 	forms    string
 	errs     map[string]error // by host function
 	calls    []hostCall
+	held     bool                            // another recount holds the lease
 	answer   func(c hostCall, out any) error // optional: other host functions, and results for db.exec
 
 }
@@ -56,6 +57,12 @@ func (f *fake) install() {
 		case "db.query":
 			if c.sql == dbNow {
 				return json.Unmarshal([]byte(`{"rows":[["`+testCutoff+`"]]}`), out)
+			}
+			if c.sql == acquireLease {
+				if f.held {
+					return json.Unmarshal([]byte(`{"rows":[]}`), out)
+				}
+				return json.Unmarshal([]byte(`{"rows":[["run"]]}`), out)
 			}
 			if c.sql == upsertSubmission && f.answer == nil {
 				return json.Unmarshal([]byte(`{"rows":[[1]]}`), out)

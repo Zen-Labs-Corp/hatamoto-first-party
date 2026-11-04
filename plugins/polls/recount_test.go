@@ -137,7 +137,7 @@ func recounted(t *testing.T, f *fake) ([]responseRow, hostCall) {
 			rows = append(rows, c.args[2].([]responseRow)...)
 		case finishRecount:
 			finish = c
-		case purgeRemoved:
+		case purgeRemoved, releaseLease:
 		default:
 			t.Fatalf("unexpected statement %q", c.sql)
 		}
@@ -283,8 +283,10 @@ func TestRecountStopsAtTheDeadlineWithoutWriting(t *testing.T) {
 	if _, err := recount(formCfg{Slug: "fw"}); !errors.Is(err, errRecountIncomplete) {
 		t.Fatalf("err = %v", err)
 	}
-	if len(f.named("db.exec")) != 0 {
-		t.Fatal("wrote after an incomplete recount")
+	for _, c := range f.named("db.exec") {
+		if c.sql != releaseLease {
+			t.Fatal("wrote after an incomplete recount")
+		}
 	}
 }
 
@@ -383,5 +385,39 @@ func TestRecountTimeoutWhileWritingKeepsTheTallies(t *testing.T) {
 		if c.sql == finishRecount {
 			t.Fatal("tallies rebuilt after a timeout")
 		}
+	}
+}
+
+func TestOverlappingRecountIsRefusedAndTouchesNothing(t *testing.T) {
+	f := &fake{t: t, settings: `{"forms":[{"form_slug":"fw"}]}`, forms: formsJSON, held: true}
+	f.install()
+	code, body := postRecount(t, "fw")
+	if code != 409 || !strings.Contains(body["error"].(string), "already running") {
+		t.Fatalf("got %d %v", code, body)
+	}
+	for _, c := range f.named("db.exec") {
+		if c.sql == upsertResponses || c.sql == finishRecount || c.sql == releaseLease {
+			t.Fatalf("refused recount ran %q", c.sql)
+		}
+	}
+	if len(f.named("forms.submissions")) != 0 {
+		t.Fatal("refused recount read submissions")
+	}
+}
+
+func TestRecountReleasesItsLease(t *testing.T) {
+	f := &fake{t: t, forms: formsJSON}
+	pagedHost(f, nil, new([]int))
+	f.install()
+	if _, err := recount(formCfg{Slug: "fw", Kind: kindPoll}); err != nil {
+		t.Fatal(err)
+	}
+	ex := f.named("db.exec")
+	last := ex[len(ex)-1]
+	if last.sql != releaseLease || last.args[0] != "fw" || last.args[1] == "" {
+		t.Fatalf("last statement %q %v", last.sql, last.args)
+	}
+	if !strings.Contains(releaseLease, "run_id = $2") {
+		t.Fatal("release does not check the lease owner")
 	}
 }

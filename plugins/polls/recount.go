@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"time"
@@ -46,6 +48,19 @@ INSERT INTO poll_tally (form, field, option, n)
 SELECT $1::text, field, option, n FROM nt
 ON CONFLICT (form, field, option) DO UPDATE SET n = excluded.n`
 
+// acquireLease takes the form's recount lease ($1 form, $2 run id) when nobody
+// holds it or the holder's lease has run out. It returns a row only when the
+// lease is now ours. The lease outlives the route budget, so a Recount that was
+// cut off frees the form shortly after.
+const acquireLease = `INSERT INTO poll_recount_lock (form_slug, run_id, expires_at)
+VALUES ($1::text, $2::text, now() + interval '15 seconds')
+ON CONFLICT (form_slug) DO UPDATE SET run_id = excluded.run_id, expires_at = excluded.expires_at
+WHERE poll_recount_lock.expires_at < now()
+RETURNING run_id`
+
+// releaseLease frees the lease, but only when it is still ours.
+const releaseLease = `DELETE FROM poll_recount_lock WHERE form_slug = $1::text AND run_id = $2::text`
+
 // dbNow reads the database clock; created_at and the cutoff must come from
 // the same clock.
 const dbNow = `SELECT to_jsonb(clock_timestamp())`
@@ -68,7 +83,33 @@ type responseRow struct {
 	Choices []tallyRow `json:"choices"`
 }
 
-var errRecountIncomplete = errors.New("recount incomplete")
+var (
+	errRecountIncomplete = errors.New("recount incomplete")
+	errRecountBusy       = errors.New("recount already running")
+)
+
+// lockRecount takes the form's lease and returns the function that releases it.
+func lockRecount(slug string) (func(), error) {
+	var id [8]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return nil, err
+	}
+	run := hex.EncodeToString(id[:])
+	var res struct {
+		Rows [][]json.RawMessage `json:"rows"`
+	}
+	if err := callHost("db.query", map[string]any{"sql": acquireLease, "args": []any{slug, run}}, &res); err != nil {
+		return nil, err
+	}
+	if len(res.Rows) == 0 {
+		return nil, errRecountBusy
+	}
+	return func() {
+		if err := dbExec(releaseLease, slug, run); err != nil {
+			_ = logf("warn", "polls: recount lease of %q not released: %v", slug, err)
+		}
+	}, nil
+}
 
 // recount rebuilds one form's rows from the stored submissions and returns the
 // number of responses counted. It reads every page first and writes after, so a
@@ -84,6 +125,11 @@ func recount(cfg formCfg) (int, error) {
 	if !ok {
 		return 0, errors.New("form not found")
 	}
+	release, err := lockRecount(cfg.Slug)
+	if err != nil {
+		return 0, err
+	}
+	defer release()
 	fields := choiceFields(form.Fields)
 	end, closes := cfg.closes()
 	var cutoff string
