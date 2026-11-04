@@ -14,7 +14,7 @@
   "limits": {
     "memory_pages": 256,
     "max_instances": 4,
-    "hook_timeouts_ms": { "on_cron_fetch": 10000, "http_handle": 10000 }
+    "hook_timeouts_ms": { "on_cron_fetch": 10000, "http_handle": 10000, "builder.data": 400 }
   },
   "builder_sources": [
     { "name": "items", "label": "Feed items", "kind": "items" },

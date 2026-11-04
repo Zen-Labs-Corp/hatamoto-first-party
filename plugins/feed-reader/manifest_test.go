@@ -83,7 +83,8 @@ func TestManifestRoutesCronTimeoutsSources(t *testing.T) {
 	if len(m.Cron) != 1 || m.Cron[0].Name != "fetch" || m.Cron[0].Every != "5m" {
 		t.Fatalf("cron %+v", m.Cron)
 	}
-	if m.Limits.HookTimeouts["on_cron_fetch"] != 10000 || m.Limits.HookTimeouts["http_handle"] != 10000 {
+	if m.Limits.HookTimeouts["on_cron_fetch"] != 10000 || m.Limits.HookTimeouts["http_handle"] != 10000 ||
+		m.Limits.HookTimeouts["builder.data"] != 400 {
 		t.Fatalf("hook timeouts %v", m.Limits.HookTimeouts)
 	}
 	if m.UI["title"] != "Feeds" {
