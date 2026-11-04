@@ -20,6 +20,3 @@ func init() {
 func serve(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	return sdk.HTTPResponse{Status: http.StatusNotFound, Headers: map[string]string{"Content-Type": "application/json"}, Body: `{"error":"not found"}`}, nil
 }
-
-// runCron measures the tracked pages within the call's time budget.
-func runCron() error { return nil }
