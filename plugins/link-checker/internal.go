@@ -105,6 +105,8 @@ type passInfo struct {
 	StartedAt  string
 	FinishedAt string
 	Locales    []string
+	// Partial: the last pass was given up before it listed every page.
+	Partial bool
 }
 
 // checkInternal asks the host whether a published page lives at p. It never
@@ -123,6 +125,9 @@ func checkInternal(p string, rc *redirectCache, pass passInfo) result {
 		if r2 := resolveInternal(rest, rc); r2.Status != statusBroken {
 			return r2
 		}
+	}
+	if pass.Partial {
+		return result{Status: statusUnknown, Err: "site scan incomplete", Delay: pendingRetry}
 	}
 	if !pass.Done {
 		return result{Status: statusPending, Delay: pendingRetry}

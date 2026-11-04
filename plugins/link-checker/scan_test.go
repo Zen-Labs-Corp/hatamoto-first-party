@@ -500,21 +500,29 @@ func TestScanRestartsPassWhenListKeepsFailing(t *testing.T) {
 	}
 }
 
-func TestScanEndsPassWhenAnEntityIsSkippedRepeatedly(t *testing.T) {
+func TestScanEndsStuckPassAsPartial(t *testing.T) {
 	w := newScanWorld(t)
 	w.pages = [][]string{{`{}`}}
 	w.kv[cursorKey], _ = json.Marshal(scanState{Cursor: "c1", PassStart: "2026-01-01T00:00:00Z", Restarts: maxRestarts - 1, Retries: maxListRetries - 1})
 	w.listErr = &sdk.HostError{Code: sdk.ErrInvalidArgument, Message: "too big"}
 	runScan()
 	var done passDone
-	if err := json.Unmarshal(w.kv[doneKey], &done); err != nil || done.FinishedAt == "" || done.Skipped != 1 {
-		t.Fatalf("the pass must complete with the skipped entity counted: %s %v", w.kv[doneKey], err)
+	if err := json.Unmarshal(w.kv[doneKey], &done); err != nil || done.FinishedAt == "" || done.Skipped != 1 || !done.Partial {
+		t.Fatalf("the pass must be recorded as partial with the skipped entity counted: %s %v", w.kv[doneKey], err)
 	}
 	if _, ok := w.kv[cursorKey]; ok {
-		t.Fatal("a completed pass clears the cursor")
+		t.Fatal("a partial pass clears the cursor")
 	}
-	if !loadPass().Done {
-		t.Fatal("verdicts must no longer wait")
+	if p := loadPass(); !p.Partial || p.recent(now()) {
+		t.Fatalf("a partial pass must not count for purge: %+v", p)
+	}
+	for _, c := range w.host.calls {
+		if strings.Contains(c.sql(), "DELETE FROM page_paths WHERE last_seen <") || strings.Contains(c.sql(), "DELETE FROM known_paths WHERE last_seen <") {
+			t.Fatalf("a partial pass must not drop stale paths: %s", c.sql())
+		}
+	}
+	if r := checkInternal("/missing", &redirectCache{}, loadPass()); r.Status != statusUnknown || r.Err != "site scan incomplete" {
+		t.Fatalf("no page must stay undecided: %+v", r)
 	}
 }
 

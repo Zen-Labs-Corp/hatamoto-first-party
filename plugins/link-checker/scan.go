@@ -86,6 +86,10 @@ type passDone struct {
 	StartedAt  string   `json:"started_at"`
 	FinishedAt string   `json:"finished_at"`
 	Locales    []string `json:"locales"`
+	// Partial marks a pass that was given up before every page was listed.
+	// It is not a completed pass: it drops no paths, does not allow purge
+	// and "no page" stays undecided.
+	Partial bool `json:"partial,omitempty"`
 	// Skipped is the number of entities the pass could not list and gave up on.
 	Skipped int `json:"skipped,omitempty"`
 }
@@ -99,14 +103,14 @@ func loadPass() passInfo {
 		logf("warn", "pass state unreadable: %v", err)
 		return passInfo{}
 	}
-	return passInfo{Done: ok && d.FinishedAt != "", StartedAt: d.StartedAt, FinishedAt: d.FinishedAt, Locales: d.Locales}
+	return passInfo{Done: ok && d.FinishedAt != "", StartedAt: d.StartedAt, FinishedAt: d.FinishedAt, Locales: d.Locales, Partial: d.Partial}
 }
 
 // recent reports whether the last completed pass started within the
 // retention period before at.
 func (p passInfo) recent(at time.Time) bool {
 	started, err := time.Parse(time.RFC3339, p.StartedAt)
-	return p.Done && err == nil && started.After(at.Add(-retention))
+	return p.Done && !p.Partial && err == nil && started.After(at.Add(-retention))
 }
 
 // addLocale remembers a locale tag and its language part, lowercased.
@@ -134,12 +138,23 @@ func (st *scanState) addSegment(locale, p string) {
 	}
 }
 
-// finish records the end of a pass and clears the cursor.
-func (st scanState) finish(skipped int) {
+// finish records the end of a pass that listed every page and clears the
+// cursor.
+func (st scanState) finish() {
 	if err := dropStaleKnownPaths(st.PassStart); err != nil {
 		logf("warn", "dropping stale known paths: %v", err)
 	}
-	if err := kvSet(doneKey, passDone{StartedAt: st.PassStart, FinishedAt: ts(now()), Locales: st.Locales, Skipped: skipped}); err != nil {
+	st.record(passDone{StartedAt: st.PassStart, FinishedAt: ts(now()), Locales: st.Locales})
+}
+
+// finishPartial ends a pass that was given up. The pages after the one that
+// cannot be listed were not seen, so their paths must not be dropped.
+func (st scanState) finishPartial(skipped int) {
+	st.record(passDone{StartedAt: st.PassStart, FinishedAt: ts(now()), Locales: st.Locales, Partial: true, Skipped: skipped})
+}
+
+func (st scanState) record(d passDone) {
+	if err := kvSet(doneKey, d); err != nil {
 		logf("warn", "saving pass result: %v", err)
 	}
 	if err := kvDelete(cursorKey); err != nil {
@@ -238,8 +253,8 @@ func extractBatch(s settings, until time.Time) {
 				// few runs, then start the pass over.
 				if st.Retries++; st.Retries >= maxListRetries {
 					if st.Restarts++; st.Restarts >= maxRestarts {
-						logf("error", "listing entities keeps failing at one entity, ending the pass with 1 skipped: %v", err)
-						st.finish(1)
+						logf("error", "listing entities keeps failing at one entity, ending the pass as partial: %v", err)
+						st.finishPartial(1)
 						return
 					}
 					logf("error", "listing entities keeps failing at one entity, restarting the pass: %v", err)
@@ -278,7 +293,7 @@ func extractBatch(s settings, until time.Time) {
 		st.Retries = 0
 		st.Cursor = res.NextCursor
 		if st.Cursor == "" {
-			st.finish(0)
+			st.finish()
 			return
 		}
 		if err := kvSet(cursorKey, st); err != nil {

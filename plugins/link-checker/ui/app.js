@@ -172,6 +172,9 @@ function renderHeader(data) {
   state.pagesTotal = data.pages_total || 0;
   const scan = data.last_scan ? "Last scan: " + ago(data.last_scan) : "No scan yet";
   $("#scan").textContent = scan + " · Queue: " + (data.queue || 0) + " links waiting";
+  const partial = $("#partial");
+  partial.textContent = data.scan_partial ? "The last scan could not read every page; some links are not checked yet." : "";
+  partial.hidden = !partial.textContent;
   const all = total(state.counts);
   const progress = $("#progress");
   if (all === 0) {

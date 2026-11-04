@@ -38,6 +38,8 @@ type linksReply struct {
 	LastScan   string         `json:"last_scan"`
 	Queue      int            `json:"queue"`
 	PagesTotal int            `json:"pages_total"`
+	// ScanPartial: the last pass could not read every page.
+	ScanPartial bool `json:"scan_partial"`
 }
 
 func handleLinks(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
@@ -64,8 +66,9 @@ func handleLinks(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			"broken": c.Broken, "redirected": c.Redirected, "ok": c.OK,
 			"ignored": c.Ignored, "unknown": c.Unknown, "pending": c.Pending,
 		},
-		Queue:      queue,
-		PagesTotal: c.Pages,
+		Queue:       queue,
+		PagesTotal:  c.Pages,
+		ScanPartial: loadPass().Partial,
 	}
 	if len(rows) > pageSize {
 		out.Links = rows[:pageSize]

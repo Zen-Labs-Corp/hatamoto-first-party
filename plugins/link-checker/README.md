@@ -132,9 +132,11 @@ collects the package in `plugins/link-checker/build/`.
   looked up without that segment: it counts as fine when the unprefixed path is
   a page or a listing. This is a heuristic, not a check in that language.
 - A page the host cannot list (too large even alone) stops the pass. After
-  three restarts the pass ends as completed with that page counted as
-  skipped (logged), so "no page" verdicts are not held back for ever. Nothing
-  is purged unless a pass completed.
+  three restarts the pass ends as partial (logged, shown on the admin
+  page). A partial pass drops no known paths, does not allow purging, and
+  internal links with no page become unknown ("site scan incomplete") instead
+  of broken. The next pass starts after the usual hour. Nothing is purged
+  unless a pass completed.
 - An internal link with no page stays pending (shown in no tab, counted as
   waiting) until the first pass over all published pages has finished, because
   listing paths are only known from their children.
