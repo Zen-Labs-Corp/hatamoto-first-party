@@ -121,3 +121,20 @@ func TestManifestSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestMigrationShape(t *testing.T) {
+	raw, err := os.ReadFile("migrations/001_init.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(raw)
+	if !regexp.MustCompile(`(?m)^-- \+goose Up\s*$`).MatchString(sql) {
+		t.Fatal("missing -- +goose Up")
+	}
+	if regexp.MustCompile(`(?i)\bCREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|TRIGGER|PROCEDURE|EXTENSION)\b`).MatchString(sql) {
+		t.Fatal("functions, triggers and extensions are refused")
+	}
+	if regexp.MustCompile(`(?i)\bpg_|\bGRANT\b`).MatchString(sql) {
+		t.Fatal("pg_ names and GRANT are refused")
+	}
+}
