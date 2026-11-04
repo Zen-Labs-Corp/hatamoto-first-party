@@ -21,6 +21,8 @@ func init() {
 
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	switch r.Method + " " + r.Pattern {
+	case "POST /webhook":
+		return handleWebhook(r)
 	}
 	return status(http.StatusNotFound), nil
 }
