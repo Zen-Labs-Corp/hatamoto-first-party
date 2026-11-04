@@ -41,6 +41,11 @@ Show the reviews in one of three ways:
   `source_label`, `url`) and `plugin_reviews_profile "google"` (the profile or
   Maps address of a source).
 
+  The section prints each source's attribution whenever the source has data. A
+  theme that prints the summary or its own review loop must show it too: "Reviews
+  from Google Maps" linked to `plugin_reviews_profile "google"`, and each Google
+  author's name linked to `author_url` with the `photo` when there is one.
+
 With no keys set, or when a source is down, everything stays empty: the section
 renders nothing, the loop shows its empty state, the functions return empty text.
 
