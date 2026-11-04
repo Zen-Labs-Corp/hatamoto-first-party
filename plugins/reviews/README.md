@@ -48,8 +48,8 @@ Show the reviews in one of three ways:
 
 With no key set up, everything stays empty: the section renders nothing, the loop
 shows its empty state, the functions return empty text. A source that is not set up
-(key or ID missing) is hidden at once, even while its cached rows wait for the
-30-day deletion. When a source is down, the last copy keeps showing (up to 30 days).
+(key or ID missing) is hidden from the next render (the page cache lasts a few minutes), even while its
+cached rows wait for the 30-day deletion. When a source is down, the last copy keeps showing (up to 30 days).
 
 If your theme has its own `reviews` section, it takes precedence over the plugin's.
 

@@ -55,8 +55,11 @@ func TestSectionMarkupRules(t *testing.T) {
 	if m := bannedMarkup.FindString(src); m != "" {
 		t.Fatalf("banned markup %q", m)
 	}
-	if strings.Contains(src, "<style") || strings.Contains(src, "http://") || strings.Contains(src, "https://") {
-		t.Fatal("no inline style block and no remote URL expected")
+	if strings.Contains(src, "http://") || strings.Contains(src, "https://") {
+		t.Fatal("no remote URL expected")
+	}
+	if m := regexp.MustCompile(`(?s)<style.*?</style>`).FindString(src); strings.Contains(m, "{{") || strings.Contains(m, "url(") || strings.Contains(m, "@import") {
+		t.Fatal("the style element must hold plain CSS: no template action, url() or @import")
 	}
 	// Mirror core's action-context rule: print actions only in text or fully
 	// inside a quoted attribute value; control actions and template calls only in text.
