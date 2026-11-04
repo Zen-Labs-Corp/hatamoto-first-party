@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Polls</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+    <div id="forms"></div>
+    <section id="csv-box" hidden>
+      <h2 id="csv-title">CSV</h2>
+      <p class="muted">Copy the text and paste it into a spreadsheet or a file.</p>
+      <textarea id="csv" readonly rows="12" spellcheck="false" aria-label="CSV export"></textarea>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
