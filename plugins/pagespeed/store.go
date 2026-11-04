@@ -68,9 +68,11 @@ func upsertField(day, url, strategy string, f fieldResult) error {
 
 const qUpsertLab = `INSERT INTO metrics (url, day, strategy, lab_score, lab_status, measured_at)
 	VALUES ($1, $2::date, $3, $4, $5, now())
-	ON CONFLICT (url, day, strategy) DO UPDATE SET lab_score = EXCLUDED.lab_score, lab_status = EXCLUDED.lab_status, measured_at = now()`
+	ON CONFLICT (url, day, strategy) DO UPDATE SET lab_score = EXCLUDED.lab_score, lab_status = EXCLUDED.lab_status, measured_at = now()
+	WHERE metrics.lab_status <> 'ok' OR EXCLUDED.lab_status = 'ok'`
 
 // upsertLab stores the lab result of a page; only a finished run has a score.
+// A failed run never replaces a finished one of the same day.
 func upsertLab(day, url, strategy string, l labResult) error {
 	var score any
 	if l.Status == labOK {
@@ -166,10 +168,13 @@ func markCrux(day, url, strategy string) error {
 		ON CONFLICT (day, url, strategy) DO UPDATE SET crux_done = true`, day, url, strategy)
 }
 
-// markLab records a lab run: its state and one more attempt.
+// markLab records a lab run: its state and one more attempt. A failed run
+// keeps the "ok" state of an earlier run of the same day.
 func markLab(day, url, strategy, state string) error {
 	return dbExec(`INSERT INTO progress (day, url, strategy, crux_done, lab_state, lab_attempts) VALUES ($1::date, $2, $3, true, $4, 1)
-		ON CONFLICT (day, url, strategy) DO UPDATE SET lab_state = EXCLUDED.lab_state, lab_attempts = progress.lab_attempts + 1`,
+		ON CONFLICT (day, url, strategy) DO UPDATE SET
+			lab_state = CASE WHEN progress.lab_state = 'ok' AND EXCLUDED.lab_state <> 'ok' THEN progress.lab_state ELSE EXCLUDED.lab_state END,
+			lab_attempts = progress.lab_attempts + 1`,
 		day, url, strategy, state)
 }
 

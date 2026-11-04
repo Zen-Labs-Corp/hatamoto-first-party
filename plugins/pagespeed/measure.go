@@ -137,9 +137,9 @@ func measureLab(p plan, day, path, strategy string) (string, error) {
 }
 
 // measureOne is "Measure now" for one tracked page: the field data of every
-// configured device, then one lab run if the budget still allows it. It
-// overwrites today's rows. The caller holds the budget (startBudget).
-func measureOne(p plan, path string) error {
+// configured device, then one lab run for strategy if the budget still allows
+// it. It overwrites today's field rows and never a finished lab score. The caller holds the budget (startBudget).
+func measureOne(p plan, path, strategy string) error {
 	day := today()
 	for _, s := range p.strategies {
 		if err := measureField(p, day, path, s); err != nil {
@@ -152,11 +152,11 @@ func measureOne(p plan, path string) error {
 	if left() < minForPSI {
 		return nil
 	}
-	state, err := measureLab(p, day, path, p.strategies[0])
+	state, err := measureLab(p, day, path, strategy)
 	if err != nil {
 		return err
 	}
-	return markLab(day, path, p.strategies[0], state)
+	return markLab(day, path, strategy, state)
 }
 
 // runCron is the cron job: one budgeted step, then retention once the day is

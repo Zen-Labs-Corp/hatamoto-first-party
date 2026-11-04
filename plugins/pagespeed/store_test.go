@@ -119,3 +119,20 @@ func TestUpsertsKeepTheirOwnColumns(t *testing.T) {
 		t.Errorf("lab upsert = %+v", calls[1])
 	}
 }
+
+func TestFailedLabNeverReplacesFinishedOne(t *testing.T) {
+	var calls []dbCall
+	fakeDB(t, &calls, nil)
+	if err := upsertLab("2026-11-04", "/a", "mobile", labResult{Status: labTimeout}); err != nil {
+		t.Fatal(err)
+	}
+	if err := markLab("2026-11-04", "/a", "mobile", labTimeout); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(calls[0].SQL, "WHERE metrics.lab_status <> 'ok' OR EXCLUDED.lab_status = 'ok'") {
+		t.Errorf("lab upsert has no guard: %s", calls[0].SQL)
+	}
+	if !strings.Contains(calls[1].SQL, "progress.lab_state = 'ok' AND EXCLUDED.lab_state <> 'ok'") {
+		t.Errorf("markLab has no guard: %s", calls[1].SQL)
+	}
+}

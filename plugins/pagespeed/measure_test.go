@@ -136,10 +136,17 @@ func (w *world) exec(sql string, args []any) error {
 	case strings.HasPrefix(sql, "INSERT INTO metrics") && strings.Contains(sql, "field_status"):
 		w.fields[[2]string{args[0].(string), args[2].(string)}] = fieldRow{args[9].(string)}
 	case strings.HasPrefix(sql, "INSERT INTO metrics"):
-		w.labs[[2]string{args[0].(string), args[2].(string)}] = args[4].(string)
+		k := [2]string{args[0].(string), args[2].(string)}
+		if strings.Contains(sql, "lab_status <> 'ok'") && w.labs[k] == labOK && args[4].(string) != labOK {
+			break // the guard keeps the finished score
+		}
+		w.labs[k] = args[4].(string)
 	case strings.Contains(sql, "INSERT INTO progress") && strings.Contains(sql, "lab_state"):
 		p := w.prog(args[1].(string), args[2].(string))
-		p.CruxDone, p.LabState = true, args[3].(string)
+		p.CruxDone = true
+		if !(p.LabState == labOK && args[3].(string) != labOK && strings.Contains(sql, "progress.lab_state = 'ok'")) {
+			p.LabState = args[3].(string)
+		}
 		p.LabAttempts++
 	case strings.Contains(sql, "INSERT INTO progress"):
 		w.prog(args[1].(string), args[2].(string)).CruxDone = true
@@ -294,5 +301,30 @@ func TestMissingKeyOrOriginFailsOpen(t *testing.T) {
 	w := newWorld(t, `{"api_key":"k","urls":["/a"]}`)
 	if err := runCron(); err != nil || len(w.fetches) != 0 {
 		t.Fatalf("%v %v", err, w.fetches)
+	}
+}
+
+func TestMeasureNowTimeoutKeepsTodaysLabScore(t *testing.T) {
+	w := newWorld(t, `{"api_key":"`+testKey+`","public_url":"https://s.example","strategy":"mobile","urls":["/a"]}`)
+	for range 4 {
+		if err := runCron(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	k := [2]string{"/a", "mobile"}
+	if w.labs[k] != labOK {
+		t.Fatalf("labs = %v", w.labs)
+	}
+	w.psiFail = "context deadline exceeded"
+	p, err := loadPlan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer startBudget()()
+	if err := measureOne(p, "/a", "mobile"); err != nil {
+		t.Fatal(err)
+	}
+	if w.labs[k] != labOK || w.progress[k].LabState != labOK {
+		t.Fatalf("timeout replaced the score: %v %+v", w.labs, w.progress[k])
 	}
 }

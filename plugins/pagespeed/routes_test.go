@@ -188,3 +188,31 @@ func TestOverviewShowsNewestLabScoreWithItsDay(t *testing.T) {
 		t.Fatalf("overview = %s", res.Body)
 	}
 }
+
+func TestMeasureNowRunsTheLabForTheGivenStrategy(t *testing.T) {
+	n := 0
+	routeHost(t, routeSettings, nil, &n)
+	inner := callHost
+	var psi []string
+	callHost = func(fn string, args, out any) error {
+		if fn == "http.fetch" {
+			if u := args.(map[string]any)["url"].(string); strings.Contains(u, "runPagespeed") {
+				psi = append(psi, u)
+			}
+		}
+		return inner(fn, args, out)
+	}
+	if res := call(t, "POST", "/measure-now", `{"url":"/a","strategy":"desktop"}`); res.Status != 200 {
+		t.Fatalf("%d %s", res.Status, res.Body)
+	}
+	if len(psi) != 1 || !strings.Contains(psi[0], "strategy=desktop") {
+		t.Fatalf("psi = %v", psi)
+	}
+	if res := call(t, "POST", "/measure-now", `{"url":"/a","strategy":"tablet"}`); res.Status != 400 {
+		t.Fatalf("unknown strategy: %d", res.Status)
+	}
+	routeHost(t, `{"api_key":"k","public_url":"https://s.example","strategy":"mobile","urls":["/a"]}`, nil, &n)
+	if res := call(t, "POST", "/measure-now", `{"url":"/a","strategy":"desktop"}`); res.Status != 400 {
+		t.Fatalf("unconfigured strategy: %d", res.Status)
+	}
+}

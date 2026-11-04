@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"hatamoto.dev/sdk"
@@ -198,12 +199,13 @@ func measureNow(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		return reply(http.StatusRequestEntityTooLarge, map[string]string{"error": "request too large"})
 	}
 	var in struct {
-		URL string `json:"url"`
+		URL      string `json:"url"`
+		Strategy string `json:"strategy"`
 	}
 	dec := json.NewDecoder(bytes.NewReader([]byte(r.Body)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil || dec.More() || !strings.HasPrefix(in.URL, "/") {
-		return reply(http.StatusBadRequest, map[string]string{"error": `send {"url": "/path"}`})
+		return reply(http.StatusBadRequest, map[string]string{"error": `send {"url": "/path", "strategy": "mobile"}`})
 	}
 	defer startBudget()()
 	p, err := loadPlan()
@@ -220,7 +222,13 @@ func measureNow(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	if !tracked {
 		return reply(http.StatusBadRequest, map[string]string{"error": "this page is not tracked"})
 	}
-	if err := measureOne(p, in.URL); err != nil {
+	if in.Strategy == "" {
+		in.Strategy = p.strategies[0]
+	}
+	if !slices.Contains(p.strategies, in.Strategy) {
+		return reply(http.StatusBadRequest, map[string]string{"error": "this device is not measured"})
+	}
+	if err := measureOne(p, in.URL, in.Strategy); err != nil {
 		return fail(err)
 	}
 	rows, err := dayRows(today(), in.URL)

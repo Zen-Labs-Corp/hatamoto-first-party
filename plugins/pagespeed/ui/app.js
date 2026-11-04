@@ -134,7 +134,7 @@ function row(entry) {
     btn.disabled = true;
     btn.textContent = "Measuring...";
     try {
-      await api("POST", "/measure-now", { url: entry.path });
+      await api("POST", "/measure-now", { url: entry.path, strategy });
     } finally {
       btn.disabled = false;
       btn.textContent = "Measure now";
