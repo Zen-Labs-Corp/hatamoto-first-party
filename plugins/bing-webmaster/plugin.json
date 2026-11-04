@@ -1,0 +1,40 @@
+{
+  "name": "bing-webmaster",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Bing Webmaster Tools: submit your sitemap and see Bing clicks, impressions, top queries and crawl issues, using your Bing API key.",
+  "permissions": ["settings", "http.fetch", "db", "kv", "log"],
+  "allowed_hosts": ["ssl.bing.com"],
+  "routes": [
+    { "method": "GET", "path": "/overview" },
+    { "method": "POST", "path": "/test" },
+    { "method": "POST", "path": "/submit-sitemap" },
+    { "method": "POST", "path": "/import-now" }
+  ],
+  "cron": [ { "name": "import", "every": "6h" } ],
+  "ui": { "title": "Bing Webmaster Tools" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "on_cron_import": 10000, "http_handle": 10000 }
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "api_key": {
+        "type": "string",
+        "title": "Bing API key",
+        "description": "Create one in Bing Webmaster Tools, Settings, API access.",
+        "writeOnly": true,
+        "maxLength": 128
+      },
+      "site_url": {
+        "type": "string",
+        "title": "Site URL",
+        "default": "",
+        "maxLength": 255,
+        "description": "The site exactly as verified in Bing Webmaster Tools. Leave empty to use the one verified site in your Bing account."
+      }
+    }
+  }
+}

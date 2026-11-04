@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bing Webmaster Tools</title>
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+    <p id="not-set" class="notice" hidden>Add your Bing API key in Settings.</p>
+
+    <div id="cards" hidden>
+      <section id="connection">
+        <h2>Connection</h2>
+        <dl>
+          <dt>API key</dt><dd id="key-state"></dd>
+          <dt>Site</dt><dd id="site"></dd>
+          <dt>Last import</dt><dd id="last-import"></dd>
+        </dl>
+        <div class="row">
+          <button id="test">Test key</button>
+          <button id="import-now" class="primary">Import now</button>
+        </div>
+        <p id="status-line" class="muted"></p>
+      </section>
+
+      <section id="traffic">
+        <h2>Last 28 days <span class="muted">(Bing, daily)</span></h2>
+        <dl>
+          <dt>Clicks</dt><dd id="total-clicks"></dd>
+          <dt>Impressions</dt><dd id="total-impressions"></dd>
+        </dl>
+        <details>
+          <summary>Daily numbers</summary>
+          <table id="days"><thead><tr><th>Day</th><th class="num">Clicks</th><th class="num">Impressions</th></tr></thead><tbody></tbody></table>
+        </details>
+        <p id="no-traffic" class="muted" hidden>No data yet. Bing updates its numbers about once a week; the first import runs within 6 hours, or press Import now.</p>
+      </section>
+
+      <section id="top">
+        <h2>Top queries and pages <span class="muted">(last 4 weeks)</span></h2>
+        <div class="two">
+          <table id="queries"><thead><tr><th>Query</th><th class="num">Clicks</th><th class="num">Impr.</th><th class="num">Pos.</th></tr></thead><tbody></tbody></table>
+          <table id="pages"><thead><tr><th>Page</th><th class="num">Clicks</th><th class="num">Impr.</th></tr></thead><tbody></tbody></table>
+        </div>
+      </section>
+
+      <section id="crawl">
+        <h2>Crawl issues <span class="muted">(latest from Bing)</span></h2>
+        <table id="issues"><thead><tr><th>Address</th><th class="num">HTTP</th><th>Issues</th><th class="num">Inbound links</th></tr></thead><tbody></tbody></table>
+        <p id="no-issues" class="muted" hidden>Bing reports no crawl issues.</p>
+      </section>
+
+      <section id="sitemap">
+        <h2>Sitemap</h2>
+        <table id="feeds"><thead><tr><th>Address</th><th>Status</th><th class="num">URLs</th><th>Last crawled</th></tr></thead><tbody></tbody></table>
+        <p id="no-feeds" class="muted" hidden>Bing lists no sitemap for this site yet.</p>
+        <div class="row">
+          <span id="last-submitted" class="muted"></span>
+          <button id="submit">Submit sitemap</button>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
