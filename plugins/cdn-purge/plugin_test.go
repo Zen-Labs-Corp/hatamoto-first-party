@@ -262,8 +262,14 @@ func TestAuthErrorStopsTheLoopAndLogsOnce(t *testing.T) {
 		f.fetchStatus = status
 		f.setEntity("e1", "published", "/x", "https://example.com/x")
 		f.fire(sdk.EntityPublished, "e1")
-		if len(f.fetches()) != 1 || len(f.rows) != 1 || len(f.logLines("error")) != 1 {
+		if len(f.fetches()) != 1 || len(f.rows) != 2 || len(f.logLines("error")) != 1 {
 			t.Fatalf("%d: fetches %d, rows %d, error lines %v", status, len(f.fetches()), len(f.rows), f.logLines("error"))
+		}
+		if r := f.rows[1]; len(r.URLs) != 4 || r.Error != "skipped 4 URLs: token refused" {
+			t.Fatalf("%d: skip row %+v", status, r)
+		}
+		if l := f.logLines("error")[0]; !strings.Contains(l, "2 of 2") {
+			t.Fatalf("%d: error line %q", status, l)
 		}
 	}
 }

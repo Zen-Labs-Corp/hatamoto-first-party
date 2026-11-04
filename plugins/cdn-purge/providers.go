@@ -146,7 +146,15 @@ func purgeURLs(s settings, urls []string) []batchResult {
 		}
 		results = append(results, r)
 		if r.Status == http.StatusUnauthorized || r.Status == http.StatusForbidden {
-			break // the token is refused; the other URLs would be refused too
+			// The token is refused; the other URLs would be refused too.
+			var rest []string
+			for _, left := range batches[i+1:] {
+				rest = append(rest, left...)
+			}
+			if len(rest) > 0 {
+				results = append(results, batchResult{URLs: rest, Err: fmt.Sprintf("skipped %d URLs: token refused", len(rest))})
+			}
+			break
 		}
 	}
 	return results
