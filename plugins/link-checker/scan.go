@@ -29,6 +29,10 @@ const (
 	// maxListRetries is how many runs in a row may fail to list one entity
 	// before the pass starts over.
 	maxListRetries = 3
+	// maxRestarts is how many times the list may start over because of the
+	// same trouble before the pass is ended as completed, with what is
+	// stuck counted as skipped: otherwise "no page" would never be final.
+	maxRestarts = 3
 	// passInterval is the least time between the end of a pass and the start
 	// of the next: a published page is read at once by its hook, so reading
 	// every page again right away only churns the database.
@@ -72,6 +76,8 @@ type scanState struct {
 	// Retries counts consecutive runs where listing failed with the smallest
 	// batch; the pass restarts after maxListRetries.
 	Retries int `json:"retries"`
+	// Restarts counts the restarts caused by Retries in this pass.
+	Restarts int `json:"restarts"`
 }
 
 // passDone is kept in kv when a pass has indexed every published page: from
@@ -80,6 +86,8 @@ type passDone struct {
 	StartedAt  string   `json:"started_at"`
 	FinishedAt string   `json:"finished_at"`
 	Locales    []string `json:"locales"`
+	// Skipped is the number of entities the pass could not list and gave up on.
+	Skipped int `json:"skipped,omitempty"`
 }
 
 // loadPass reads the result of the last completed pass; a read error counts as
@@ -127,11 +135,11 @@ func (st *scanState) addSegment(locale, p string) {
 }
 
 // finish records the end of a pass and clears the cursor.
-func (st scanState) finish() {
+func (st scanState) finish(skipped int) {
 	if err := dropStaleKnownPaths(st.PassStart); err != nil {
 		logf("warn", "dropping stale known paths: %v", err)
 	}
-	if err := kvSet(doneKey, passDone{StartedAt: st.PassStart, FinishedAt: ts(now()), Locales: st.Locales}); err != nil {
+	if err := kvSet(doneKey, passDone{StartedAt: st.PassStart, FinishedAt: ts(now()), Locales: st.Locales, Skipped: skipped}); err != nil {
 		logf("warn", "saving pass result: %v", err)
 	}
 	if err := kvDelete(cursorKey); err != nil {
@@ -229,8 +237,15 @@ func extractBatch(s settings, until time.Time) {
 				// Even one entity fails (too big, or a stale cursor): retry a
 				// few runs, then start the pass over.
 				if st.Retries++; st.Retries >= maxListRetries {
+					if st.Restarts++; st.Restarts >= maxRestarts {
+						logf("error", "listing entities keeps failing at one entity, ending the pass with 1 skipped: %v", err)
+						st.finish(1)
+						return
+					}
 					logf("error", "listing entities keeps failing at one entity, restarting the pass: %v", err)
-					st = scanState{PassStart: ts(now())}
+					// Keep the start and the locales: what the attempts
+					// refreshed must survive the stale-path cleanup.
+					st = scanState{PassStart: st.PassStart, Locales: st.Locales, Restarts: st.Restarts}
 				}
 				if err := kvSet(cursorKey, st); err != nil {
 					logf("warn", "saving scan cursor: %v", err)
@@ -263,7 +278,7 @@ func extractBatch(s settings, until time.Time) {
 		st.Retries = 0
 		st.Cursor = res.NextCursor
 		if st.Cursor == "" {
-			st.finish()
+			st.finish(0)
 			return
 		}
 		if err := kvSet(cursorKey, st); err != nil {

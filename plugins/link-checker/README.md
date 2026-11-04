@@ -131,6 +131,10 @@ collects the package in `plugins/link-checker/build/`.
   language (or locale tag) of a published page, such as `/fr/contact`, is also
   looked up without that segment: it counts as fine when the unprefixed path is
   a page or a listing. This is a heuristic, not a check in that language.
+- A page the host cannot list (too large even alone) stops the pass. After
+  three restarts the pass ends as completed with that page counted as
+  skipped (logged), so "no page" verdicts are not held back for ever. Nothing
+  is purged unless a pass completed.
 - An internal link with no page stays pending (shown in no tab, counted as
   waiting) until the first pass over all published pages has finished, because
   listing paths are only known from their children.

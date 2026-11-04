@@ -491,12 +491,30 @@ func TestScanRestartsPassWhenListKeepsFailing(t *testing.T) {
 		if i < maxListRetries && (st.Cursor != "c1" || st.Retries != i) {
 			t.Fatalf("run %d: %+v", i, st)
 		}
-		if i == maxListRetries && (st.Cursor != "" || st.Retries != 0 || st.PassStart == "2026-01-01T00:00:00Z") {
+		if i == maxListRetries && (st.Cursor != "" || st.Retries != 0 || st.Restarts != 1 || st.PassStart != "2026-01-01T00:00:00Z") {
 			t.Fatalf("the pass must restart after %d runs: %+v", maxListRetries, st)
 		}
 	}
 	if _, ok := w.kv[doneKey]; ok {
 		t.Fatal("a restart is not a completed pass")
+	}
+}
+
+func TestScanEndsPassWhenAnEntityIsSkippedRepeatedly(t *testing.T) {
+	w := newScanWorld(t)
+	w.pages = [][]string{{`{}`}}
+	w.kv[cursorKey], _ = json.Marshal(scanState{Cursor: "c1", PassStart: "2026-01-01T00:00:00Z", Restarts: maxRestarts - 1, Retries: maxListRetries - 1})
+	w.listErr = &sdk.HostError{Code: sdk.ErrInvalidArgument, Message: "too big"}
+	runScan()
+	var done passDone
+	if err := json.Unmarshal(w.kv[doneKey], &done); err != nil || done.FinishedAt == "" || done.Skipped != 1 {
+		t.Fatalf("the pass must complete with the skipped entity counted: %s %v", w.kv[doneKey], err)
+	}
+	if _, ok := w.kv[cursorKey]; ok {
+		t.Fatal("a completed pass clears the cursor")
+	}
+	if !loadPass().Done {
+		t.Fatal("verdicts must no longer wait")
 	}
 }
 
