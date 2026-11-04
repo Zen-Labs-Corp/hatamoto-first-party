@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Downloads</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main>
+    <header class="head">
+      <span class="stat"><span class="muted">All time</span> <strong id="all">-</strong></span>
+      <span class="stat"><span class="muted">Last 30 days</span> <strong id="last30">-</strong></span>
+    </header>
+    <p id="notice" class="notice" hidden></p>
+
+    <p id="empty" class="muted" hidden>No files in the media library yet. Upload a file, then link to it with /p/downloads/f/&lt;file id&gt;.</p>
+    <table id="files" hidden>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th class="num">Size</th>
+          <th class="num">Total</th>
+          <th class="num">Last 30 days</th>
+          <th>Trend (30 days)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <nav id="pager" class="pager" hidden>
+      <span id="range" class="muted"></span>
+      <button id="prev" type="button">Previous</button>
+      <button id="next" type="button">Next</button>
+    </nav>
+
+    <footer class="muted">Link format: /p/downloads/f/&lt;file id&gt;. Bots are not counted (Settings: Count bots).</footer>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
