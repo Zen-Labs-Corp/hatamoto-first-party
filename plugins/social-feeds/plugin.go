@@ -13,6 +13,7 @@ import (
 )
 
 func init() {
+	guest.OnFilter(sdk.BuilderData, filterData)
 	// A source failing is recorded, never returned: the cron run stays green.
 	guest.OnCron("refresh", func(sdk.CronEvent) error {
 		runRefresh(refreshBudget)
