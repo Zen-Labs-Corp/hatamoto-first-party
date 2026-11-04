@@ -1,0 +1,85 @@
+{
+  "name": "polls",
+  "version": "0.1.0",
+  "sdk": "^0.11",
+  "description": "Turns Hatamoto forms into polls, surveys and scored quizzes, with live results, per-question breakdowns and CSV export.",
+  "permissions": ["forms.read", "settings", "db", "builder.data", "mail.send", "log"],
+  "routes": [
+    { "method": "GET", "path": "/results/{form_slug}", "public": true },
+    { "method": "GET", "path": "/overview" },
+    { "method": "GET", "path": "/forms/{slug}/csv" },
+    { "method": "POST", "path": "/forms/{slug}/recount" }
+  ],
+  "builder_sources": [
+    { "name": "results", "label": "Poll results", "kind": "items" }
+  ],
+  "ui": { "title": "Polls" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "max_output_bytes": 4194304,
+    "hook_timeouts_ms": { "builder.data": 400, "http_handle": 10000 }
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "forms": {
+        "type": "array",
+        "title": "Forms",
+        "description": "The forms to count. Each one becomes a poll, a survey or a scored quiz.",
+        "x-hm-item-label": "form",
+        "maxItems": 50,
+        "items": {
+          "type": "object",
+          "required": ["form_slug"],
+          "properties": {
+            "form_slug": {
+              "type": "string",
+              "title": "Form slug",
+              "description": "The slug of an existing form.",
+              "maxLength": 80
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "enum": ["poll", "survey", "quiz"],
+              "default": "poll"
+            },
+            "show_results": {
+              "type": "string",
+              "title": "Show results",
+              "description": "Whether visitors may see the results page.",
+              "enum": ["always", "after_close", "never"],
+              "default": "never"
+            },
+            "closes_at": {
+              "type": "string",
+              "title": "Closes at (UTC), e.g. 2027-01-01 18:00",
+              "description": "Answers after this time are not counted. Write a date, or a date and time such as 2027-01-01 18:00. A value without a time zone is read as UTC. Leave empty to count forever.",
+              "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}([T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?(Z|[+-][0-9]{2}:[0-9]{2})?)?)?$"
+            },
+            "answer_key": {
+              "type": "array",
+              "title": "Answer key",
+              "description": "Quiz only: the correct value of each question. For a checkbox question list several values separated by commas.",
+              "x-hm-item-label": "answer",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": { "type": "string", "title": "Field name", "maxLength": 80 },
+                  "value": { "type": "string", "title": "Correct value", "maxLength": 200 }
+                }
+              }
+            },
+            "email_score": {
+              "type": "boolean",
+              "title": "Email the score",
+              "description": "Quiz only: email the score to the address the visitor gave.",
+              "default": false
+            }
+          }
+        }
+      }
+    }
+  }
+}
