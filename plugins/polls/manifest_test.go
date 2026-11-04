@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -91,14 +92,20 @@ func TestManifestSettingsSchemaAndNoExtras(t *testing.T) {
 }
 
 func TestMigrationHasNoFunctionsTriggersOrGrants(t *testing.T) {
-	raw, err := os.ReadFile("migrations/001_init.sql")
-	if err != nil {
-		t.Fatal(err)
+	files, _ := filepath.Glob("migrations/*.sql")
+	if len(files) == 0 {
+		t.Fatal("no migrations")
 	}
-	if bad := regexp.MustCompile(`(?i)\b(function|trigger|grant|schema|public|copy)\b`).FindString(string(raw)); bad != "" {
-		t.Fatalf("migration contains %q", bad)
-	}
-	if strings.Contains(string(raw), "-- +goose Down") {
-		t.Fatal("migration has a Down section")
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bad := regexp.MustCompile(`(?i)\b(function|trigger|grant|schema|public|copy)\b`).FindString(string(raw)); bad != "" {
+			t.Fatalf("%s contains %q", file, bad)
+		}
+		if strings.Contains(string(raw), "-- +goose Down") {
+			t.Fatalf("%s has a Down section", file)
+		}
 	}
 }

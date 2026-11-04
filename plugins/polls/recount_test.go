@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,34 +98,123 @@ func TestRecountMatchesAnIndependentCount(t *testing.T) {
 	if !reflect.DeepEqual(offsets, []int{0, 100, 200}) {
 		t.Fatalf("offsets %v", offsets)
 	}
-	var replaces []hostCall
-	for _, c := range f.named("db.exec") {
-		if c.sql == replaceForm {
-			replaces = append(replaces, c)
-		}
-	}
-	if len(replaces) != 1 {
-		t.Fatalf("%d replace statements", len(replaces))
-	}
-	a := replaces[0].args
-	if len(a) != 3 || a[0] != "fw" {
-		t.Fatalf("args %v", a)
-	}
+	rows, finish := recounted(t, f)
 	got := map[[2]string]int{}
-	for _, r := range a[2].([]countRow) {
-		got[[2]string{r.Field, r.Option}] = r.N
+	for _, r := range rows {
+		for _, c := range r.Choices {
+			got[[2]string{c.Field, c.Option}]++
+		}
+		if r.Score != nil {
+			t.Fatal("a poll has no score")
+		}
 	}
 	if !reflect.DeepEqual(got, wantTally) {
 		t.Fatalf("tallies\n got %v\nwant %v", got, wantTally)
 	}
-	rows := a[1].([]responseRow)
 	if len(rows) != wantResponses {
 		t.Fatalf("%d response rows", len(rows))
 	}
-	for _, r := range rows {
-		if r.Score != nil {
-			t.Fatal("a poll has no score")
+	if len(finish.args) != 2 || finish.args[0] != "fw" || finish.args[1] != testCutoff {
+		t.Fatalf("finish args %v", finish.args)
+	}
+}
+
+// recounted returns every response row a recount wrote and its closing
+// statement, and checks the rows were written before it with one cutoff.
+func recounted(t *testing.T, f *fake) ([]responseRow, hostCall) {
+	t.Helper()
+	var rows []responseRow
+	var finish hostCall
+	for _, c := range f.named("db.exec") {
+		switch c.sql {
+		case upsertResponses:
+			if finish.sql != "" {
+				t.Fatal("rows written after the closing statement")
+			}
+			if c.args[0] != "fw" || c.args[1] != testCutoff {
+				t.Fatalf("upsert args %v", c.args[:2])
+			}
+			rows = append(rows, c.args[2].([]responseRow)...)
+		case finishRecount:
+			finish = c
+		case purgeRemoved:
+		default:
+			t.Fatalf("unexpected statement %q", c.sql)
 		}
+	}
+	if finish.sql == "" {
+		t.Fatal("no closing statement")
+	}
+	return rows, finish
+}
+
+// A submission stored while a recount runs is newer than the cutoff. The
+// closing statement must never drop such a row by id and may only drop rows
+// older than the cutoff that this recount did not rewrite; the tallies must be
+// rebuilt from the rows left, not overwritten with the recounted totals.
+func TestRecountKeepsAnswersStoredWhileItRuns(t *testing.T) {
+	for _, want := range []string{
+		"created_at < $2::text::timestamptz AND recounted IS DISTINCT FROM $2::text::timestamptz",
+		"FROM keep, jsonb_array_elements(coalesce(keep.choices",
+	} {
+		if !strings.Contains(finishRecount, want) {
+			t.Errorf("finishRecount lacks %q", want)
+		}
+	}
+	if strings.Contains(finishRecount, "NOT IN (SELECT id") || strings.Contains(finishRecount, "excluded.n + ") {
+		t.Error("finishRecount deletes by the recounted id list")
+	}
+	f := &fake{t: t, settings: recountSettings, forms: formsJSON}
+	var offsets []int
+	subs, _, _ := seeded(30)
+	pagedHost(f, subs, &offsets)
+	f.install()
+	if _, err := recount(formCfg{Slug: "fw", Kind: kindPoll}); err != nil {
+		t.Fatal(err)
+	}
+	var cutoffReads int
+	for _, c := range f.named("db.query") {
+		if c.sql == dbNow {
+			cutoffReads++
+		}
+	}
+	if cutoffReads != 1 {
+		t.Fatalf("%d cutoff reads", cutoffReads)
+	}
+	recounted(t, f)
+}
+
+func TestRecountChunksStayUnderTheRequestLimit(t *testing.T) {
+	subs, _, _ := seeded(4000)
+	for i := range subs {
+		subs[i].ID = fmt.Sprintf("%036d", i)
+	}
+	f := &fake{t: t, forms: formsJSON}
+	var offsets []int
+	pagedHost(f, subs, &offsets)
+	f.install()
+	if _, err := recount(formCfg{Slug: "fw"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := recounted(t, f)
+	if len(rows) == 0 {
+		t.Fatalf("%d rows", len(rows))
+	}
+	n := 0
+	for _, c := range f.named("db.exec") {
+		b, _ := json.Marshal(c.args)
+		if len(b) > 1<<20 {
+			t.Fatalf("a statement carries %d bytes", len(b))
+		}
+		if c.sql == upsertResponses {
+			n++
+		}
+	}
+	if big := chunks(rows, 1000); len(big) < 2 {
+		t.Fatalf("chunks(max 1000) gave %d parts", len(big))
+	}
+	if n < 1 {
+		t.Fatal("no upserts")
 	}
 }
 
@@ -142,9 +232,8 @@ func TestRecountDeduplicatesAndSkipsSpam(t *testing.T) {
 	if _, err := recount(formCfg{Slug: "fw", Kind: kindPoll}); err != nil {
 		t.Fatal(err)
 	}
-	a := f.named("db.exec")[0].args
-	if n := len(a[1].([]responseRow)); n != 2 {
-		t.Fatalf("%d responses", n)
+	if rows, _ := recounted(t, f); len(rows) != 2 {
+		t.Fatalf("%d responses", len(rows))
 	}
 }
 
@@ -161,7 +250,7 @@ func TestRecountScoresQuizzes(t *testing.T) {
 	if _, err := recount(cfg); err != nil {
 		t.Fatal(err)
 	}
-	rows := f.named("db.exec")[0].args[1].([]responseRow)
+	rows, _ := recounted(t, f)
 	if *rows[0].Score != 1 || *rows[1].Score != 0 || *rows[0].Max != 1 {
 		t.Fatalf("rows %+v", rows)
 	}
@@ -176,7 +265,7 @@ func TestRecountFailureWritesNothing(t *testing.T) {
 		t.Fatalf("status %d body %v", status, body)
 	}
 	for _, c := range f.named("db.exec") {
-		if c.sql == replaceForm {
+		if c.sql == upsertResponses || c.sql == finishRecount {
 			t.Fatal("tallies were replaced after a read failure")
 		}
 	}
@@ -206,7 +295,7 @@ func TestRecountUnknownSlugIs404(t *testing.T) {
 		t.Fatalf("status %d", status)
 	}
 	for _, c := range f.named("db.exec") {
-		if c.sql == replaceForm {
+		if c.sql == upsertResponses || c.sql == finishRecount {
 			t.Fatal("replaced an unconfigured form")
 		}
 	}

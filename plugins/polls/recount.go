@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -11,25 +12,47 @@ const (
 	statusSpam      = "spam"
 )
 
-// replaceForm replaces one form's rows with the recounted ones in a single
-// statement. It upserts the new rows and deletes only the rows that are not in
-// the new set: a data-modifying CTE that deleted and re-inserted the same keys
-// could run its insert first and hit the primary key.
-const replaceForm = `WITH nr AS (
-  SELECT x.id, x.score, x.mx FROM jsonb_to_recordset($2::jsonb) AS x(id text, score int, mx int)),
-nt AS (
-  SELECT t.field, t.option, t.n FROM jsonb_to_recordset($3::jsonb) AS t(field text, option text, n int)),
+// upsertResponses writes one chunk of recounted response rows and marks them
+// with the recount's cutoff time.
+const upsertResponses = `INSERT INTO poll_response (form, submission_id, score, max_score, choices, recounted)
+SELECT $1::text, x.id, x.score, x.mx, x.choices, $2::text::timestamptz
+FROM jsonb_to_recordset($3::jsonb) AS x(id text, score int, mx int, choices jsonb)
+ON CONFLICT (form, submission_id) DO UPDATE
+SET score = excluded.score, max_score = excluded.max_score, choices = excluded.choices, recounted = excluded.recounted`
+
+// finishRecount drops the rows the recount did not confirm and rebuilds the
+// tallies from the rows that remain, in one statement. A row is dropped only
+// when it is older than the cutoff ($2) and was not rewritten by this recount:
+// an answer stored while the recount ran is newer than the cutoff, so it
+// survives and still counts. Tallies come from the stored choices, so they
+// always agree with the response rows. Rows the tally list no longer has are
+// deleted first by key, because a data-modifying CTE that deleted and
+// re-inserted the same keys could hit the primary key.
+const finishRecount = `WITH keep AS (
+  SELECT choices FROM poll_response
+  WHERE form = $1::text
+    AND NOT (created_at < $2::text::timestamptz AND recounted IS DISTINCT FROM $2::text::timestamptz)),
 d1 AS (
-  DELETE FROM poll_response WHERE form = $1::text AND submission_id NOT IN (SELECT id FROM nr)),
+  DELETE FROM poll_response
+  WHERE form = $1::text
+    AND created_at < $2::text::timestamptz AND recounted IS DISTINCT FROM $2::text::timestamptz),
+nt AS (
+  SELECT c->>'field' AS field, c->>'option' AS option, count(*)::int AS n
+  FROM keep, jsonb_array_elements(coalesce(keep.choices, '[]'::jsonb)) AS c
+  GROUP BY 1, 2),
 d2 AS (
-  DELETE FROM poll_tally WHERE form = $1::text AND (field, option) NOT IN (SELECT field, option FROM nt)),
-r AS (
-  INSERT INTO poll_response (form, submission_id, score, max_score)
-  SELECT $1::text, id, score, mx FROM nr
-  ON CONFLICT (form, submission_id) DO UPDATE SET score = excluded.score, max_score = excluded.max_score)
+  DELETE FROM poll_tally WHERE form = $1::text AND (field, option) NOT IN (SELECT field, option FROM nt))
 INSERT INTO poll_tally (form, field, option, n)
 SELECT $1::text, field, option, n FROM nt
 ON CONFLICT (form, field, option) DO UPDATE SET n = excluded.n`
+
+// dbNow reads the database clock; created_at and the cutoff must come from
+// the same clock.
+const dbNow = `SELECT to_jsonb(clock_timestamp())`
+
+// recountChunkBytes keeps one db.exec argument well under the 1 MiB request
+// limit of the host.
+const recountChunkBytes = 512 << 10
 
 type submission struct {
 	ID        string         `json:"id"`
@@ -39,23 +62,19 @@ type submission struct {
 }
 
 type responseRow struct {
-	ID    string `json:"id"`
-	Score *int   `json:"score"`
-	Max   *int   `json:"mx"`
-}
-
-type countRow struct {
-	Field  string `json:"field"`
-	Option string `json:"option"`
-	N      int    `json:"n"`
+	ID      string     `json:"id"`
+	Score   *int       `json:"score"`
+	Max     *int       `json:"mx"`
+	Choices []tallyRow `json:"choices"`
 }
 
 var errRecountIncomplete = errors.New("recount incomplete")
 
 // recount rebuilds one form's rows from the stored submissions and returns the
-// number of responses counted. It reads every page first and writes once, so a
-// failure or a timeout leaves the old rows alone. Spam and submissions after
-// closes_at are skipped.
+// number of responses counted. It reads every page first and writes after, so a
+// failure or a timeout while reading leaves the old rows alone. Spam and
+// submissions after closes_at are skipped. Answers stored while it runs are
+// kept (see finishRecount).
 func recount(cfg formCfg) (int, error) {
 	forms, err := listForms()
 	if err != nil {
@@ -67,9 +86,12 @@ func recount(cfg formCfg) (int, error) {
 	}
 	fields := choiceFields(form.Fields)
 	end, closes := cfg.closes()
+	var cutoff string
+	if err := dbJSON(dbNow, &cutoff); err != nil {
+		return 0, err
+	}
 	start := now()
 	seen := map[string]bool{}
-	tallies := map[[2]string]int{}
 	var responses []responseRow
 	for off := 0; ; off += recountPage {
 		if now().Sub(start) > recountDeadline {
@@ -91,29 +113,44 @@ func recount(cfg formCfg) (int, error) {
 				continue
 			}
 			seen[s.ID] = true
-			row := responseRow{ID: s.ID}
+			row := responseRow{ID: s.ID, Choices: sortedRows(countFor(fields, s.Data))}
 			if cfg.Kind == kindQuiz {
 				got, max := score(cfg, form.Fields, s.Data)
 				row.Score, row.Max = &got, &max
 			}
 			responses = append(responses, row)
-			for k, n := range countFor(fields, s.Data) {
-				tallies[k] += n
-			}
 		}
 		if len(page.Items) == 0 || off+recountPage >= page.Total {
 			break
 		}
 	}
-	rows := make([]countRow, 0, len(tallies))
-	for _, r := range sortedRows(tallies) {
-		rows = append(rows, countRow{r.Field, r.Option, tallies[[2]string{r.Field, r.Option}]})
+	for _, chunk := range chunks(responses, recountChunkBytes) {
+		if now().Sub(start) > recountDeadline {
+			return 0, errRecountIncomplete
+		}
+		if err := dbExec(upsertResponses, cfg.Slug, cutoff, chunk); err != nil {
+			return 0, err
+		}
 	}
-	if responses == nil {
-		responses = []responseRow{}
-	}
-	if err := dbExec(replaceForm, cfg.Slug, responses, rows); err != nil {
+	if err := dbExec(finishRecount, cfg.Slug, cutoff); err != nil {
 		return 0, err
 	}
 	return len(responses), nil
+}
+
+// chunks splits rows so that each part encodes to at most max bytes (a single
+// row larger than that gets a part of its own).
+func chunks(rows []responseRow, max int) [][]responseRow {
+	var out [][]responseRow
+	size := 0
+	for _, r := range rows {
+		b, _ := json.Marshal(r)
+		if len(out) == 0 || size+len(b) > max {
+			out = append(out, nil)
+			size = 0
+		}
+		out[len(out)-1] = append(out[len(out)-1], r)
+		size += len(b)
+	}
+	return out
 }

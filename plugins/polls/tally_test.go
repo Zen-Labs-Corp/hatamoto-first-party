@@ -12,6 +12,9 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
+// testCutoff is the database time the fake reports to a recount.
+const testCutoff = "2026-11-04T09:00:00Z"
+
 type hostCall struct {
 	fn   string
 	sql  string
@@ -51,6 +54,9 @@ func (f *fake) install() {
 		case "forms.list":
 			return json.Unmarshal([]byte(f.forms), out)
 		case "db.query":
+			if c.sql == dbNow {
+				return json.Unmarshal([]byte(`{"rows":[["`+testCutoff+`"]]}`), out)
+			}
 			if c.sql == upsertSubmission && f.answer == nil {
 				return json.Unmarshal([]byte(`{"rows":[[1]]}`), out)
 			}

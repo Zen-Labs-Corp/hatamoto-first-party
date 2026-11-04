@@ -32,7 +32,7 @@ The plugin makes no outbound requests and adds no script to your site.
 
 ## Data kept
 
-- `poll_response`: one row per counted submission (form slug, submission id, and for a quiz the score and its maximum, plus the time it was counted).
+- `poll_response`: one row per counted submission (form slug, submission id, and for a quiz the score and its maximum, the question options it chose, plus the time it was counted).
 - `poll_tally`: one row per form, question and option with the number of times it was chosen.
 
 No names, email addresses, free-text answers or IP addresses are stored. The rows of a form are kept until the form is removed from the setting; the next time the admin page loads or a Recount runs, they are deleted. Uninstalling the plugin keeps the data unless you choose to delete it.
@@ -46,7 +46,7 @@ From the repository root: `scripts/build-plugin.sh plugins/polls`.
 - Spam submissions are never counted. Core does not announce them, and a Recount skips them.
 - Submissions after **Closes at** are not counted; core still accepts them.
 - Only choice questions (select, radio, checkbox) are tallied. Other fields count toward the number of responses only. An answer that is not one of the question's current options is counted under "Other".
-- The live count is not retried: if the plugin was down or timed out for a submission, that answer is missing until you press **Recount**, which rebuilds the form's numbers from the stored non-spam submissions.
+- The live count is not retried: if the plugin was down or timed out for a submission, that answer is missing until you press **Recount**, which rebuilds the form's numbers from the stored non-spam submissions. Answers submitted while a Recount runs are kept and counted.
 - A Recount reads 100 submissions at a time within the 10 second limit of a plugin route; on a very large form it can stop early and then changes nothing.
 - Quiz emails follow the host's mail limit (6 recipients a minute, with a burst of 10). Beyond it the email is dropped, not retried; the score is still stored.
 - The page builder source cannot choose a form per block (see Use).

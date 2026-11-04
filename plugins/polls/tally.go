@@ -159,8 +159,8 @@ func score(cfg formCfg, fields []fieldDef, data map[string]any) (got, max int) {
 // response rows it inserted (0 or 1); the CTEs run even when the tally list is
 // empty.
 const upsertSubmission = `WITH r AS (
-  INSERT INTO poll_response (form, submission_id, score, max_score)
-  VALUES ($1::text, $2::text, $3::int, $4::int)
+  INSERT INTO poll_response (form, submission_id, score, max_score, choices)
+  VALUES ($1::text, $2::text, $3::int, $4::int, $5::jsonb)
   ON CONFLICT DO NOTHING RETURNING 1),
 t AS (
   INSERT INTO poll_tally (form, field, option, n)
