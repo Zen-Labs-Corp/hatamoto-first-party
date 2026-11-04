@@ -117,7 +117,10 @@ function row(l) {
   const meta = metaText(l);
   if (meta) link.append(el("span", { className: "meta", textContent: meta }));
 
-  const pages = el("td", {}, ...(l.pages || []).map(pageBlock));
+  const shown = l.pages || [];
+  const pages = el("td", {}, ...shown.map(pageBlock));
+  const more = (l.page_count || 0) - shown.length;
+  if (more > 0) pages.append(el("div", { className: "meta", textContent: "+" + more + " more pages" }));
 
   const recheck = el("button", { type: "button", textContent: "Recheck" });
   recheck.addEventListener("click", () => change(recheck, l, "recheck"));

@@ -65,6 +65,9 @@ type linkRow struct {
 	LastChecked *string  `json:"last_checked"`
 	FirstBroken *string  `json:"first_broken"`
 	Pages       []pageOn `json:"pages"`
+	// PageCount is the number of pages the link is on; Pages holds at most
+	// maxPagesPerLink of them.
+	PageCount int `json:"page_count"`
 }
 
 // counts is the number of links per status and the number of pages with links.
@@ -218,9 +221,16 @@ func purge(at time.Time, passOK bool) error {
 // listed (its row stays until retention removes it).
 const onAPage = `EXISTS (SELECT 1 FROM link_pages p WHERE p.link_id = links.id)`
 
+// maxPagesPerLink caps the pages one admin row carries: a link in the footer
+// of a large site is on thousands of pages, and the whole list answer must stay
+// far below the 1 MiB the host allows per query. page_count is the full number.
+const maxPagesPerLink = 10
+
 const selectRows = `SELECT l.id, l.url, l.kind, l.status, l.http_status, l.error, l.last_checked, l.first_broken,
 	  coalesce((SELECT jsonb_agg(jsonb_build_object('entity_id', p.entity_id, 'entity_name', p.entity_name, 'entity_path', p.entity_path)
-	    ORDER BY p.entity_name, p.entity_id) FROM link_pages p WHERE p.link_id = l.id), '[]'::jsonb) AS pages
+	    ORDER BY p.entity_name, p.entity_id)
+	    FROM (SELECT * FROM link_pages WHERE link_id = l.id ORDER BY entity_name, entity_id LIMIT 10) p), '[]'::jsonb) AS pages,
+	  (SELECT count(*) FROM link_pages WHERE link_id = l.id) AS page_count
 	FROM links l`
 
 // listLinks returns up to limit links of status with id above cursor, in id order.

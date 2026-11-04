@@ -26,7 +26,8 @@ Each row is one link with these columns:
   `timed out`, `connection failed`, `blocked address`).
 - **Link**: the address, when it was last checked and, for a broken link, since
   when it has been broken.
-- **Found on**: every page that contains the link, with its name and public
+- **Found on**: the pages that contain the link (the first 10 by name, then
+  "+N more pages"), with their name and public
   path. **Copy editor path** copies `/entities/<id>`: paste it after your admin
   address to open the editor. If the browser blocks the clipboard, the text is
   selected and you press Ctrl/Cmd+C.

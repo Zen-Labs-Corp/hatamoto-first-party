@@ -290,3 +290,12 @@ func TestRemoveExcluded(t *testing.T) {
 		t.Fatalf("%s %v", c.sql(), c.params())
 	}
 }
+
+func TestSelectRowsCapsPagesPerLink(t *testing.T) {
+	f := newFakeHost(t, func(_ call, out any) error { return cell(out, `[]`) })
+	_, _ = listLinks(statusOK, 0, 51)
+	q := f.calls[0].sql()
+	if maxPagesPerLink != 10 || !strings.Contains(q, "LIMIT 10) p") || !strings.Contains(q, "AS page_count") {
+		t.Fatalf("pages per link must be capped with a total: %s", q)
+	}
+}

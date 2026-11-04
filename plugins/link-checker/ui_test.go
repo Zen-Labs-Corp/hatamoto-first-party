@@ -72,7 +72,7 @@ func TestUIClientView(t *testing.T) {
 		"hatamoto.route(method", `"/links"`, `hatamoto.host("permissions"`, "Copy editor path", "/entities/", "Recheck", "Un-ignore", "Ignore",
 		"Load more" /* in html */, "Last scan", "Queue:", "No broken links found. Checked ", "First scan still running: checked ", "The database is not ready",
 		"Permissions not granted", "execCommand", "navigator.clipboard.writeText", "Press Ctrl/Cmd+C to copy the selected text.",
-		"textContent", "broken since", "checked ",
+		"textContent", "broken since", "checked ", "more pages", "page_count",
 	} {
 		if !strings.Contains(js, want) && !strings.Contains(html, want) {
 			t.Errorf("ui lacks %q", want)
