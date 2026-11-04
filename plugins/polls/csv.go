@@ -45,8 +45,12 @@ func renderCSV(res formResult) (string, error) {
 		}
 	}
 	if res.Kind == kindQuiz {
+		scored := 0 // as the admin page: only rows that carry a score
 		for _, s := range res.Scores {
-			_ = w.Write([]string{csvText(res.Slug), "score", strconv.Itoa(s.Score), strconv.Itoa(s.Count), strconv.Itoa(percentOf(s.Count, res.Responses))})
+			scored += s.Count
+		}
+		for _, s := range res.Scores {
+			_ = w.Write([]string{csvText(res.Slug), "score", strconv.Itoa(s.Score), strconv.Itoa(s.Count), strconv.Itoa(percentOf(s.Count, scored))})
 		}
 	}
 	w.Flush()

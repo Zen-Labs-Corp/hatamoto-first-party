@@ -71,3 +71,17 @@ func TestCSVUnknownSlugIs404AndNameIsSanitised(t *testing.T) {
 		}
 	}
 }
+
+func TestCSVScorePercentUsesScoredResponses(t *testing.T) {
+	// 10 responses, 5 of them without a score: the share is of the 5.
+	res := formResult{Slug: "q", Kind: kindQuiz, Responses: 10,
+		Scores: []scoreResult{{Score: 0, Count: 3}, {Score: 1, Count: 2}}}
+	out, err := renderCSV(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := csv.NewReader(strings.NewReader(out)).ReadAll()
+	if rows[1][4] != "60" || rows[2][4] != "40" {
+		t.Fatalf("rows %v", rows)
+	}
+}
