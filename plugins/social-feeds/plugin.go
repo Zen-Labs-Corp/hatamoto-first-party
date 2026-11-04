@@ -6,3 +6,16 @@
 // exports_wasip1.go, so everything but the exports builds and tests on the
 // host.
 package main
+
+import (
+	"hatamoto.dev/sdk"
+	"hatamoto.dev/sdk/guest"
+)
+
+func init() {
+	// A source failing is recorded, never returned: the cron run stays green.
+	guest.OnCron("refresh", func(sdk.CronEvent) error {
+		runRefresh(refreshBudget)
+		return nil
+	})
+}
