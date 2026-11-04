@@ -29,3 +29,11 @@ func TestManifestPermissions(t *testing.T) {
 		t.Fatalf("allowed_hosts = %v", m.AllowedHosts)
 	}
 }
+
+// jsonInto decodes raw into out, as a host reply would be.
+func jsonInto(raw string, out any) error {
+	if out == nil {
+		return nil
+	}
+	return json.Unmarshal([]byte(raw), out)
+}
