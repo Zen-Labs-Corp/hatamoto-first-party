@@ -45,11 +45,11 @@ func newFake(t *testing.T) *fakeHost {
 	}
 	callHost = f.call
 	now = func() time.Time { return f.clock }
-	resetCache()
+	invalidateCache()
 	t.Cleanup(func() {
 		callHost = nil
 		now = time.Now
-		resetCache()
+		invalidateCache()
 	})
 	return f
 }

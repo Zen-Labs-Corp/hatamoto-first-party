@@ -16,9 +16,6 @@ const (
 	minForFetch = 4 * time.Second
 )
 
-// invalidate drops the cached view of the data after a change.
-var invalidate = func() {}
-
 type sourceFetcher struct {
 	name string
 	on   func(settings) bool
@@ -36,7 +33,7 @@ var fetchers = []sourceFetcher{
 // source failing never touches the other's data. Errors are stored redacted
 // and returned only for the caller to ignore: nothing here may fail a request.
 func refreshAll(force bool) error {
-	defer invalidate()
+	defer invalidateCache()
 	s, err := loadSettings()
 	if err != nil {
 		logf("error", "reviews: settings unavailable: %v", err)
