@@ -129,23 +129,17 @@ func runEndpoint(s settings, name, site string, at time.Time) (int, error) {
 // still run. Old snapshots are only replaced by a successful fetch.
 func runImport(s settings, deadline time.Time, now func() time.Time) (importResult, error) {
 	res := importResult{Remaining: []string{}}
+	// Retention does not depend on Bing, so it runs first, before any call
+	// that could use the whole budget (a hanging fetch, a rejected key, no key).
+	if err := pruneBefore(now()); err != nil {
+		logf("warn", "retention: %v", err)
+	}
 	if s.APIKey == "" {
 		return res, errNoKey
 	}
 	started := now()
 	budgetEnd = deadline
 	defer func() { budgetEnd = time.Time{} }()
-	// Retention does not depend on Bing: whatever the import did (an endpoint
-	// that always fails, a rejected key), prune when time is left for it.
-	defer func() {
-		if time.Until(deadline) < endpointReserve {
-			return
-		}
-		if err := pruneBefore(now()); err != nil {
-			logf("warn", "retention: %v", err)
-		}
-	}()
-
 	finish := func(runErr error) {
 		if err := recordRun(started, now(), runErr); err != nil {
 			logf("warn", "import log: %v", err)

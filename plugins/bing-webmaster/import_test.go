@@ -83,16 +83,19 @@ func TestRejectedKeyStoresNothingAndRecordsTheRun(t *testing.T) {
 	}
 }
 
-func TestMissingKeyDoesNothing(t *testing.T) {
+func TestMissingKeyOnlyPrunes(t *testing.T) {
 	h := newHost(t)
 	h.settings.APIKey = ""
 	if err := onImport(sdk.CronEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range h.calls {
-		if c.fn != "settings.get" {
+		if c.fn != "settings.get" && !(c.fn == "db.exec" && strings.HasPrefix(c.sql(), "DELETE FROM ")) {
 			t.Fatalf("unexpected host call %s", c.fn)
 		}
+	}
+	if len(writes(h, "DELETE FROM import_runs")) != 1 {
+		t.Fatal("retention must run without a key")
 	}
 }
 
@@ -103,9 +106,9 @@ func TestImportStoresEverythingAndPrunes(t *testing.T) {
 	if err != nil || !res.Done || res.Rows != 5 || res.Error != "" || len(res.Remaining) != 0 {
 		t.Fatalf("%v %+v", err, res)
 	}
-	want := []string{"INSERT INTO traffic_daily", "INSERT INTO query_stats", "INSERT INTO page_stats", "INSERT INTO crawl_issues", "DELETE FROM crawl_issues",
-		"INSERT INTO feeds", "DELETE FROM feeds", "INSERT INTO import_runs",
-		"DELETE FROM traffic_daily", "DELETE FROM query_stats", "DELETE FROM page_stats", "DELETE FROM import_runs", "DELETE FROM sitemap_submissions"}
+	want := []string{"DELETE FROM traffic_daily", "DELETE FROM query_stats", "DELETE FROM page_stats", "DELETE FROM import_runs", "DELETE FROM sitemap_submissions",
+		"INSERT INTO traffic_daily", "INSERT INTO query_stats", "INSERT INTO page_stats", "INSERT INTO crawl_issues", "DELETE FROM crawl_issues",
+		"INSERT INTO feeds", "DELETE FROM feeds", "INSERT INTO import_runs"}
 	got := stmts(t, h)
 	if len(got) != len(want) {
 		t.Fatalf("%d statements: %v", len(got), got)
@@ -254,8 +257,8 @@ func TestBudgetStopSavesTheCursorAndTheNextRunContinues(t *testing.T) {
 	if saved != `["pages","crawl","feeds"]` {
 		t.Fatalf("cursor %s", saved)
 	}
-	if len(writes(h, "DELETE FROM traffic_daily")) != 0 {
-		t.Fatal("no retention until the import is complete")
+	if len(writes(h, "DELETE FROM traffic_daily")) != 1 {
+		t.Fatal("retention runs at the start, even when the import is cut short")
 	}
 	callHost = slow
 	h.calls = nil
@@ -313,5 +316,16 @@ func TestRetentionRunsEvenWhenAnEndpointFailsEveryTime(t *testing.T) {
 		if n := len(writes(h, "DELETE FROM import_runs")); n != i {
 			t.Fatalf("run %d: %d retention deletes", i, n)
 		}
+	}
+}
+
+func TestRetentionRunsBeforeBingEvenWithNoBudgetLeft(t *testing.T) {
+	h := newHost(t)
+	goodBing(h)
+	// Less than endpointReserve left: no endpoint gets a turn, as when a
+	// hanging fetch has used the budget up.
+	runImport(h.settings, time.Now().Add(endpointReserve/4), clockAt(fixedNow))
+	if n := len(writes(h, "DELETE FROM import_runs")); n != 1 {
+		t.Fatalf("%d retention deletes", n)
 	}
 }
