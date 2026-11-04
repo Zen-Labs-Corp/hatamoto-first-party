@@ -161,9 +161,35 @@ func purgeBatch(s settings, urls []string) batchResult {
 	case providerBunny:
 		return call(s, "POST", bunnyBase+"/purge?url="+url.QueryEscape(urls[0]), h, "", urls)
 	case providerFastly:
-		return call(s, "POST", fastlyBase+"/purge/"+strings.TrimPrefix(strings.TrimPrefix(urls[0], "https://"), "http://"), h, "", urls)
+		path, err := fastlyPurgePath(urls[0])
+		if err != nil {
+			return batchResult{URLs: urls, Err: err.Error()}
+		}
+		return call(s, "POST", fastlyBase+"/purge/"+path, h, "", urls)
 	}
 	return batchResult{URLs: urls, Err: "unknown provider"}
+}
+
+// fastlyPurgePath turns an absolute URL into the host+path that follows
+// /purge/. The path is escaped, dot segments are encoded and the query is
+// escaped into the path, so nothing in the URL can change the API request. The
+// fragment is dropped.
+func fastlyPurgePath(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "", fmt.Errorf("not a purgeable URL: %q", truncate(raw, 80))
+	}
+	segs := strings.Split(u.EscapedPath(), "/")
+	for i, seg := range segs {
+		if seg == "." || seg == ".." {
+			segs[i] = strings.ReplaceAll(seg, ".", "%2e")
+		}
+	}
+	p := u.Host + strings.Join(segs, "/")
+	if u.RawQuery != "" {
+		p += "%3F" + url.PathEscape(u.RawQuery)
+	}
+	return p, nil
 }
 
 // purgeAll drops the whole CDN cache of the configured zone or service.
