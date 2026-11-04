@@ -26,6 +26,9 @@ type entity struct {
 	Path     string `json:"path"`
 	URL      string `json:"url"`
 	ParentID string `json:"parent_id"`
+	// PublishedAt is kept by the host when a page is unpublished, and is in the
+	// future while a page is scheduled.
+	PublishedAt *time.Time `json:"published_at"`
 }
 
 // handle runs one entity action. It never returns an error: a hook must not
@@ -61,23 +64,36 @@ func getEntity(id string) (e entity, found bool, err error) {
 
 func kvKey(id string) string { return "url:" + id }
 
-// kvURL returns the last public URL stored for an entity, "" when none.
-func kvURL(id string) string {
+// tombstoneTTL bounds how long the "purged after unpublish" marker is kept, so
+// markers do not pile up in kv.
+const tombstoneTTL = 30 * 24 * 3600
+
+// kvURL returns the last public URL stored for an entity, "" when none. known
+// is true when the key exists, also for the empty tombstone value.
+func kvURL(id string) (url string, known bool) {
 	var got struct {
 		Found bool            `json:"found"`
 		Value json.RawMessage `json:"value"`
 	}
 	if err := callHost(sdk.FnKVGet, map[string]string{"key": kvKey(id)}, &got); err != nil || !got.Found {
-		return ""
+		return "", false
 	}
 	var v string
 	_ = json.Unmarshal(got.Value, &v)
-	return v
+	return v, true
 }
 
 func kvStore(id, rawURL string) {
 	if err := callHost(sdk.FnKVSet, map[string]any{"key": kvKey(id), "value": rawURL}, nil); err != nil {
 		logf("warn", "cdn-purge: could not remember the URL of %s: %v", id, err)
+	}
+}
+
+// kvTombstone marks an entity as purged after it was unpublished, so later
+// draft saves do not purge again. The next publish overwrites it.
+func kvTombstone(id string) {
+	if err := callHost(sdk.FnKVSet, map[string]any{"key": kvKey(id), "value": "", "ttl_seconds": tombstoneTTL}, nil); err != nil {
+		logf("warn", "cdn-purge: could not mark %s as purged: %v", id, err)
 	}
 }
 
@@ -93,7 +109,7 @@ func onPublished(s settings, ev sdk.EntityEvent) {
 		logf("warn", "cdn-purge: entity %s not readable, nothing purged", ev.ID)
 		return
 	}
-	old := kvURL(ev.ID)
+	old, _ := kvURL(ev.ID)
 	page, origin := pageURL(e, s, old)
 	if page == "" {
 		purgeNoPage("published", s, origin)
@@ -109,7 +125,7 @@ func onUpdated(s settings, ev sdk.EntityEvent) {
 		logf("warn", "cdn-purge: entity %s not readable, nothing purged", ev.ID)
 		return
 	}
-	old := kvURL(ev.ID)
+	old, known := kvURL(ev.ID)
 	if found && e.Status == statusPublished {
 		page, origin := pageURL(e, s, old)
 		if page == "" {
@@ -120,10 +136,13 @@ func onUpdated(s settings, ev sdk.EntityEvent) {
 		kvStore(ev.ID, page)
 		return
 	}
-	// Unpublished (or gone): purge what was public and forget it. Without a
-	// remembered URL (published before the plugin was installed) the entity's
-	// own URL is purged, as it is still readable.
-	if !found && old == "" {
+	// Unpublished (or gone): purge what was public, then leave a tombstone so
+	// the next draft save does not purge again. Without any kv entry the page
+	// was either never public (a draft, or scheduled: nothing to purge) or
+	// published before the plugin was installed (published_at is in the past):
+	// its own URL is purged once.
+	publishedBefore := found && e.PublishedAt != nil && !e.PublishedAt.After(time.Now())
+	if old == "" && !(!known && publishedBefore) {
 		return
 	}
 	origin := pickOrigin(s, old)
@@ -134,13 +153,11 @@ func onUpdated(s settings, ev sdk.EntityEvent) {
 		}
 	}
 	purgeOrSkip("updated", s, collect(origin, s, append(urls, old)...), origin != "")
-	if old != "" {
-		kvForget(ev.ID)
-	}
+	kvTombstone(ev.ID)
 }
 
 func onDeleted(s settings, ev sdk.EntityEvent) {
-	old := kvURL(ev.ID)
+	old, _ := kvURL(ev.ID)
 	origin := pickOrigin(s, old)
 	purgeOrSkip("deleted", s, collect(origin, s, old), origin != "")
 	if old != "" {

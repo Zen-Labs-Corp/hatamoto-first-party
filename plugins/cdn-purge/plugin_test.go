@@ -375,24 +375,72 @@ func TestUpdatedMovedAndUnpublished(t *testing.T) {
 	if got := filesOf(t, f.fetches()[0]); !slices.Equal(got, []string{"https://example.com/live"}) {
 		t.Fatalf("unpublished: files = %v", got)
 	}
-	if _, ok := f.kv["url:e1"]; ok {
-		t.Fatal("kv key kept after unpublish")
-	}
-
-	f = newFake(t, nil)
-	f.setEntity("e2", "draft", "/d", "https://example.com/d")
-	f.fire(sdk.EntityUpdated, "e2")
-	if got := filesOf(t, f.fetches()[0]); len(got) != 5 || got[0] != "https://example.com/d" {
-		t.Fatalf("unpublished without kv: files = %v", got)
-	}
-	if len(f.rows) != 1 {
-		t.Fatalf("rows = %+v", f.rows)
+	if v, ok := f.kv["url:e1"]; !ok || v != "" {
+		t.Fatalf("kv after unpublish = %v, want an empty tombstone", f.kv)
 	}
 
 	f = newFake(t, nil)
 	f.fire(sdk.EntityUpdated, "gone")
 	if len(f.fetches()) != 0 || len(f.rows) != 0 {
 		t.Fatal("an unknown entity without kv purged something")
+	}
+}
+
+func (f *fake) setEntityAt(id, status, path, rawURL string, publishedAt time.Time) {
+	b, _ := json.Marshal(entity{ID: id, Status: status, Path: path, URL: rawURL, PublishedAt: &publishedAt})
+	f.entities[id] = string(b)
+}
+
+func TestDraftSavesPurgeOnlyOnceAfterPublicUse(t *testing.T) {
+	// Never published: every autosave is silent.
+	f := newFake(t, nil)
+	f.setEntity("e1", "draft", "/d", "https://example.com/d")
+	f.fire(sdk.EntityUpdated, "e1")
+	f.fire(sdk.EntityUpdated, "e1")
+	if len(f.fetches()) != 0 || len(f.rows) != 0 || len(f.kv) != 0 {
+		t.Fatalf("never-published draft: fetches %d, rows %d, kv %v", len(f.fetches()), len(f.rows), f.kv)
+	}
+
+	// Scheduled: published_at is in the future.
+	f = newFake(t, nil)
+	f.setEntityAt("e1", "scheduled", "/d", "https://example.com/d", time.Now().Add(time.Hour))
+	f.fire(sdk.EntityUpdated, "e1")
+	if len(f.fetches()) != 0 || len(f.rows) != 0 {
+		t.Fatalf("scheduled: fetches %d, rows %d", len(f.fetches()), len(f.rows))
+	}
+
+	// Published before install, then unpublished: one purge, then silence.
+	f = newFake(t, nil)
+	f.setEntityAt("e1", "draft", "/d", "https://example.com/d", time.Now().Add(-time.Hour))
+	f.fire(sdk.EntityUpdated, "e1")
+	if got := filesOf(t, f.fetches()[0]); len(got) != 5 || got[0] != "https://example.com/d" || len(f.rows) != 1 {
+		t.Fatalf("unpublish without kv: files %v, rows %+v", got, f.rows)
+	}
+	if sets := f.named("kv.set"); len(sets) != 1 || sets[0].args.(map[string]any)["ttl_seconds"] != tombstoneTTL {
+		t.Fatalf("tombstone write = %v", sets)
+	}
+	f.fire(sdk.EntityUpdated, "e1")
+	f.fire(sdk.EntityUpdated, "e1")
+	if len(f.fetches()) != 1 {
+		t.Fatalf("draft edits after the purge made %d fetches", len(f.fetches())-1)
+	}
+
+	// Publish, unpublish, edit twice: one purge for the unpublish.
+	f = newFake(t, map[string]any{"also_purge": []string{}})
+	f.setEntityAt("e1", "published", "/d", "https://example.com/d", time.Now().Add(-time.Hour))
+	f.fire(sdk.EntityPublished, "e1")
+	f.setEntityAt("e1", "draft", "/d", "https://example.com/d", time.Now().Add(-time.Hour))
+	f.fire(sdk.EntityUpdated, "e1")
+	f.fire(sdk.EntityUpdated, "e1")
+	f.fire(sdk.EntityUpdated, "e1")
+	if len(f.fetches()) != 2 {
+		t.Fatalf("fetches = %d, want publish + one unpublish", len(f.fetches()))
+	}
+	// Publishing again replaces the tombstone with the URL.
+	f.setEntityAt("e1", "published", "/d", "https://example.com/d", time.Now().Add(-time.Hour))
+	f.fire(sdk.EntityPublished, "e1")
+	if f.kv["url:e1"] != "https://example.com/d" {
+		t.Fatalf("kv = %v", f.kv)
 	}
 }
 

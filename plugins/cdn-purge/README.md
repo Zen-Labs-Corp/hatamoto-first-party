@@ -20,7 +20,7 @@ Purges changed pages from Cloudflare, Bunny or Fastly when you publish, update o
 What each change purges:
 
 - **Published**: the page URL and the extra paths.
-- **Updated**: while published, the current URL (and the previous URL when the page moved) and the extra paths. When a page stops being published, its last public URL and the extra paths. When no public URL was remembered (the page was published before the plugin was installed), the page's current URL and the extra paths are purged.
+- **Updated**: while published, the current URL (and the previous URL when the page moved) and the extra paths. When a page stops being published, its last public URL and the extra paths. When no public URL was remembered but the page was published in the past (before the plugin was installed), the page's current URL and the extra paths are purged once. Saving a draft that was never published, or is scheduled, purges nothing, and neither do further saves after an unpublish purge.
 - **Deleted**: the last public URL the plugin remembered, and the extra paths. A page published before the plugin was installed has no remembered URL, so only the extra paths are purged.
 
 ## Permissions
@@ -34,7 +34,7 @@ What each change purges:
 
 ## Data kept
 
-- `kv` key `url:<entity id>`: the last public absolute URL. Deleted when the entity is deleted or unpublished, after the purge.
+- `kv` key `url:<entity id>`: the last public absolute URL. Deleted when the entity is deleted. After an unpublish purge it is replaced by an empty marker that expires after 30 days, so later draft saves do not purge again; the next publish stores the URL again.
 - Table `purge_log`: time, trigger, provider, URLs, HTTP status and a short error text of each purge request. Rows older than 14 days are deleted on each insert.
 - The API token lives in the plugin settings only. It is sent as a request header, and never written to the log, the database, `kv` or a route answer (the admin page only learns whether a token is set).
 
