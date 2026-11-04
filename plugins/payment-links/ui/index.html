@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Payment links</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+
+    <section class="card setup">
+      <p>Stripe key: <strong id="key-status">checking</strong></p>
+      <p class="muted">Webhook address for Stripe (click to select, then copy):</p>
+      <input id="webhook" class="copy" type="text" readonly aria-label="Webhook path">
+      <p id="webhook-note" class="muted"></p>
+    </section>
+
+    <section>
+      <h2>Links</h2>
+      <p class="muted">Add links in the plugin settings. Paste the button code into a theme template.</p>
+      <div id="links"></div>
+    </section>
+
+    <section>
+      <h2>Totals per month</h2>
+      <div id="totals"></div>
+    </section>
+
+    <section>
+      <h2>Payments</h2>
+      <p class="muted">CSV export: open this address in a new tab while signed in to the admin. A log too big for one file is refused; add months to the address, for example <code>?from=2026-01&amp;to=2026-06</code> (YYYY-MM).</p>
+      <input id="csv" class="copy" type="text" readonly aria-label="CSV address">
+      <div id="payments"></div>
+      <p class="pager">
+        <button id="newer" type="button" disabled>Newer</button>
+        <button id="older" type="button" disabled>Older</button>
+      </p>
+    </section>
+
+    <footer class="muted">Stored: Stripe event and session ids, amount, currency, customer email, link label, time. The Stripe key is never shown.</footer>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

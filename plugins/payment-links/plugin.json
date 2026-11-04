@@ -1,0 +1,77 @@
+{
+  "name": "payment-links",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Take payments and donations through Stripe Payment Links: payment buttons for your pages, an owner email per payment and a payments log.",
+  "permissions": ["settings", "http.fetch", "db", "mail.send", "log"],
+  "allowed_hosts": ["api.stripe.com"],
+  "routes": [
+    { "method": "POST", "path": "/webhook", "public": true },
+    { "method": "GET", "path": "/payments" },
+    { "method": "GET", "path": "/payments.csv" },
+    { "method": "GET", "path": "/links" }
+  ],
+  "cron": [{ "name": "prune", "every": "6h" }],
+  "ui": { "title": "Payments with Stripe Payment Links" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "on_cron_prune": 10000 }
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "secret_key": {
+        "type": "string",
+        "title": "Stripe restricted key",
+        "description": "A restricted key with read access to Events and Checkout Sessions. Add Payment Links read so payments show your link label instead of the link id.",
+        "writeOnly": true
+      },
+      "links": {
+        "type": "array",
+        "title": "Links",
+        "description": "Your Stripe Payment Links. The label names the link in the payments log and the owner email.",
+        "maxItems": 50,
+        "items": {
+          "type": "object",
+          "required": ["label", "url"],
+          "properties": {
+            "label": { "type": "string", "title": "Label", "maxLength": 80 },
+            "url": {
+              "type": "string",
+              "title": "Payment Link URL",
+              "pattern": "^https://",
+              "maxLength": 200
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "enum": ["payment", "donation"],
+              "default": "payment"
+            }
+          }
+        }
+      },
+      "notify": {
+        "type": "boolean",
+        "title": "Notify by email",
+        "description": "Send the owner an email for each payment.",
+        "default": true
+      },
+      "notify_email": {
+        "type": "string",
+        "title": "Notify email",
+        "description": "Where the payment emails go.",
+        "format": "email",
+        "maxLength": 200
+      },
+      "retention_months": {
+        "type": "integer",
+        "title": "Keep payments for (months)",
+        "default": 24,
+        "minimum": 1,
+        "maximum": 120
+      }
+    }
+  }
+}
