@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CDN purge</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+
+    <section>
+      <p class="muted">Purges changed pages from your CDN when content is published, updated or deleted.</p>
+      <dl id="summary"></dl>
+      <p id="setup" class="notice" hidden>Choose a provider and add an API token in Settings. Open the Settings tab of this plugin to do it.</p>
+      <div class="row">
+        <button id="test">Test connection</button>
+        <span id="test-result" class="muted" role="status"></span>
+      </div>
+      <div class="row">
+        <button id="purge-all">Purge everything</button>
+      </div>
+      <div id="confirm" class="notice" hidden>
+        <p id="confirm-text"></p>
+        <div class="row">
+          <button id="cancel">Cancel</button>
+          <button id="confirm-go" class="danger">Purge everything</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Recent purges <span class="muted">(last 14 days)</span></h2>
+      <table id="log">
+        <thead><tr><th>Time</th><th>Trigger</th><th>URLs</th><th>Result</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="muted" hidden>No purges yet.</p>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
