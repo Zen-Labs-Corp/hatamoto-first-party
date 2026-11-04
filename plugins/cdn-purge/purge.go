@@ -10,9 +10,10 @@ import (
 	"hatamoto.dev/sdk"
 )
 
-// hookBudget is how much of the 10 s hook time the plugin spends on provider
-// calls; the rest is left for the host round trips around them.
-const hookBudget = 8 * time.Second
+// hookBudget is how much of the host's 10 s action timeout the plugin spends on
+// provider calls. That timeout also covers waiting for a free instance, so the
+// rest is left for that wait and the host round trips around the calls.
+const hookBudget = 6 * time.Second
 
 const statusPublished = "published"
 

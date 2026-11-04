@@ -47,7 +47,7 @@ From the repository root: `scripts/build-plugin.sh plugins/cdn-purge`.
 - One attempt per request: no retries and no queue. Each failed request is shown in the purge log, and an event writes one server log line however many requests failed. When Bunny or Fastly answers 401 or 403, the remaining URLs of the event are not tried.
 - No coalescing: publishing a page can fire both a published and an updated event, and each purges. URLs within one event are de-duplicated.
 - Cloudflare gets one request per 30 URLs. Bunny and Fastly purge one URL per request, so an event costs up to about 22 requests (the page, its old URL and 20 extra paths), and each request is one row in the purge log.
-- The plugin spends at most 8 seconds of the 10 second hook time on provider calls, with 3 seconds per call. When time runs out, the remaining URLs are logged as one "skipped" row and not purged; use **Purge everything** or save again.
+- The plugin spends at most 6 seconds of the host's 10 second action timeout on provider calls, with 3 seconds per call; the timeout also covers waiting for a free plugin instance. A bulk publish of many pages at once can therefore leave later events waiting for an instance and purge nothing for them. When time runs out, the remaining URLs are logged as one "skipped" row and not purged; use **Purge everything** or save again.
 - Without an origin (the entity's URL is a bare path and Site URL is empty) nothing is purged and "set Site URL" is logged.
 - Imports and other bulk writes fire no entity events, so they are not purged; use **Purge everything** afterwards.
 - Hatamoto's own page cache is not touched; core handles that.

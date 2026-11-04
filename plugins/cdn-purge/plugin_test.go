@@ -278,6 +278,12 @@ func TestOtherErrorsLogOneLinePerEvent(t *testing.T) {
 	}
 }
 
+func TestHookBudgetLeavesRoomForInstanceWait(t *testing.T) {
+	if hookBudget > 6*time.Second {
+		t.Fatalf("hookBudget = %v, want at most 6s of the 10s action timeout", hookBudget)
+	}
+}
+
 func TestBudgetSkipsTheRest(t *testing.T) {
 	f := newFake(t, map[string]any{"provider": "bunny"})
 	s, _ := loadSettings()
