@@ -147,3 +147,14 @@ func TestCapString(t *testing.T) {
 		t.Error("invalid UTF-8 kept")
 	}
 }
+
+func TestBuilderKeepsSharedLocale(t *testing.T) {
+	(&fakeHost{entities: []string{
+		ev("1", "a", "A", "published", "und", "2026-07-01"),
+		ev("2", "b", "B", "published", "de", "2026-07-02"),
+	}}).install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Language: "en", Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if g := strings.Join(titles(got.Results[0]), "|"); g != "A" {
+		t.Errorf("language filter = %s", g)
+	}
+}

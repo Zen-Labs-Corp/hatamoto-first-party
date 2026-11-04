@@ -56,15 +56,15 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	return r, nil
 }
 
-// filterLanguage keeps events of the given language and those without one;
-// no language keeps all.
+// filterLanguage keeps events of the given language and those shared across
+// languages (no locale, or core's "und"); no language keeps all.
 func filterLanguage(evs []Event, lang string) []Event {
 	if lang == "" {
 		return evs
 	}
 	var out []Event
 	for _, e := range evs {
-		if e.Locale == "" || e.Locale == lang {
+		if e.Locale == "" || e.Locale == "und" || e.Locale == lang {
 			out = append(out, e)
 		}
 	}
