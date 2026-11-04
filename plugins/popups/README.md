@@ -44,6 +44,7 @@ From the repository root: `scripts/build-plugin.sh plugins/popups`.
 - The exit trigger does not show on touch-only devices.
 - At most one bar per position and one popup per page view; the first match in the settings order wins.
 - No animation.
+- A scheduled campaign is in the page source up to about 31 days before its start, so do not put secret codes in one until it starts.
 - The theme's base layout must include the plugin slots (the default theme does) so the core links the script and stylesheet.
 
 ## License

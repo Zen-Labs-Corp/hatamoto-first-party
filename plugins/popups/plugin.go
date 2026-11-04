@@ -119,10 +119,12 @@ func normalize(cp campaign) (campaign, bool) {
 	return cp, true
 }
 
-// maxHeadCache is the longest a page can stay cached; a campaign starting
-// later than that cannot be due while any cached copy of this head lives, so
-// it stays out of the page source.
-const maxHeadCache = 24 * time.Hour
+// maxHeadCache is the longest a page can stay cached (the core's maximum page
+// cache time of 30 days) plus one day of margin. A campaign starting later
+// cannot be due while any cached copy of this head lives, so it stays out of
+// the page source; an earlier one is already in every cached page when it
+// starts.
+const maxHeadCache = 31 * 24 * time.Hour
 
 // activeOn reports whether the campaign can still apply to path at t: not
 // ended, starting within maxHeadCache, and path-matching. The exact start is
