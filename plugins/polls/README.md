@@ -1,6 +1,6 @@
 # polls
 
-Turns Hatamoto forms into polls, surveys and scored quizzes, with live results, per-question breakdowns and CSV export. It does what plugins such as Crowdsignal/Polldaddy, UserFeedback and Quiz and Survey Master do on WordPress, using the forms you already have.
+Turns your forms into polls, surveys and scored quizzes, with live results, per-question breakdowns and CSV export. It does what plugins such as Crowdsignal/Polldaddy, UserFeedback and Quiz and Survey Master do on WordPress, using the forms you already have.
 
 ## Use
 
