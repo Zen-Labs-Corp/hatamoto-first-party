@@ -11,6 +11,7 @@ import (
 const (
 	recountPage     = 200 // the most forms.submissions returns
 	recountDeadline = 8 * time.Second
+	recountReadTime = 6 * time.Second // reading stops here, to leave time to write
 	statusSpam      = "spam"
 )
 
@@ -140,7 +141,7 @@ func recount(cfg formCfg) (int, error) {
 	seen := map[string]bool{}
 	var responses []responseRow
 	for off := 0; ; off += recountPage {
-		if now().Sub(start) > recountDeadline {
+		if now().Sub(start) > recountReadTime {
 			return 0, errRecountIncomplete
 		}
 		var page struct {

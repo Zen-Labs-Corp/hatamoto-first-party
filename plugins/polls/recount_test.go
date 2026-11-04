@@ -354,7 +354,7 @@ func TestRecountTimeoutTellsTheAdmin(t *testing.T) {
 	f.install()
 	status, body := postRecount(t, "fw")
 	msg, _ := body["error"].(string)
-	if status != http.StatusGatewayTimeout || !strings.Contains(msg, "ran out of time") || !strings.Contains(msg, "tallies were not changed") {
+	if status != http.StatusGatewayTimeout || !strings.Contains(msg, "ran out of time") || !strings.Contains(msg, "run Recount again") {
 		t.Fatalf("status %d body %v", status, body)
 	}
 }

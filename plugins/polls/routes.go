@@ -70,7 +70,7 @@ func handleRecount(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return fail(http.StatusConflict, "A Recount of this form is already running. Wait for it to finish, then try again.")
 		}
 		if errors.Is(err, errRecountIncomplete) {
-			return fail(http.StatusGatewayTimeout, "Recount ran out of time before it finished. The form has too many submissions to recount within the time limit of a plugin route (about 8 seconds); the tallies were not changed.")
+			return fail(http.StatusGatewayTimeout, "Recount ran out of time before it finished. The form has too many submissions to recount within the time limit of a plugin route (about 8 seconds); the numbers may be partly updated, so run Recount again.")
 		}
 		return fail(http.StatusInternalServerError, "recount failed")
 	}
