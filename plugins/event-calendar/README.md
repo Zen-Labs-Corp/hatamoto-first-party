@@ -78,6 +78,7 @@ From the repository root: `scripts/build-plugin.sh plugins/event-calendar`.
 
 - At most 1000 events are read per request (5 pages of 200); beyond that the rest is ignored.
 - At most 48 items per builder source.
+- Core gives the page builder 500 ms in total for external data. The plugin stops reading further pages after 300 ms and lists what it has read, so on a very large site a list can be incomplete.
 - No recurring events, no maps, no ticketing or payments: only a ticket link.
 - The calendar feeds are cached for 15 minutes.
 - The feed holds upcoming events only; past events are available one by one.

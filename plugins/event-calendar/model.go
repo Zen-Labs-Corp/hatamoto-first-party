@@ -17,6 +17,9 @@ const (
 // now is the clock; tests replace it.
 var now = time.Now
 
+// clock is the elapsed-time source of the call budget; tests replace it.
+var clock = time.Now
+
 // Event is one published event entity with a usable start time.
 type Event struct {
 	ID, Slug, Name, URL, Locale string
@@ -172,8 +175,14 @@ func split(evs []Event, at time.Time, loc *time.Location) (upcoming, past []Even
 // maxListPages pages). An error on the first page is returned; a later page
 // failing keeps what was read.
 func loadEvents(s settings) ([]Event, error) {
+	return loadEventsUntil(s, time.Time{})
+}
+
+// loadEventsUntil is loadEvents that starts no further page once until has
+// passed (zero: no limit) and keeps what was read.
+func loadEventsUntil(s settings, until time.Time) ([]Event, error) {
 	var evs []Event
-	err := eachEvent(s, func(e Event) bool {
+	err := eachEvent(s, until, func(e Event) bool {
 		evs = append(evs, e)
 		return false
 	})
@@ -181,10 +190,14 @@ func loadEvents(s settings) ([]Event, error) {
 }
 
 // eachEvent pages the published events and passes each one to visit until it
-// returns true, so a caller that has what it needs reads no further page.
-func eachEvent(s settings, visit func(Event) bool) error {
+// returns true, so a caller that has what it needs reads no further page. No
+// page after the first starts once until (if set) has passed.
+func eachEvent(s settings, until time.Time, visit func(Event) bool) error {
 	cursor := ""
 	for page := 0; page < maxListPages; page++ {
+		if page > 0 && !until.IsZero() && !clock().Before(until) {
+			return nil
+		}
 		args := map[string]any{
 			"schema_slug": s.SchemaSlug,
 			"status":      "published",

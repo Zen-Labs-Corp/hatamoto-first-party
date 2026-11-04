@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"hatamoto.dev/sdk"
@@ -156,5 +157,26 @@ func TestBuilderKeepsSharedLocale(t *testing.T) {
 	got := runBuilder(t, sdk.BuilderDataRequest{Language: "en", Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
 	if g := strings.Join(titles(got.Results[0]), "|"); g != "A" {
 		t.Errorf("language filter = %s", g)
+	}
+}
+
+func TestBuilderStopsPagingAtDeadline(t *testing.T) {
+	(&fakeHost{}).install(t)
+	start := time.Now()
+	clock = func() time.Time { return start }
+	t.Cleanup(func() { clock = time.Now })
+	inner := callHost
+	pages := 0
+	callHost = func(fn string, a, o any) error {
+		if fn != "entities.list" {
+			return inner(fn, a, o)
+		}
+		pages++
+		clock = func() time.Time { return start.Add(builderBudget) }
+		return json.Unmarshal([]byte(`{"items":[`+evFuture+`],"next_cursor":"more"}`), o)
+	}
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if pages != 1 || len(got.Results[0].Items) != 1 {
+		t.Fatalf("pages = %d, items = %d", pages, len(got.Results[0].Items))
 	}
 }

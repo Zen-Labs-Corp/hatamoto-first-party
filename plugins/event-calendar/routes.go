@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
@@ -108,7 +109,7 @@ func findEvent(s settings, slug string) (e Event, found, hostFailed bool) {
 	case err != nil && !(errors.As(err, &he) && he.Code == sdk.ErrNotFound):
 		return Event{}, false, true
 	}
-	lerr := eachEvent(s, func(c Event) bool {
+	lerr := eachEvent(s, time.Time{}, func(c Event) bool {
 		if c.Slug == slug {
 			e, found = c, true
 		}

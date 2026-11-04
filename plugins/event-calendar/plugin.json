@@ -18,9 +18,9 @@
     "max_instances": 4,
     "max_output_bytes": 2097152,
     "hook_timeouts_ms": {
-      "builder.data": 2000,
-      "jsonld.enrich": 2000,
-      "func_when": 1000
+      "builder.data": 450,
+      "jsonld.enrich": 500,
+      "func_when": 250
     }
   },
   "settings_schema": {

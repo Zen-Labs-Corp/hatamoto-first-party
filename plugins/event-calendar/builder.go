@@ -13,6 +13,11 @@ const (
 	sourceUpcoming = "ext.event-calendar.upcoming"
 	sourcePast     = "ext.event-calendar.past"
 	icsPathPrefix  = "/p/event-calendar/event/"
+
+	// builderBudget is how long a builder call may keep paging. Core cancels
+	// the whole external-data round trip at 500 ms, so the plugin returns what
+	// it has well before that.
+	builderBudget = 300 * time.Millisecond
 )
 
 func init() { guest.OnFilter(sdk.BuilderData, answerBuilder) }
@@ -32,7 +37,7 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 			loaded = true
 			s = loadSettings()
 			at = now()
-			if evs, err := loadEvents(s); err == nil {
+			if evs, err := loadEventsUntil(s, clock().Add(builderBudget)); err == nil {
 				upcoming, past = split(filterLanguage(evs, r.Language), at, s.location())
 			}
 		}

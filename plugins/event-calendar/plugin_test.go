@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 	"time"
 )
@@ -71,5 +72,24 @@ func TestLocationIsCached(t *testing.T) {
 	}
 	if bad := (settings{TimeZone: "No/Such_Zone"}); bad.location() != time.UTC {
 		t.Error("unknown zone is not UTC")
+	}
+}
+
+func TestManifestTimeoutsFitCoreBudget(t *testing.T) {
+	raw, err := os.ReadFile("plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Limits struct {
+			HookTimeouts map[string]int `json:"hook_timeouts_ms"`
+		} `json:"limits"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	// core cancels the whole builder data round trip at 500 ms
+	if v := m.Limits.HookTimeouts["builder.data"]; v <= 0 || v > 500 {
+		t.Errorf("builder.data timeout = %d ms", v)
 	}
 }
