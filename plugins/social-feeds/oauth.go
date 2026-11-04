@@ -98,30 +98,31 @@ func oauthCallback(s settings, r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	}
 	if e := first(r.Query["error"]); e != "" {
 		return page(http.StatusBadRequest, "Instagram did not connect",
-			"<p>Instagram answered: "+html.EscapeString(shorten(e, 100))+".</p>"+backLink(), nil), nil
+			"<p>Instagram answered: "+html.EscapeString(shorten(e, 100))+".</p>"+backText, nil), nil
 	}
 	code := strings.TrimSuffix(first(r.Query["code"]), "#_")
 	if code == "" || len(code) > 1024 || len(s.missingForConnect()) > 0 {
-		return page(http.StatusBadRequest, "Link not valid", "<p>This address is not an Instagram answer.</p>"+backLink(), nil), nil
+		return page(http.StatusBadRequest, "Link not valid", "<p>This address is not an Instagram answer.</p>"+backText, nil), nil
 	}
 	tok, err := exchangeCode(s, code)
 	if err != nil {
 		msg := redact(err.Error(), s.AppSecret)
 		logf("warn", "code exchange: %s", msg)
-		return page(http.StatusBadGateway, "Instagram refused the code", "<p>"+html.EscapeString(msg)+"</p>"+backLink(), nil), nil
+		return page(http.StatusBadGateway, "Instagram refused the code", "<p>"+html.EscapeString(msg)+"</p>"+backText, nil), nil
 	}
 	if err := saveToken(tok); err != nil {
 		return fail(err)
 	}
 	logf("info", "connected to Instagram")
-	return sdk.HTTPResponse{Status: http.StatusFound, Headers: map[string]string{"Location": uiPath, "Cache-Control": "no-store"}}, nil
+	// The admin address is private and unknown to the plugin, so no redirect.
+	return page(http.StatusOK, "Instagram connected", "<p>Connected. You can close this tab and go back to the plugin page.</p>", nil), nil
 }
 
 func expired() (sdk.HTTPResponse, error) {
-	return page(http.StatusBadRequest, "Link expired", "<p>Start the connection again from the plugin page.</p>"+backLink(), nil), nil
+	return page(http.StatusBadRequest, "Link expired", "<p>Start the connection again from the plugin page.</p>"+backText, nil), nil
 }
 
-func backLink() string { return `<p><a href="` + uiPath + `">Back to the plugin</a></p>` }
+const backText = "<p>Go back to the plugin page to try again.</p>"
 
 // longLived is the answer of the exchange and refresh endpoints.
 type longLived struct {

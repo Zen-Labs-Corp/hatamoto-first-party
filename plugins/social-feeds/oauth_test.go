@@ -112,7 +112,7 @@ func TestCallbackRejectsBadStateWithoutFetching(t *testing.T) {
 	}
 
 	// A good state works once; reuse is refused without another fetch.
-	if res := callback(t, state, "CODE"); res.Status != 302 {
+	if res := callback(t, state, "CODE"); res.Status != 200 {
 		t.Fatalf("first use: %d %s", res.Status, res.Body)
 	}
 	calls := f.fetchCount()
@@ -124,13 +124,13 @@ func TestCallbackRejectsBadStateWithoutFetching(t *testing.T) {
 	}
 }
 
-func TestCallbackStoresLongLivedTokenAndRedirects(t *testing.T) {
+func TestCallbackStoresLongLivedTokenAndShowsConfirmation(t *testing.T) {
 	f := useFake(t)
 	f.settings = igSettings
 	exchangeRoutes(f, `{"access_token":"SHORT","user_id":1789}`)
 	state := startFlow(t, f)
 	res := callback(t, state, "CODE#_")
-	if res.Status != 302 || res.Headers["Location"] != "/admin/plugins/social-feeds" || !strings.HasPrefix(res.Headers["Location"], "/") || strings.HasPrefix(res.Headers["Location"], "//") {
+	if res.Status != 200 || res.Headers["Location"] != "" || !strings.Contains(res.Body, "close this tab") || strings.Contains(res.Body, "/admin") {
 		t.Fatalf("answer = %+v", res)
 	}
 	if res.Headers["Cache-Control"] != "no-store" {
@@ -165,7 +165,7 @@ func TestCallbackAcceptsWrappedShortTokenAnswer(t *testing.T) {
 	f.settings = igSettings
 	exchangeRoutes(f, `{"data":[{"access_token":"SHORT","user_id":1789,"permissions":"instagram_business_basic"}]}`)
 	state := startFlow(t, f)
-	if res := callback(t, state, "CODE"); res.Status != 302 {
+	if res := callback(t, state, "CODE"); res.Status != 200 {
 		t.Fatalf("answer = %d %s", res.Status, res.Body)
 	}
 }

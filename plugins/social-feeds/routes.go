@@ -9,9 +9,6 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-// uiPath is the plugin's admin page, a same-site path the OAuth callback may redirect to.
-const uiPath = "/admin/plugins/social-feeds"
-
 func init() {
 	guest.OnHTTP(serve)
 }
