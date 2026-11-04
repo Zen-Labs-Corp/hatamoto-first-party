@@ -11,8 +11,8 @@ import (
 func init() { guest.OnFilter(sdk.JSONLDEnrich, enrichEvent) }
 
 // enrichEvent turns the JSON-LD of an event entity into an Event: it sets
-// @type and adds the keys the document does not already carry. Any problem
-// returns the document unchanged.
+// @type (keeping a specific one such as MusicEvent) and adds the keys the
+// document does not already carry. Any problem returns the document unchanged.
 func enrichEvent(d sdk.JSONLDDoc) (sdk.JSONLDDoc, error) {
 	s := loadSettings()
 	if d.Entity.SchemaSlug != s.SchemaSlug || d.Entity.ID == "" {
@@ -31,7 +31,9 @@ func enrichEvent(d sdk.JSONLDDoc) (sdk.JSONLDDoc, error) {
 	for k, v := range d.Doc {
 		doc[k] = v
 	}
-	doc["@type"] = "Event"
+	if t, _ := doc["@type"].(string); !strings.HasSuffix(t, "Event") {
+		doc["@type"] = "Event"
+	}
 	add := func(key string, v any) {
 		if _, exists := doc[key]; !exists {
 			doc[key] = v

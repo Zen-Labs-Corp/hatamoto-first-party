@@ -132,3 +132,12 @@ func TestEnrichNilDoc(t *testing.T) {
 		t.Fatalf("doc = %v", got.Doc)
 	}
 }
+
+func TestEnrichKeepsSpecificEventType(t *testing.T) {
+	(&fakeHost{entities: []string{evJazz}}).install(t)
+	d := baseDoc()
+	d.Doc["@type"] = "MusicEvent"
+	if got := enrich(t, d); got.Doc["@type"] != "MusicEvent" {
+		t.Errorf("@type = %v", got.Doc["@type"])
+	}
+}
