@@ -10,6 +10,7 @@ import (
 func init() {
 	guest.OnHTTP(serve)
 	guest.OnFilter(sdk.BuilderData, onBuilderData)
+	guest.OnCron("rollup", onRollup)
 	guest.OnFunc("count", funcCount)
 }
 

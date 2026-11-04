@@ -18,5 +18,8 @@ func filterBuilderData() int32 { return guest.Run(sdk.BuilderData.Export()) }
 //go:wasmexport func_count
 func funcCountExport() int32 { return guest.Run(guest.FuncExport("count")) }
 
+//go:wasmexport on_cron_rollup
+func onCronRollup() int32 { return guest.Run(guest.CronExport("rollup")) }
+
 // main is never called: a c-shared wasm module is a reactor.
 func main() {}
