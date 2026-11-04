@@ -46,7 +46,7 @@ function fillSummary(st) {
 }
 
 function resultCell(r) {
-  if (r.error) return el("span", { className: "bad", textContent: `${r.status || "no answer"} error: ${r.error}` });
+  if (r.error) return el("span", { className: "bad", textContent: r.error });
   return el("span", { className: "ok", textContent: `${r.status} OK` });
 }
 
@@ -95,7 +95,7 @@ $("#test").addEventListener("click", () => run(async () => {
   out.textContent = "Testing...";
   const r = await api("POST", "/test");
   out.className = r.ok ? "ok" : "bad";
-  out.textContent = r.ok ? `OK: ${r.message}` : `${r.status || "No answer"}: ${r.message}`;
+  out.textContent = r.ok ? `OK: ${r.message}` : r.message;
 }));
 
 $("#purge-all").addEventListener("click", () => showConfirm(true));

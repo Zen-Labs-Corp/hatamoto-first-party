@@ -90,3 +90,14 @@ func TestUISkippedRowIsNotShownAsEverything(t *testing.T) {
 		}
 	}
 }
+
+// The server error text already starts with the status, so the page shows it
+// as it is and does not add the status a second time.
+func TestUIDoesNotRepeatTheStatus(t *testing.T) {
+	js := readUI(t, "app.js")
+	for _, banned := range []string{`"no answer"`, ` error: ${r.error}`, `"No answer"`} {
+		if strings.Contains(js, banned) {
+			t.Errorf("app.js repeats the status: %q", banned)
+		}
+	}
+}

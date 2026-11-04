@@ -480,7 +480,7 @@ func TestProviderError500(t *testing.T) {
 	if lines := f.logLines("error"); len(lines) != 1 {
 		t.Fatalf("error log lines = %v", lines)
 	}
-	if len(f.rows) != 1 || f.rows[0].Status != 500 || !strings.HasPrefix(f.rows[0].Error, "500 upstream broke") {
+	if len(f.rows) != 1 || f.rows[0].Status != 500 || !strings.HasPrefix(f.rows[0].Error, "500: upstream broke") {
 		t.Fatalf("rows = %+v", f.rows)
 	}
 }
@@ -791,5 +791,26 @@ func TestManifest(t *testing.T) {
 	}
 	if strings.Contains(string(mod), "replace") {
 		t.Fatal("go.mod has a replace")
+	}
+}
+
+func TestErrorMessageIsShortAndHasOneStatus(t *testing.T) {
+	cases := []struct{ provider, body, want string }{
+		{providerCloudflare, `{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}`, "401: Authentication error (10000)"},
+		{providerCloudflare, `{"errors":[{"code":1,"message":"a"},{"code":2,"message":"b"}]}`, "401: a (1); b (2)"},
+		{providerBunny, `{"ErrorKey":"x","Field":"","Message":"Unauthorized"}`, "401: Unauthorized"},
+		{providerFastly, `{"msg":"Provided credentials are missing","detail":"Invalid key"}`, "401: Provided credentials are missing; Invalid key"},
+		{providerFastly, `not json at all`, "401: not json at all"},
+		{providerBunny, `{"other":1}`, `401: {"other":1}`},
+	}
+	for _, c := range cases {
+		f := newFake(t, nil)
+		f.fetchStatus = 401
+		f.fetchBody = c.body
+		s := settings{Provider: c.provider, APIToken: testToken}
+		r := call(s, "POST", "https://x.example/", nil, "", nil)
+		if r.Err != c.want {
+			t.Errorf("%s %s: got %q, want %q", c.provider, c.body, r.Err, c.want)
+		}
 	}
 }

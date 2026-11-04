@@ -90,10 +90,55 @@ func call(s settings, method, rawURL string, headers map[string]string, body str
 	case err != nil:
 		out.Err = truncate(redact(err.Error(), s.APIToken), maxErrChars)
 	case res.Status < 200 || res.Status > 299:
-		out.Err = truncate(strings.TrimSpace(fmt.Sprintf("%d %s",
-			res.Status, truncate(redact(res.Body, s.APIToken), errBodyChars))), maxErrChars)
+		out.Err = truncate(strings.TrimSpace(fmt.Sprintf("%d: %s",
+			res.Status, truncate(errorMessage(s.Provider, redact(res.Body, s.APIToken)), errBodyChars))), maxErrChars)
 	}
 	return out
+}
+
+// errorMessage reduces a provider's error answer to a short text: Cloudflare
+// errors[].message with its code, Bunny Message, Fastly msg and detail. Any
+// other answer is returned as it came. The body is already redacted.
+func errorMessage(provider, body string) string {
+	var v struct {
+		Errors []struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"errors"`
+		Message string `json:"Message"`
+		Msg     string `json:"msg"`
+		Detail  string `json:"detail"`
+	}
+	if json.Unmarshal([]byte(body), &v) != nil {
+		return strings.TrimSpace(body)
+	}
+	var parts []string
+	switch provider {
+	case providerCloudflare:
+		for _, e := range v.Errors {
+			if e.Message == "" {
+				continue
+			}
+			if e.Code != 0 {
+				e.Message += fmt.Sprintf(" (%d)", e.Code)
+			}
+			parts = append(parts, e.Message)
+		}
+	case providerBunny:
+		parts = append(parts, v.Message)
+	case providerFastly:
+		parts = append(parts, v.Msg, v.Detail)
+	}
+	var kept []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			kept = append(kept, p)
+		}
+	}
+	if len(kept) == 0 {
+		return strings.TrimSpace(body)
+	}
+	return strings.Join(kept, "; ")
 }
 
 // authHeaders are the request headers for the provider, token included.
