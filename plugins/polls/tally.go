@@ -102,6 +102,18 @@ func countFor(fields []fieldDef, data map[string]any) map[[2]string]int {
 	return out
 }
 
+// scoreAnswers is answers for scoring: a number (core sends float64) or a
+// ticked box also compares as text, so a key of 8 or true can match.
+func scoreAnswers(v any) []string {
+	switch x := v.(type) {
+	case float64:
+		return []string{strconv.FormatFloat(x, 'f', -1, 64)}
+	case bool:
+		return []string{strconv.FormatBool(x)}
+	}
+	return answers(v)
+}
+
 func norm(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
 // normSet lowercases, trims, sorts and de-duplicates values.
@@ -127,7 +139,7 @@ func score(cfg formCfg, fields []fieldDef, data map[string]any) (got, max int) {
 		if i < 0 {
 			continue
 		}
-		given := answers(data[k.Field])
+		given := scoreAnswers(data[k.Field])
 		if fields[i].Type == "checkbox" {
 			if want := normSet(strings.Split(k.Value, ",")); len(want) > 0 && slices.Equal(normSet(given), want) {
 				got++

@@ -139,6 +139,18 @@ func TestScore(t *testing.T) {
 	}
 }
 
+func TestScoreNumberAndTickbox(t *testing.T) {
+	fields := []fieldDef{{Name: "planets", Type: "number"}, {Name: "agree", Type: "checkbox"}, {Name: "ratio", Type: "number"}}
+	cfg := formCfg{Key: []keyPair{{"planets", "8"}, {"agree", "true"}, {"ratio", "2.5"}}}
+	got, max := score(cfg, fields, map[string]any{"planets": 8.0, "agree": true, "ratio": 2.5})
+	if got != 3 || max != 3 {
+		t.Fatalf("score %d/%d, want 3/3", got, max)
+	}
+	if got, _ := score(cfg, fields, map[string]any{"planets": 9.0, "agree": false, "ratio": 2.0}); got != 0 {
+		t.Fatalf("wrong answers scored %d", got)
+	}
+}
+
 func TestSubmissionIsOneUpsertStatement(t *testing.T) {
 	f := &fake{settings: `{"forms":[{"form_slug":"fw","kind":"poll"}]}`, forms: formsJSON}
 	runSubmit(t, f, sdk.FormSubmittedEvent{FormSlug: "fw", SubmissionID: "s1",
