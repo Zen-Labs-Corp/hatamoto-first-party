@@ -1,16 +1,21 @@
 package main
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // brevo upserts contacts with the v3 API.
 type brevo struct{}
 
 const brevoBase = "https://api.brevo.com/v3"
 
-func (brevo) headers(c cfg) map[string]string { return map[string]string{"api-key": c.APIKey} }
+func (brevo) headers(c cfg) map[string]string {
+	return map[string]string{"api-key": strings.TrimSpace(c.APIKey)}
+}
 
 func brevoList(c cfg) (int, bool) {
-	n, err := strconv.Atoi(c.ListID)
+	n, err := strconv.Atoi(strings.TrimSpace(c.ListID))
 	return n, err == nil && n > 0
 }
 

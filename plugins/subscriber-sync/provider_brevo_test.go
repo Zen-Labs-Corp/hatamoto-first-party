@@ -72,3 +72,17 @@ func TestBrevoTest(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+func TestBrevoTrimsKeyAndListID(t *testing.T) {
+	c := cfg{Provider: "brevo", APIKey: " xkeysib-1\n", ListID: " 7 "}
+	f := newFake(t, fetchResp{Status: 201})
+	if r := (brevo{}).upsert(job{Email: "a@b.co"}, c, f.fetch); r.kind != kindSent {
+		t.Fatalf("%+v", r)
+	}
+	if f.reqs[0].Headers["api-key"] != "xkeysib-1" {
+		t.Fatalf("key %q", f.reqs[0].Headers["api-key"])
+	}
+	if got := jsonOf(t, f.reqs[0].Body)["listIds"]; !reflect.DeepEqual(got, []any{float64(7)}) {
+		t.Fatalf("listIds %v", got)
+	}
+}
