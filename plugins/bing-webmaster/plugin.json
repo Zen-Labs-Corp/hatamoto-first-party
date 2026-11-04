@@ -1,0 +1,19 @@
+{
+  "name": "bing-webmaster",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Bing Webmaster Tools: submit your sitemap and see Bing clicks, impressions, top queries and crawl issues, using your Bing API key.",
+  "permissions": ["settings"],
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "title": "Greeting",
+        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
+        "maxLength": 64
+      }
+    }
+  }
+}
