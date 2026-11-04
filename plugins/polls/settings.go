@@ -82,9 +82,16 @@ func loadConfig() ([]formCfg, error) {
 	return out, nil
 }
 
-// timeLayouts are the forms closes_at may take: the settings form stores a
-// datetime-local value without seconds or zone.
-var timeLayouts = []string{time.RFC3339, "2006-01-02T15:04", "2006-01-02T15:04:05", "2006-01-02"}
+// timeLayouts are the forms closes_at may take, matching the pattern in
+// plugin.json: a date, or a date and time with a T or space separator,
+// optional seconds and an optional Z or numeric offset.
+var timeLayouts = []string{
+	"2006-01-02",
+	"2006-01-02T15:04", "2006-01-02 15:04",
+	"2006-01-02T15:04:05", "2006-01-02 15:04:05",
+	"2006-01-02T15:04Z07:00", "2006-01-02 15:04Z07:00",
+	"2006-01-02T15:04:05Z07:00", "2006-01-02 15:04:05Z07:00",
+}
 
 // parseTime reads a timestamp tolerantly; a value without a zone is UTC.
 func parseTime(s string) (time.Time, bool) {

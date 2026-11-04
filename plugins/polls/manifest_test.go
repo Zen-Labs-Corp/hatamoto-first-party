@@ -109,3 +109,41 @@ func TestMigrationHasNoFunctionsTriggersOrGrants(t *testing.T) {
 		}
 	}
 }
+
+func TestClosesAtPatternMatchesWhatParseTimeReads(t *testing.T) {
+	m := loadManifest(t)
+	var schema struct {
+		Properties struct {
+			Forms struct {
+				Items struct {
+					Properties map[string]struct {
+						Format  string `json:"format"`
+						Pattern string `json:"pattern"`
+					} `json:"properties"`
+				} `json:"items"`
+			} `json:"forms"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(m.SettingsSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	prop := schema.Properties.Forms.Items.Properties["closes_at"]
+	if prop.Format != "" {
+		t.Fatalf("closes_at has format %q, the admin form would render a datetime picker", prop.Format)
+	}
+	re := regexp.MustCompile(prop.Pattern)
+	for _, ok := range []string{"", "2027-01-01", "2027-01-01T18:00", "2027-01-01 18:00", "2027-01-01 18:00:30",
+		"2027-01-01T18:00Z", "2027-01-01 18:00:30+01:00", "2027-01-01T18:00-05:00"} {
+		if !re.MatchString(ok) {
+			t.Errorf("pattern rejects %q", ok)
+		}
+		if _, parsed := parseTime(ok); ok != "" && !parsed {
+			t.Errorf("parseTime rejects %q", ok)
+		}
+	}
+	for _, bad := range []string{"soon", "04/11/2026", "2027-01-01T", "2027-01-01 18", "2027-01-01Z", "2027-01-01T18:00+0100"} {
+		if re.MatchString(bad) {
+			t.Errorf("pattern accepts %q", bad)
+		}
+	}
+}

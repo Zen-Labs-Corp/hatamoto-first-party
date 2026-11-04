@@ -10,7 +10,7 @@ Turns Hatamoto forms into polls, surveys and scored quizzes, with live results, 
    - **Form slug**: the slug of an existing form.
    - **Kind**: poll, survey or quiz.
    - **Show results**: `always`, `after_close` or `never` (the default). Controls the public results page and the page builder source.
-   - **Closes at**: answers after this time are not counted. A time without a zone is read as UTC. Leave it empty to count for ever. A value that is not a date and time is logged and treated as empty.
+   - **Closes at**: answers after this time are not counted. Type a date or a date and time, for example `2027-01-01 18:00` (a `T` works too; seconds and a `Z` or `+hh:mm` offset are optional). A time without a zone is read as UTC. Leave it empty to count for ever. A value that is not a date and time is logged and treated as empty.
    - **Answer key** (quiz): one row per question, with the field name and the correct value. For a checkbox question list several values separated by commas; the visitor must pick exactly those. For a tickbox enter `true`; for a number enter it as digits (`8`, not `8.0`).
    - **Email the score** (quiz): sends the visitor their score once, to the first filled email field (or a field named `email`).
 4. Open the plugin's page in the admin: it shows, for each form, the number of responses, a bar for every option of every question, the score distribution and average of a quiz, a **Recount** button and an **Export CSV** button. The CSV is shown in a text box to copy, because the admin page cannot download files.

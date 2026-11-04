@@ -27,6 +27,21 @@ func TestParseTimeVariants(t *testing.T) {
 			t.Errorf("parseTime(%q) = %v %v", in, got, ok)
 		}
 	}
+	utc := time.Date(2027, 1, 1, 18, 0, 0, 0, time.UTC)
+	for in, w := range map[string]time.Time{
+		"2027-01-01T18:00":          utc,
+		"2027-01-01 18:00":          utc,
+		"2027-01-01 18:00:00":       utc,
+		"2027-01-01T18:00Z":         utc,
+		"2027-01-01 18:00:00Z":      utc,
+		"2027-01-01 19:00+01:00":    utc,
+		"2027-01-01T13:00:00-05:00": utc,
+	} {
+		got, ok := parseTime(in)
+		if !ok || !got.Equal(w) {
+			t.Errorf("parseTime(%q) = %v %v", in, got, ok)
+		}
+	}
 	for _, in := range []string{"", "soon", "04/11/2026"} {
 		if _, ok := parseTime(in); ok {
 			t.Errorf("parseTime(%q) parsed", in)
@@ -104,7 +119,7 @@ func TestBlankAnswerKeyRowsAreIgnored(t *testing.T) {
 
 func TestUnreadableClosesAtIsNotSetAndLoggedOnce(t *testing.T) {
 	warnedClose = map[string]bool{}
-	f := &fake{t: t, settings: `{"forms":[{"form_slug":"fw","closes_at":"2026-11-04 18:00"}]}`}
+	f := &fake{t: t, settings: `{"forms":[{"form_slug":"fw","closes_at":"04/11/2026 18:00"}]}`}
 	f.install()
 	for i := 0; i < 2; i++ {
 		cfgs, err := loadConfig()
