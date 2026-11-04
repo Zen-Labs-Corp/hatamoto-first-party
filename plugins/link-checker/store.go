@@ -170,8 +170,14 @@ func isKnownParent(path string) (bool, error) {
 }
 
 // purge forgets what is no longer on any page: page rows and known paths not
-// seen for the retention period, then links with no recent page.
-func purge(at time.Time) error {
+// seen for the retention period, then links with no recent page. It only runs
+// when passOK says a completed pass started inside the retention period: only
+// then does "not seen" mean "no longer on the site" (a pass that never
+// completes, or stopped long ago, would age out rows it never revisited).
+func purge(at time.Time, passOK bool) error {
+	if !passOK {
+		return nil
+	}
 	cutoff := ts(at.Add(-retention))
 	if err := dbExec(`DELETE FROM link_pages WHERE last_seen < $1::timestamptz`, cutoff); err != nil {
 		return err

@@ -435,3 +435,52 @@ func TestScanKeepsNoPageLinksPendingUntilAPassCompleted(t *testing.T) {
 		t.Fatalf("after the pass completed: %v", p)
 	}
 }
+
+func TestScanSkipsAFailingEntityAndContinues(t *testing.T) {
+	w := newScanWorld(t)
+	w.pages = [][]string{{`{"content":"<a href=\"/a\">x</a>"}`, `{"content":"<a href=\"/b\">x</a>"}`}, {`{}`}}
+	inner := w.host.reply
+	w.host.reply = func(c call, out any) error {
+		if c.Fn == "db.exec" && strings.HasPrefix(c.sql(), "INSERT INTO links") && strings.Contains(fmt.Sprint(c.params()), `"/a"`) {
+			return &sdk.HostError{Code: sdk.ErrInvalidArgument, Message: "index row size exceeds"}
+		}
+		return inner(c, out)
+	}
+	runScan()
+	if len(w.listArgs) != 2 {
+		t.Fatalf("the pass must go on past the failing entity: %d list calls", len(w.listArgs))
+	}
+	if _, ok := w.kv[doneKey]; !ok {
+		t.Fatal("the pass must complete")
+	}
+	var b int
+	for _, q := range w.host.calls {
+		if q.Fn == "db.exec" && strings.HasPrefix(q.sql(), "INSERT INTO links") && strings.Contains(fmt.Sprint(q.params()), `"/b"`) {
+			b++
+		}
+	}
+	if b != 1 {
+		t.Fatalf("the entity after the failing one must be stored, got %d", b)
+	}
+}
+
+func TestScanRestartsPassWhenListKeepsFailing(t *testing.T) {
+	w := newScanWorld(t)
+	w.pages = [][]string{{`{}`}, {`{}`}}
+	w.kv[cursorKey], _ = json.Marshal(scanState{Cursor: "c1", PassStart: "2026-01-01T00:00:00Z"})
+	w.listErr = &sdk.HostError{Code: sdk.ErrInvalidArgument, Message: "too big"}
+	for i := 1; i <= maxListRetries; i++ {
+		runScan()
+		var st scanState
+		_ = json.Unmarshal(w.kv[cursorKey], &st)
+		if i < maxListRetries && (st.Cursor != "c1" || st.Retries != i) {
+			t.Fatalf("run %d: %+v", i, st)
+		}
+		if i == maxListRetries && (st.Cursor != "" || st.Retries != 0 || st.PassStart == "2026-01-01T00:00:00Z") {
+			t.Fatalf("the pass must restart after %d runs: %+v", maxListRetries, st)
+		}
+	}
+	if _, ok := w.kv[doneKey]; ok {
+		t.Fatal("a restart is not a completed pass")
+	}
+}

@@ -101,8 +101,9 @@ const pendingRetry = 15 * time.Minute
 // passInfo is what the last completed pass over the site taught: whether one
 // completed at all, and the locale segments of the published pages.
 type passInfo struct {
-	Done    bool
-	Locales []string
+	Done      bool
+	StartedAt string
+	Locales   []string
 }
 
 // checkInternal asks the host whether a published page lives at p. It never

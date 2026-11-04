@@ -25,6 +25,10 @@ const (
 	// hostGap is the minimum time between two requests to one host in a run.
 	hostGap = time.Second
 
+	// maxListRetries is how many runs in a row may fail to list one entity
+	// before the pass starts over.
+	maxListRetries = 3
+
 	entitiesPerRun = 200
 	listLimit      = 50
 	internalBatch  = 200
@@ -60,11 +64,15 @@ type scanState struct {
 	PassTotal int    `json:"pass_total"`
 	// Locales are the locale tags of the entities this pass has seen.
 	Locales []string `json:"locales"`
+	// Retries counts consecutive runs where listing failed with the smallest
+	// batch; the pass restarts after maxListRetries.
+	Retries int `json:"retries"`
 }
 
 // passDone is kept in kv when a pass has indexed every published page: from
 // then on "no page" is a final answer, and the locale segments are known.
 type passDone struct {
+	StartedAt  string   `json:"started_at"`
 	FinishedAt string   `json:"finished_at"`
 	Locales    []string `json:"locales"`
 }
@@ -78,7 +86,14 @@ func loadPass() passInfo {
 		logf("warn", "pass state unreadable: %v", err)
 		return passInfo{}
 	}
-	return passInfo{Done: ok && d.FinishedAt != "", Locales: d.Locales}
+	return passInfo{Done: ok && d.FinishedAt != "", StartedAt: d.StartedAt, Locales: d.Locales}
+}
+
+// recent reports whether the last completed pass started within the
+// retention period before at.
+func (p passInfo) recent(at time.Time) bool {
+	started, err := time.Parse(time.RFC3339, p.StartedAt)
+	return p.Done && err == nil && started.After(at.Add(-retention))
 }
 
 // addLocale remembers a locale tag and its language part, lowercased.
@@ -93,7 +108,7 @@ func (st *scanState) addLocale(tag string) {
 
 // finish records the end of a pass and clears the cursor.
 func (st scanState) finish() {
-	if err := kvSet(doneKey, passDone{FinishedAt: ts(now()), Locales: st.Locales}); err != nil {
+	if err := kvSet(doneKey, passDone{StartedAt: st.PassStart, FinishedAt: ts(now()), Locales: st.Locales}); err != nil {
 		logf("warn", "saving pass result: %v", err)
 	}
 	if err := kvDelete(cursorKey); err != nil {
@@ -113,7 +128,7 @@ func runScan() {
 		logf("warn", "scan skipped, database not available: %v", err)
 		return
 	}
-	if err := purge(now()); err != nil {
+	if err := purge(now(), loadPass().recent(now())); err != nil {
 		logf("warn", "purge: %v", err)
 	}
 	extractBatch(s, now().Add(extractBudget))
@@ -166,25 +181,45 @@ func extractBatch(s settings, until time.Time) {
 		}
 		if err := callHost(sdk.FnEntitiesList, args, &res); err != nil {
 			var he *sdk.HostError
-			if errors.As(err, &he) && he.Code == sdk.ErrInvalidArgument && limit > 1 {
-				limit /= 2 // the answer was too big (2 MiB cap)
-				continue
+			if errors.As(err, &he) && he.Code == sdk.ErrInvalidArgument {
+				if limit > 1 {
+					limit /= 2 // the answer was too big (2 MiB cap)
+					continue
+				}
+				// Even one entity fails (too big, or a stale cursor): retry a
+				// few runs, then start the pass over.
+				if st.Retries++; st.Retries >= maxListRetries {
+					logf("error", "listing entities keeps failing at one entity, restarting the pass: %v", err)
+					st = scanState{PassStart: ts(now())}
+				}
+				if err := kvSet(cursorKey, st); err != nil {
+					logf("warn", "saving scan cursor: %v", err)
+				}
+				return
 			}
 			logf("warn", "listing entities: %v", err)
 			return
 		}
+		failed := 0
 		for _, e := range res.Items {
 			st.addLocale(e.Locale)
 			if o := siteOrigin(e.URL, e.Path); o != "" {
 				origin = o
 			}
 			if err := indexEntity(e, s.Exclude, origin); err != nil {
-				logf("warn", "storing links of one page: %v", err)
-				return // the cursor stays: this page is read again next run
+				// Skip it: one bad page must not stop the pass. The next
+				// pass tries it again.
+				if failed++; failed == 1 {
+					logf("warn", "storing links of page %s skipped: %v", e.ID, err)
+				}
 			}
+		}
+		if failed > 1 {
+			logf("warn", "%d more pages skipped in this batch", failed-1)
 		}
 		done += len(res.Items)
 		st.PassTotal += len(res.Items)
+		st.Retries = 0
 		st.Cursor = res.NextCursor
 		if st.Cursor == "" {
 			st.finish()

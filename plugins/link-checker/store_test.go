@@ -140,7 +140,7 @@ func TestKnownPaths(t *testing.T) {
 func TestPurgeRetention(t *testing.T) {
 	at := fixedNow(t, "2026-02-01T00:00:00Z")
 	f := newFakeHost(t, nil)
-	if err := purge(at); err != nil {
+	if err := purge(at, true); err != nil {
 		t.Fatal(err)
 	}
 	q := f.sqls()
@@ -215,7 +215,31 @@ func TestStoreFailsOpenOnHostError(t *testing.T) {
 	if _, err := countLinks(); err == nil {
 		t.Fatal("countLinks must return the error")
 	}
-	if err := purge(now()); err == nil {
+	if err := purge(now(), true); err == nil {
 		t.Fatal("purge must return the error")
+	}
+}
+
+func TestPurgeSkippedWithoutACompletedPass(t *testing.T) {
+	f := newFakeHost(t, nil)
+	if err := purge(now(), false); err != nil || len(f.calls) != 0 {
+		t.Fatalf("nothing may be deleted: %v %v", err, f.calls)
+	}
+}
+
+func TestPassInfoRecent(t *testing.T) {
+	at := fixedNow(t, "2026-02-01T00:00:00Z")
+	for _, c := range []struct {
+		p    passInfo
+		want bool
+	}{
+		{passInfo{}, false},
+		{passInfo{Done: true, StartedAt: "2026-01-20T00:00:00Z"}, true},
+		{passInfo{Done: true, StartedAt: "2025-12-01T00:00:00Z"}, false},
+		{passInfo{Done: true, StartedAt: ""}, false},
+	} {
+		if got := c.p.recent(at); got != c.want {
+			t.Errorf("%+v: %v", c.p, got)
+		}
 	}
 }
