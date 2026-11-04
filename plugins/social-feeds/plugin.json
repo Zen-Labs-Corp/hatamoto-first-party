@@ -1,0 +1,19 @@
+{
+  "name": "social-feeds",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Shows your latest Instagram posts and YouTube videos from a copy refreshed every few hours, as page-builder data sources.",
+  "permissions": ["settings"],
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "title": "Greeting",
+        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
+        "maxLength": 64
+      }
+    }
+  }
+}
