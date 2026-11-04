@@ -1,37 +1,15 @@
-// Command reviews is a Hatamoto plugin. Shows your Google and Trustpilot reviews on your pages from a copy refreshed daily, as a page-builder data source and a ready-made section.
+// Command reviews is a Hatamoto plugin. It keeps a daily-refreshed copy of
+// the Google and Trustpilot reviews of one business and shows it through the
+// ext.reviews.latest page-builder source, the plugin_reviews_* template
+// functions and the ready-made "reviews" section.
 //
-// Starting point from the first-party template: a render.head filter that
-// reads one setting and adds a meta tag. Replace it with the real hooks; keep
-// the logic in plain Go (this file) and the //go:wasmexport lines in
-// exports_wasip1.go, so everything but the exports builds and tests on the host.
+// The logic is plain Go in this package; the //go:wasmexport lines live in
+// exports_wasip1.go, so everything but the exports builds and tests on the
+// host. Every hook, function and route fails open: no keys or a host error
+// gives empty data, never an error.
 package main
 
-import (
-	"strings"
+import "time"
 
-	"hatamoto.dev/sdk"
-	"hatamoto.dev/sdk/guest"
-)
-
-func init() {
-	guest.OnFilter(sdk.RenderHead, addMeta)
-}
-
-// addMeta never fails the render: an unreadable or empty setting adds nothing.
-func addMeta(c sdk.HeadContext) (sdk.HeadContext, error) {
-	var s struct {
-		Greeting string `json:"greeting"`
-	}
-	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return c, nil
-	}
-	g := strings.TrimSpace(s.Greeting)
-	if g == "" {
-		return c, nil
-	}
-	c.Tags = append(c.Tags, sdk.HeadTag{
-		Kind:  "meta",
-		Attrs: map[string]string{"name": "reviews", "content": g},
-	})
-	return c, nil
-}
+// now is the clock; tests replace it.
+var now = time.Now
