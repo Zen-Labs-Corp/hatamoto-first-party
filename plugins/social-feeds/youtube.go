@@ -76,7 +76,7 @@ func fetchYouTube(s settings) ([]item, error) {
 			ID:          sn.ResourceID.VideoID,
 			Position:    len(out),
 			Title:       sn.Title,
-			Excerpt:     sn.Description,
+			Excerpt:     truncate(sn.Description, maxFieldBytes),
 			URL:         "https://www.youtube.com/watch?v=" + url.QueryEscape(sn.ResourceID.VideoID),
 			Image:       image,
 			Type:        "video",

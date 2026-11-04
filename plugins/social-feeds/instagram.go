@@ -71,7 +71,7 @@ func fetchInstagram(tok *igToken) ([]item, error) {
 			ID:          m.ID,
 			Position:    len(out),
 			Title:       shorten(m.Caption, 120),
-			Excerpt:     strings.TrimSpace(m.Caption),
+			Excerpt:     truncate(strings.TrimSpace(m.Caption), maxFieldBytes),
 			URL:         m.Permalink,
 			Image:       image,
 			Type:        strings.ToLower(m.MediaType),

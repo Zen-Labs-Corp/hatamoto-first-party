@@ -255,3 +255,18 @@ func TestInstagramNeverUsesAVideoFileAsImage(t *testing.T) {
 		t.Fatalf("rows = %+v", rows)
 	}
 }
+
+func TestExcerptsAreCutWhenStored(t *testing.T) {
+	f := useFake(t)
+	connect(t, f)
+	long := strings.Repeat("é", 3000)
+	f.on(igMedia, 200, `{"data":[{"id":"1","caption":"`+long+`","media_type":"IMAGE","media_url":"https://cdn.example/a.jpg"}]}`)
+	setupYouTube(f, `{"items":[{"snippet":{"title":"T","description":"`+long+`","resourceId":{"videoId":"v"}}}]}`)
+	runRefresh(time.Second)
+	for _, src := range []string{"instagram", "youtube"} {
+		rows := f.rows(src)
+		if len(rows) != 1 || len(rows[0].Excerpt) > maxFieldBytes || len(rows[0].Excerpt) < maxFieldBytes-1 {
+			t.Fatalf("%s rows = %d, excerpt %d bytes", src, len(rows), len(rows[0].Excerpt))
+		}
+	}
+}
