@@ -138,6 +138,19 @@ func TestDownloadBadAndUnknownIDs(t *testing.T) {
 	}
 }
 
+func TestDownloadHostFailureIsUnavailable(t *testing.T) {
+	for _, err := range []error{errors.New("boom"), &sdk.HostError{Code: sdk.ErrInternal, Message: "not_found"}} {
+		f := &fakeHost{reply: map[string]func(any, any) error{
+			"media.get": func(any, any) error { return err },
+		}}
+		f.install(t)
+		res := get(t, "GET", fileID, browser)
+		if res.Status != 503 || res.Body != "unavailable" || res.Headers["Content-Type"] != "text/plain" || f.count("db.exec") != 0 {
+			t.Errorf("%v: %+v", err, res)
+		}
+	}
+}
+
 func TestDownloadBots(t *testing.T) {
 	uas := []string{"", "Googlebot/2.1", "MY-CRAWLER", "Baiduspider", "Yahoo! Slurp", "Slack-ImgProxy link preview", "facebookexternalhit/1.1",
 		"curl/8.5", "Wget/1.21", "python-requests/2", "Go-http-client/2.0", "HeadlessChrome", "UptimeMonitor", "Nmap Scanner", "BOT"}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/url"
 	"strings"
 
@@ -48,6 +49,10 @@ func notFound() sdk.HTTPResponse {
 	return sdk.HTTPResponse{Status: 404, Headers: map[string]string{"Content-Type": "text/plain"}, Body: "not found"}
 }
 
+func unavailable() sdk.HTTPResponse {
+	return sdk.HTTPResponse{Status: 503, Headers: map[string]string{"Content-Type": "text/plain"}, Body: "unavailable"}
+}
+
 // countsBots reads the setting; any error means the default (off).
 func countsBots() bool {
 	var s struct {
@@ -69,7 +74,14 @@ func handleDownload(r sdk.HTTPRequest) sdk.HTTPResponse {
 		return notFound()
 	}
 	m, err := getMedia(id)
-	if err != nil || m.PublicURL == nil || !safeLocation(*m.PublicURL) {
+	if err != nil {
+		var he *sdk.HostError
+		if errors.As(err, &he) && he.Code == sdk.ErrNotFound {
+			return notFound()
+		}
+		return unavailable()
+	}
+	if m.PublicURL == nil || !safeLocation(*m.PublicURL) {
 		return notFound()
 	}
 	if r.Method != "HEAD" && (!isBot(r.Headers["user-agent"]) || countsBots()) {
