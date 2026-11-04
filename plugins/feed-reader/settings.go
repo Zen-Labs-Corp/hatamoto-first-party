@@ -24,9 +24,23 @@ type feedCfg struct {
 	Group    int // 0 = no group
 }
 
+// skippedFeed is a settings entry the plugin cannot fetch because its URL is
+// not valid.
+type skippedFeed struct {
+	Name string
+	URL  string
+}
+
 // loadFeeds reads and cleans the feeds setting. Invalid entries are skipped
 // and a missing or null list is empty, so a bad setting never breaks a run.
 func loadFeeds() ([]feedCfg, error) {
+	feeds, _, err := readFeeds()
+	return feeds, err
+}
+
+// readFeeds is loadFeeds that also returns the entries skipped for an invalid
+// URL, so the overview can show them. Duplicates are dropped silently.
+func readFeeds() ([]feedCfg, []skippedFeed, error) {
 	var s struct {
 		Feeds []struct {
 			Name     string `json:"name"`
@@ -36,13 +50,18 @@ func loadFeeds() ([]feedCfg, error) {
 		} `json:"feeds"`
 	}
 	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out []feedCfg
+	var skipped []skippedFeed
 	seen := map[string]bool{}
 	for _, f := range s.Feeds {
 		u := strings.TrimSpace(f.URL)
-		if !validFeedURL(u) || seen[u] {
+		if !validFeedURL(u) {
+			skipped = append(skipped, skippedFeed{Name: clipRunes(strings.TrimSpace(f.Name), 80), URL: redactURL(u)})
+			continue
+		}
+		if seen[u] {
 			continue
 		}
 		seen[u] = true
@@ -63,7 +82,16 @@ func loadFeeds() ([]feedCfg, error) {
 			break
 		}
 	}
-	return out, nil
+	return out, skipped, nil
+}
+
+// redactURL hides the password of a URL with credentials; text that is not a
+// URL is returned as it is, cut to 2048 bytes.
+func redactURL(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.User != nil {
+		raw = u.Redacted()
+	}
+	return clipBytes(raw, 2048)
 }
 
 // validFeedURL accepts absolute http and https URLs with a host and no

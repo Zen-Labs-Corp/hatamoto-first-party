@@ -15,6 +15,9 @@ const latestItems = 20
 // statusPending is shown for a configured feed that has not been fetched yet.
 const statusPending = "pending"
 
+// statusInvalidURL is shown for a settings entry whose URL cannot be fetched.
+const statusInvalidURL = "invalid URL"
+
 func init() {
 	guest.OnHTTP(handleRoute)
 }
@@ -69,7 +72,7 @@ type overviewItem struct {
 // overview lists the configured feeds with their stored state and the latest
 // items. It only reads.
 func overview() (sdk.HTTPResponse, error) {
-	cfg, err := loadFeeds()
+	cfg, skipped, err := readFeeds()
 	if err != nil {
 		return internalError("settings unavailable")
 	}
@@ -94,6 +97,13 @@ func overview() (sdk.HTTPResponse, error) {
 			}
 		}
 		feeds = append(feeds, o)
+	}
+	for _, s := range skipped {
+		name := s.Name
+		if name == "" {
+			name = s.URL
+		}
+		feeds = append(feeds, overviewFeed{Name: name, URL: s.URL, Status: statusInvalidURL})
 	}
 	items, err := itemsFor("items", latestItems)
 	if err != nil {

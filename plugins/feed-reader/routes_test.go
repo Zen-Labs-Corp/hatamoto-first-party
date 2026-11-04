@@ -122,3 +122,23 @@ func TestRoutesRegisteredWithGuest(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOverviewShowsSkippedFeedsAsInvalidURL(t *testing.T) {
+	f := newFake(t)
+	f.settings["feeds"] = []map[string]any{
+		{"name": "ok", "url": "https://example.com/ok.xml"},
+		{"name": "ftp", "url": "ftp://example.com/feed"},
+		{"name": "", "url": "https://user:secret@example.com/feed"},
+	}
+	_, body := call(t, "GET", "/overview")
+	var feeds []overviewFeed
+	if err := json.Unmarshal(body["feeds"], &feeds); err != nil || len(feeds) != 3 {
+		t.Fatalf("%v %s", err, body["feeds"])
+	}
+	if feeds[1].Name != "ftp" || feeds[1].Status != "invalid URL" {
+		t.Fatalf("%+v", feeds[1])
+	}
+	if feeds[2].Status != "invalid URL" || strings.Contains(feeds[2].URL, "secret") || strings.Contains(feeds[2].Name, "secret") {
+		t.Fatalf("%+v", feeds[2])
+	}
+}
