@@ -26,7 +26,7 @@ func TestKitUpsertThenForm(t *testing.T) {
 			t.Fatalf("%s: headers %v", tc.name, up.Headers)
 		}
 		// No last_name: it needs a custom field the account may not have.
-		if got := jsonOf(t, up.Body); !reflect.DeepEqual(got, map[string]any{"email_address": "Ada@Example.com", "first_name": "Ada"}) {
+		if got := jsonOf(t, up.Body); !reflect.DeepEqual(got, map[string]any{"email_address": "Ada@Example.com", "first_name": "Ada", "state": "inactive"}) {
 			t.Fatalf("%s: upsert body %v", tc.name, got)
 		}
 		if form.Method != "POST" || form.URL != "https://api.kit.com/v4/forms/55/subscribers" || form.Headers["X-Kit-Api-Key"] != "kitkey" {
@@ -34,6 +34,23 @@ func TestKitUpsertThenForm(t *testing.T) {
 		}
 		if got := jsonOf(t, form.Body); !reflect.DeepEqual(got, map[string]any{"email_address": "Ada@Example.com"}) {
 			t.Fatalf("%s: form body %v", tc.name, got)
+		}
+	}
+}
+
+func TestKitStateFollowsDoubleOptIn(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		name string
+		opt  *bool
+		want string
+	}{{"default", nil, "inactive"}, {"on", &on, "inactive"}, {"off", &off, "active"}} {
+		c := kitCfg()
+		c.DoubleOptIn = tc.opt
+		f := newFake(t, fetchResp{Status: 201}, fetchResp{Status: 201})
+		kit{}.upsert(job{Email: "a@b.co"}, c, f.fetch)
+		if got := jsonOf(t, f.reqs[0].Body)["state"]; got != tc.want {
+			t.Errorf("%s: state %v, want %s", tc.name, got, tc.want)
 		}
 	}
 }

@@ -19,7 +19,13 @@ func (kit) headers(c cfg) map[string]string {
 
 func (k kit) upsert(j job, c cfg, f fetcher) result {
 	h := k.headers(c)
-	sub := map[string]any{"email_address": j.Email}
+	// A new subscriber is created inactive with double opt-in, so the form's
+	// confirmation applies; without it they are active right away.
+	state := "active"
+	if c.doubleOptIn() {
+		state = "inactive"
+	}
+	sub := map[string]any{"email_address": j.Email, "state": state}
 	if j.FirstName != "" {
 		sub["first_name"] = j.FirstName
 	}
