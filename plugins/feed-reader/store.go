@@ -132,6 +132,18 @@ type itemDoc struct {
 	Published *string `json:"published_at"`
 }
 
+// maxFutureSkew is how far ahead of the fetch time a publication date may be.
+const maxFutureSkew = 24 * time.Hour
+
+// clampFuture replaces a date more than a day after at (a typo, a wrong zone
+// or a hostile feed) by at, so it cannot stay pinned at the top of the loop.
+func clampFuture(published, at time.Time) time.Time {
+	if published.After(at.Add(maxFutureSkew)) {
+		return at
+	}
+	return published
+}
+
 // upsertItems stores items in one statement. Items repeating a guid inside
 // the batch are collapsed (the first wins) because one statement cannot
 // touch a row twice. fetched_at keeps its first value.
@@ -148,7 +160,7 @@ func upsertItems(key string, items []item) error {
 		seen[it.GUID] = true
 		d := itemDoc{GUID: it.GUID, Title: it.Title, Link: it.Link, Excerpt: it.Excerpt}
 		if !it.Published.IsZero() {
-			s := stamp(it.Published)
+			s := stamp(clampFuture(it.Published, now()))
 			d.Published = &s
 		}
 		docs = append(docs, d)

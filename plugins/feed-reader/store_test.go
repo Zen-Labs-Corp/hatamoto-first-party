@@ -228,3 +228,21 @@ func TestDBErrorsAreReturned(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+func TestUpsertClampsFuturePublishedDates(t *testing.T) {
+	f := newFake(t)
+	addFeed(f, "a", "Alpha", 0)
+	err := upsertItems("a", []item{
+		{GUID: "typo", Title: "typo", Link: "https://example.com/1", Published: f.clock.AddDate(36, 0, 0)},
+		{GUID: "skew", Title: "skew", Link: "https://example.com/2", Published: f.clock.Add(3 * time.Hour)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.items["a/typo"].Published; !got.Equal(f.clock) {
+		t.Fatalf("typo date %v, want the fetch time", got)
+	}
+	if got := f.items["a/skew"].Published; !got.Equal(f.clock.Add(3 * time.Hour)) {
+		t.Fatalf("a date within a day ahead must be kept: %v", got)
+	}
+}
