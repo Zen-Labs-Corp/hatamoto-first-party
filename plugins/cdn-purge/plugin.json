@@ -3,16 +3,71 @@
   "version": "0.1.0",
   "sdk": "^0.8",
   "description": "Purges changed pages from Cloudflare, Bunny or Fastly when you publish, update or delete content, so a CDN in front of your site stays fresh.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["entities.read", "settings", "http.fetch", "kv", "db", "log"],
+  "allowed_hosts": ["api.cloudflare.com", "api.bunny.net", "api.fastly.com"],
+  "routes": [
+    { "method": "GET", "path": "/log" },
+    { "method": "POST", "path": "/purge-all" },
+    { "method": "POST", "path": "/test" }
+  ],
+  "ui": { "title": "CDN purge" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": {
+      "entity.published": 10000,
+      "entity.updated": 10000,
+      "entity.deleted": 10000
+    }
+  },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
+      "provider": {
         "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+        "title": "Provider",
+        "enum": ["cloudflare", "bunny", "fastly"]
+      },
+      "zone_id": {
+        "type": "string",
+        "title": "Cloudflare zone ID",
+        "description": "Used when the provider is Cloudflare."
+      },
+      "pull_zone_id": {
+        "type": "string",
+        "title": "Bunny pull zone ID",
+        "description": "Used when the provider is Bunny."
+      },
+      "service_id": {
+        "type": "string",
+        "title": "Fastly service ID",
+        "description": "Used when the provider is Fastly."
+      },
+      "api_token": {
+        "type": "string",
+        "title": "API token",
+        "writeOnly": true,
+        "description": "Cloudflare API token, Bunny account API key or Fastly API token with purge rights. Stored in the settings only; never shown again."
+      },
+      "also_purge": {
+        "type": "array",
+        "title": "Also purge these paths",
+        "description": "One path per line. Purged together with the changed page, for example the home page, a blog index or the feeds.",
+        "items": { "type": "string" },
+        "default": ["/", "/blog", "/sitemap.xml", "/feed.xml"],
+        "maxItems": 20,
+        "x-hm-field": "lines"
+      },
+      "purge_everything_on_change": {
+        "type": "boolean",
+        "title": "Purge everything on every change",
+        "description": "Drop the whole CDN cache instead of single URLs whenever content is published, updated or deleted.",
+        "default": false
+      },
+      "site_url": {
+        "type": "string",
+        "title": "Site URL",
+        "description": "Origin such as https://example.com; used only when the host gives a path without an origin"
       }
     }
   }
