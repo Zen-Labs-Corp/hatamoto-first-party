@@ -1,0 +1,43 @@
+{{define "plugin/reviews/card"}}<article class="review">
+<p class="review-stars">{{plugin_reviews_field . "stars"}}</p>
+<p class="review-text">{{plugin_reviews_field . "text"}}</p>
+<p class="review-meta">{{if plugin_reviews_field . "photo"}}<img class="review-photo" src="{{plugin_reviews_field . "photo"}}" alt="{{plugin_reviews_field . "author"}}" width="32" height="32" loading="lazy" referrerpolicy="no-referrer"> {{end}}{{if plugin_reviews_field . "author_url"}}<a href="{{plugin_reviews_field . "author_url"}}" rel="noopener nofollow">{{plugin_reviews_field . "author"}}</a>{{else}}{{plugin_reviews_field . "author"}}{{end}} · {{plugin_reviews_field . "date"}}</p>
+<p class="review-source">{{plugin_reviews_field . "source_label"}}</p>
+</article>{{end}}
+
+{{define "section-reviews"}}{{if plugin_reviews_field 0 "author"}}<section class="reviews hm-reviews">
+<style>
+.hm-reviews { box-sizing: border-box; max-width: var(--hm-reviews-width, 1100px); margin: 0 auto; padding: var(--hm-reviews-padding, 48px 24px); color: inherit; font: inherit; }
+.hm-reviews *, .hm-reviews *::before, .hm-reviews *::after { box-sizing: inherit; }
+.hm-reviews p { margin: 0; }
+.hm-reviews a { color: inherit; text-decoration: underline; }
+.hm-reviews .reviews-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; margin-bottom: 24px; }
+.hm-reviews .reviews-summary { margin-left: auto; opacity: 0.75; }
+.hm-reviews .reviews-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--hm-reviews-gap, 16px); }
+.hm-reviews .review { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--hm-reviews-border, rgba(128, 128, 128, 0.3)); border-radius: var(--hm-reviews-radius, 8px); background: var(--hm-reviews-card-bg, transparent); }
+.hm-reviews .review-stars { color: var(--hm-reviews-star, #d99a00); letter-spacing: 1px; }
+.hm-reviews .review-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-clamp: 5; overflow: hidden; }
+.hm-reviews .review-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: auto; font-size: 0.9em; font-weight: 600; }
+.hm-reviews .review-photo { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+.hm-reviews .review-source { font-size: 0.8em; opacity: 0.65; }
+.hm-reviews .reviews-attribution { margin-top: 16px; font-size: 0.8em; opacity: 0.65; }
+@media (max-width: 900px) { .hm-reviews .reviews-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .hm-reviews .reviews-list { grid-template-columns: 1fr; } }
+</style>
+<header class="reviews-header">{{if plugin_reviews_summary}}<p class="reviews-summary">{{plugin_reviews_summary}}</p>{{end}}</header>
+<div class="reviews-list">
+{{if plugin_reviews_field 0 "author"}}{{template "plugin/reviews/card" 0}}{{end}}
+{{if plugin_reviews_field 1 "author"}}{{template "plugin/reviews/card" 1}}{{end}}
+{{if plugin_reviews_field 2 "author"}}{{template "plugin/reviews/card" 2}}{{end}}
+{{if plugin_reviews_field 3 "author"}}{{template "plugin/reviews/card" 3}}{{end}}
+{{if plugin_reviews_field 4 "author"}}{{template "plugin/reviews/card" 4}}{{end}}
+{{if plugin_reviews_field 5 "author"}}{{template "plugin/reviews/card" 5}}{{end}}
+{{if plugin_reviews_field 6 "author"}}{{template "plugin/reviews/card" 6}}{{end}}
+{{if plugin_reviews_field 7 "author"}}{{template "plugin/reviews/card" 7}}{{end}}
+{{if plugin_reviews_field 8 "author"}}{{template "plugin/reviews/card" 8}}{{end}}
+{{if plugin_reviews_field 9 "author"}}{{template "plugin/reviews/card" 9}}{{end}}
+{{if plugin_reviews_field 10 "author"}}{{template "plugin/reviews/card" 10}}{{end}}
+{{if plugin_reviews_field 11 "author"}}{{template "plugin/reviews/card" 11}}{{end}}
+</div>
+<p class="reviews-attribution">{{if or (plugin_reviews_count "google") (plugin_reviews_summary "google") (plugin_reviews_profile "google")}}{{if plugin_reviews_profile "google"}}<a href="{{plugin_reviews_profile "google"}}" rel="noopener nofollow">Reviews from Google Maps</a>{{else}}Reviews from Google Maps{{end}}{{end}}{{if and (or (plugin_reviews_count "google") (plugin_reviews_summary "google") (plugin_reviews_profile "google")) (or (plugin_reviews_count "trustpilot") (plugin_reviews_summary "trustpilot") (plugin_reviews_profile "trustpilot"))}} · {{end}}{{if or (plugin_reviews_count "trustpilot") (plugin_reviews_summary "trustpilot") (plugin_reviews_profile "trustpilot")}}{{if plugin_reviews_profile "trustpilot"}}<a href="{{plugin_reviews_profile "trustpilot"}}" rel="noopener nofollow">Reviews from Trustpilot</a>{{else}}Reviews from Trustpilot{{end}}{{end}}</p>
+</section>{{end}}{{end}}

@@ -1,0 +1,35 @@
+{
+  "name": "reviews",
+  "version": "0.1.0",
+  "sdk": "^0.11",
+  "title": "Google and Trustpilot reviews",
+  "description": "Shows your Google and Trustpilot reviews on your pages from a copy refreshed daily, as a page-builder data source and a ready-made section.",
+  "permissions": ["settings", "http.fetch", "db", "builder.data", "log"],
+  "allowed_hosts": ["places.googleapis.com", "api.trustpilot.com"],
+  "routes": [
+    { "method": "GET", "path": "/overview" },
+    { "method": "POST", "path": "/refresh-now" }
+  ],
+  "cron": [ { "name": "refresh", "every": "1h" } ],
+  "ui": { "title": "Reviews" },
+  "funcs": ["summary", "count", "field", "profile"],
+  "builder_sources": [
+    { "name": "latest", "label": "Latest reviews", "kind": "items" }
+  ],
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "on_cron_refresh": 10000, "http_handle": 10000 }
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "google_api_key": { "type": "string", "title": "Google API key", "writeOnly": true, "description": "A key with Places API (New) enabled. Stored here and never shown again." },
+      "google_place_id": { "type": "string", "title": "Google place ID", "description": "The place ID of your business on Google Maps." },
+      "trustpilot_api_key": { "type": "string", "title": "Trustpilot API key", "writeOnly": true, "description": "Optional. Stored here and never shown again." },
+      "trustpilot_business_unit_id": { "type": "string", "title": "Trustpilot business unit ID", "description": "The ID of your business unit on Trustpilot." },
+      "min_rating": { "type": "integer", "title": "Lowest rating to show", "default": 4, "minimum": 1, "maximum": 5 },
+      "max_items": { "type": "integer", "title": "Most reviews to show", "default": 6, "minimum": 1, "maximum": 48 }
+    }
+  }
+}
