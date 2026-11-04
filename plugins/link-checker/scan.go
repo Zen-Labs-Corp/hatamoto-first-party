@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ const (
 
 	cursorKey   = "scan:cursor"
 	lastScanKey = "scan:last"
+	doneKey     = "scan:done"
 )
 
 func init() {
@@ -47,6 +49,7 @@ type entityWire struct {
 	Name       string          `json:"name"`
 	Path       string          `json:"path"`
 	URL        string          `json:"url"`
+	Locale     string          `json:"locale"`
 	Attributes json.RawMessage `json:"attributes"`
 }
 
@@ -55,6 +58,47 @@ type scanState struct {
 	Cursor    string `json:"cursor"`
 	PassStart string `json:"pass_start"`
 	PassTotal int    `json:"pass_total"`
+	// Locales are the locale tags of the entities this pass has seen.
+	Locales []string `json:"locales"`
+}
+
+// passDone is kept in kv when a pass has indexed every published page: from
+// then on "no page" is a final answer, and the locale segments are known.
+type passDone struct {
+	FinishedAt string   `json:"finished_at"`
+	Locales    []string `json:"locales"`
+}
+
+// loadPass reads the result of the last completed pass; a read error counts as
+// "no pass yet", which only delays verdicts.
+func loadPass() passInfo {
+	var d passDone
+	ok, err := kvGet(doneKey, &d)
+	if err != nil {
+		logf("warn", "pass state unreadable: %v", err)
+		return passInfo{}
+	}
+	return passInfo{Done: ok && d.FinishedAt != "", Locales: d.Locales}
+}
+
+// addLocale remembers a locale tag and its language part, lowercased.
+func (st *scanState) addLocale(tag string) {
+	tag = strings.ToLower(tag)
+	for _, l := range []string{tag, strings.SplitN(tag, "-", 2)[0]} {
+		if l != "" && !slices.Contains(st.Locales, l) {
+			st.Locales = append(st.Locales, l)
+		}
+	}
+}
+
+// finish records the end of a pass and clears the cursor.
+func (st scanState) finish() {
+	if err := kvSet(doneKey, passDone{FinishedAt: ts(now()), Locales: st.Locales}); err != nil {
+		logf("warn", "saving pass result: %v", err)
+	}
+	if err := kvDelete(cursorKey); err != nil {
+		logf("warn", "clearing scan cursor: %v", err)
+	}
 }
 
 // runScan is one bounded cron run: forget old data, read one batch of
@@ -130,6 +174,7 @@ func extractBatch(s settings, until time.Time) {
 			return
 		}
 		for _, e := range res.Items {
+			st.addLocale(e.Locale)
 			if o := siteOrigin(e.URL, e.Path); o != "" {
 				origin = o
 			}
@@ -142,9 +187,7 @@ func extractBatch(s settings, until time.Time) {
 		st.PassTotal += len(res.Items)
 		st.Cursor = res.NextCursor
 		if st.Cursor == "" {
-			if err := kvDelete(cursorKey); err != nil {
-				logf("warn", "clearing scan cursor: %v", err)
-			}
+			st.finish()
 			return
 		}
 		if err := kvSet(cursorKey, st); err != nil {
@@ -157,7 +200,7 @@ func extractBatch(s settings, until time.Time) {
 // checkDue checks the links that are due: internal ones first (no network),
 // then outbound ones until the budget ends.
 func checkDue(s settings, deadline time.Time) {
-	rc := &redirectCache{}
+	rc, pass := &redirectCache{}, loadPass()
 	internal, err := dueLinks(kindInternal, internalBatch)
 	if err != nil {
 		logf("warn", "due links: %v", err)
@@ -167,7 +210,7 @@ func checkDue(s settings, deadline time.Time) {
 		if deadline.Sub(now()) < margin {
 			return
 		}
-		record(l, checkInternal(l.URL, rc), s)
+		record(l, checkInternal(l.URL, rc, pass), s)
 	}
 	if !outboundGranted() {
 		logf("warn", "outbound checks skipped: http.fetch and http.fetch.any must both be granted")

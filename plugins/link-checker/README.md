@@ -84,8 +84,9 @@ Tables in the plugin's own schema:
 - `known_paths`: paths of published pages and their parent paths, used to tell a
   listing page from a missing one.
 
-`kv` holds `scan:cursor` (where the current pass over the pages stands) and
-`scan:last` (the time of the last run).
+`kv` holds `scan:cursor` (where the current pass over the pages stands),
+`scan:done` (when the last pass over all pages finished, and the locales seen)
+and `scan:last` (the time of the last run).
 
 A link that is on no page for 30 days is deleted by the scan, and so are page
 rows and known paths not seen for 30 days. An ignored link is kept as long as it
@@ -116,4 +117,10 @@ collects the package in `plugins/link-checker/build/`.
 - Some sites answer automated requests with 403 or 429; a 403 is shown as
   Broken, so use Ignore for those.
 - With the SDK range this plugin declares (`^0.11`), paths with a language
-  prefix are not resolved separately from the site language.
+  prefix are not resolved by the host. A path whose first segment is the
+  language (or locale tag) of a published page, such as `/fr/contact`, is also
+  looked up without that segment: it counts as fine when the unprefixed path is
+  a page or a listing. This is a heuristic, not a check in that language.
+- An internal link with no page stays pending (shown in no tab, counted as
+  waiting) until the first pass over all published pages has finished, because
+  listing paths are only known from their children.

@@ -142,6 +142,9 @@ func TestScanCursorAdvancesAndWraps(t *testing.T) {
 	if _, ok := w.kv[lastScanKey]; !ok {
 		t.Fatal("last scan time must be recorded")
 	}
+	if _, ok := w.kv[doneKey]; !ok {
+		t.Fatal("a finished pass must be recorded")
+	}
 	// Three entities stored, parents remembered.
 	var links, known int
 	for _, q := range w.host.sqls() {
@@ -401,5 +404,34 @@ func TestScanHeadAndGetStayInsideTheBudget(t *testing.T) {
 	}
 	if len(w.updates()) != 0 {
 		t.Fatalf("the link must stay due: %v", w.updates())
+	}
+}
+
+func TestScanKeepsNoPageLinksPendingUntilAPassCompleted(t *testing.T) {
+	w := newScanWorld(t)
+	// The pass is unfinished: the second list page is read in the next run.
+	w.pages = [][]string{{`{}`}, {`{}`}}
+	w.due[kindInternal] = []string{"/blog"}
+	inner := w.host.reply
+	listed := 0
+	w.host.reply = func(c call, out any) error {
+		if c.Fn == "entities.list" {
+			if listed++; listed == 2 {
+				return errors.New("host down")
+			}
+		}
+		return inner(c, out)
+	}
+	runScan()
+	if p := w.updates()[1]; p == nil || p[1] != statusPending {
+		t.Fatalf("before the pass completed: %v", p)
+	}
+	if _, ok := w.kv[doneKey]; ok {
+		t.Fatal("pass must not be recorded as complete")
+	}
+	w.host.calls = nil
+	runScan() // finishes the pass
+	if p := w.updates()[1]; p == nil || p[1] != statusBroken {
+		t.Fatalf("after the pass completed: %v", p)
 	}
 }

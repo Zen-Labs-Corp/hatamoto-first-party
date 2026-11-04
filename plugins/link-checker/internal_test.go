@@ -54,7 +54,7 @@ func TestCheckInternal(t *testing.T) {
 	}
 	for _, c := range cases {
 		f := internalHost(t, published, redirects, known)
-		got := checkInternal(c.path, &redirectCache{})
+		got := checkInternal(c.path, &redirectCache{}, passInfo{Done: true})
 		if got.Status != c.status || got.Err != c.err || got.Keep {
 			t.Errorf("%s: got %+v want %s %q", c.path, got, c.status, c.err)
 		}
@@ -92,7 +92,7 @@ func TestRedirectCacheLoadsOncePerRunAndPages(t *testing.T) {
 	})
 	rc := &redirectCache{}
 	for _, p := range []string{"/a", "/b", "/c.png"} {
-		if r := checkInternal(p, rc); r.Status != statusRedirected && p != "/c.png" {
+		if r := checkInternal(p, rc, passInfo{Done: true}); r.Status != statusRedirected && p != "/c.png" {
 			t.Fatalf("%s: %+v", p, r)
 		}
 	}
@@ -123,12 +123,36 @@ func TestCheckInternalHostErrorsKeepState(t *testing.T) {
 			}
 			return nil
 		})
-		got := checkInternal("/missing", &redirectCache{})
+		got := checkInternal("/missing", &redirectCache{}, passInfo{Done: true})
 		if !got.Keep {
 			t.Errorf("%s: want no state change, got %+v", name, got)
 		}
 		if f.count("http.fetch") != 0 || f.count("log") == 0 {
 			t.Errorf("%s: no fetch and one log line expected, calls %v", name, f.calls)
+		}
+	}
+}
+
+func TestCheckInternalNoPageIsNotFinalBeforeAPassCompleted(t *testing.T) {
+	internalHost(t, nil, `{"items":[],"total":0}`, nil)
+	got := checkInternal("/blog", &redirectCache{}, passInfo{})
+	if got.Status != statusPending || got.Delay != pendingRetry || got.Keep {
+		t.Fatalf("before a completed pass: %+v", got)
+	}
+	if got := checkInternal("/blog", &redirectCache{}, passInfo{Done: true}); got.Status != statusBroken {
+		t.Fatalf("after a completed pass: %+v", got)
+	}
+}
+
+func TestCheckInternalLocalePrefix(t *testing.T) {
+	internalHost(t, map[string]bool{"/contact": true}, `{"items":[],"total":0}`, map[string]bool{"/blog": true})
+	pass := passInfo{Done: true, Locales: []string{"fr"}}
+	for p, want := range map[string]string{
+		"/fr/contact": statusOK, "/FR/blog": statusOK, "/fr": statusOK,
+		"/fr/gone": statusBroken, "/de/contact": statusBroken,
+	} {
+		if got := checkInternal(p, &redirectCache{}, pass); got.Status != want {
+			t.Errorf("%s: %+v want %s", p, got, want)
 		}
 	}
 }
