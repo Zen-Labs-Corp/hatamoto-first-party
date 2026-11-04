@@ -1,0 +1,19 @@
+{
+  "name": "cdn-purge",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Purges changed pages from Cloudflare, Bunny or Fastly when you publish, update or delete content, so a CDN in front of your site stays fresh.",
+  "permissions": ["settings"],
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "title": "Greeting",
+        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
+        "maxLength": 64
+      }
+    }
+  }
+}
