@@ -1,4 +1,4 @@
-/* Announcement bars and popups. No animation; the bar overlays the page and
+/* Announcement bars and popups. No animation; the bar sits on top of the page and
    never moves it. */
 .hm-popups-bar {
   position: fixed;

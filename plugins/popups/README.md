@@ -17,7 +17,7 @@ Announcement bars and popups with page targeting, start and end dates and freque
    - **Position** (bars): `top` or `bottom`. Bars always show on load.
 3. Save. Cached pages are refreshed.
 
-A bar is a fixed strip that overlays the page and never pushes content. A popup is a native modal dialog: it has a visible close button, closes with Esc, keeps focus inside while open and returns focus to the previous element afterwards. Both can be dismissed.
+A bar is a fixed strip that sits on top of the page and never pushes content. A popup is a native modal dialog: it has a visible close button, closes with Esc, keeps focus inside while open and returns focus to the previous element afterwards. Both can be dismissed.
 
 Pages stay cached. The server only publishes the campaigns that can still apply to the page, as one `<meta name="hatamoto-popups">` tag in the head. The browser script checks the dates, paths and frequency again, so a cached page never shows an ended or not yet started campaign.
 
