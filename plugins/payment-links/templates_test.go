@@ -86,6 +86,9 @@ func TestSectionRendersEmptyContentAsAnInertSpan(t *testing.T) {
 
 func TestButtonRendersALinkOnlyForHTTPS(t *testing.T) {
 	got := renderSection(t, "Donate", "https://buy.stripe.com/abc")
+	if !strings.HasPrefix(got, `<div class="pl-button-wrap">`) || !strings.HasSuffix(got, `</div>`) {
+		t.Fatalf("no wrapper: %s", got)
+	}
 	if !strings.Contains(got, `<a class="pl-button" href="https://buy.stripe.com/abc" rel="noopener">Donate</a>`) {
 		t.Fatalf("https: %s", got)
 	}
