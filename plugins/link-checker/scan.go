@@ -201,7 +201,7 @@ func checkOutboundLinks(queue []dueLink, s settings, deadline time.Time) {
 				skipped = append(skipped, l)
 				continue
 			}
-			record(l, checkOutbound(l.URL, timeout, l.FailCount), s)
+			record(l, checkOutbound(l.URL, timeout, deadline, l.FailCount), s)
 			lastUse[host] = now()
 			progressed = true
 		}

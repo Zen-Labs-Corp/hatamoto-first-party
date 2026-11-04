@@ -389,3 +389,17 @@ func TestScanSkipsOutboundWithoutFetchAnyGrant(t *testing.T) {
 		}
 	}
 }
+
+func TestScanHeadAndGetStayInsideTheBudget(t *testing.T) {
+	w := newScanWorld(t)
+	w.due[kindOutbound] = []string{"https://slow.example.org/"}
+	w.status["https://slow.example.org/"] = 405
+	w.fetchDur = 6900 * time.Millisecond // HEAD ends 0.6 s before the budget
+	runScan()
+	if len(w.fetched) != 1 {
+		t.Fatalf("no GET may start with less than a request's worth left: %v", w.fetched)
+	}
+	if len(w.updates()) != 0 {
+		t.Fatalf("the link must stay due: %v", w.updates())
+	}
+}

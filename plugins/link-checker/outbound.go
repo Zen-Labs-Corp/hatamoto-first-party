@@ -35,10 +35,16 @@ func fetch(method, url string, timeout time.Duration) (fetchResult, error) {
 // checkOutbound requests url with HEAD, and with GET when the server refuses
 // HEAD (405, 501). prevFails is the consecutive connection failures so far: a
 // timeout or connection error is unknown the first time and broken the second.
-func checkOutbound(url string, timeout time.Duration, prevFails int) result {
+// The pair never runs past deadline: the GET gets what is left (minus the
+// margin), and is not sent, leaving the link due, when that is too little.
+func checkOutbound(url string, timeout time.Duration, deadline time.Time, prevFails int) result {
 	res, err := fetch(http.MethodHead, url, timeout)
 	if err == nil && (res.Status == http.StatusMethodNotAllowed || res.Status == http.StatusNotImplemented) {
-		res, err = fetch(http.MethodGet, url, timeout)
+		getTimeout := min(timeout, deadline.Sub(now())-margin)
+		if getTimeout < minRequest {
+			return keep()
+		}
+		res, err = fetch(http.MethodGet, url, getTimeout)
 	}
 	if err != nil {
 		return fromFetchError(err, prevFails)

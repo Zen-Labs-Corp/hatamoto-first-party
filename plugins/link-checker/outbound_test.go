@@ -57,7 +57,7 @@ func TestCheckOutboundStatuses(t *testing.T) {
 		{429, statusUnknown, retryLater}, {503, statusUnknown, retryLater},
 	} {
 		f := fetchHost(t, answer{status: c.status})
-		got := checkOutbound("https://example.org/x", 5*time.Second, 0)
+		got := checkOutbound("https://example.org/x", 5*time.Second, later(), 0)
 		if got.Status != c.want || got.HTTPStatus != c.status || got.Delay != c.delay || got.Keep {
 			t.Errorf("%d: got %+v", c.status, got)
 		}
@@ -70,13 +70,13 @@ func TestCheckOutboundStatuses(t *testing.T) {
 func TestCheckOutboundFallsBackToGET(t *testing.T) {
 	for _, refused := range []int{405, 501} {
 		f := fetchHost(t, answer{status: refused}, answer{status: 200})
-		got := checkOutbound("https://example.org/x", time.Second, 0)
+		got := checkOutbound("https://example.org/x", time.Second, later(), 0)
 		if got.Status != statusOK || got.HTTPStatus != 200 || methods(f) != "HEAD,GET" {
 			t.Errorf("%d: %+v %s", refused, got, methods(f))
 		}
 	}
 	f := fetchHost(t, answer{status: 405}, answer{status: 404})
-	if got := checkOutbound("https://example.org/x", time.Second, 0); got.Status != statusBroken || got.HTTPStatus != 404 || methods(f) != "HEAD,GET" {
+	if got := checkOutbound("https://example.org/x", time.Second, later(), 0); got.Status != statusBroken || got.HTTPStatus != 404 || methods(f) != "HEAD,GET" {
 		t.Errorf("GET result must win: %+v", got)
 	}
 }
@@ -84,12 +84,12 @@ func TestCheckOutboundFallsBackToGET(t *testing.T) {
 func TestCheckOutboundTwoStrikes(t *testing.T) {
 	for code, text := range map[string]string{sdk.ErrTimeout: "timed out", sdk.ErrInternal: "connection failed"} {
 		fetchHost(t, answer{err: &sdk.HostError{Code: code}})
-		first := checkOutbound("https://example.org/x", time.Second, 0)
+		first := checkOutbound("https://example.org/x", time.Second, later(), 0)
 		if first.Status != statusUnknown || first.FailCount != 1 || first.Err != text || first.Delay != retryLater {
 			t.Errorf("%s first: %+v", code, first)
 		}
 		fetchHost(t, answer{err: &sdk.HostError{Code: code}})
-		second := checkOutbound("https://example.org/x", time.Second, 1)
+		second := checkOutbound("https://example.org/x", time.Second, later(), 1)
 		if second.Status != statusBroken || second.FailCount != 2 || second.Err != text {
 			t.Errorf("%s second: %+v", code, second)
 		}
@@ -98,14 +98,14 @@ func TestCheckOutboundTwoStrikes(t *testing.T) {
 
 func TestCheckOutboundOtherHostErrors(t *testing.T) {
 	fetchHost(t, answer{err: &sdk.HostError{Code: sdk.ErrBlocked, Message: "fetch blocked: example.org resolves to a blocked address (10.0.0.1)"}})
-	got := checkOutbound("http://example.org/", time.Second, 0)
+	got := checkOutbound("http://example.org/", time.Second, later(), 0)
 	if got.Status != statusBroken || got.Err != "blocked address" {
 		t.Errorf("blocked: %+v", got)
 	}
 	// Policy refusals that say nothing about the link are unknown, not broken.
 	for _, msg := range []string{"host example.org:8443 is not in the plugin's allowed_hosts", "more than 5 redirects", ""} {
 		fetchHost(t, answer{err: &sdk.HostError{Code: sdk.ErrBlocked, Message: msg}})
-		got = checkOutbound("http://example.org/", time.Second, 0)
+		got = checkOutbound("http://example.org/", time.Second, later(), 0)
 		if got.Status != statusUnknown || got.Delay != retryLater || got.Keep {
 			t.Errorf("blocked %q: %+v", msg, got)
 		}
@@ -117,7 +117,7 @@ func TestCheckOutboundOtherHostErrors(t *testing.T) {
 		errors.New("boom"),
 	} {
 		f := fetchHost(t, answer{err: e})
-		if got := checkOutbound("https://example.org/x", time.Second, 1); !got.Keep {
+		if got := checkOutbound("https://example.org/x", time.Second, later(), 1); !got.Keep {
 			t.Errorf("%v: want no state change, got %+v", e, got)
 		}
 		if f.count("http.fetch") != 1 {
@@ -128,7 +128,7 @@ func TestCheckOutboundOtherHostErrors(t *testing.T) {
 
 func TestCheckOutboundNeverSendsCookies(t *testing.T) {
 	f := fetchHost(t, answer{status: 405}, answer{status: 200})
-	checkOutbound("https://example.org/x", 3*time.Second, 0)
+	checkOutbound("https://example.org/x", 3*time.Second, later(), 0)
 	for _, c := range f.calls {
 		h, _ := c.Args["headers"].(map[string]any)
 		for k := range h {
@@ -142,5 +142,25 @@ func TestCheckOutboundNeverSendsCookies(t *testing.T) {
 		if _, ok := c.Args["body"]; ok {
 			t.Fatal("no body expected")
 		}
+	}
+}
+
+// later is a deadline that never limits a test.
+func later() time.Time { return time.Now().Add(time.Hour) }
+
+func TestCheckOutboundGETNeverPastDeadline(t *testing.T) {
+	at := fixedNow(t, "2026-03-01T12:00:00Z")
+	// HEAD answers 405; 0.9 s remain, minus the margin that is below the
+	// shortest useful request: no GET.
+	f := fetchHost(t, answer{status: 405})
+	got := checkOutbound("https://example.org/x", 5*time.Second, at.Add(900*time.Millisecond+margin), 0)
+	if !got.Keep || methods(f) != "HEAD" {
+		t.Fatalf("got %+v %s", got, methods(f))
+	}
+	// With 3 s left the GET timeout is cut to 3 s minus the margin.
+	f = fetchHost(t, answer{status: 405}, answer{status: 200})
+	got = checkOutbound("https://example.org/x", 5*time.Second, at.Add(3*time.Second), 0)
+	if got.Status != statusOK || f.calls[1].Args["timeout_ms"] != float64(2500) {
+		t.Fatalf("got %+v %v", got, f.calls)
 	}
 }
