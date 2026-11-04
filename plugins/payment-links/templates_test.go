@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"html/template"
 	"os"
 	"regexp"
@@ -52,33 +51,37 @@ func TestTemplatesHaveNoForbiddenMarkup(t *testing.T) {
 	}
 }
 
-// The test renders with stub versions of core's hasPrefix and dict (stdlib
-// only: no core import).
-func renderSection(t *testing.T, label, url string) string {
+// parseTemplates parses both files with no extra funcs, as core's scratch
+// parse of plugin templates does: only the Go builtins exist.
+func parseTemplates(t *testing.T) *template.Template {
 	t.Helper()
-	funcs := template.FuncMap{
-		"hasPrefix": strings.HasPrefix,
-		"dict": func(kv ...any) (map[string]any, error) {
-			if len(kv)%2 != 0 {
-				return nil, errors.New("odd dict")
-			}
-			m := map[string]any{}
-			for i := 0; i < len(kv); i += 2 {
-				m[kv[i].(string)] = kv[i+1]
-			}
-			return m, nil
-		},
-	}
-	tpl := template.New("t").Funcs(funcs)
+	tpl := template.New("t")
 	for path := range templateFiles {
-		template.Must(tpl.Parse(readTemplate(t, path)))
+		if _, err := tpl.Parse(readTemplate(t, path)); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
 	}
+	return tpl
+}
+
+func renderContent(t *testing.T, content map[string]any) string {
+	t.Helper()
 	var buf bytes.Buffer
-	data := map[string]any{"Content": map[string]any{"label": label, "url": url}}
-	if err := tpl.ExecuteTemplate(&buf, "section-payment_button", data); err != nil {
+	if err := parseTemplates(t).ExecuteTemplate(&buf, "section-payment_button", map[string]any{"Content": content}); err != nil {
 		t.Fatal(err)
 	}
 	return buf.String()
+}
+
+func renderSection(t *testing.T, label, url string) string {
+	return renderContent(t, map[string]any{"label": label, "url": url})
+}
+
+func TestSectionRendersEmptyContentAsAnInertSpan(t *testing.T) {
+	got := renderContent(t, map[string]any{})
+	if strings.Contains(got, "<a ") || !strings.Contains(got, "pl-button-off") {
+		t.Fatalf("empty content rendered %s", got)
+	}
 }
 
 func TestButtonRendersALinkOnlyForHTTPS(t *testing.T) {

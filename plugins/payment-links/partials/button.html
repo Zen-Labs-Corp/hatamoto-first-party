@@ -1,1 +1,1 @@
-{{define "plugin/payment_links/button"}}{{if hasPrefix .url "https://"}}<a class="pl-button" href="{{.url}}" rel="noopener">{{.label}}</a>{{else}}<span class="pl-button pl-button-off">{{.label}}</span>{{end}}{{end}}
+{{define "plugin/payment_links/button"}}{{if eq (printf "%.8s" .url) "https://"}}<a class="pl-button" href="{{.url}}" rel="noopener">{{.label}}</a>{{else}}<span class="pl-button pl-button-off">{{.label}}</span>{{end}}{{end}}
