@@ -34,6 +34,9 @@ func newScanWorld(t *testing.T) *scanWorld {
 		kv: map[string]json.RawMessage{}, due: map[string][]string{}, status: map[string]int{}, granted: `{"granted":["http.fetch","http.fetch.any","db"]}`, fetchDur: 300 * time.Millisecond}
 	w.host = newFakeHost(t, w.reply)
 	now = func() time.Time { return w.clock }
+	oldSleep := sleep
+	sleep = func(d time.Duration) { w.clock = w.clock.Add(d) }
+	t.Cleanup(func() { sleep = oldSleep })
 	return w
 }
 
@@ -102,7 +105,7 @@ func (w *scanWorld) reply(c call, out any) error {
 			return cell(out, `{"n":3}`)
 		case strings.Contains(sql, "FROM known_paths WHERE path"):
 			return cell(out, `{"known":false}`)
-		case strings.Contains(sql, "fail_count, next_check FROM links"):
+		case strings.Contains(sql, "row_number() OVER"):
 			kind := c.params()[0].(string)
 			var rows []string
 			for i, u := range w.due[kind] {
@@ -280,8 +283,9 @@ func TestScanOneRequestPerHostPerSecond(t *testing.T) {
 	if w.fetched[0] != "https://example.org/1" || w.fetched[1] != "https://example.com/a" || w.fetched[2] != "https://EXAMPLE.net/b" {
 		t.Fatalf("order %v", w.fetched)
 	}
-	if len(w.fetched) != 3 {
-		t.Fatalf("no sleeping: skipped links wait for the next run, fetched %v", w.fetched)
+	// The run waits for the gap instead of ending with budget left.
+	if len(w.fetched) != 5 {
+		t.Fatalf("links of a busy host are checked after the gap, fetched %v", w.fetched)
 	}
 }
 
@@ -291,8 +295,8 @@ func TestScanSkippedHostGoesAgainWhenTimeHasPassed(t *testing.T) {
 	w.fetchDur = 600 * time.Millisecond
 	runScan()
 	// org/1 at 0.0, com at 0.6, net/b at 1.2. In the second pass (1.8 s) org/2 is
-	// free again (last used at 0.6 s), net/c (last used at 1.8 s) waits for the next run.
-	if len(w.fetched) != 4 || w.fetched[3] != "https://example.org/2" {
+	// free again (last used at 0.0 s); net/c waits for the gap, then goes.
+	if len(w.fetched) != 5 || w.fetched[3] != "https://example.org/2" || w.fetched[4] != "https://example.net/c" {
 		t.Fatalf("fetched %v", w.fetched)
 	}
 }
@@ -482,5 +486,31 @@ func TestScanRestartsPassWhenListKeepsFailing(t *testing.T) {
 	}
 	if _, ok := w.kv[doneKey]; ok {
 		t.Fatal("a restart is not a completed pass")
+	}
+}
+
+func TestScanWaitsForTheHostGapInsteadOfEndingTheRun(t *testing.T) {
+	w := newScanWorld(t)
+	w.due[kindOutbound] = []string{"https://example.org/1", "https://example.org/2", "https://example.org/3"}
+	w.fetchDur = 100 * time.Millisecond
+	runScan()
+	if len(w.fetched) != 3 {
+		t.Fatalf("one host with a backlog must use the run's budget, fetched %v", w.fetched)
+	}
+	for i := 1; i < len(w.fetchAt); i++ {
+		if w.fetchAt[i].Sub(w.fetchAt[i-1]) < time.Second {
+			t.Fatalf("gap not kept: %v", w.fetchAt)
+		}
+	}
+}
+
+func TestScanDoesNotSleepPastTheBudget(t *testing.T) {
+	w := newScanWorld(t)
+	w.due[kindOutbound] = []string{"https://example.org/1", "https://example.org/2"}
+	w.fetchDur = 6800 * time.Millisecond // 1.2 s left: the 1 s gap would leave no request
+	start := w.clock
+	runScan()
+	if len(w.fetched) != 1 || w.clock.Sub(start) > budget {
+		t.Fatalf("fetched %v took %v", w.fetched, w.clock.Sub(start))
 	}
 }

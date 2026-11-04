@@ -110,14 +110,20 @@ func replacePageLinks(e pageRef, refs []linkRef) error {
 		    JOIN jsonb_to_recordset($2::jsonb) AS x(url text) ON l.url = x.url)`, e.ID, string(all))
 }
 
-// dueLinks returns up to limit links of kind whose next check is due,
-// oldest first. Ignored links are never due.
+// dueLinks returns up to limit links of kind whose next check is due.
+// Ignored links are never due. The oldest due link of every host comes first,
+// then the second oldest of every host, and so on, so a host with a long
+// backlog cannot crowd the others out of the batch.
 func dueLinks(kind string, limit int) ([]dueLink, error) {
 	var out []dueLink
-	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.next_check, t.id), '[]'::jsonb) FROM
-		(SELECT id, url, kind, fail_count, next_check FROM links
-		  WHERE kind = $1 AND status <> 'ignored' AND next_check <= $2::timestamptz
-		  ORDER BY next_check, id LIMIT $3) t`, &out, kind, ts(now()), limit)
+	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.rn, r.next_check, r.id), '[]'::jsonb) FROM
+		(SELECT t.id, t.url, t.kind, t.fail_count, t.next_check, t.rn FROM
+		  (SELECT id, url, kind, fail_count, next_check,
+		     row_number() OVER (PARTITION BY lower(substring(url from '^https?://([^/?#]+)'))
+		       ORDER BY next_check, id) AS rn
+		   FROM links
+		   WHERE kind = $1 AND status <> 'ignored' AND next_check <= $2::timestamptz) t
+		 ORDER BY t.rn, t.next_check, t.id LIMIT $3) r`, &out, kind, ts(now()), limit)
 	return out, err
 }
 

@@ -88,6 +88,10 @@ func TestDueLinks(t *testing.T) {
 	if !strings.Contains(c.sql(), "status <> 'ignored'") || !strings.Contains(c.sql(), "LIMIT $3") {
 		t.Fatal(c.sql())
 	}
+	// The oldest link of every host first: ranked per host, rank before age.
+	if !strings.Contains(c.sql(), "PARTITION BY lower(substring(url") || !strings.Contains(c.sql(), "ORDER BY t.rn, t.next_check") {
+		t.Fatalf("the batch must span hosts: %s", c.sql())
+	}
 	if p := c.params(); p[0] != "internal" || p[1] != "2026-01-02T03:04:05Z" || p[2] != float64(20) {
 		t.Fatalf("params %v", p)
 	}
