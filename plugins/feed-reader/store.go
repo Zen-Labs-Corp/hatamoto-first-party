@@ -135,13 +135,12 @@ type itemDoc struct {
 // maxFutureSkew is how far ahead of the fetch time a publication date may be.
 const maxFutureSkew = 24 * time.Hour
 
-// clampFuture replaces a date more than a day after at (a typo, a wrong zone
-// or a hostile feed) by at, so it cannot stay pinned at the top of the loop.
-func clampFuture(published, at time.Time) time.Time {
-	if published.After(at.Add(maxFutureSkew)) {
-		return at
-	}
-	return published
+// tooFarAhead reports a date more than a day after at (a typo, a wrong zone
+// or a hostile feed). Such an item is stored without a date, so it is ordered
+// by its first fetch time: that never moves, and the item ages out normally
+// instead of staying pinned at the top of the loop.
+func tooFarAhead(published, at time.Time) bool {
+	return published.After(at.Add(maxFutureSkew))
 }
 
 // upsertItems stores items in one statement. Items repeating a guid inside
@@ -159,8 +158,8 @@ func upsertItems(key string, items []item) error {
 		}
 		seen[it.GUID] = true
 		d := itemDoc{GUID: it.GUID, Title: it.Title, Link: it.Link, Excerpt: it.Excerpt}
-		if !it.Published.IsZero() {
-			s := stamp(clampFuture(it.Published, now()))
+		if !it.Published.IsZero() && !tooFarAhead(it.Published, now()) {
+			s := stamp(it.Published)
 			d.Published = &s
 		}
 		docs = append(docs, d)
