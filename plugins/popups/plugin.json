@@ -2,17 +2,117 @@
   "name": "popups",
   "version": "0.1.0",
   "sdk": "^0.8",
+  "title": "Popups and announcement bars",
   "description": "Announcement bars and popups with page targeting, start and end dates and frequency caps, built to stay accessible and keep pages cached.",
-  "permissions": ["settings"],
+  "permissions": ["settings", "site.scripts"],
   "limits": { "memory_pages": 256, "max_instances": 4 },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+      "campaigns": {
+        "type": "array",
+        "title": "Campaigns",
+        "description": "Up to 10 bars or popups. The first match per bar position and the first matching popup are shown.",
+        "maxItems": 10,
+        "items": {
+          "type": "object",
+          "required": ["id", "kind", "message"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "Lowercase letters, digits and dashes. Also the dismissal key: a new id shows the campaign again.",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,39}$",
+              "maxLength": 40
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "enum": ["bar", "popup"]
+            },
+            "message": {
+              "type": "string",
+              "title": "Message",
+              "description": "Plain text.",
+              "format": "textarea",
+              "maxLength": 500
+            },
+            "link_label": {
+              "type": "string",
+              "title": "Link label",
+              "maxLength": 60
+            },
+            "link_url": {
+              "type": "string",
+              "title": "Link url",
+              "description": "http, https or a site path starting with /. Anything else drops the link.",
+              "maxLength": 500
+            },
+            "include_paths": {
+              "type": "array",
+              "title": "Include paths",
+              "description": "One glob per line. * matches within one path segment, ** any depth. Empty means every page.",
+              "x-hm-field": "lines",
+              "maxItems": 50,
+              "items": { "type": "string", "maxLength": 200 }
+            },
+            "exclude_paths": {
+              "type": "array",
+              "title": "Exclude paths",
+              "description": "One glob per line, same rules as include paths.",
+              "x-hm-field": "lines",
+              "maxItems": 50,
+              "items": { "type": "string", "maxLength": 200 }
+            },
+            "start": {
+              "type": "string",
+              "title": "Start (UTC)",
+              "description": "YYYY-MM-DD or YYYY-MM-DD HH:MM, UTC. A date alone starts at 00:00. Empty means no start.",
+              "pattern": "^$|^\\d{4}-\\d{2}-\\d{2}([T ]\\d{2}:\\d{2})?$"
+            },
+            "end": {
+              "type": "string",
+              "title": "End (UTC)",
+              "description": "YYYY-MM-DD or YYYY-MM-DD HH:MM, UTC. A date alone ends at 23:59:59. Empty means no end.",
+              "pattern": "^$|^\\d{4}-\\d{2}-\\d{2}([T ]\\d{2}:\\d{2})?$"
+            },
+            "frequency": {
+              "type": "string",
+              "title": "Frequency",
+              "description": "How often a visitor sees it again after closing it.",
+              "enum": ["session", "day", "week", "once"],
+              "default": "session"
+            },
+            "trigger": {
+              "type": "string",
+              "title": "Trigger",
+              "description": "Popups only. Bars always show on load.",
+              "enum": ["load", "delay", "scroll", "exit"],
+              "default": "load"
+            },
+            "delay_seconds": {
+              "type": "integer",
+              "title": "Delay seconds",
+              "description": "For the delay trigger.",
+              "minimum": 0,
+              "maximum": 600
+            },
+            "scroll_percent": {
+              "type": "integer",
+              "title": "Scroll percent",
+              "description": "For the scroll trigger.",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "position": {
+              "type": "string",
+              "title": "Position",
+              "description": "Bars only.",
+              "enum": ["top", "bottom"],
+              "default": "top"
+            }
+          }
+        }
       }
     }
   }
