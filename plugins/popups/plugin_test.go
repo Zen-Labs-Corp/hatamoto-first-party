@@ -78,8 +78,10 @@ func TestEndedCampaignDropped(t *testing.T) {
 		{"id":"old","kind":"bar","message":"x","end":"2026-11-09"},
 		{"id":"today","kind":"bar","message":"x","end":"2026-11-10"},
 		{"id":"earlier","kind":"bar","message":"x","end":"2026-11-10 11:59"},
+		{"id":"soon","kind":"popup","message":"x","start":"2026-11-11 11:59"},
+		{"id":"toofar","kind":"popup","message":"x","start":"2026-11-11 12:01"},
 		{"id":"future","kind":"popup","message":"x","start":"2026-12-01"}]}`, nil)
-	if got := ids(published(t, tags)); got != "today,future" {
+	if got := ids(published(t, tags)); got != "today,soon" {
 		t.Fatalf("ids = %s", got)
 	}
 }

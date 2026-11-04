@@ -116,10 +116,18 @@ func normalize(cp campaign) (campaign, bool) {
 	return cp, true
 }
 
+// maxHeadCache is the longest a page can stay cached; a campaign starting
+// later than that cannot be due while any cached copy of this head lives, so
+// it stays out of the page source.
+const maxHeadCache = 24 * time.Hour
+
 // activeOn reports whether the campaign can still apply to path at t: not
-// ended, and path-matching. The start is left to the browser, because the
-// cached head outlives it.
+// ended, starting within maxHeadCache, and path-matching. The exact start is
+// left to the browser, because the cached head outlives it.
 func activeOn(cp campaign, path string, t time.Time) bool {
+	if start, ok := parseUTC(cp.Start, false); ok && start.After(t.Add(maxHeadCache)) {
+		return false
+	}
 	if end, ok := parseUTC(cp.End, true); ok && !end.IsZero() && end.Before(t) {
 		return false
 	}
