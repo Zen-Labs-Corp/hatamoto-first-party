@@ -154,7 +154,10 @@ func submitSitemap(s settings) (sdk.HTTPResponse, error) {
 	if err != nil {
 		return problem(err)
 	}
-	feed := sitemapURL(site)
+	feed, err := sitemapURL(site)
+	if err != nil {
+		return problem(err)
+	}
 	budgetEnd = time.Now().Add(importNowBudget)
 	subErr := submitFeed(s, site, feed)
 	budgetEnd = time.Time{}

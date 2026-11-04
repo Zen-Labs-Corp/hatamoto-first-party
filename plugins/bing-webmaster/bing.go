@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // defaultBase is the Bing Webmaster JSON API. A manifest config key
@@ -404,8 +405,30 @@ func submitFeed(s settings, site, feedURL string) error {
 	return err
 }
 
-// sitemapURL is where core serves the sitemap.
-func sitemapURL(site string) string { return strings.TrimRight(site, "/") + "/sitemap.xml" }
+const maxSiteURL = 2048
+
+// parseSite checks a Site URL: http or https, a host, no credentials, no
+// control characters, at most maxSiteURL bytes.
+func parseSite(site string) (*url.URL, error) {
+	if len(site) > maxSiteURL || strings.IndexFunc(site, func(r rune) bool { return unicode.IsControl(r) || unicode.IsSpace(r) }) >= 0 {
+		return nil, errSiteInvalid
+	}
+	u, err := url.Parse(site)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
+		return nil, errSiteInvalid
+	}
+	return u, nil
+}
+
+// sitemapURL is where core serves the sitemap: /sitemap.xml at the origin of
+// the site, whatever path or query the Site URL carries.
+func sitemapURL(site string) (string, error) {
+	u, err := parseSite(site)
+	if err != nil {
+		return "", err
+	}
+	return (&url.URL{Scheme: u.Scheme, Host: u.Host, Path: "/sitemap.xml"}).String(), nil
+}
 
 // --- site --------------------------------------------------------------------------------
 
@@ -414,7 +437,9 @@ const siteCacheTTL = 600 // seconds a site resolved from Bing is remembered
 var errSiteChoice = errors.New("Bing lists no single verified site for this key. Fill in Site URL in Settings, exactly as it is verified in Bing Webmaster Tools.")
 
 // errSiteInvalid is an invalid Site URL setting.
-var errSiteInvalid = errors.New("Site URL must start with http:// or https://, exactly as it is verified in Bing Webmaster Tools.")
+var errSiteInvalid = errors.New("Site URL must be an http:// or https:// address, exactly as it is verified in Bing Webmaster Tools.")
+
+func parseSiteOK(site string) bool { _, err := parseSite(site); return err == nil }
 
 // keyTag is a short fingerprint of the key (never the key), stored with the
 // cached site so that a site resolved for another key is not reused.
@@ -431,8 +456,8 @@ func resolveSite(s settings) (site, source string, err error) {
 		return "", "none", errNoKey
 	}
 	if s.SiteURL != "" {
-		if !strings.HasPrefix(s.SiteURL, "http://") && !strings.HasPrefix(s.SiteURL, "https://") {
-			return "", "none", errSiteInvalid
+		if _, err := parseSite(s.SiteURL); err != nil {
+			return "", "none", err
 		}
 		return s.SiteURL, "setting", nil
 	}
@@ -445,7 +470,7 @@ func resolveSite(s settings) (site, source string, err error) {
 			Site string `json:"site"`
 			Key  string `json:"key"`
 		}
-		if json.Unmarshal(got.Value, &cached) == nil && cached.Site != "" && cached.Key == keyTag(s.APIKey) {
+		if json.Unmarshal(got.Value, &cached) == nil && cached.Key == keyTag(s.APIKey) && parseSiteOK(cached.Site) {
 			return cached.Site, "bing", nil
 		}
 	}
@@ -455,7 +480,7 @@ func resolveSite(s settings) (site, source string, err error) {
 	}
 	var verified []string
 	for _, u := range sites {
-		if u.IsVerified && u.URL != "" {
+		if u.IsVerified && parseSiteOK(u.URL) {
 			verified = append(verified, u.URL)
 		}
 	}

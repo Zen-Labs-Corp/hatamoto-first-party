@@ -365,3 +365,27 @@ func TestIssueLabels(t *testing.T) {
 		t.Fatalf("%#v", l)
 	}
 }
+
+func TestSitemapURLIsBuiltFromTheOrigin(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://example.com/":         "https://example.com/sitemap.xml",
+		"https://example.com":          "https://example.com/sitemap.xml",
+		"https://example.com/blog/":    "https://example.com/sitemap.xml",
+		"https://example.com/?x=1#f":   "https://example.com/sitemap.xml",
+		"http://example.com:8080/a/b?": "http://example.com:8080/sitemap.xml",
+	} {
+		if got, err := sitemapURL(in); err != nil || got != want {
+			t.Errorf("%s: %q %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"", "example.com", "ftp://example.com/", "https:///x", "https://u:p@example.com/",
+		"https://example.com/a b", "https://example.com/\n", "https://example.com/" + strings.Repeat("a", maxSiteURL)} {
+		if _, err := sitemapURL(bad); err != errSiteInvalid {
+			t.Errorf("%q must be invalid: %v", bad, err)
+		}
+		newHost(t)
+		if _, _, err := resolveSite(settings{APIKey: testKey, SiteURL: bad}); bad != "" && err != errSiteInvalid {
+			t.Errorf("%q must be invalid as a setting: %v", bad, err)
+		}
+	}
+}
