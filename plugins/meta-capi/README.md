@@ -8,7 +8,7 @@ Replaces the server-side part of PixelYourSite and Meta pixel for WordPress.
 
 1. Install the plugin from Admin > Settings > Plugins and grant the permissions it asks for, including `forms.read`: without it the host delivers no form submissions to the plugin.
 2. Open its **Settings** tab and enter the **Pixel ID** and the **Access token** (write-only: stored, never shown again). Set the **Site address** (for example `https://example.com`) so each event carries the page it came from.
-3. Optionally limit it to some **Forms** (empty means all), map the **Email**, **Phone** and **Name** field names of your forms, and name a **Consent field**: when set, only submissions where it is checked (`true`, `1`, `yes`, `on`, `y`, `checked`) are sent.
+3. Optionally limit it to some **Forms** (empty means all), map the **Email**, **Phone** and **Name** field names of your forms, and name a **Consent field**: when set, only submissions where it is checked (`true`, `1`, `yes`, `on`, `y`, `checked`) or, for a checkbox with options, has at least one option chosen are sent.
 4. Open the plugin's page and press **Send test event**. Put a test event code from Events Manager > Test events in the settings first; the event then shows up there.
 
 Each stored submission produces one event (`Lead` by default) whose `event_id` is the submission id. Give the browser pixel the same value as its `eventID` and Meta counts the two as one event. A second delivery of the same submission sends nothing.

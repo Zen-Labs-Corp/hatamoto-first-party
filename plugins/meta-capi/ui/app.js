@@ -67,9 +67,10 @@ function fillLog(rows) {
 }
 
 function fillSummary(d) {
+  const labels = { pixel_id: "Pixel ID", access_token: "Access token", graph_version: "a valid Graph API version" };
   $("#status").textContent = d.configured
-    ? `Sending Lead events to pixel ${d.pixel_id} (Graph ${d.graph_version}).`
-    : "Not sending: set Pixel ID and Access token in Settings.";
+    ? `Sending ${d.event_name || "Lead"} events to pixel ${d.pixel_id} (Graph ${d.graph_version}).`
+    : `Not sending: fill in ${d.missing.map((m) => labels[m] || m).join(", ")} in Settings.`;
   $("#forms").textContent = d.forms.length ? d.forms.join(", ") : "all forms";
   $("#testcode").textContent = d.test_event_code || "not set";
   $("#forms-hint").hidden = d.forms_read_granted !== false;
@@ -95,7 +96,8 @@ async function sendTest() {
     await api("POST", "/test");
     result("Sent. Check Events Manager > Test events.", false);
   } catch (e) {
-    result(e.status === 502 ? `Meta said: ${e.message}` : e.message, true);
+    const host = e.message.startsWith("host: ");
+    result(e.status === 502 && !host ? `Meta said: ${e.message}` : host ? `Could not reach Meta: ${e.message} (check the plugin's Permissions)` : e.message, true);
   }
   btn.disabled = false;
   try { await refresh(); } catch (e) { say(e.message, true); }

@@ -105,6 +105,20 @@ func TestPostTestNeedsSettings(t *testing.T) {
 	}
 }
 
+func TestPostTestNamesMissingSettings(t *testing.T) {
+	h := routeHost(t, `[]`, nil)
+	h.settings = `{"pixel_id":"123456789","access_token":"` + sampleToken + `","graph_version":"bogus","test_event_code":"T1"}`
+	status, body, raw := request(t, "POST", "/test")
+	msg, _ := body["error"].(string)
+	if status != 400 || !strings.Contains(msg, "Graph API version") || strings.Contains(msg, "Pixel ID") {
+		t.Fatalf("%d %s", status, raw)
+	}
+	status, body, _ = request(t, "GET", "/log")
+	if m := body["missing"].([]any); status != 200 || len(m) != 1 || m[0] != "graph_version" || body["event_name"] != "Lead" {
+		t.Fatalf("%d %v", status, body)
+	}
+}
+
 func TestPostTestSendsAndLogsATestRow(t *testing.T) {
 	h := routeHost(t, `[]`, nil)
 	h.configured(`"test_event_code":"TEST1"`)

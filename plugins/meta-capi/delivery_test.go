@@ -250,7 +250,7 @@ func TestDeliverSkips(t *testing.T) {
 }
 
 func TestDeliverConsentGiven(t *testing.T) {
-	for _, v := range []any{true, 1.0, "yes", " Checked ", "ON", "Y", "1", "true"} {
+	for _, v := range []any{true, 1.0, "yes", " Checked ", "ON", "Y", "1", "true", []any{"I agree"}} {
 		h := newHost(t)
 		h.configured(`"consent_field":"agree"`)
 		ev := sample("sub-1")
@@ -260,7 +260,7 @@ func TestDeliverConsentGiven(t *testing.T) {
 			t.Errorf("consent %v: fetch calls = %d", v, h.count("http.fetch"))
 		}
 	}
-	for _, v := range []any{false, 0.0, "", "no", "off", []any{"no"}, nil} {
+	for _, v := range []any{false, 0.0, "", "no", "off", []any{}, nil} {
 		if truthy(v) {
 			t.Errorf("truthy(%v) = true", v)
 		}
@@ -515,7 +515,8 @@ func TestTruthyList(t *testing.T) {
 		{[]any{"", "on"}, true},
 		{[]any{false, true}, true},
 		{[]any{}, false},
-		{[]any{"no", ""}, false},
+		{[]any{"no", ""}, true},
+		{[]any{"I agree"}, true},
 		{[]any{[]any{"yes"}}, true},
 	}
 	for _, c := range cases {

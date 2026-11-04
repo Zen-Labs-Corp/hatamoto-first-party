@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"hatamoto.dev/sdk"
@@ -75,11 +76,22 @@ FROM deliveries ORDER BY created_at DESC LIMIT 200) t`, &rows)
 		"missing":            missing,
 		"pixel_id":           s.PixelID,
 		"graph_version":      s.GraphVersion,
+		"event_name":         s.EventName,
 		"forms":              forms,
 		"test_event_code":    s.TestEventCode,
 		"forms_read_granted": formsRead,
 		"rows":               rows,
 	})
+}
+
+// settingLabels names missing settings the way the Settings page does.
+func settingLabels(missing []string) string {
+	names := map[string]string{"pixel_id": "Pixel ID", "access_token": "Access token", "graph_version": "a valid Graph API version"}
+	out := make([]string, len(missing))
+	for i, m := range missing {
+		out[i] = names[m]
+	}
+	return strings.Join(out, ", ")
 }
 
 // postTest sends one test event (hash of a fixed example address, no visitor
@@ -93,7 +105,7 @@ func postTest() (sdk.HTTPResponse, error) {
 		return invalid("Set a Test event code in Settings first (Events Manager > Test events).")
 	}
 	if m := s.missing(); len(m) > 0 {
-		return invalid("Set Pixel ID and Access token in Settings first.")
+		return invalid("Fill in " + settingLabels(m) + " in Settings first.")
 	}
 	now := time.Now()
 	ev := sdk.FormSubmittedEvent{

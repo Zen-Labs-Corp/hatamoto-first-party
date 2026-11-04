@@ -186,8 +186,8 @@ func logFailure(o outcome) {
 }
 
 // truthy reads a consent value: true, a non-zero number, or one of 1, true,
-// yes, on, y, checked in any case. A list (checkbox options) is truthy when
-// any element is.
+// yes, on, y, checked in any case. A non-empty list (checkbox options store
+// the chosen values) counts as consent.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case bool:
@@ -195,11 +195,7 @@ func truthy(v any) bool {
 	case float64:
 		return x != 0
 	case []any:
-		for _, e := range x {
-			if truthy(e) {
-				return true
-			}
-		}
+		return len(x) > 0
 	case string:
 		switch strings.ToLower(strings.TrimSpace(x)) {
 		case "1", "true", "yes", "on", "y", "checked":
