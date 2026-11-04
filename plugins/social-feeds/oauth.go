@@ -21,7 +21,9 @@ const (
 	graphURL         = "https://graph.instagram.com/"
 	minTokenAge      = 24 * time.Hour
 	renewWindow      = 7 * 24 * time.Hour
-	defaultLongLived = 60 * 24 * 3600 // seconds, when Instagram omits expires_in
+	defaultLongLived = 60 * 24 * 3600  // seconds, when Instagram omits expires_in
+	callbackBudget   = 9 * time.Second // inside the 10 s route timeout
+	lookupMinLeft    = 1500 * time.Millisecond
 )
 
 // randomToken is n random bytes in hex.
@@ -104,14 +106,28 @@ func oauthCallback(s settings, r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	if code == "" || len(code) > 1024 || len(s.missingForConnect()) > 0 {
 		return page(http.StatusBadRequest, "Link not valid", "<p>This address is not an Instagram answer.</p>"+backText, nil), nil
 	}
+	budgetEnd = now().Add(callbackBudget)
+	defer func() { budgetEnd = time.Time{} }()
 	tok, err := exchangeCode(s, code)
 	if err != nil {
 		msg := redact(err.Error(), s.AppSecret)
 		logf("warn", "code exchange: %s", msg)
 		return page(http.StatusBadGateway, "Instagram refused the code", "<p>"+html.EscapeString(msg)+"</p>"+backText, nil), nil
 	}
+	// Save before the optional name lookup, so a slow lookup cannot lose the token.
 	if err := saveToken(tok); err != nil {
 		return fail(err)
+	}
+	if budgetEnd.Sub(now()) >= lookupMinLeft {
+		if id, name := lookupAccount(tok.AccessToken); name != "" {
+			tok.Username = name
+			if id != "" {
+				tok.UserID = id
+			}
+			if err := saveToken(tok); err != nil {
+				return fail(err)
+			}
+		}
 	}
 	logf("info", "connected to Instagram")
 	// The admin address is private and unknown to the plugin, so no redirect.
@@ -131,7 +147,7 @@ type longLived struct {
 }
 
 // exchangeCode trades the code for a short-lived token, that for a long-lived
-// one, and looks up the account name (best effort).
+// one.
 func exchangeCode(s settings, code string) (igToken, error) {
 	form := url.Values{}
 	form.Set("client_id", s.AppID)
@@ -159,14 +175,7 @@ func exchangeCode(s settings, code string) (igToken, error) {
 	if err != nil {
 		return igToken{}, err
 	}
-	t := newToken(long, userID, "")
-	if id, name := lookupAccount(t.AccessToken); name != "" {
-		t.Username = name
-		if id != "" {
-			t.UserID = id
-		}
-	}
-	return t, nil
+	return newToken(long, userID, ""), nil
 }
 
 // parseShortToken reads both shapes of the short-lived answer: flat, or

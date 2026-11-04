@@ -264,3 +264,26 @@ func TestUnknownRouteIs404(t *testing.T) {
 		t.Fatalf("status = %d", res.Status)
 	}
 }
+
+func TestCallbackSavesTheTokenWhenTimeRunsShort(t *testing.T) {
+	f := useFake(t)
+	f.settings = igSettings
+	exchangeRoutes(f, `{"access_token":"SHORT","user_id":1789}`)
+	slow := func(status int, body string) func(fetchCall) (int, string, error) {
+		return func(fetchCall) (int, string, error) {
+			f.clock = f.clock.Add(4 * time.Second)
+			return status, body, nil
+		}
+	}
+	f.onFunc(shortTokenURL, slow(200, `{"access_token":"SHORT","user_id":1789}`))
+	f.onFunc(graphURL+"access_token", slow(200, `{"access_token":"LONGTOKEN","expires_in":5184000}`))
+	state := startFlow(t, f)
+	res := callback(t, state, "CODE")
+	tok, _ := loadToken()
+	if res.Status != 200 || tok == nil || tok.AccessToken != "LONGTOKEN" {
+		t.Fatalf("answer = %d, token = %+v", res.Status, tok)
+	}
+	if f.fetchCount() != 2 {
+		t.Fatalf("fetches = %d, the account lookup must be skipped with 1 s left", f.fetchCount())
+	}
+}
