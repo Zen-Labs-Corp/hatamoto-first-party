@@ -119,12 +119,23 @@ func onUpdated(s settings, ev sdk.EntityEvent) {
 		kvStore(ev.ID, page)
 		return
 	}
-	// Unpublished (or gone): purge what was public, and forget it.
-	if old == "" {
+	// Unpublished (or gone): purge what was public and forget it. Without a
+	// remembered URL (published before the plugin was installed) the entity's
+	// own URL is purged, as it is still readable.
+	if !found && old == "" {
 		return
 	}
-	purgeOrSkip("updated", s, collect(pickOrigin(s, old), s, old), pickOrigin(s, old) != "")
-	kvForget(ev.ID)
+	origin := pickOrigin(s, old)
+	var urls []string
+	if found {
+		if page, o := pageURL(e, s, old); page != "" {
+			urls, origin = append(urls, page), o
+		}
+	}
+	purgeOrSkip("updated", s, collect(origin, s, append(urls, old)...), origin != "")
+	if old != "" {
+		kvForget(ev.ID)
+	}
 }
 
 func onDeleted(s settings, ev sdk.EntityEvent) {

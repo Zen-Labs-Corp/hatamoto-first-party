@@ -333,8 +333,17 @@ func TestUpdatedMovedAndUnpublished(t *testing.T) {
 	f = newFake(t, nil)
 	f.setEntity("e2", "draft", "/d", "https://example.com/d")
 	f.fire(sdk.EntityUpdated, "e2")
+	if got := filesOf(t, f.fetches()[0]); len(got) != 5 || got[0] != "https://example.com/d" {
+		t.Fatalf("unpublished without kv: files = %v", got)
+	}
+	if len(f.rows) != 1 {
+		t.Fatalf("rows = %+v", f.rows)
+	}
+
+	f = newFake(t, nil)
+	f.fire(sdk.EntityUpdated, "gone")
 	if len(f.fetches()) != 0 || len(f.rows) != 0 {
-		t.Fatal("a draft edit without kv purged something")
+		t.Fatal("an unknown entity without kv purged something")
 	}
 }
 

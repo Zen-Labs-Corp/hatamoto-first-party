@@ -20,8 +20,8 @@ Purges changed pages from Cloudflare, Bunny or Fastly when you publish, update o
 What each change purges:
 
 - **Published**: the page URL and the extra paths.
-- **Updated**: while published, the current URL (and the previous URL when the page moved) and the extra paths. When a page stops being published, its last public URL and the extra paths. Edits to a draft that was never public purge nothing.
-- **Deleted**: the last public URL the plugin remembered, and the extra paths.
+- **Updated**: while published, the current URL (and the previous URL when the page moved) and the extra paths. When a page stops being published, its last public URL and the extra paths. When no public URL was remembered (the page was published before the plugin was installed), the page's current URL and the extra paths are purged.
+- **Deleted**: the last public URL the plugin remembered, and the extra paths. A page published before the plugin was installed has no remembered URL, so only the extra paths are purged.
 
 ## Permissions
 
