@@ -1,0 +1,87 @@
+/* Announcement bars and popups. No animation; the bar overlays the page and
+   never moves it. */
+.hm-popups-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px 8px 16px;
+  background: #14213d;
+  color: #ffffff;
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.hm-popups-top { top: 0; }
+.hm-popups-bottom { bottom: 0; }
+
+.hm-popups-body { flex: 1 1 auto; }
+.hm-popups-message { margin-right: 12px; }
+.hm-popups-link { color: inherit; font-weight: 600; text-decoration: underline; }
+.hm-popups-link:focus-visible,
+.hm-popups-close:focus-visible {
+  outline: 3px solid #ffd166;
+  outline-offset: 2px;
+}
+
+.hm-popups-close {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hm-popups-close:hover { background: rgba(255, 255, 255, 0.18); }
+
+.hm-popups-dialog {
+  box-sizing: border-box;
+  width: min(32rem, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  margin: auto;
+  padding: 16px 20px 24px;
+  border: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1a1a1a;
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.hm-popups-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.hm-popups-dialog .hm-popups-close {
+  display: block;
+  margin-left: auto;
+  color: #1a1a1a;
+}
+.hm-popups-dialog .hm-popups-close:hover { background: rgba(0, 0, 0, 0.08); }
+.hm-popups-dialog .hm-popups-close:focus-visible { outline-color: #14213d; }
+.hm-popups-dialog .hm-popups-message { display: block; margin: 0 0 16px; }
+.hm-popups-dialog .hm-popups-link {
+  display: inline-block;
+  padding: 10px 18px;
+  border-radius: 4px;
+  background: #14213d;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hm-popups-bar,
+  .hm-popups-dialog,
+  .hm-popups-dialog::backdrop,
+  .hm-popups-close,
+  .hm-popups-link {
+    animation: none !important;
+    transition: none !important;
+  }
+}
