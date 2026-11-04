@@ -55,7 +55,9 @@ func (c cfg) emailField() string {
 func (c cfg) doubleOptIn() bool { return c.DoubleOptIn == nil || *c.DoubleOptIn }
 
 // truthy reads a consent value: a ticked box arrives as true, text fields as
-// strings. Anything else (lists, numbers other than 1, nil) is not consent.
+// strings. A checkbox with options arrives as the list of ticked values, so a
+// list with a truthy or non-empty text value counts. Anything else (numbers
+// other than 1, nil) is not consent.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case bool:
@@ -66,6 +68,12 @@ func truthy(v any) bool {
 		switch strings.ToLower(strings.TrimSpace(x)) {
 		case "true", "1", "yes", "on", "checked", "y":
 			return true
+		}
+	case []any:
+		for _, e := range x {
+			if s, ok := e.(string); ok && strings.TrimSpace(s) != "" {
+				return true
+			}
 		}
 	}
 	return false

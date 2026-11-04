@@ -84,7 +84,7 @@ func TestConsentMissingIsSkipped(t *testing.T) {
 	h := &fakeHost{settings: strings.Replace(baseSettings, `"forms"`, `"consent_field":"agree","forms"`, 1)}
 	h.install(t)
 	deliverFn = func(cfg, job) result { t.Fatal("delivered without consent"); return result{} }
-	for _, v := range []any{nil, false, "no", "", float64(0), []any{"yes"}} {
+	for _, v := range []any{nil, false, "no", "", float64(0), []any{}} {
 		h.calls = nil
 		if err := onFormSubmitted(event("contact", map[string]any{"email": "a@b.co", "agree": v})); err != nil {
 			t.Fatal(err)
@@ -273,6 +273,9 @@ func toJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
 func TestTruthyAndValidEmail(t *testing.T) {
 	if truthy("no") || truthy(nil) || truthy(2.0) || !truthy("Y") {
 		t.Fatal("truthy")
+	}
+	if !truthy([]any{"yes"}) || !truthy([]any{"", "newsletter"}) || truthy([]any{}) || truthy([]any{""}) || truthy([]any{2.0}) {
+		t.Fatal("truthy list")
 	}
 	for _, ok := range []string{"a@b.co", "first.last+tag@sub.example.org"} {
 		if !validEmail(ok) {
