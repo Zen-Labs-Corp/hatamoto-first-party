@@ -54,7 +54,7 @@ func TestPublishedReplacesPageLinks(t *testing.T) {
 	if upsert.params()[0] != want || prune.params()[0] != "e1" || prune.params()[1] != want {
 		t.Fatalf("upsert %v prune %v", upsert.params(), prune.params())
 	}
-	if len(known) != 1 || known[0] != `["/blog/pricing","/blog"]` {
+	if len(known) != 1 || known[0] != `["/blog"]` {
 		t.Fatalf("known paths %v", known)
 	}
 	// New links stay pending: the insert sets no status, the table default does.

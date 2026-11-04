@@ -161,6 +161,18 @@ func TestScanCursorAdvancesAndWraps(t *testing.T) {
 	if links != 3 || known != 3 {
 		t.Fatalf("links upserts %d known paths %d", links, known)
 	}
+	var stale int
+	for _, c := range w.host.calls {
+		if strings.HasPrefix(c.sql(), "INSERT INTO known_paths") && fmt.Sprint(c.params()) != `[["/blog"]]` {
+			t.Fatalf("only the parents of a page are remembered, got %v", c.params())
+		}
+		if strings.HasPrefix(c.sql(), "DELETE FROM known_paths") {
+			stale++
+		}
+	}
+	if stale != 1 {
+		t.Fatalf("a completed pass drops the paths it did not refresh, got %d deletes", stale)
+	}
 }
 
 func TestScanCheckpointResumesAfterFailure(t *testing.T) {

@@ -247,3 +247,13 @@ func TestPassInfoRecent(t *testing.T) {
 		}
 	}
 }
+
+func TestParentPathsExcludeThePageItself(t *testing.T) {
+	for in, want := range map[string][]string{
+		"/pricing": nil, "/blog/a": {"/blog"}, "/a/b/c/": {"/a/b", "/a"}, "": nil, "/": nil,
+	} {
+		if got := parentPaths(in); !slices.Equal(got, want) {
+			t.Errorf("%q: %v want %v", in, got, want)
+		}
+	}
+}

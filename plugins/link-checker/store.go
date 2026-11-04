@@ -153,7 +153,24 @@ func pathAndParents(p string) []string {
 	return out
 }
 
-// upsertKnownPaths remembers paths of published pages and their parents.
+// parentPaths returns the parent paths of p, nearest first, without p itself
+// and without "/". Only these are remembered as listings: the page's own path
+// is answered by entities.get while the page exists, and must not stay "known"
+// after the page is gone.
+func parentPaths(p string) []string {
+	if all := pathAndParents(p); len(all) > 0 {
+		return all[1:]
+	}
+	return nil
+}
+
+// dropStaleKnownPaths forgets the known paths no page of the pass that began at
+// start has refreshed, so the set is rebuilt by every completed pass.
+func dropStaleKnownPaths(start string) error {
+	return dbExec(`DELETE FROM known_paths WHERE last_seen < $1::timestamptz`, start)
+}
+
+// upsertKnownPaths remembers the parent paths of published pages.
 func upsertKnownPaths(paths []string) error {
 	for i := 0; i < len(paths); i += chunk {
 		b, _ := json.Marshal(paths[i:min(i+chunk, len(paths))])
@@ -166,7 +183,7 @@ func upsertKnownPaths(paths []string) error {
 	return nil
 }
 
-// isKnownParent reports whether path is a published page or a parent of one.
+// isKnownParent reports whether path is a parent of a published page.
 func isKnownParent(path string) (bool, error) {
 	var out struct {
 		Known bool `json:"known"`

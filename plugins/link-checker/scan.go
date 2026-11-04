@@ -108,6 +108,9 @@ func (st *scanState) addLocale(tag string) {
 
 // finish records the end of a pass and clears the cursor.
 func (st scanState) finish() {
+	if err := dropStaleKnownPaths(st.PassStart); err != nil {
+		logf("warn", "dropping stale known paths: %v", err)
+	}
 	if err := kvSet(doneKey, passDone{StartedAt: st.PassStart, FinishedAt: ts(now()), Locales: st.Locales}); err != nil {
 		logf("warn", "saving pass result: %v", err)
 	}
@@ -143,17 +146,18 @@ func markScan() {
 	}
 }
 
-// indexEntity stores the links of one entity and remembers its path (and its
-// parents') as a known page path.
+// indexEntity stores the links of one entity and remembers the parents of its
+// path as known listing paths.
 func indexEntity(e entityWire, exclude []string, origin string) error {
 	refs := extractLinks(e.Attributes, origin, exclude)
 	if err := replacePageLinks(pageRef{ID: e.ID, Name: e.Name, Path: e.Path}, refs); err != nil {
 		return err
 	}
-	if e.Path == "" {
+	parents := parentPaths(e.Path)
+	if len(parents) == 0 {
 		return nil
 	}
-	return upsertKnownPaths(pathAndParents(e.Path))
+	return upsertKnownPaths(parents)
 }
 
 // extractBatch reads up to entitiesPerRun published entities from the stored
