@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Social feeds</title>
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+
+    <section>
+      <h2>Sources</h2>
+      <dl id="sources"></dl>
+      <div id="setup" class="notice" hidden></div>
+      <div class="row">
+        <button id="connect" class="primary" hidden>Connect Instagram</button>
+        <button id="disconnect" hidden>Disconnect</button>
+        <button id="refresh">Refresh now</button>
+      </div>
+      <p id="connect-help" class="muted" hidden>
+        The browser cannot open Instagram from inside this page. Open this address in a new tab (you are signed in there),
+        approve access, and come back here:
+      </p>
+      <p class="muted">Redirect address for your Instagram app: <code id="redirect"></code></p>
+    </section>
+
+    <section>
+      <p class="muted">Thumbnails appear on your site; this preview shows text only.</p>
+      <h2 id="instagram-title">Instagram</h2>
+      <div id="instagram" class="grid"></div>
+      <h2 id="youtube-title">YouTube</h2>
+      <div id="youtube" class="grid"></div>
+      <p id="empty" class="muted" hidden>Nothing cached yet. Connect a source, then Refresh now.</p>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
