@@ -10,6 +10,7 @@ package main
 import (
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	_ "time/tzdata" // zone names work without a filesystem
 
@@ -60,11 +61,23 @@ func loadSettings() settings {
 	return s
 }
 
-// location is the configured zone, UTC when the name is unknown.
+var (
+	locMu    sync.Mutex
+	locCache = map[string]*time.Location{}
+)
+
+// location is the configured zone, UTC when the name is unknown. Loading a
+// zone parses the embedded database, so each name is loaded once.
 func (s settings) location() *time.Location {
+	locMu.Lock()
+	defer locMu.Unlock()
+	if loc, ok := locCache[s.TimeZone]; ok {
+		return loc
+	}
 	loc, err := time.LoadLocation(s.TimeZone)
 	if err != nil {
-		return time.UTC
+		loc = time.UTC
 	}
+	locCache[s.TimeZone] = loc
 	return loc
 }

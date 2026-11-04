@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 )
 
 // fakeSettings answers settings.get with raw, or fails with hostErr.
@@ -56,5 +57,19 @@ func TestLocationFallsBackToUTC(t *testing.T) {
 	}
 	if loc := (settings{TimeZone: "Europe/Berlin"}).location(); loc.String() != "Europe/Berlin" {
 		t.Fatalf("good zone: %v", loc)
+	}
+}
+
+func TestLocationIsCached(t *testing.T) {
+	s := settings{TimeZone: "Europe/London"}
+	a, b := s.location(), s.location()
+	if a != b {
+		t.Error("location loaded twice for one zone name")
+	}
+	if a.String() != "Europe/London" {
+		t.Errorf("location = %s", a)
+	}
+	if bad := (settings{TimeZone: "No/Such_Zone"}); bad.location() != time.UTC {
+		t.Error("unknown zone is not UTC")
 	}
 }
