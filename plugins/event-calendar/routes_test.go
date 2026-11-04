@@ -51,7 +51,7 @@ func (h *fakeHost) install(t *testing.T) {
 					return json.Unmarshal([]byte(e), out)
 				}
 			}
-			return errors.New("not found")
+			return &sdk.HostError{Code: sdk.ErrNotFound, Message: "not found"}
 		}
 		t.Fatalf("unexpected host call %q", fn)
 		return nil
@@ -129,7 +129,8 @@ func TestSingleEventRoute404s(t *testing.T) {
 	(&fakeHost{entities: []string{evFuture, evDraft, evOther}}).install(t)
 	for _, file := range []string{"draft.ics", "post.ics", "missing.ics", "future", "future.txt", ".ics", "a/b.ics", "..%2f.ics", "../x.ics", "Future.ics"} {
 		r := call(t, "GET", "/event/{file}", file)
-		if r.Status != 404 || r.Headers["Content-Type"] != "text/plain; charset=utf-8" || r.Body != "not found" {
+		if r.Status != 404 || r.Headers["Content-Type"] != "text/plain; charset=utf-8" || r.Body != "not found" ||
+			r.Headers["Cache-Control"] != "public, max-age=60" {
 			t.Errorf("%q: response = %+v", file, r)
 		}
 	}
@@ -139,7 +140,7 @@ func TestSingleEventRoute404s(t *testing.T) {
 }
 
 func TestSingleEventFallsBackToListScan(t *testing.T) {
-	(&fakeHost{entities: []string{evFuture}, getErr: errors.New("nope")}).install(t)
+	(&fakeHost{entities: []string{evFuture}, getErr: &sdk.HostError{Code: sdk.ErrNotFound}}).install(t)
 	if r := call(t, "GET", "/event/{file}", "future.ics"); r.Status != 200 {
 		t.Fatalf("status = %d", r.Status)
 	}
@@ -161,5 +162,36 @@ func TestHeadAnswersLikeGet(t *testing.T) {
 		if h.Status != 200 || h.Headers["Content-Type"] != g.Headers["Content-Type"] || h.Headers["Cache-Control"] != g.Headers["Cache-Control"] {
 			t.Errorf("%s: HEAD = %d %v, GET = %d %v", c.pattern, h.Status, h.Headers, g.Status, g.Headers)
 		}
+	}
+}
+
+func TestSingleEventOtherGetErrorDoesNotScan(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, getErr: &sdk.HostError{Code: sdk.ErrInternal}}
+	h.install(t)
+	listed := false
+	inner := callHost
+	callHost = func(fn string, args, out any) error {
+		listed = listed || fn == "entities.list"
+		return inner(fn, args, out)
+	}
+	r := call(t, "GET", "/event/{file}", "future.ics")
+	if r.Status != 503 || listed {
+		t.Fatalf("status = %d, scanned = %v", r.Status, listed)
+	}
+}
+
+func TestSingleEventScanStopsAtMatch(t *testing.T) {
+	(&fakeHost{getErr: &sdk.HostError{Code: sdk.ErrNotFound}}).install(t)
+	inner := callHost
+	pages := 0
+	callHost = func(fn string, args, out any) error {
+		if fn != "entities.list" {
+			return inner(fn, args, out)
+		}
+		pages++
+		return json.Unmarshal([]byte(`{"items":[`+evFuture+`],"next_cursor":"more"}`), out)
+	}
+	if r := call(t, "GET", "/event/{file}", "future.ics"); r.Status != 200 || pages != 1 {
+		t.Fatalf("status = %d, pages = %d", r.Status, pages)
 	}
 }

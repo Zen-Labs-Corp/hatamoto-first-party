@@ -168,11 +168,21 @@ func split(evs []Event, at time.Time, loc *time.Location) (upcoming, past []Even
 	return upcoming, past
 }
 
-// loadEvents pages the published entities of the configured type (at most
+// loadEvents reads the published entities of the configured type (at most
 // maxListPages pages). An error on the first page is returned; a later page
 // failing keeps what was read.
 func loadEvents(s settings) ([]Event, error) {
 	var evs []Event
+	err := eachEvent(s, func(e Event) bool {
+		evs = append(evs, e)
+		return false
+	})
+	return evs, err
+}
+
+// eachEvent pages the published events and passes each one to visit until it
+// returns true, so a caller that has what it needs reads no further page.
+func eachEvent(s settings, visit func(Event) bool) error {
 	cursor := ""
 	for page := 0; page < maxListPages; page++ {
 		args := map[string]any{
@@ -189,19 +199,19 @@ func loadEvents(s settings) ([]Event, error) {
 		}
 		if err := callHost(sdk.FnEntitiesList, args, &out); err != nil {
 			if page == 0 {
-				return nil, err
+				return err
 			}
-			break
+			return nil
 		}
 		for _, raw := range out.Items {
-			if e, ok := eventFromEntity(raw, s); ok {
-				evs = append(evs, e)
+			if e, ok := eventFromEntity(raw, s); ok && visit(e) {
+				return nil
 			}
 		}
 		if out.NextCursor == "" {
-			break
+			return nil
 		}
 		cursor = out.NextCursor
 	}
-	return evs, nil
+	return nil
 }

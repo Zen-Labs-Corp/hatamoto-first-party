@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -65,7 +66,7 @@ func serveFeed() sdk.HTTPResponse {
 func serveEvent(file string) sdk.HTTPResponse {
 	slug, ok := strings.CutSuffix(file, ".ics")
 	if !ok || !fileSlugRe.MatchString(slug) {
-		return plain(http.StatusNotFound, "not found")
+		return notFound()
 	}
 	s := loadSettings()
 	e, found, hostFailed := findEvent(s, slug)
@@ -76,32 +77,42 @@ func serveEvent(file string) sdk.HTTPResponse {
 	case hostFailed:
 		return plain(http.StatusServiceUnavailable, "unavailable")
 	}
-	return plain(http.StatusNotFound, "not found")
+	return notFound()
 }
 
-// findEvent looks a root-level event up by slug and falls back to scanning
-// the list (translated or nested events). hostFailed is set when no answer
-// could be had because the host failed.
+// notFound is a 404 that may be cached briefly, so repeated probes of a
+// missing event are absorbed in front of the plugin.
+func notFound() sdk.HTTPResponse {
+	r := plain(http.StatusNotFound, "not found")
+	r.Headers["Cache-Control"] = "public, max-age=60"
+	return r
+}
+
+// findEvent looks a root-level event up by slug. Only when the host has no
+// such root-level event does it scan the list, which is how translated or
+// nested events are reached; the scan stops at the first match. hostFailed is
+// set when no answer could be had because the host failed.
 func findEvent(s settings, slug string) (e Event, found, hostFailed bool) {
 	var raw entityDTO
 	err := callHost(sdk.FnEntitiesGet, map[string]any{
 		"slug": slug, "parent_id": nil, "schema_slug": s.SchemaSlug,
 	}, &raw)
-	if err == nil && raw.ID != "" {
+	var he *sdk.HostError
+	switch {
+	case err == nil && raw.ID != "":
 		if raw.SchemaSlug != "" && raw.SchemaSlug != s.SchemaSlug {
 			return Event{}, false, false
 		}
 		e, found = eventFromEntity(raw, s)
 		return e, found, false
+	case err != nil && !(errors.As(err, &he) && he.Code == sdk.ErrNotFound):
+		return Event{}, false, true
 	}
-	evs, lerr := loadEvents(s)
-	if lerr != nil {
-		return Event{}, false, err != nil
-	}
-	for _, c := range evs {
+	lerr := eachEvent(s, func(c Event) bool {
 		if c.Slug == slug {
-			return c, true, false
+			e, found = c, true
 		}
-	}
-	return Event{}, false, false
+		return found
+	})
+	return e, found, lerr != nil
 }
