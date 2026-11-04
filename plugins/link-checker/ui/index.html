@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Broken link checker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+    <p id="progress" class="notice" hidden></p>
+
+    <div class="bar">
+      <div id="tabs" class="tabs" role="group" aria-label="Show links by result"></div>
+      <p id="scan" class="muted scan"></p>
+    </div>
+
+    <p id="empty" class="empty" hidden></p>
+    <table id="table" hidden>
+      <thead>
+        <tr><th>Status</th><th>Link</th><th>Found on</th><th><span class="sr">Actions</span></th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p><button id="more" type="button" hidden>Load more</button></p>
+
+    <p id="copy-note" class="muted" role="status" hidden></p>
+    <p class="muted foot">
+      Copy editor path copies <code>/entities/&lt;id&gt;</code>: paste it after your admin address to open the editor.
+    </p>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
