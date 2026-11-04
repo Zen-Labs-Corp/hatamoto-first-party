@@ -113,6 +113,8 @@ func funcField(args []json.RawMessage) (string, error) {
 		return r.Author, nil
 	case "author_url":
 		return r.AuthorURL, nil
+	case "photo":
+		return r.PhotoURL, nil
 	case "text":
 		return r.Body, nil
 	case "date":

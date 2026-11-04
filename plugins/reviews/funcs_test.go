@@ -62,7 +62,7 @@ func TestCountFieldProfile(t *testing.T) {
 		t.Fatalf("count trustpilot %q", got)
 	}
 	want := map[string]string{"author": "A g1", "text": "text g1", "date": "2026-10-30", "rating": "5", "stars": "★★★★★",
-		"source": "google", "source_label": "Google", "url": "https://example.test/r", "author_url": "https://example.test/a"}
+		"source": "google", "source_label": "Google", "url": "https://example.test/r", "author_url": "https://example.test/a", "photo": "https://example.test/p.jpg"}
 	for k, v := range want {
 		if got := fn(t, "field", `[0,"`+k+`"]`); got != v {
 			t.Fatalf("field %s = %q, want %q", k, got, v)

@@ -22,8 +22,9 @@ and your pages read the copy, so a visit never waits on Google or Trustpilot.
 Show the reviews in one of three ways:
 
 - **Section.** Add a section of type `reviews`: cards with stars, text, author
-  (linked to the author's profile where the source gives one), date and source,
-  with the "Reviews from Google" and "Reviews from Trustpilot" attribution. It
+  (linked to the author's profile where the source gives one, with the author's
+  photo for Google), date and source, with the "Reviews from Google Maps" (linked
+  to the place) and "Reviews from Trustpilot" attribution. It
   renders nothing while no review is cached.
 - **Page builder.** A query loop with the source **Latest reviews**
   (`ext.reviews.latest`). Each item has `title` and `author` (the author), `excerpt`
@@ -36,7 +37,7 @@ Show the reviews in one of three ways:
   `"google"` or `"trustpilot"` picks one; empty when nothing is cached),
   `plugin_reviews_count` (shown reviews, optional source argument),
   `plugin_reviews_field N "key"` (the N-th shown review, counting from 0; keys
-  `author`, `author_url`, `text`, `date`, `rating`, `stars`, `source`,
+  `author`, `author_url`, `photo`, `text`, `date`, `rating`, `stars`, `source`,
   `source_label`, `url`) and `plugin_reviews_profile "google"` (the profile or
   Maps address of a source).
 

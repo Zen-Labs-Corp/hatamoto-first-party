@@ -114,7 +114,7 @@ func TestSectionEmptyCacheRendersNothing(t *testing.T) {
 
 func TestSectionRendersGoogleReviews(t *testing.T) {
 	reviews := []map[string]string{
-		{"author": "Jane D.", "text": "Great", "date": "2026-10-30", "stars": "★★★★★", "source_label": "Google", "author_url": "https://example.test/jane"},
+		{"author": "Jane D.", "text": "Great", "date": "2026-10-30", "stars": "★★★★★", "source_label": "Google", "author_url": "https://example.test/jane", "photo": "https://example.test/jane.jpg"},
 		{"author": "Hans", "text": "Gut", "date": "2026-10-20", "stars": "★★★★☆", "source_label": "Google"},
 	}
 	tpl := parseSection(t, map[string]func(...any) (string, error){
@@ -145,13 +145,17 @@ func TestSectionRendersGoogleReviews(t *testing.T) {
 	}
 	out := b.String()
 	for _, want := range []string{"Jane D.", `href="https://example.test/jane"`, "Hans", "★★★★★", "Great", "2026-10-30", "4.8 from 132 Google reviews",
-		`href="https://maps.example.test/acme"`, "Reviews from Google"} {
+		`href="https://maps.example.test/acme"`, "Reviews from Google Maps",
+		`<img class="review-photo" src="https://example.test/jane.jpg" alt="Jane D."`} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
 	}
 	if strings.Contains(out, "Reviews from Trustpilot") {
 		t.Fatalf("Trustpilot attribution without Trustpilot reviews:\n%s", out)
+	}
+	if n := strings.Count(out, "<img"); n != 1 {
+		t.Fatalf("%d photos, want 1 (only Jane has one):\n%s", n, out)
 	}
 	if n := strings.Count(out, `<article class="review">`); n != 2 {
 		t.Fatalf("%d cards", n)
