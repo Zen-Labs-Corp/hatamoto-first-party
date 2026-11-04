@@ -40,6 +40,11 @@ func refresh(force bool) []feedResult {
 		logf("error", "feed-reader: cannot sync the feed list")
 		return nil
 	}
+	// Retention does not depend on a download: a dead, quiet or 304 feed
+	// still ages out and obeys a lowered item limit.
+	if err := retain(cfg, start); err != nil {
+		logf("error", "feed-reader: cannot apply the retention")
+	}
 	rows, err := feedRows()
 	if err != nil {
 		logf("error", "feed-reader: cannot read the feed state")

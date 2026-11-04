@@ -175,6 +175,17 @@ SELECT guid FROM items WHERE feed_key = $1 ORDER BY coalesce(published_at, fetch
 		key, stamp(cutoff))
 }
 
+// retain applies the retention (90 days, the item limit) to every configured
+// feed and refreshes the stored item counts.
+func retain(cfg []feedCfg, at time.Time) error {
+	for _, f := range cfg {
+		if err := prune(f.Key, f.MaxItems, at); err != nil {
+			return err
+		}
+	}
+	return dbExec(`UPDATE feeds SET item_count = (SELECT count(*)::integer FROM items WHERE items.feed_key = feeds.key)`)
+}
+
 // sourceGroup maps a builder source name to a group: "items" is every feed
 // (0), "group-N" is feeds with group N. ok is false for anything else.
 func sourceGroup(source string) (group int, ok bool) {

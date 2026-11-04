@@ -332,3 +332,25 @@ func TestRefreshKeepsOldValidatorsWhenStoringFails(t *testing.T) {
 		t.Fatalf("etag %q, want the old one so the next fetch is not a 304", got)
 	}
 }
+
+func TestRefreshAppliesRetentionWithoutADownload(t *testing.T) {
+	f := newFake(t)
+	f.settings["feeds"] = []map[string]any{{"name": "a", "url": "https://example.com/a.xml", "max_items": 50}}
+	serve(f, fetchRes{Status: 200, Body: rss(6)})
+	refresh(false)
+	key := f.keyOf("a")
+	f.items[key+"/old"] = fakeItem{FeedKey: key, GUID: "old", Link: "https://example.com/old", FetchedAt: f.clock, Published: f.clock.AddDate(0, 0, -91)}
+	f.settings["feeds"] = []map[string]any{{"name": "a", "url": "https://example.com/a.xml", "max_items": 2}}
+	f.clock = f.clock.Add(time.Minute) // not due: no download at all
+	f.requests = nil
+	refresh(false)
+	if len(f.requests) != 0 {
+		t.Fatalf("requests %d", len(f.requests))
+	}
+	if n := len(f.itemsOf(key)); n != 2 || f.feeds[key].ItemCount != 2 {
+		t.Fatalf("items %d, item_count %d, want 2", n, f.feeds[key].ItemCount)
+	}
+	if _, ok := f.items[key+"/old"]; ok {
+		t.Fatal("an item older than 90 days survived")
+	}
+}

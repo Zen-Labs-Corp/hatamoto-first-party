@@ -156,6 +156,11 @@ func (f *fakeHost) exec(sql string, a []any) error {
 				delete(f.feeds, k)
 			}
 		}
+	case strings.HasPrefix(sql, "UPDATE feeds SET item_count"):
+		for k, r := range f.feeds {
+			r.ItemCount = len(f.itemsOf(k))
+			f.feeds[k] = r
+		}
 	case strings.HasPrefix(sql, "UPDATE feeds SET last_attempt = NULL"):
 		for k := range keySet(a[0]) {
 			if r, ok := f.feeds[k]; ok {
