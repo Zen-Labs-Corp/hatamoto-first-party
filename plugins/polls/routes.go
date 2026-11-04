@@ -15,6 +15,12 @@ func init() { guest.OnHTTP(serve) }
 // a plugin failure, so those are plain 4xx and 5xx replies.
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	switch r.Method + " " + r.Pattern {
+	case "GET /results/{form_slug}":
+		return handlePublic(r)
+	case "GET /overview":
+		return handleOverview(r)
+	case "GET /forms/{slug}/csv":
+		return handleCSV(r)
 	case "POST /forms/{slug}/recount":
 		return handleRecount(r)
 	}
