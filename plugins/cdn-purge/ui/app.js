@@ -54,8 +54,11 @@ function resultCell(r) {
 // purged nothing.
 function urlsCell(r) {
   const urls = r.urls;
-  if (!urls || urls.length === 0) return r.error === "set Site URL" ? "(nothing purged)" : "(everything)";
-  return urls.length > 1 ? `${urls[0]} +${urls.length - 1}` : urls[0];
+  if (!urls || urls.length === 0) {
+    return el("span", { className: "none", textContent: r.error === "set Site URL" ? "(nothing purged)" : "(everything)" });
+  }
+  const text = urls.length > 1 ? `${urls[0]} +${urls.length - 1}` : urls[0];
+  return el("span", { className: text.length > 60 ? "long" : "", textContent: text });
 }
 
 function fillLog(list) {
@@ -63,10 +66,10 @@ function fillLog(list) {
   body.replaceChildren();
   for (const r of list) {
     body.append(el("tr", {},
-      el("td", { textContent: new Date(r.at).toLocaleString() }),
-      el("td", { textContent: r.trigger }),
-      el("td", { className: "url", textContent: urlsCell(r) }),
-      el("td", {}, resultCell(r))));
+      el("td", { className: "when", textContent: new Date(r.at).toLocaleString() }),
+      el("td", { className: "trigger", textContent: r.trigger }),
+      el("td", { className: "url" }, urlsCell(r)),
+      el("td", { className: "result" }, resultCell(r))));
   }
   $("#log").hidden = list.length === 0;
   $("#empty").hidden = list.length > 0;

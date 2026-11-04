@@ -7,7 +7,14 @@ section:first-child { margin-top: 0; }
 .notice.error { background: var(--color-danger-soft, #fbe9e7); color: var(--color-danger, #b3261e); }
 table { width: 100%; border-collapse: collapse; background: var(--color-paper, #ffffff); }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--color-kinu, #e2e0da); vertical-align: top; }
-td.url { word-break: break-all; }
+td.when, td.trigger, th { white-space: nowrap; }
+td.when { min-width: 11em; }
+td.trigger { min-width: 6em; }
+td.url { min-width: 16em; overflow-wrap: break-word; }
+td.url .long { overflow-wrap: anywhere; }
+td.url .none { white-space: nowrap; }
+td.result { min-width: 12em; overflow-wrap: anywhere; }
+#test-result { flex: 1 1 20em; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 button { padding: 4px 10px; border: 1px solid var(--color-nezumi, #b5b3ad); border-radius: 4px; background: var(--color-paper, #ffffff); color: inherit; cursor: pointer; }
 button.danger { background: var(--color-danger, #b3261e); color: var(--color-paper, #ffffff); border-color: var(--color-danger, #b3261e); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }

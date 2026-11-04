@@ -101,3 +101,30 @@ func TestUIDoesNotRepeatTheStatus(t *testing.T) {
 		}
 	}
 }
+
+// Long text must stay readable: the test result wraps, Time and Trigger do not
+// break inside a word, URLs wrap at word boundaries (anywhere only when long)
+// and "(everything)" stays in one piece.
+func TestUILayoutKeepsTextReadable(t *testing.T) {
+	css := readUI(t, "style.css")
+	for _, want := range []string{
+		"td.when, td.trigger, th { white-space: nowrap; }",
+		"td.url { min-width: 16em; overflow-wrap: break-word; }",
+		"td.url .long { overflow-wrap: anywhere; }",
+		"td.url .none { white-space: nowrap; }",
+		"#test-result { flex: 1 1 20em; min-width: 0; white-space: normal; overflow-wrap: anywhere; }",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("style.css lacks %q", want)
+		}
+	}
+	if strings.Contains(css, "word-break: break-all") {
+		t.Error("style.css breaks URLs at any character")
+	}
+	js := readUI(t, "app.js")
+	for _, want := range []string{`className: "none"`, `"long"`, `className: "when"`, `className: "trigger"`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js lacks %q", want)
+		}
+	}
+}
