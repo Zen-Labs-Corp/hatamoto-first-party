@@ -9,6 +9,8 @@ import (
 
 func init() {
 	guest.OnHTTP(serve)
+	guest.OnFilter(sdk.BuilderData, onBuilderData)
+	guest.OnFunc("count", funcCount)
 }
 
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
