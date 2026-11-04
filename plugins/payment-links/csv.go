@@ -19,8 +19,8 @@ func csvCell(s string) string {
 }
 
 // maxCSVBytes keeps the file well under the 1 MiB answer cap of a plugin call,
-// which also covers the JSON envelope around the body.
-const maxCSVBytes = 900 << 10
+// leaving room for the JSON escaping of the body (quotes and newlines grow it).
+const maxCSVBytes = 700 << 10
 
 // paymentsCSV renders rows, newest first as given, with a header row. It stops
 // before the output would pass maxBytes and reports how many rows it wrote.

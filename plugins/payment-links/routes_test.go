@@ -161,7 +161,7 @@ func TestPaymentsCSVStopsBeforeTheByteCap(t *testing.T) {
 	}
 }
 
-func TestHandleCSVCutsALargeLogUnderTheOutputCap(t *testing.T) {
+func TestHandleCSVRefusesALogThatDoesNotFit(t *testing.T) {
 	row := `{"event_id":"evt_1","session_id":"cs_1","amount":100,"currency":"USD","email":"` + strings.Repeat("a", 200) + `@example.com","label":"L","kind":"payment","created":"2026-11-03T10:00:00Z"}`
 	batch := make([]string, csvBatch)
 	for i := range batch {
@@ -169,18 +169,15 @@ func TestHandleCSVCutsALargeLogUnderTheOutputCap(t *testing.T) {
 	}
 	dbHost(t, nil, "["+strings.Join(batch, ",")+"]")
 	res, err := serve(sdk.HTTPRequest{Method: "GET", Pattern: "/payments.csv"})
-	if err != nil || res.Status != 200 {
-		t.Fatalf("%d %v", res.Status, err)
-	}
-	if len(res.Body) > 1<<20 || len(res.Body) > maxCSVBytes || res.Headers["X-Rows-Truncated"] != "true" {
-		t.Fatalf("body %d bytes, truncated=%q", len(res.Body), res.Headers["X-Rows-Truncated"])
+	if err != nil || res.Status != 413 || !strings.Contains(res.Body, "from=") || strings.Contains(res.Body, "evt_1") {
+		t.Fatalf("%d %q %v", res.Status, res.Body, err)
 	}
 }
 
 func TestHandleCSVTakesAMonthRange(t *testing.T) {
 	calls := dbHost(t, nil, `[]`)
 	res, err := serve(sdk.HTTPRequest{Method: "GET", Pattern: "/payments.csv", Query: map[string][]string{"from": {"2026-02"}, "to": {"2026-03"}}})
-	if err != nil || res.Status != 200 || res.Headers["X-Rows-Truncated"] != "false" {
+	if err != nil || res.Status != 200 {
 		t.Fatalf("%d %v %v", res.Status, res.Headers, err)
 	}
 	c := (*calls)[0]

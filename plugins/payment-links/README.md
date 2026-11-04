@@ -77,12 +77,11 @@ For a development build by hand, also copy the folders the script packs into
   are recorded when Stripe sends `checkout.session.async_payment_succeeded`.
 - The owner email follows the site mail limit (6 recipients a minute); extra emails
   in a burst are dropped and logged, the payment is still recorded.
-- A plugin call has 10 seconds and a 1 MiB answer. The CSV holds at most the latest
-  10 000 payments and stops at about 900 KiB (roughly 5 000 payments), whichever
-  comes first; the response header `X-Rows-Truncated` is `true` when it was cut
-  short. To export a larger log in parts, add the months to the address, for example
-  `payments.csv?from=2026-01&to=2026-06` (`YYYY-MM`, both inclusive, either may be
-  left out).
+- A plugin call has 10 seconds and a 1 MiB answer. One CSV holds at most 10 000
+  payments and about 700 KiB (roughly 3 500 payments). A log that does not fit is
+  refused with 413 and a message, never cut short; export it by month range instead,
+  for example `payments.csv?from=2026-01&to=2026-06` (`YYYY-MM`, both inclusive,
+  either may be left out).
 - If Stripe or the database is unreachable the webhook answers 503 so Stripe retries.
 
 ## License

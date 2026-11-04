@@ -60,15 +60,16 @@ func handlePayments(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 
 // handleCSV answers payments as a download: up to maxCSVRows rows and about
 // maxCSVBytes bytes, newest first. The query from and to (YYYY-MM, both
-// inclusive) pick the months, so a larger log can be exported in parts. When
-// the file is cut short the header X-Rows-Truncated is "true".
+// inclusive) pick the months, so a larger log can be exported in parts. A log
+// that does not fit is refused with 413 rather than cut short, because core
+// passes no custom header and a partial file would look complete.
 func handleCSV(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	from, to, ok := csvWindow(first(r.Query["from"]), first(r.Query["to"]))
 	if !ok {
 		return reply(http.StatusBadRequest, map[string]string{"error": "bad request"})
 	}
 	var rows []payment
-	for len(rows) < maxCSVRows {
+	for len(rows) <= maxCSVRows {
 		batch, err := listBetween(csvBatch, len(rows), from, to)
 		if err != nil {
 			return busy()
@@ -78,16 +79,27 @@ func handleCSV(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			break
 		}
 	}
-	rows = rows[:min(len(rows), maxCSVRows)]
+	if len(rows) > maxCSVRows {
+		return tooLarge()
+	}
 	body, n, err := paymentsCSV(rows, maxCSVBytes)
 	if err != nil {
 		return busy()
 	}
+	if n < len(rows) {
+		return tooLarge()
+	}
 	return sdk.HTTPResponse{Status: http.StatusOK, Body: body, Headers: map[string]string{
 		"Content-Type":        "text/csv; charset=utf-8",
 		"Content-Disposition": `attachment; filename="payments.csv"`,
-		"X-Rows-Truncated":    strconv.FormatBool(n < len(rows)),
 	}}, nil
+}
+
+// tooLarge refuses an export that would not fit, and says how to split it.
+func tooLarge() (sdk.HTTPResponse, error) {
+	return reply(http.StatusRequestEntityTooLarge, map[string]string{
+		"error": "too many payments for one file: export by month range, for example payments.csv?from=2026-01&to=2026-06 (YYYY-MM)",
+	})
 }
 
 // csvWindow turns the from and to months (empty means open) into a half-open
