@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk/guest"
 )
@@ -14,6 +15,7 @@ import (
 // fakeSettings serves a settings.get fixture (or an error) to the funcs.
 func fakeSettings(t *testing.T, fixture string, hostErr error) {
 	t.Helper()
+	cache.ok = false
 	callHost = func(fn string, _, out any) error {
 		if fn != "settings.get" {
 			t.Fatalf("unexpected host call %q", fn)
@@ -178,5 +180,47 @@ func TestFuncRoundTrip(t *testing.T) {
 	}
 	if string(out) != "bluesky" {
 		t.Fatalf("network [0] = %q", out)
+	}
+}
+
+func TestSettingsAreCachedBriefly(t *testing.T) {
+	clock := time.Unix(1000, 0)
+	now = func() time.Time { return clock }
+	t.Cleanup(func() { now = time.Now })
+	calls := 0
+	value := `{"style":"icons"}`
+	cache.ok = false
+	callHost = func(_ string, _, out any) error {
+		calls++
+		return json.Unmarshal([]byte(value), out)
+	}
+	render := func() string {
+		for i := 0; i < 6; i++ {
+			if _, err := network([]json.RawMessage{json.RawMessage(strconv.Itoa(i))}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		s, _ := style(nil)
+		return s
+	}
+	if got := render(); got != "icons" || calls != 1 {
+		t.Fatalf("first render: style %q, %d settings.get calls, want icons and 1", got, calls)
+	}
+	value = `{"style":"labels"}`
+	clock = clock.Add(settingsTTL - time.Millisecond)
+	if got := render(); got != "icons" || calls != 1 {
+		t.Fatalf("within the TTL: style %q, %d calls, want the cached icons and 1", got, calls)
+	}
+	clock = clock.Add(2 * time.Millisecond)
+	if got := render(); got != "labels" || calls != 2 {
+		t.Fatalf("after the TTL: style %q, %d calls, want labels and 2", got, calls)
+	}
+	callHost = func(string, any, any) error { calls++; return errors.New("boom") }
+	clock = clock.Add(settingsTTL)
+	render()
+	before := calls
+	render()
+	if calls == before {
+		t.Error("a failed read was cached")
 	}
 }

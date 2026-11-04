@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/url"
 	"strings"
+	"time"
 
 	"hatamoto.dev/sdk/guest"
 )
@@ -24,7 +25,20 @@ var (
 const (
 	styleBoth  = "both"
 	maxSiteURL = 200
+
+	// settingsTTL is how long the resolved settings are reused. A render makes
+	// 7-8 func calls; this keeps them to one settings.get.
+	settingsTTL = 2 * time.Second
 )
+
+// now is the clock (replaced in tests).
+var now = time.Now
+
+var cache struct {
+	s       settings
+	fetched time.Time
+	ok      bool
+}
 
 // settings holds the raw value of each setting so one wrongly typed field
 // does not discard the others.
@@ -40,13 +54,19 @@ func init() {
 	guest.OnFunc("page_url", pageURL)
 }
 
-// load reads the plugin's settings once. Any error (a missing grant, a host
-// failure, bad JSON) gives empty settings, which resolve to the defaults.
+// load reads the plugin's settings, reusing a read younger than settingsTTL.
+// Any error (a missing grant, a host failure, bad JSON) gives empty settings,
+// which resolve to the defaults; errors are not cached.
 func load() settings {
+	if t := now(); cache.ok && t.Sub(cache.fetched) >= 0 && t.Sub(cache.fetched) < settingsTTL {
+		return cache.s
+	}
 	var s settings
 	if err := callHost("settings.get", struct{}{}, &s); err != nil {
+		cache.ok = false
 		return settings{}
 	}
+	cache.s, cache.fetched, cache.ok = s, now(), true
 	return s
 }
 
