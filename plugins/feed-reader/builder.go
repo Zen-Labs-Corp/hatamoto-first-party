@@ -15,8 +15,8 @@ func init() {
 
 // handleBuilder answers the page-builder requests naming this plugin's
 // sources from the stored items. It only reads the database and never returns
-// an error: a database problem or an unknown source gives an empty result, so
-// a page always renders.
+// an error: an unknown source gives an empty result and a database problem an
+// empty result with Error set, so a page always renders.
 func handleBuilder(req sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	req.Results = req.Results[:0:0]
 	for _, q := range req.Requests {
@@ -25,6 +25,9 @@ func handleBuilder(req sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 		rows, err := itemsFor(name, q.Limit)
 		if err != nil {
 			logf("error", "feed-reader: cannot read the items")
+			// A fixed phrase, never the error text: it makes core skip the
+			// page cache, so an outage does not cache an empty loop.
+			res.Error = "unavailable"
 		}
 		for _, r := range rows {
 			if it, ok := builderItem(r); ok {

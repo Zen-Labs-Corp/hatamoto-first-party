@@ -93,14 +93,16 @@ func TestBuilderLimitCap(t *testing.T) {
 	}
 }
 
-func TestBuilderDBFailureGivesEmptyResult(t *testing.T) {
+func TestBuilderDBFailureSetsErrorAndKeepsHookOK(t *testing.T) {
 	f := newFake(t)
 	f.dbDown = true
 	res := ask(t, "ext.feed-reader.items", 5)
-	if len(res.Items) != 0 || res.Error != "" {
+	// An error keeps core from caching the empty loop; the hook itself
+	// still succeeds (ask fails on a hook error) and the text is fixed.
+	if len(res.Items) != 0 || res.Error != "unavailable" {
 		t.Fatalf("%+v", res)
 	}
-	if !strings.Contains(f.logged(), "cannot read the items") || strings.Contains(f.logged(), "unavailable") {
+	if !strings.Contains(f.logged(), "cannot read the items") || strings.Contains(f.logged(), "db unavailable") {
 		t.Fatalf("log %q", f.logged())
 	}
 }
