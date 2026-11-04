@@ -122,7 +122,8 @@ func dueLinks(kind string, limit int) ([]dueLink, error) {
 		     row_number() OVER (PARTITION BY lower(substring(url from '^https?://([^/?#]+)'))
 		       ORDER BY next_check, id) AS rn
 		   FROM links
-		   WHERE kind = $1 AND status <> 'ignored' AND next_check <= $2::timestamptz) t
+		   WHERE kind = $1 AND status <> 'ignored' AND next_check <= $2::timestamptz
+		     AND `+onAPage+`) t
 		 ORDER BY t.rn, t.next_check, t.id LIMIT $3) r`, &out, kind, ts(now()), limit)
 	return out, err
 }
@@ -212,6 +213,11 @@ func purge(at time.Time, passOK bool) error {
 	return dbExec(`DELETE FROM known_paths WHERE last_seen < $1::timestamptz`, cutoff)
 }
 
+// onAPage keeps a query to links that are on at least one page: a link that
+// was removed from the content, or excluded since, is neither checked nor
+// listed (its row stays until retention removes it).
+const onAPage = `EXISTS (SELECT 1 FROM link_pages p WHERE p.link_id = links.id)`
+
 const selectRows = `SELECT l.id, l.url, l.kind, l.status, l.http_status, l.error, l.last_checked, l.first_broken,
 	  coalesce((SELECT jsonb_agg(jsonb_build_object('entity_id', p.entity_id, 'entity_name', p.entity_name, 'entity_path', p.entity_path)
 	    ORDER BY p.entity_name, p.entity_id) FROM link_pages p WHERE p.link_id = l.id), '[]'::jsonb) AS pages
@@ -221,7 +227,7 @@ const selectRows = `SELECT l.id, l.url, l.kind, l.status, l.http_status, l.error
 func listLinks(status string, cursor int64, limit int) ([]linkRow, error) {
 	var out []linkRow
 	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.id), '[]'::jsonb) FROM
-		(`+selectRows+` WHERE l.status = $1 AND l.id > $2 ORDER BY l.id LIMIT $3) t`, &out, status, cursor, limit)
+		(`+selectRows+` WHERE l.status = $1 AND l.id > $2 AND `+strings.ReplaceAll(onAPage, "links.id", "l.id")+` ORDER BY l.id LIMIT $3) t`, &out, status, cursor, limit)
 	return out, err
 }
 
@@ -244,7 +250,7 @@ func countLinks() (counts, error) {
 		'ignored', count(*) FILTER (WHERE status = 'ignored'),
 		'unknown', count(*) FILTER (WHERE status = 'unknown'),
 		'pending', count(*) FILTER (WHERE status = 'pending'),
-		'pages', (SELECT count(DISTINCT entity_id) FROM link_pages)) FROM links`, &c)
+		'pages', (SELECT count(DISTINCT entity_id) FROM link_pages)) FROM links WHERE `+onAPage, &c)
 	return c, err
 }
 
@@ -254,7 +260,7 @@ func queueSize() (int, error) {
 		N int `json:"n"`
 	}
 	err := dbJSON(`SELECT jsonb_build_object('n', count(*)) FROM links
-		WHERE status <> 'ignored' AND next_check <= $1::timestamptz`, &out, ts(now()))
+		WHERE status <> 'ignored' AND next_check <= $1::timestamptz AND `+onAPage, &out, ts(now()))
 	return out.N, err
 }
 
@@ -277,4 +283,17 @@ func toggleIgnore(id int64) (linkRow, bool, error) {
 		return linkRow{}, false, err
 	}
 	return getLink(id)
+}
+
+// removeExcluded takes the links under an exclude prefix off their pages, so
+// they are no longer checked or listed. The next pass would do the same for
+// the links of each page it reads; this does it at once.
+func removeExcluded(exclude []string) error {
+	if len(exclude) == 0 {
+		return nil
+	}
+	b, _ := json.Marshal(exclude)
+	return dbExec(`DELETE FROM link_pages WHERE link_id IN
+		(SELECT l.id FROM links l WHERE EXISTS
+		  (SELECT 1 FROM jsonb_array_elements_text($1::jsonb) e WHERE left(l.url, length(e)) = e))`, string(b))
 }

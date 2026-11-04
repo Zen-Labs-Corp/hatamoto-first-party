@@ -134,6 +134,9 @@ func runScan() {
 	if err := purge(now(), loadPass().recent(now())); err != nil {
 		logf("warn", "purge: %v", err)
 	}
+	if err := removeExcluded(s.Exclude); err != nil {
+		logf("warn", "removing excluded links: %v", err)
+	}
 	extractBatch(s, now().Add(extractBudget))
 	checkDue(s, deadline)
 	markScan()

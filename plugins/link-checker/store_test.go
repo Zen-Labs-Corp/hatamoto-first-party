@@ -257,3 +257,36 @@ func TestParentPathsExcludeThePageItself(t *testing.T) {
 		}
 	}
 }
+
+func TestQueriesIgnoreLinksOnNoPage(t *testing.T) {
+	f := newFakeHost(t, func(_ call, out any) error { return cell(out, `[]`) })
+	_, _ = dueLinks(kindOutbound, 5)
+	_, _ = listLinks(statusBroken, 0, 5)
+	_ = dbJSONDiscard(countLinks)
+	_, _ = queueSize()
+	if len(f.calls) != 4 {
+		t.Fatalf("calls %d", len(f.calls))
+	}
+	for _, c := range f.calls {
+		if !strings.Contains(c.sql(), "FROM link_pages p WHERE p.link_id =") {
+			t.Errorf("a link on no page must not be checked or listed: %s", c.sql())
+		}
+	}
+}
+
+func dbJSONDiscard(fn func() (counts, error)) error { _, err := fn(); return err }
+
+func TestRemoveExcluded(t *testing.T) {
+	f := newFakeHost(t, nil)
+	if err := removeExcluded(nil); err != nil || len(f.calls) != 0 {
+		t.Fatalf("nothing to do without prefixes: %v %v", err, f.calls)
+	}
+	if err := removeExcluded([]string{"https://partner.example/", "/members"}); err != nil {
+		t.Fatal(err)
+	}
+	c := f.calls[0]
+	oneStatement(t, c.sql())
+	if !strings.HasPrefix(c.sql(), "DELETE FROM link_pages") || c.params()[0] != `["https://partner.example/","/members"]` {
+		t.Fatalf("%s %v", c.sql(), c.params())
+	}
+}
