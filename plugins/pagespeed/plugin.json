@@ -3,16 +3,46 @@
   "version": "0.1.0",
   "sdk": "^0.8",
   "description": "PageSpeed and Core Web Vitals: tracks field data from the Chrome UX Report and Lighthouse lab scores for your key pages, with daily trends.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["settings", "http.fetch", "db", "entities.read", "log"],
+  "allowed_hosts": ["www.googleapis.com", "chromeuxreport.googleapis.com"],
+  "routes": [
+    { "method": "GET", "path": "/overview" },
+    { "method": "POST", "path": "/measure-now" }
+  ],
+  "cron": [ { "name": "measure", "every": "5m" } ],
+  "ui": { "title": "PageSpeed" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "on_cron_measure": 10000, "http_handle": 10000 }
+  },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
+      "api_key": {
         "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+        "title": "Google API key",
+        "writeOnly": true,
+        "description": "A key with the PageSpeed Insights API and the Chrome UX Report API enabled. Stored here and never shown again."
+      },
+      "urls": {
+        "type": "array",
+        "title": "Pages to track",
+        "description": "One path per line, for example /pricing. Leave empty to track the home page and the 24 most recently published pages.",
+        "items": { "type": "string" },
+        "maxItems": 25,
+        "x-hm-field": "lines"
+      },
+      "strategy": {
+        "type": "string",
+        "title": "Device",
+        "enum": ["mobile", "desktop", "both"],
+        "default": "both"
+      },
+      "public_url": {
+        "type": "string",
+        "title": "Public address of this site",
+        "description": "For example https://example.com. Only needed when the site address is not set in Settings > General."
       }
     }
   }

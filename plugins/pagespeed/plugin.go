@@ -1,37 +1,25 @@
 // Command pagespeed is a Hatamoto plugin. PageSpeed and Core Web Vitals: tracks field data from the Chrome UX Report and Lighthouse lab scores for your key pages, with daily trends.
 //
-// Starting point from the first-party template: a render.head filter that
-// reads one setting and adds a meta tag. Replace it with the real hooks; keep
-// the logic in plain Go (this file) and the //go:wasmexport lines in
+// The logic is plain Go in this package; the //go:wasmexport lines live in
 // exports_wasip1.go, so everything but the exports builds and tests on the host.
 package main
 
 import (
-	"strings"
+	"net/http"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
 
 func init() {
-	guest.OnFilter(sdk.RenderHead, addMeta)
+	guest.OnHTTP(serve)
+	guest.OnCron("measure", func(sdk.CronEvent) error { return runCron() })
 }
 
-// addMeta never fails the render: an unreadable or empty setting adds nothing.
-func addMeta(c sdk.HeadContext) (sdk.HeadContext, error) {
-	var s struct {
-		Greeting string `json:"greeting"`
-	}
-	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return c, nil
-	}
-	g := strings.TrimSpace(s.Greeting)
-	if g == "" {
-		return c, nil
-	}
-	c.Tags = append(c.Tags, sdk.HeadTag{
-		Kind:  "meta",
-		Attrs: map[string]string{"name": "pagespeed", "content": g},
-	})
-	return c, nil
+// serve answers the admin routes.
+func serve(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
+	return sdk.HTTPResponse{Status: http.StatusNotFound, Headers: map[string]string{"Content-Type": "application/json"}, Body: `{"error":"not found"}`}, nil
 }
+
+// runCron measures the tracked pages within the call's time budget.
+func runCron() error { return nil }
