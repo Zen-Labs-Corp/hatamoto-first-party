@@ -135,6 +135,16 @@ func runImport(s settings, deadline time.Time, now func() time.Time) (importResu
 	started := now()
 	budgetEnd = deadline
 	defer func() { budgetEnd = time.Time{} }()
+	// Retention does not depend on Bing: whatever the import did (an endpoint
+	// that always fails, a rejected key), prune when time is left for it.
+	defer func() {
+		if time.Until(deadline) < endpointReserve {
+			return
+		}
+		if err := pruneBefore(now()); err != nil {
+			logf("warn", "retention: %v", err)
+		}
+	}()
 
 	finish := func(runErr error) {
 		if err := recordRun(started, now(), runErr); err != nil {
@@ -176,10 +186,5 @@ func runImport(s settings, deadline time.Time, now func() time.Time) (importResu
 		runErr = errors.New(res.Error)
 	}
 	finish(runErr)
-	if res.Done && runErr == nil {
-		if err := pruneBefore(now()); err != nil {
-			logf("warn", "retention: %v", err)
-		}
-	}
 	return res, nil
 }

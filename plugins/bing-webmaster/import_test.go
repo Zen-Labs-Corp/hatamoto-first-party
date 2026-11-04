@@ -67,7 +67,7 @@ func TestRejectedKeyStoresNothingAndRecordsTheRun(t *testing.T) {
 		t.Fatalf("%v %+v", err, res)
 	}
 	for _, s := range stmts(t, h) {
-		if !strings.HasPrefix(s, "INSERT INTO import_runs") {
+		if !strings.HasPrefix(s, "INSERT INTO import_runs") && !strings.HasPrefix(s, "DELETE FROM ") {
 			t.Errorf("unexpected write: %s", s)
 		}
 	}
@@ -194,8 +194,8 @@ func TestTruncatedEndpointDoesNotStopTheOthers(t *testing.T) {
 	if okRun, text := lastRun(t, h); okRun || !strings.Contains(text, "GetQueryStats") {
 		t.Fatalf("run ok=%v %q", okRun, text)
 	}
-	if len(writes(h, "DELETE FROM traffic_daily")) != 0 {
-		t.Fatal("no retention after a failed run")
+	if len(writes(h, "DELETE FROM traffic_daily")) != 1 {
+		t.Fatal("retention must run although an endpoint failed")
 	}
 }
 
@@ -298,6 +298,20 @@ func TestNoLogOrRecordCarriesTheKey(t *testing.T) {
 		}
 		if s := strings.ToLower(strings.TrimSpace(strings.Join([]string{c.sql(), fmt.Sprint(c.args)}, " "))); strings.Contains(s, strings.ToLower(testKey)) || strings.Contains(s, "apikey=") {
 			t.Fatalf("%s carries the key: %s", c.fn, s)
+		}
+	}
+}
+
+func TestRetentionRunsEvenWhenAnEndpointFailsEveryTime(t *testing.T) {
+	h := newHost(t)
+	goodBing(h)
+	h.bing["GetQueryStats"] = fetched{Status: 200, Body: `{"d":[`, Truncated: true}
+	for i := 1; i <= 2; i++ {
+		if _, err := runImport(h.settings, time.Now().Add(importBudget), clockAt(fixedNow)); err != nil {
+			t.Fatal(err)
+		}
+		if n := len(writes(h, "DELETE FROM import_runs")); n != i {
+			t.Fatalf("run %d: %d retention deletes", i, n)
 		}
 	}
 }
