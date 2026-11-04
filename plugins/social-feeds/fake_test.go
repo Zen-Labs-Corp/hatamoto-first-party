@@ -162,6 +162,8 @@ func (f *fake) db(fn, sql string, rawArgs json.RawMessage, reply func(any) error
 	case strings.HasPrefix(sql, "DELETE FROM item WHERE source"):
 		src := argStr(0)
 		f.items = slices.DeleteFunc(f.items, func(it item) bool { return it.Source == src })
+	case strings.HasPrefix(sql, "DELETE FROM source_status WHERE source"):
+		delete(f.status, argStr(0))
 	case strings.HasPrefix(sql, "INSERT INTO item"):
 		var in []item
 		if err := json.Unmarshal([]byte(argStr(0)), &in); err != nil {

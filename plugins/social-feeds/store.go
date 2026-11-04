@@ -59,6 +59,11 @@ func clearItems(source string) error {
 	return dbExec(`DELETE FROM item WHERE source = $1`, source)
 }
 
+// clearStatus forgets the refresh outcome of one source.
+func clearStatus(source string) error {
+	return dbExec(`DELETE FROM source_status WHERE source = $1`, source)
+}
+
 // sourceStatus is the last refresh outcome of one source.
 type sourceStatus struct {
 	Source      string `json:"source"`

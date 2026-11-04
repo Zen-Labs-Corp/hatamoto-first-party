@@ -23,6 +23,12 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		return connectInstagram(s, r)
 	case "GET /oauth/callback":
 		return oauthCallback(s, r)
+	case "GET /status":
+		return reply(http.StatusOK, buildStatus(s, nil))
+	case "POST /refresh-now":
+		return reply(http.StatusOK, buildStatus(s, runRefresh(refreshNowBudget)))
+	case "POST /disconnect":
+		return disconnect(s)
 	}
 	return reply(http.StatusNotFound, map[string]string{"error": "not found"})
 }
