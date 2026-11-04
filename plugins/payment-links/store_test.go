@@ -30,6 +30,7 @@ func TestSQLGuard(t *testing.T) {
 	for sql, want := range map[string]bool{
 		sqlInsertPayment:                     true,
 		sqlListPayments:                      true,
+		sqlListBetween:                       true,
 		sqlMonthTotals:                       true,
 		sqlEventSeen:                         true,
 		sqlPrune:                             true,

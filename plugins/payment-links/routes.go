@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -57,11 +58,18 @@ func handlePayments(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	return reply(http.StatusOK, map[string]any{"payments": pv, "page": page, "has_more": more, "totals": tv})
 }
 
-// handleCSV answers up to maxCSVRows payments as a download.
-func handleCSV(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
+// handleCSV answers payments as a download: up to maxCSVRows rows and about
+// maxCSVBytes bytes, newest first. The query from and to (YYYY-MM, both
+// inclusive) pick the months, so a larger log can be exported in parts. When
+// the file is cut short the header X-Rows-Truncated is "true".
+func handleCSV(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
+	from, to, ok := csvWindow(first(r.Query["from"]), first(r.Query["to"]))
+	if !ok {
+		return reply(http.StatusBadRequest, map[string]string{"error": "bad request"})
+	}
 	var rows []payment
 	for len(rows) < maxCSVRows {
-		batch, err := listRange(csvBatch, len(rows))
+		batch, err := listBetween(csvBatch, len(rows), from, to)
 		if err != nil {
 			return busy()
 		}
@@ -70,14 +78,36 @@ func handleCSV(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			break
 		}
 	}
-	body, err := paymentsCSV(rows[:min(len(rows), maxCSVRows)])
+	rows = rows[:min(len(rows), maxCSVRows)]
+	body, n, err := paymentsCSV(rows, maxCSVBytes)
 	if err != nil {
 		return busy()
 	}
 	return sdk.HTTPResponse{Status: http.StatusOK, Body: body, Headers: map[string]string{
 		"Content-Type":        "text/csv; charset=utf-8",
 		"Content-Disposition": `attachment; filename="payments.csv"`,
+		"X-Rows-Truncated":    strconv.FormatBool(n < len(rows)),
 	}}, nil
+}
+
+// csvWindow turns the from and to months (empty means open) into a half-open
+// UTC range [from, to).
+func csvWindow(fromQ, toQ string) (from, to time.Time, ok bool) {
+	from, to = time.Unix(0, 0).UTC(), time.Date(9000, 1, 1, 0, 0, 0, 0, time.UTC)
+	var err error
+	if fromQ != "" {
+		if from, err = time.Parse("2006-01", fromQ); err != nil {
+			return from, to, false
+		}
+	}
+	if toQ != "" {
+		t, err := time.Parse("2006-01", toQ)
+		if err != nil {
+			return from, to, false
+		}
+		to = t.AddDate(0, 1, 0)
+	}
+	return from, to, true
 }
 
 // handleLinks answers the setup status of the admin page. It says whether a

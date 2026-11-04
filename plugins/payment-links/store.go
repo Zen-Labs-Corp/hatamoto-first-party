@@ -45,6 +45,15 @@ ON CONFLICT DO NOTHING`
 ) ORDER BY created DESC, id DESC), '[]'::jsonb)
 FROM (SELECT * FROM payments ORDER BY created DESC, id DESC LIMIT $1 OFFSET $2) p`
 
+	sqlListBetween = `SELECT coalesce(jsonb_agg(jsonb_build_object(
+  'event_id', event_id, 'session_id', session_id, 'amount', amount, 'currency', currency,
+  'email', customer_email, 'label', link_label, 'kind', link_kind, 'link_id', payment_link_id,
+  'live', livemode, 'created', to_char(created at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+) ORDER BY created DESC, id DESC), '[]'::jsonb)
+FROM (SELECT * FROM payments
+  WHERE created >= to_timestamp($3::double precision) AND created < to_timestamp($4::double precision)
+  ORDER BY created DESC, id DESC LIMIT $1 OFFSET $2) p`
+
 	sqlMonthTotals = `SELECT coalesce(jsonb_agg(jsonb_build_object('month', month, 'currency', currency, 'total', total, 'count', n)
   ORDER BY month DESC, currency), '[]'::jsonb)
 FROM (SELECT to_char(created at time zone 'utc', 'YYYY-MM') AS month, currency, sum(amount) AS total, count(*) AS n
@@ -79,6 +88,13 @@ func insertPayment(p payment) (bool, error) {
 func listRange(limit, offset int) ([]payment, error) {
 	rows := []payment{}
 	err := dbJSON(sqlListPayments, &rows, limit, offset)
+	return rows, err
+}
+
+// listBetween is listRange limited to payments created in [from, to).
+func listBetween(limit, offset int, from, to time.Time) ([]payment, error) {
+	rows := []payment{}
+	err := dbJSON(sqlListBetween, &rows, limit, offset, from.Unix(), to.Unix())
 	return rows, err
 }
 

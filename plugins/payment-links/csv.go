@@ -18,14 +18,19 @@ func csvCell(s string) string {
 	return s
 }
 
-// paymentsCSV renders rows, newest first as given, with a header row.
-func paymentsCSV(rows []payment) (string, error) {
+// maxCSVBytes keeps the file well under the 1 MiB answer cap of a plugin call,
+// which also covers the JSON envelope around the body.
+const maxCSVBytes = 900 << 10
+
+// paymentsCSV renders rows, newest first as given, with a header row. It stops
+// before the output would pass maxBytes and reports how many rows it wrote.
+func paymentsCSV(rows []payment, maxBytes int) (string, int, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	if err := w.Write(csvHeader); err != nil {
-		return "", err
+		return "", 0, err
 	}
-	for _, p := range rows {
+	for i, p := range rows {
 		live := "false"
 		if p.Live {
 			live = "true"
@@ -34,10 +39,17 @@ func paymentsCSV(rows []payment) (string, error) {
 			p.Created.UTC().Format(time.RFC3339), csvCell(p.Label), p.Kind, decimalAmount(p.Amount, p.Currency),
 			p.Currency, csvCell(p.Email), p.SessionID, p.EventID, live,
 		}
+		w.Flush()
+		before := buf.Len()
 		if err := w.Write(rec); err != nil {
-			return "", err
+			return "", 0, err
+		}
+		w.Flush()
+		if buf.Len() > maxBytes {
+			buf.Truncate(before)
+			return buf.String(), i, w.Error()
 		}
 	}
 	w.Flush()
-	return buf.String(), w.Error()
+	return buf.String(), len(rows), w.Error()
 }

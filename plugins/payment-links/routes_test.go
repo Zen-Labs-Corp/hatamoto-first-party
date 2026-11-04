@@ -22,10 +22,10 @@ func TestCSVCellNeutralisesFormulas(t *testing.T) {
 }
 
 func TestPaymentsCSVHasHeaderAndEscapesCells(t *testing.T) {
-	out, err := paymentsCSV([]payment{{
+	out, _, err := paymentsCSV([]payment{{
 		EventID: "evt_1", SessionID: "cs_1", Amount: 5000, Currency: "AUD", Email: "=cmd@example.com",
 		Label: `Say "hi", friend`, Kind: "donation", Live: true, Created: mustTime("2026-11-03T10:00:00Z"),
-	}})
+	}}, maxCSVBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,4 +145,52 @@ func mustTime(s string) time.Time {
 		panic(err)
 	}
 	return t
+}
+
+func TestPaymentsCSVStopsBeforeTheByteCap(t *testing.T) {
+	rows := make([]payment, 100)
+	for i := range rows {
+		rows[i] = payment{EventID: "evt_1", SessionID: "cs_1", Amount: 100, Currency: "USD", Created: mustTime("2026-11-03T10:00:00Z")}
+	}
+	out, n, err := paymentsCSV(rows, 1000)
+	if err != nil || n == 0 || n >= len(rows) || len(out) > 1000 {
+		t.Fatalf("n=%d len=%d err=%v", n, len(out), err)
+	}
+	if recs, err := csv.NewReader(strings.NewReader(out)).ReadAll(); err != nil || len(recs) != n+1 {
+		t.Fatalf("%d records, want %d: %v", len(recs), n+1, err)
+	}
+}
+
+func TestHandleCSVCutsALargeLogUnderTheOutputCap(t *testing.T) {
+	row := `{"event_id":"evt_1","session_id":"cs_1","amount":100,"currency":"USD","email":"` + strings.Repeat("a", 200) + `@example.com","label":"L","kind":"payment","created":"2026-11-03T10:00:00Z"}`
+	batch := make([]string, csvBatch)
+	for i := range batch {
+		batch[i] = row
+	}
+	dbHost(t, nil, "["+strings.Join(batch, ",")+"]")
+	res, err := serve(sdk.HTTPRequest{Method: "GET", Pattern: "/payments.csv"})
+	if err != nil || res.Status != 200 {
+		t.Fatalf("%d %v", res.Status, err)
+	}
+	if len(res.Body) > 1<<20 || len(res.Body) > maxCSVBytes || res.Headers["X-Rows-Truncated"] != "true" {
+		t.Fatalf("body %d bytes, truncated=%q", len(res.Body), res.Headers["X-Rows-Truncated"])
+	}
+}
+
+func TestHandleCSVTakesAMonthRange(t *testing.T) {
+	calls := dbHost(t, nil, `[]`)
+	res, err := serve(sdk.HTTPRequest{Method: "GET", Pattern: "/payments.csv", Query: map[string][]string{"from": {"2026-02"}, "to": {"2026-03"}}})
+	if err != nil || res.Status != 200 || res.Headers["X-Rows-Truncated"] != "false" {
+		t.Fatalf("%d %v %v", res.Status, res.Headers, err)
+	}
+	c := (*calls)[0]
+	if c.sql != sqlListBetween || c.args[2] != mustTime("2026-02-01T00:00:00Z").Unix() || c.args[3] != mustTime("2026-04-01T00:00:00Z").Unix() {
+		t.Fatalf("args %v", c.args)
+	}
+	for _, q := range []string{"2026-13", "x", "2026-02-01"} {
+		res, _ := serve(sdk.HTTPRequest{Method: "GET", Pattern: "/payments.csv", Query: map[string][]string{"from": {q}}})
+		if res.Status != 400 {
+			t.Errorf("from %q: %d", q, res.Status)
+		}
+	}
 }
