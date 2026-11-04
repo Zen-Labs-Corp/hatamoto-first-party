@@ -6,6 +6,8 @@ CREATE TABLE downloads_daily (
     PRIMARY KEY (media_id, day)
 );
 
+CREATE INDEX downloads_daily_day ON downloads_daily (day);
+
 CREATE TABLE downloads_monthly (
     media_id uuid NOT NULL,
     month date NOT NULL,

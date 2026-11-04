@@ -8,7 +8,7 @@
     { "method": "GET", "path": "/f/{media_id}", "public": true },
     { "method": "GET", "path": "/overview" }
   ],
-  "cron": [ { "name": "rollup", "every": "24h" } ],
+  "cron": [ { "name": "rollup", "every": "1h" } ],
   "funcs": ["count"],
   "builder_sources": [ { "name": "files", "label": "Downloadable files", "kind": "items" } ],
   "ui": { "title": "Downloads" },

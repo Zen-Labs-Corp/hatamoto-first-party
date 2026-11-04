@@ -24,7 +24,7 @@ No network access, no site scripts, no key-value storage.
 
 ## Data kept
 
-- One row per file and UTC day with the number of downloads, kept for 13 months. After that a daily job folds each month into one row per file and month, which is kept until the plugin is uninstalled.
+- One row per file and UTC day with the number of downloads, kept for 13 months. After that a background job folds each month into one row per file and month, which is kept until the plugin is uninstalled.
 - No IP address, User-Agent, referrer or cookie is stored or logged. The User-Agent is only looked at, in memory, to tell bots from browsers.
 - Hatamoto itself logs requests as it does for every page; the plugin cannot change that.
 
