@@ -3,17 +3,32 @@
   "version": "0.1.0",
   "sdk": "^0.8",
   "description": "Adds people who submit your forms to Mailchimp, Brevo, MailerLite or Kit, with field mapping, an optional consent field and retries.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["forms.read", "settings", "http.fetch", "db", "log"],
+  "allowed_hosts": ["*.api.mailchimp.com", "api.brevo.com", "connect.mailerlite.com", "api.kit.com"],
+  "routes": [
+    { "method": "GET", "path": "/log" },
+    { "method": "POST", "path": "/test" }
+  ],
+  "cron": [ { "name": "retry", "every": "5m" } ],
+  "ui": { "title": "Subscriber sync" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "form.submitted": 9000, "on_cron_retry": 10000 }
+  },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
-      }
+      "provider": { "type": "string", "title": "Provider", "enum": ["mailchimp", "brevo", "mailerlite", "kit"] },
+      "api_key": { "type": "string", "title": "API key", "writeOnly": true, "description": "Stored here and never shown again. Mailchimp keys end in -usNN." },
+      "list_id": { "type": "string", "title": "List, audience, group or form id", "description": "Mailchimp audience id, Brevo list id (a number), MailerLite group id or Kit form id.", "maxLength": 100 },
+      "forms": { "type": "array", "title": "Forms to sync", "description": "Form slugs, one per line. Empty means nothing is sent.", "items": { "type": "string", "maxLength": 100 }, "maxItems": 50, "x-hm-field": "lines" },
+      "email_field": { "type": "string", "title": "Email field", "default": "email", "maxLength": 100 },
+      "first_name_field": { "type": "string", "title": "First name field", "maxLength": 100 },
+      "last_name_field": { "type": "string", "title": "Last name field", "maxLength": 100 },
+      "consent_field": { "type": "string", "title": "Consent field", "description": "Optional. When set, only submissions where this field is ticked or yes are sent.", "maxLength": 100 },
+      "double_opt_in": { "type": "boolean", "title": "Double opt-in", "description": "Mailchimp only: new contacts get a confirmation email first. The other providers follow their own settings.", "default": true },
+      "tags": { "type": "array", "title": "Tags", "description": "Tag names, one per line. Mailchimp and Kit only.", "items": { "type": "string", "maxLength": 100 }, "maxItems": 20, "x-hm-field": "lines" }
     }
   }
 }
