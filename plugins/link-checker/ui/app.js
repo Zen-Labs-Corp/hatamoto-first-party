@@ -162,7 +162,7 @@ function render() {
   rows.replaceChildren(...state.links.map(row));
   $("#table").hidden = state.links.length === 0;
   const empty = $("#empty");
-  empty.textContent = state.links.length === 0 && state.ready ? emptyText() : "";
+  empty.textContent = state.links.length === 0 && state.ready && total(state.counts) > 0 && state.scanned ? emptyText() : "";
   empty.hidden = !empty.textContent;
   $("#more").hidden = !state.cursor;
 }
@@ -170,6 +170,7 @@ function render() {
 function renderHeader(data) {
   state.counts = data.counts || {};
   state.pagesTotal = data.pages_total || 0;
+  state.scanned = !!data.last_scan;
   const scan = data.last_scan ? "Last scan: " + ago(data.last_scan) : "No scan yet";
   $("#scan").textContent = scan + " · Queue: " + (data.queue || 0) + " links waiting";
   const partial = $("#partial");
