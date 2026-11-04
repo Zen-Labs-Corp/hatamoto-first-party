@@ -211,7 +211,7 @@ func TestRefreshRequestTimeoutBoundedByBudget(t *testing.T) {
 		return fetchRes{Status: 200, Body: rss(1)}, nil
 	}
 	refresh(false)
-	if len(f.requests) != 2 || f.requests[0].TimeoutMS != 8000 || f.requests[1].TimeoutMS != 3000 {
+	if len(f.requests) != 2 || f.requests[0].TimeoutMS != 7500 || f.requests[1].TimeoutMS != 1500 {
 		t.Fatalf("requests %+v", f.requests)
 	}
 }
@@ -301,19 +301,43 @@ func TestRefreshClaimsFeedBeforeFetching(t *testing.T) {
 	}
 }
 
-func TestRefreshLateDownloadIsNotParsedAndStaysDue(t *testing.T) {
+func TestRefreshSlowFeedTimesOutAndDoesNotStarveTheOthers(t *testing.T) {
 	f := newFake(t)
-	setFeeds(f, "slow")
-	f.fetch = func(string, map[string]string) (fetchRes, error) {
-		f.clock = f.clock.Add(8 * time.Second)
-		return fetchRes{Status: 200, Body: rss(2), Headers: map[string]string{"etag": `"e1"`}}, nil
+	setFeeds(f, "slow", "fast")
+	f.fetch = func(u string, _ map[string]string) (fetchRes, error) {
+		if strings.HasSuffix(u, "/slow.xml") {
+			// The server needs 7.8 s; the host ends the request at its timeout.
+			d := min(7800, f.requests[len(f.requests)-1].TimeoutMS)
+			f.clock = f.clock.Add(time.Duration(d) * time.Millisecond)
+			if d == 7800 {
+				return fetchRes{Status: 200, Body: rss(1)}, nil
+			}
+			return fetchRes{}, &sdk.HostError{Code: sdk.ErrTimeout, Message: "slow"}
+		}
+		return fetchRes{Status: 200, Body: rss(1)}, nil
 	}
-	if got := statusOf(refresh(false)); got != "slow="+statusDeferred {
-		t.Fatalf("results %s", got)
+	refresh(false)
+	if row := f.feeds[f.keyOf("slow")]; row.Status != string(statusTimeout) || row.LastAttempt.IsZero() {
+		t.Fatalf("slow feed must be saved as a timeout with its attempt time: %+v", row)
 	}
-	row := f.feeds[f.keyOf("slow")]
-	if len(f.items) != 0 || row.ETag != "" || !row.LastAttempt.IsZero() {
-		t.Fatalf("must not store and must stay due: items %d, row %+v", len(f.items), row)
+	// Every other feed gets its turn on the next tick, and slow waits.
+	f.clock = f.clock.Add(time.Minute)
+	f.requests = nil
+	refresh(false)
+	if row := f.feeds[f.keyOf("fast")]; row.Status != statusOK {
+		t.Fatalf("fast feed starved: %+v", row)
+	}
+}
+
+func TestRefreshFeedWithoutTimeToStartStaysDue(t *testing.T) {
+	f := newFake(t)
+	setFeeds(f, "a")
+	f.fetch = func(string, map[string]string) (fetchRes, error) { return fetchRes{Status: 200, Body: rss(1)}, nil }
+	if _, err := fetchFeed(testFeed, feedRow{}, f.clock.Add(2*time.Second)); !errors.Is(err, errNoTime) {
+		t.Fatalf("err %v", err)
+	}
+	if len(f.requests) != 0 {
+		t.Fatal("a request was made without time for it")
 	}
 }
 

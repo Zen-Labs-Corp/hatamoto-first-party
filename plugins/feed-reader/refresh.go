@@ -63,7 +63,7 @@ func refresh(force bool) []feedResult {
 	var results []feedResult
 	deadline := start.Add(hardBudget)
 	for i, f := range due {
-		if now().Sub(start) >= startCutoff || deadline.Sub(now()) < minCall {
+		if now().Sub(start) >= startCutoff || deadline.Sub(now()) < minCall+parseMargin {
 			var rest []string
 			for _, d := range due[i:] {
 				rest = append(rest, d.Key)
@@ -90,7 +90,7 @@ func refreshOne(f feedCfg, st feedRow, deadline time.Time) string {
 	}
 	out, err := fetchFeed(f, st, deadline)
 	if errors.Is(err, errNoTime) {
-		// Downloaded too late to parse and store: leave the feed due.
+		// No time to start it: leave the feed due.
 		if err := markDue([]string{f.Key}); err != nil {
 			logf("error", "feed-reader: cannot reschedule feed %q", f.Name)
 		}

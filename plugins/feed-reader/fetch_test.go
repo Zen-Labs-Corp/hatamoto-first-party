@@ -35,7 +35,7 @@ func TestFetchSendsStoredValidators(t *testing.T) {
 	if out.ETag != `"abc"` || out.LastModified != "Tue, 03 Nov 2026 09:30:00 GMT" {
 		t.Fatalf("validators %q %q", out.ETag, out.LastModified)
 	}
-	if f.requests[0].TimeoutMS != 8000 {
+	if f.requests[0].TimeoutMS != 7500 {
 		t.Fatalf("timeout %d", f.requests[0].TimeoutMS)
 	}
 }
@@ -67,14 +67,14 @@ func TestFetch304IsNotModified(t *testing.T) {
 func TestFetchRequestTimeoutFollowsTimeLeft(t *testing.T) {
 	f := newFake(t)
 	serve(f, fetchRes{Status: 200, Body: simpleRSS})
-	if _, err := fetchFeed(testFeed, feedRow{}, deadlineIn(f, 2500*time.Millisecond)); err != nil {
+	if _, err := fetchFeed(testFeed, feedRow{}, deadlineIn(f, 4000*time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
 	if f.requests[0].TimeoutMS != 2500 {
 		t.Fatalf("timeout %d", f.requests[0].TimeoutMS)
 	}
-	if _, err := fetchFeed(testFeed, feedRow{}, deadlineIn(f, 900*time.Millisecond)); err != statusTimeout {
-		t.Fatalf("less than a second left must not start a request: %v", err)
+	if _, err := fetchFeed(testFeed, feedRow{}, deadlineIn(f, 2400*time.Millisecond)); err != errNoTime {
+		t.Fatalf("too little time left must not start a request: %v", err)
 	}
 	if len(f.requests) != 1 {
 		t.Fatal("a request was made without time for it")

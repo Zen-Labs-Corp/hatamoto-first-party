@@ -24,7 +24,8 @@ const (
 	parseMargin = 1500 * time.Millisecond
 )
 
-// errNoTime means the download finished too late to parse and store the feed.
+// errNoTime means the feed got no time to start: too little of the budget is
+// left to download, parse and store it.
 var errNoTime = errors.New("no time left to process the feed")
 
 // feedErr is a per-feed failure. Its text is one of the fixed phrases below
@@ -83,9 +84,12 @@ func clipBytes(s string, n int) string {
 // stored state has validators. It starts no request that cannot finish
 // before deadline. Every error is a feedErr.
 func fetchFeed(f feedCfg, st feedRow, deadline time.Time) (outcome, error) {
-	left := deadline.Sub(now())
+	// The request is capped so that it ends, at the latest, parseMargin
+	// before the deadline: a slow server times out (a normal failure) and a
+	// download never ends too late to be parsed and stored.
+	left := deadline.Sub(now()) - parseMargin
 	if left < minCall {
-		return outcome{}, statusTimeout
+		return outcome{}, errNoTime
 	}
 	headers := map[string]string{
 		"Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.9, */*;q=0.5",
@@ -112,9 +116,6 @@ func fetchFeed(f feedCfg, st feedRow, deadline time.Time) (outcome, error) {
 	}
 	if res.Status < 200 || res.Status > 299 {
 		return outcome{}, feedErr("HTTP " + strconv.Itoa(res.Status))
-	}
-	if deadline.Sub(now()) < parseMargin {
-		return outcome{}, errNoTime
 	}
 	body := []byte(res.Body)
 	if res.BodyB64 != "" {
