@@ -1,18 +1,30 @@
 {
   "name": "downloads",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.11",
   "description": "Download counts for files in your media library: tracked download links, daily totals per file and a list of files for the page builder.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["media.read", "db", "builder.data", "settings"],
+  "routes": [
+    { "method": "GET", "path": "/f/{media_id}", "public": true },
+    { "method": "GET", "path": "/overview" }
+  ],
+  "cron": [ { "name": "rollup", "every": "24h" } ],
+  "funcs": ["count"],
+  "builder_sources": [ { "name": "files", "label": "Downloadable files", "kind": "items" } ],
+  "ui": { "title": "Downloads" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "builder.data": 2000, "func_count": 2000, "on_cron_rollup": 10000 }
+  },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+      "count_bots": {
+        "type": "boolean",
+        "title": "Count bots",
+        "description": "Also count downloads by crawlers, link previewers and scripts (matched by User-Agent).",
+        "default": false
       }
     }
   }
