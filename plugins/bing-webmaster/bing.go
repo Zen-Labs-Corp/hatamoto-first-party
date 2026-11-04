@@ -405,7 +405,7 @@ func submitFeed(s settings, site, feedURL string) error {
 	return err
 }
 
-const maxSiteURL = 2048
+const maxSiteURL = 255
 
 // parseSite checks a Site URL: http or https, a host, no credentials, no
 // control characters, at most maxSiteURL bytes.

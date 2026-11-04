@@ -32,7 +32,7 @@
         "type": "string",
         "title": "Site URL",
         "default": "",
-        "maxLength": 2048,
+        "maxLength": 255,
         "description": "The site exactly as verified in Bing Webmaster Tools. Leave empty to use the one verified site in your Bing account."
       }
     }
