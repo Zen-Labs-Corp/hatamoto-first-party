@@ -43,6 +43,8 @@ From the repository root: `scripts/build-plugin.sh plugins/subscriber-sync`.
 - One provider and one list at a time. Nothing is synced back (unsubscribes, edits).
 - Double opt-in: for Mailchimp the setting sets `status_if_new` to pending (confirmation email) or subscribed. For Kit it creates new subscribers as inactive, so the form's confirmation email applies, or as active. Brevo and MailerLite follow their own account setting.
 - Tags: only Mailchimp (added by name) and Kit (existing tag names; unknown names are skipped). Brevo and MailerLite get none.
+- At most 10 tags can be set.
+- A delivery that does not finish within one run's time budget is retried later with a growing wait, like any other failure (log reason `too slow`).
 - Kit gets email and first name only, no last name.
 - Mailchimp reports success the same way for new and existing members, so the log shows `sent` for both.
 - Mailchimp keys must end in `-us` and one or two digits.

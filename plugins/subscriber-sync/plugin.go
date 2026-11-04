@@ -68,6 +68,6 @@ func onFormSubmitted(ev sdk.FormSubmittedEvent) error {
 	}
 	budgetEnd = now().Add(hookBudget)
 	defer func() { budgetEnd = time.Time{} }()
-	settle(j, deliverFn(c, j))
+	settle(j, slowCut(deliverFn(c, j), hookBudget, hookBudget))
 	return nil
 }
