@@ -11,7 +11,7 @@ const (
 	dateFmt         = "2006-01-02"
 	retentionMonths = 13
 	progressDays    = 7
-	maxLabAttempts  = 2 // the first run and one retry
+	maxLabAttempts  = 3 // the first run and two retries: lab scores are best-effort
 )
 
 // dbExec runs one statement that changes rows.
@@ -132,7 +132,8 @@ func dayProgress(day string) (map[[2]string]progressRow, error) {
 }
 
 // nextWork picks the next step of the day: every field lookup first, then the
-// lab runs not tried yet, then the lab runs that timed out once.
+// lab runs not tried yet, then the lab runs that timed out, up to
+// maxLabAttempts tries each.
 func nextWork(day string, targets, strategies []string) (workItem, bool, error) {
 	prog, err := dayProgress(day)
 	if err != nil {
@@ -200,6 +201,16 @@ func latestRows() ([]metricRow, error) {
 	return rows, err
 }
 
+// latestLabs returns the newest finished lab score of every (page, device),
+// with the day it was measured.
+func latestLabs() ([]metricRow, error) {
+	var rows []metricRow
+	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) FROM
+		(SELECT DISTINCT ON (strategy, url) url, strategy, to_char(day, 'YYYY-MM-DD') AS day, lab_score, lab_status
+		   FROM metrics WHERE lab_status = 'ok' ORDER BY strategy, url, day DESC) t`, &rows)
+	return rows, err
+}
+
 // dayRows returns the rows of one page on one day.
 func dayRows(day, url string) ([]metricRow, error) {
 	var rows []metricRow
@@ -261,8 +272,8 @@ func dayCounts(day string) (done int, at string, err error) {
 		At   string `json:"at"`
 	}
 	err = dbJSON(`SELECT jsonb_build_object(
-		'done', (SELECT count(*) FROM progress WHERE day = $1::date AND crux_done AND (lab_state <> 'pending' AND (lab_state <> 'timeout' OR lab_attempts >= 2))),
-		'at', coalesce((SELECT to_char(max(measured_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM metrics WHERE day = $1::date), ''))`, &r, day)
+		'done', (SELECT count(*) FROM progress WHERE day = $1::date AND crux_done AND (lab_state <> 'pending' AND (lab_state <> 'timeout' OR lab_attempts >= $2))),
+		'at', coalesce((SELECT to_char(max(measured_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM metrics WHERE day = $1::date), ''))`, &r, day, maxLabAttempts)
 	return r.Done, r.At, err
 }
 

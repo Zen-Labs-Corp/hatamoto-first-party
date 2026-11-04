@@ -66,12 +66,13 @@ type deviceRow struct {
 	FieldStatus string             `json:"field_status"`
 	LabScore    *int               `json:"lab_score"`
 	LabStatus   string             `json:"lab_status"`
+	LabDay      string             `json:"lab_day"` // the day of lab_score, which may be older than day
 	MeasuredAt  string             `json:"measured_at"`
 	Series      map[string][]point `json:"series"`
 }
 
 // urlEntry is {"path": ..., "<strategy>": deviceRow...}.
-func urlEntry(path string, strategies []string, rows []metricRow, all []series) map[string]any {
+func urlEntry(path string, strategies []string, rows, labs []metricRow, all []series) map[string]any {
 	entry := map[string]any{"path": path}
 	for _, s := range strategies {
 		d := deviceRow{FieldStatus: "pending", LabStatus: labPending, Series: map[string][]point{"lcp": {}, "inp": {}, "cls": {}}}
@@ -79,6 +80,16 @@ func urlEntry(path string, strategies []string, rows []metricRow, all []series) 
 			if r.URL == path && r.Strategy == s {
 				d.Day, d.FieldStatus, d.LabScore, d.LabStatus, d.MeasuredAt = r.Day, r.FieldStatus, r.LabScore, r.LabStatus, r.MeasuredAt
 				d.LCP, d.INP, d.CLS = metricValue(r.LCP, r.LCPCat), metricValue(r.INP, r.INPCat), metricValue(r.CLS, r.CLSCat)
+			}
+		}
+		if d.LabStatus == labOK {
+			d.LabDay = d.Day
+		} else {
+			// today has no finished lab run: show the newest one with its day
+			for _, l := range labs {
+				if l.URL == path && l.Strategy == s {
+					d.LabScore, d.LabStatus, d.LabDay = l.LabScore, labOK, l.Day
+				}
 			}
 		}
 		for _, se := range all {
@@ -115,6 +126,10 @@ func overview() (sdk.HTTPResponse, error) {
 	if err != nil {
 		return fail(err)
 	}
+	labs, err := latestLabs()
+	if err != nil {
+		return fail(err)
+	}
 	origins, err := latestOrigin()
 	if err != nil {
 		return fail(err)
@@ -137,7 +152,7 @@ func overview() (sdk.HTTPResponse, error) {
 	urls := make([]map[string]any, 0, len(targets))
 	stored := false
 	for _, p := range targets {
-		urls = append(urls, urlEntry(p, strategies, rows, all))
+		urls = append(urls, urlEntry(p, strategies, rows, labs, all))
 	}
 	for _, r := range rows {
 		for _, p := range targets {
@@ -212,9 +227,13 @@ func measureNow(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	if err != nil {
 		return fail(err)
 	}
+	labs, err := latestLabs()
+	if err != nil {
+		return fail(err)
+	}
 	all, err := seriesFor([]string{in.URL}, now().UTC().AddDate(0, 0, -seriesDays).Format(dateFmt))
 	if err != nil {
 		return fail(err)
 	}
-	return reply(http.StatusOK, urlEntry(in.URL, p.strategies, rows, all))
+	return reply(http.StatusOK, urlEntry(in.URL, p.strategies, rows, labs, all))
 }

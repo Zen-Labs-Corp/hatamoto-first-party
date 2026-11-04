@@ -41,9 +41,9 @@ From the repository root: `scripts/build-plugin.sh plugins/pagespeed`.
 
 - At most 25 tracked pages. The whole-site summary comes from the Chrome UX Report origin record, which covers every page; measuring every page of a large site is not a goal.
 - The cron job runs every 5 minutes and each call works for about 8 seconds (the host allows 10 s): several field lookups, then at most one PageSpeed Insights run. Each page and device is measured once per UTC day; 25 pages on both devices take a few hours.
-- A Lighthouse run can take longer than one call allows. It then shows "Lab timed out" with the field data kept, and is retried once the same day.
+- Lab scores are best-effort. The host caps each plugin call at 10 s and a Lighthouse run can take longer, so a run often times out. Each page and device gets up to 3 lab tries per UTC day (field data is always kept), and the table shows the newest finished score with its day until a new one arrives.
 - The Chrome UX Report has no data for low-traffic pages.
-- **Measure now** works within the same 10 second cap and may show "Lab timed out" too.
+- **Measure now** works within the same 10 second cap and may not finish its lab run either.
 
 ## License
 

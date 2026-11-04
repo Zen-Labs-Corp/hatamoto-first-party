@@ -236,10 +236,10 @@ func TestFinishedDayMakesNoFetch(t *testing.T) {
 	}
 }
 
-func TestLabTimeoutKeepsFieldDataAndRetriesOnce(t *testing.T) {
+func TestLabTimeoutKeepsFieldDataAndRetriesTwice(t *testing.T) {
 	w := newWorld(t, `{"api_key":"`+testKey+`","public_url":"https://s.example","strategy":"mobile","urls":["/a"]}`)
 	w.psiFail = "context deadline exceeded for " + testKey
-	for range 6 {
+	for range 8 {
 		if err := runCron(); err != nil {
 			t.Fatal(err)
 		}
@@ -250,8 +250,8 @@ func TestLabTimeoutKeepsFieldDataAndRetriesOnce(t *testing.T) {
 	if w.labs[[2]string{"/a", "mobile"}] != labTimeout {
 		t.Fatalf("labs = %v", w.labs)
 	}
-	if w.count("psi:") != 2 {
-		t.Fatalf("lab ran %d times, want the run and one retry: %v", w.count("psi:"), w.fetches)
+	if w.count("psi:") != 3 {
+		t.Fatalf("lab ran %d times, want the run and two retries: %v", w.count("psi:"), w.fetches)
 	}
 }
 

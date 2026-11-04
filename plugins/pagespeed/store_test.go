@@ -90,9 +90,13 @@ func TestNextWorkOrderAndRetry(t *testing.T) {
 	}
 	rows[1].LabState = labOK
 	if w, ok := next(rows...); !ok || w != (workItem{"/a", "mobile", stepLab}) {
-		t.Fatalf("retry once: %+v", w)
+		t.Fatalf("first retry: %+v", w)
 	}
 	rows[0].LabAttempts = 2
+	if w, ok := next(rows...); !ok || w != (workItem{"/a", "mobile", stepLab}) {
+		t.Fatalf("second retry: %+v", w)
+	}
+	rows[0].LabAttempts = maxLabAttempts
 	if w, ok := next(rows...); ok {
 		t.Fatalf("done day returned %+v", w)
 	}

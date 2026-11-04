@@ -165,3 +165,26 @@ func TestOverviewAnswersWhenEntityListFails(t *testing.T) {
 		t.Fatalf("%d %s", res.Status, res.Body)
 	}
 }
+
+func TestOverviewShowsNewestLabScoreWithItsDay(t *testing.T) {
+	n := 0
+	routeHost(t, `{"api_key":"k","public_url":"https://s.example","strategy":"mobile","urls":["/a"]}`, map[string]string{
+		"DISTINCT ON (url, strategy)": `[{"url":"/a","day":"2026-11-04","strategy":"mobile","field_status":"ok","lab_status":"pending"}]`,
+		"DISTINCT ON (strategy, url)": `[{"url":"/a","day":"2026-11-02","strategy":"mobile","lab_score":88,"lab_status":"ok"}]`,
+	}, &n)
+	res := call(t, "GET", "/overview", "")
+	var out struct{ URLs []map[string]json.RawMessage }
+	if err := json.Unmarshal([]byte(res.Body), &out); err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Day       string `json:"day"`
+		LabScore  int    `json:"lab_score"`
+		LabStatus string `json:"lab_status"`
+		LabDay    string `json:"lab_day"`
+	}
+	_ = json.Unmarshal(out.URLs[0]["mobile"], &m)
+	if m.LabScore != 88 || m.LabStatus != "ok" || m.LabDay != "2026-11-02" || m.Day != "2026-11-04" {
+		t.Fatalf("overview = %s", res.Body)
+	}
+}

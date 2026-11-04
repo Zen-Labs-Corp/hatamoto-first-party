@@ -94,7 +94,9 @@ function sparkline(metric, points) {
 function labNode(d) {
   if (d.lab_status === "ok" && d.lab_score !== null) {
     const tier = d.lab_score >= 90 ? "good" : d.lab_score >= 50 ? "needs-improvement" : "poor";
-    return el("span", { className: `score ${tier}`, textContent: String(d.lab_score) });
+    const box = el("span", {}, el("span", { className: `score ${tier}`, textContent: String(d.lab_score) }));
+    if (d.lab_day && d.lab_day !== d.day) box.append(" ", el("span", { className: "muted", textContent: d.lab_day }));
+    return box;
   }
   const text = { timeout: "Lab timed out", error: "Lab failed" }[d.lab_status] || "Waiting";
   return el("span", { className: "muted", textContent: text });
