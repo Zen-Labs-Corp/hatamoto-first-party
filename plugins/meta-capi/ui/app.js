@@ -37,9 +37,10 @@ const SKIP_REASONS = {
 const short = (id) => (id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id);
 
 function badge(r) {
-  const kind = r.test ? "test" : r.status;
-  const label = { sent: "Sent", failed: "Failed", skipped: "Skipped", test: "Test" }[kind] || kind;
-  return el("span", { className: `badge ${kind}`, textContent: label });
+  const label = { sent: "Sent", failed: "Failed", skipped: "Skipped" }[r.status] || r.status;
+  const status = el("span", { className: `badge ${r.status}`, textContent: label });
+  if (!r.test) return status;
+  return el("span", {}, status, " ", el("span", { className: "badge test small", textContent: "Test" }));
 }
 
 function detail(r) {

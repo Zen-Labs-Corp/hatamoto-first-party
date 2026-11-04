@@ -20,3 +20,4 @@ dd { margin: 0; }
 .badge.failed { background: var(--color-danger-soft, #fbe9e7); color: var(--color-danger, #b3261e); }
 .badge.skipped { background: #ececea; color: var(--color-hai, #6b6b6b); }
 .badge.test { background: #e3edf8; color: #2a5d9a; }
+.badge.small { padding: 0 6px; font-size: 11px; }
