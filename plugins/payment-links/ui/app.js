@@ -97,7 +97,7 @@ function renderTotals(totals) {
     if (!months.has(t.month)) months.set(t.month, []);
     months.get(t.month).push(`${t.display} (${t.count})`);
   }
-  box.append(table([["Month"], ["Totals"]], [...months].map(([m, parts]) => [[m], [parts.join("   ")]])));
+  box.append(table([["Month (UTC)"], ["Totals"]], [...months].map(([m, parts]) => [[m], [parts.join("   ")]])));
 }
 
 function renderPayments(data) {
@@ -107,7 +107,7 @@ function renderPayments(data) {
     box.append(el("p", { className: "muted", textContent: EMPTY_NOTE }));
   } else {
     box.append(table(
-      [["Date"], ["Label"], ["Kind"], ["Amount", true], ["Email"]],
+      [["Date (UTC)"], ["Label"], ["Kind"], ["Amount", true], ["Email"]],
       data.payments.map((p) => [[p.created.slice(0, 10)], [p.label], [p.kind], [p.display, true], [p.email]]),
     ));
   }

@@ -53,7 +53,8 @@ Not requested: `site.scripts` (no script runs on your public pages) and `kv`.
 
 One row per confirmed payment: Stripe event id, checkout session id, amount in minor
 units, currency, customer email, link label and kind, payment link id, live or test
-mode, the time Stripe created it and the time it was received. Rows older than the
+mode, the time Stripe created it and the time it was received. Dates and months in
+the admin page and the totals are UTC. Rows older than the
 retention setting (24 months by default, 1 to 120) are deleted by a job that runs
 every six hours. The Stripe key lives in the plugin settings (write-only) and is
 never shown, logged, mailed or returned by a route.
