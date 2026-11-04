@@ -23,6 +23,12 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	switch r.Method + " " + r.Pattern {
 	case "POST /webhook":
 		return handleWebhook(r)
+	case "GET /payments":
+		return handlePayments(r)
+	case "GET /payments.csv":
+		return handleCSV(r)
+	case "GET /links":
+		return handleLinks(r)
 	}
 	return status(http.StatusNotFound), nil
 }
