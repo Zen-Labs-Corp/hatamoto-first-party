@@ -37,10 +37,13 @@ Social Pug.
    only be set in the page's JSON (API or import). Normally leave them out and
    set Site URL.
 
-Remove the `{{template}}` call from your theme before you disable or uninstall
-the plugin: core removes the plugin's partials and sections when it unloads, so
-the call then has nothing to resolve (see `docs/THEMES.md` and
-`docs/PLUGIN_API.md` in the Hatamoto core repository).
+Remove the `{{template "plugin/share_buttons/links" .}}` call from your theme
+before you disable or uninstall the plugin. Core removes the plugin's partials
+when it unloads and trial-renders the theme after a plugin change. A theme that
+still calls the missing partial fails that render: core logs it and serves the
+site with the built-in default theme until the call is removed or the plugin is
+back. A layout the trial render does not cover fails with an error instead (see
+`docs/THEMES.md` and `docs/PLUGIN_API.md` in the Hatamoto core repository).
 
 The theme's base layout must call the plugin-head slot so `assets/plugin.css`
 is linked (the default theme does).
