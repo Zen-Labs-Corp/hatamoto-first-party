@@ -1,0 +1,291 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"net/url"
+	"strings"
+	"time"
+
+	"hatamoto.dev/sdk"
+)
+
+// hookBudget is how much of the host's 10 s action timeout the plugin spends on
+// provider calls. That timeout also covers waiting for a free instance, so the
+// rest is left for that wait and the host round trips around the calls.
+const hookBudget = 6 * time.Second
+
+const statusPublished = "published"
+
+// entity is the part of the host's Entity this plugin reads (SDK 0.11 has no
+// Entity type).
+type entity struct {
+	ID       string `json:"id"`
+	Slug     string `json:"slug"`
+	Status   string `json:"status"`
+	Path     string `json:"path"`
+	URL      string `json:"url"`
+	ParentID string `json:"parent_id"`
+	// PublishedAt is kept by the host when a page is unpublished, and is in the
+	// future while a page is scheduled.
+	PublishedAt *time.Time `json:"published_at"`
+}
+
+// handle runs one entity action. It never returns an error: a hook must not
+// fail because of its own settings, the host or the provider.
+func handle(trigger string, ev sdk.EntityEvent) {
+	s, err := loadSettings()
+	if err != nil {
+		logf("warn", "cdn-purge: settings unavailable: %v", err)
+		return
+	}
+	if !s.configured() {
+		return
+	}
+	budgetEnd = time.Now().Add(hookBudget)
+	switch trigger {
+	case "published":
+		onPublished(s, ev)
+	case "updated":
+		onUpdated(s, ev)
+	case "deleted":
+		onDeleted(s, ev)
+	}
+}
+
+func getEntity(id string) (e entity, found bool, err error) {
+	err = callHost(sdk.FnEntitiesGet, map[string]string{"id": id}, &e)
+	var he *sdk.HostError
+	if errors.As(err, &he) && he.Code == sdk.ErrNotFound {
+		return e, false, nil
+	}
+	return e, err == nil, err
+}
+
+func kvKey(id string) string { return "url:" + id }
+
+// tombstoneTTL bounds how long the "purged after unpublish" marker is kept, so
+// markers do not pile up in kv.
+const tombstoneTTL = 30 * 24 * 3600
+
+// kvURL returns the last public URL stored for an entity, "" when none. known
+// is true when the key exists, also for the empty tombstone value.
+func kvURL(id string) (url string, known bool) {
+	var got struct {
+		Found bool            `json:"found"`
+		Value json.RawMessage `json:"value"`
+	}
+	if err := callHost(sdk.FnKVGet, map[string]string{"key": kvKey(id)}, &got); err != nil || !got.Found {
+		return "", false
+	}
+	var v string
+	_ = json.Unmarshal(got.Value, &v)
+	return v, true
+}
+
+func kvStore(id, rawURL string) {
+	if err := callHost(sdk.FnKVSet, map[string]any{"key": kvKey(id), "value": rawURL}, nil); err != nil {
+		logf("warn", "cdn-purge: could not remember the URL of %s: %v", id, err)
+	}
+}
+
+// kvTombstone marks an entity as purged after it was unpublished, so later
+// draft saves do not purge again. The next publish overwrites it.
+func kvTombstone(id string) {
+	if err := callHost(sdk.FnKVSet, map[string]any{"key": kvKey(id), "value": "", "ttl_seconds": tombstoneTTL}, nil); err != nil {
+		logf("warn", "cdn-purge: could not mark %s as purged: %v", id, err)
+	}
+}
+
+func kvForget(id string) {
+	if err := callHost(sdk.FnKVDelete, map[string]string{"key": kvKey(id)}, nil); err != nil {
+		logf("warn", "cdn-purge: could not forget the URL of %s: %v", id, err)
+	}
+}
+
+func onPublished(s settings, ev sdk.EntityEvent) {
+	e, found, err := getEntity(ev.ID)
+	if err != nil || !found {
+		logf("warn", "cdn-purge: entity %s not readable, nothing purged", ev.ID)
+		return
+	}
+	old, _ := kvURL(ev.ID)
+	page, origin := pageURL(e, s, old)
+	if page == "" {
+		purgeNoPage("published", s, origin)
+		return
+	}
+	purgeOrSkip("published", s, collect(origin, s, page, old), true)
+	kvStore(ev.ID, page)
+}
+
+func onUpdated(s settings, ev sdk.EntityEvent) {
+	e, found, err := getEntity(ev.ID)
+	if err != nil {
+		logf("warn", "cdn-purge: entity %s not readable, nothing purged", ev.ID)
+		return
+	}
+	old, known := kvURL(ev.ID)
+	if found && e.Status == statusPublished {
+		page, origin := pageURL(e, s, old)
+		if page == "" {
+			purgeNoPage("updated", s, origin)
+			return
+		}
+		purgeOrSkip("updated", s, collect(origin, s, page, old), true)
+		kvStore(ev.ID, page)
+		return
+	}
+	// Unpublished (or gone): purge what was public, then leave a tombstone so
+	// the next draft save does not purge again. Without any kv entry the page
+	// was either never public (a draft, or scheduled: nothing to purge) or
+	// published before the plugin was installed (published_at is in the past):
+	// its own URL is purged once.
+	publishedBefore := found && e.PublishedAt != nil && !e.PublishedAt.After(time.Now())
+	if old == "" && !(!known && publishedBefore) {
+		return
+	}
+	origin := pickOrigin(s, old)
+	var urls []string
+	if found {
+		if page, o := pageURL(e, s, old); page != "" {
+			urls, origin = append(urls, page), o
+		}
+	}
+	purgeOrSkip("updated", s, collect(origin, s, append(urls, old)...), origin != "")
+	kvTombstone(ev.ID)
+}
+
+func onDeleted(s settings, ev sdk.EntityEvent) {
+	old, _ := kvURL(ev.ID)
+	origin := pickOrigin(s, old)
+	purgeOrSkip("deleted", s, collect(origin, s, old), origin != "")
+	if old != "" {
+		kvForget(ev.ID)
+	}
+}
+
+// collect joins the given absolute URLs with the also_purge paths, without
+// duplicates and without empty entries.
+func collect(origin string, s settings, urls ...string) []string {
+	return dedupe(append(urls, resolve(origin, s.AlsoPurge)...))
+}
+
+func dedupe(urls []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, u := range urls {
+		if u != "" && !seen[u] {
+			seen[u] = true
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// originOf returns scheme://host of an absolute http(s) URL, "" otherwise.
+func originOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// pickOrigin takes the origin of the first absolute URL among hints, else the
+// Site URL setting, else "".
+func pickOrigin(s settings, hints ...string) string {
+	for _, h := range hints {
+		if o := originOf(h); o != "" {
+			return o
+		}
+	}
+	return originOf(s.SiteURL)
+}
+
+// pageURL is the absolute public URL of the entity and its origin; "" when the
+// host gave no path or no origin is known.
+func pageURL(e entity, s settings, hints ...string) (page, origin string) {
+	origin = pickOrigin(s, append([]string{e.URL}, hints...)...)
+	if originOf(e.URL) != "" {
+		return e.URL, origin
+	}
+	path := e.Path
+	if path == "" {
+		path = e.URL
+	}
+	if origin == "" || path == "" {
+		return "", origin
+	}
+	return origin + ensureSlash(path), origin
+}
+
+func ensureSlash(p string) string {
+	if strings.HasPrefix(p, "/") {
+		return p
+	}
+	return "/" + p
+}
+
+// resolve joins paths to the origin, keeping order and dropping duplicates. A
+// full http(s) URL is kept as it is.
+func resolve(origin string, paths []string) []string {
+	var out []string
+	for _, p := range paths {
+		switch {
+		case originOf(p) != "":
+			out = append(out, p)
+		case origin != "":
+			out = append(out, origin+ensureSlash(p))
+		}
+	}
+	return dedupe(out)
+}
+
+// purgeNoPage handles an entity with no public path. With a known origin only
+// the also_purge paths are purged; without one it is the "set Site URL" skip.
+func purgeNoPage(trigger string, s settings, origin string) {
+	if origin != "" {
+		logf("warn", "cdn-purge: the entity has no public path on %s; purging only the extra paths", trigger)
+	}
+	purgeOrSkip(trigger, s, collect(origin, s), origin != "")
+}
+
+// purgeOrSkip purges urls, or everything when the toggle is on. Without an
+// origin (and no toggle) it records one "set Site URL" row and purges nothing.
+func purgeOrSkip(trigger string, s settings, urls []string, haveOrigin bool) {
+	if s.PurgeEverything {
+		runPurge(trigger, s, nil)
+		return
+	}
+	if !haveOrigin {
+		logf("warn", "cdn-purge: nothing purged on %s: set Site URL in the plugin settings", trigger)
+		insertLog(trigger, s.Provider, nil, 0, "set Site URL")
+		return
+	}
+	runPurge(trigger, s, urls)
+}
+
+// runPurge sends the purge and writes one log row per request batch, and one
+// log line per event when any batch failed.
+func runPurge(trigger string, s settings, urls []string) {
+	var results []batchResult
+	if s.PurgeEverything {
+		results = []batchResult{purgeAll(s)}
+	} else {
+		results = purgeURLs(s, urls)
+	}
+	failed, firstErr := 0, ""
+	for _, r := range results {
+		insertLog(trigger, s.Provider, r.URLs, r.Status, r.Err)
+		if !r.ok() {
+			if failed == 0 {
+				firstErr = r.Err
+			}
+			failed++
+		}
+	}
+	if failed > 0 {
+		logf("error", "cdn-purge: %s purge on %s failed (%d of %d requests): %s", s.Provider, trigger, failed, len(results), firstErr)
+	}
+}
