@@ -97,10 +97,18 @@ func TestCheckOutboundTwoStrikes(t *testing.T) {
 }
 
 func TestCheckOutboundOtherHostErrors(t *testing.T) {
-	fetchHost(t, answer{err: &sdk.HostError{Code: sdk.ErrBlocked, Message: "private address 10.0.0.1"}})
+	fetchHost(t, answer{err: &sdk.HostError{Code: sdk.ErrBlocked, Message: "fetch blocked: example.org resolves to a blocked address (10.0.0.1)"}})
 	got := checkOutbound("http://example.org/", time.Second, 0)
 	if got.Status != statusBroken || got.Err != "blocked address" {
 		t.Errorf("blocked: %+v", got)
+	}
+	// Policy refusals that say nothing about the link are unknown, not broken.
+	for _, msg := range []string{"host example.org:8443 is not in the plugin's allowed_hosts", "more than 5 redirects", ""} {
+		fetchHost(t, answer{err: &sdk.HostError{Code: sdk.ErrBlocked, Message: msg}})
+		got = checkOutbound("http://example.org/", time.Second, 0)
+		if got.Status != statusUnknown || got.Delay != retryLater || got.Keep {
+			t.Errorf("blocked %q: %+v", msg, got)
+		}
 	}
 	for _, e := range []error{
 		&sdk.HostError{Code: sdk.ErrCapabilityDenied},

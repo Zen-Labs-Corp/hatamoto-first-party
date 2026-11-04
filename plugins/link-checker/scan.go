@@ -169,6 +169,10 @@ func checkDue(s settings, deadline time.Time) {
 		}
 		record(l, checkInternal(l.URL, rc), s)
 	}
+	if !outboundGranted() {
+		logf("warn", "outbound checks skipped: http.fetch and http.fetch.any must both be granted")
+		return
+	}
 	outbound, err := dueLinks(kindOutbound, outboundBatch)
 	if err != nil {
 		logf("warn", "due links: %v", err)

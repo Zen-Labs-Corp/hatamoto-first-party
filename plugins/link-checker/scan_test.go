@@ -21,6 +21,7 @@ type scanWorld struct {
 	fetchDur time.Duration
 	status   map[string]int // url -> http status (default 200)
 	dbErr    error
+	granted  string
 	listErr  error
 	listArgs []map[string]any
 	fetched  []string
@@ -30,7 +31,7 @@ type scanWorld struct {
 
 func newScanWorld(t *testing.T) *scanWorld {
 	w := &scanWorld{t: t, clock: time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
-		kv: map[string]json.RawMessage{}, due: map[string][]string{}, status: map[string]int{}, fetchDur: 300 * time.Millisecond}
+		kv: map[string]json.RawMessage{}, due: map[string][]string{}, status: map[string]int{}, granted: `{"granted":["http.fetch","http.fetch.any","db"]}`, fetchDur: 300 * time.Millisecond}
 	w.host = newFakeHost(t, w.reply)
 	now = func() time.Time { return w.clock }
 	return w
@@ -40,6 +41,8 @@ func (w *scanWorld) reply(c call, out any) error {
 	switch c.Fn {
 	case "settings.get":
 		return json.Unmarshal([]byte(`{}`), out)
+	case "permissions":
+		return json.Unmarshal([]byte(w.granted), out)
 	case "kv.set":
 		w.kv[c.Args["key"].(string)], _ = json.Marshal(c.Args["value"])
 	case "kv.delete":
@@ -369,5 +372,20 @@ func TestScanTotalDurationUnderTenSeconds(t *testing.T) {
 	runScan()
 	if took := w.clock.Sub(start); took >= 10*time.Second {
 		t.Fatalf("took %v", took)
+	}
+}
+
+func TestScanSkipsOutboundWithoutFetchAnyGrant(t *testing.T) {
+	for _, granted := range []string{`{"granted":["http.fetch"]}`, `{"granted":["http.fetch.any"]}`, `{"granted":[]}`} {
+		w := newScanWorld(t)
+		w.granted = granted
+		w.due[kindOutbound] = []string{"https://example.org/x"}
+		runScan()
+		if w.host.count("http.fetch") != 0 || len(w.updates()) != 0 {
+			t.Fatalf("%s: no request and no stored result without the grants", granted)
+		}
+		if w.host.count("permissions") != 1 {
+			t.Fatalf("permissions must be read once per run, got %d", w.host.count("permissions"))
+		}
 	}
 }

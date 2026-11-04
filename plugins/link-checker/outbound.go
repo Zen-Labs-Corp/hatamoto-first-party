@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"hatamoto.dev/sdk"
@@ -58,7 +60,13 @@ func fromFetchError(err error, prevFails int) result {
 	}
 	switch he.Code {
 	case sdk.ErrBlocked:
-		return result{Status: statusBroken, Err: "blocked address"}
+		// "blocked" also covers an ungranted permission, a port outside 80/443,
+		// credentials in the URL and too many redirects. Only the address
+		// guard says something about the link itself.
+		if strings.Contains(he.Message, "blocked address") {
+			return result{Status: statusBroken, Err: "blocked address"}
+		}
+		return result{Status: statusUnknown, Err: "not checkable", Delay: retryLater}
 	case sdk.ErrTimeout, sdk.ErrInternal:
 		text := "connection failed"
 		if he.Code == sdk.ErrTimeout {
@@ -74,4 +82,18 @@ func fromFetchError(err error, prevFails int) result {
 	}
 	logf("warn", "outbound check refused by the host (%s)", he.Code)
 	return keep()
+}
+
+// outboundGranted reports whether the owner granted both http.fetch and
+// http.fetch.any, which every outbound check needs. When it cannot tell, it
+// says no: the links stay due and nothing is reported against them.
+func outboundGranted() bool {
+	var p struct {
+		Granted []string `json:"granted"`
+	}
+	if err := callHost("permissions", struct{}{}, &p); err != nil {
+		logf("warn", "permissions unreadable, outbound checks skipped: %v", err)
+		return false
+	}
+	return slices.Contains(p.Granted, "http.fetch") && slices.Contains(p.Granted, "http.fetch.any")
 }
