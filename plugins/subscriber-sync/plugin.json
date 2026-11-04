@@ -27,7 +27,7 @@
       "first_name_field": { "type": "string", "title": "First name field", "maxLength": 100 },
       "last_name_field": { "type": "string", "title": "Last name field", "maxLength": 100 },
       "consent_field": { "type": "string", "title": "Consent field", "description": "Optional. When set, only submissions where this field is ticked or yes are sent.", "maxLength": 100 },
-      "double_opt_in": { "type": "boolean", "title": "Double opt-in", "description": "Mailchimp and Kit: new contacts get a confirmation email first. Brevo and MailerLite follow their own account setting.", "default": true },
+      "double_opt_in": { "type": "boolean", "title": "Double opt-in", "description": "Mailchimp: new contacts get a confirmation email first. Kit: new contacts are added inactive, so the chosen form's own confirmation applies (only if that form has double opt-in turned on). Brevo and MailerLite follow their own account setting.", "default": true },
       "tags": { "type": "array", "title": "Tags", "description": "Tag names, one per line. Mailchimp and Kit only.", "items": { "type": "string", "maxLength": 100 }, "maxItems": 20, "x-hm-field": "lines" }
     }
   }

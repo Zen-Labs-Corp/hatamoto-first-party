@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -95,5 +96,15 @@ func TestManifestAPIKeyIsWriteOnly(t *testing.T) {
 	}
 	if m.Schema.Properties["double_opt_in"]["default"] != true {
 		t.Fatal("double_opt_in must default to true")
+	}
+}
+
+func TestDoubleOptInTextDoesNotPromiseKitConfirmation(t *testing.T) {
+	d, _ := loadManifest(t).Schema.Properties["double_opt_in"]["description"].(string)
+	if !strings.Contains(d, "Kit: new contacts are added inactive") || !strings.Contains(d, "form has double opt-in turned on") {
+		t.Fatalf("description %q", d)
+	}
+	if strings.Contains(d, "Mailchimp and Kit") {
+		t.Fatalf("description promises a Kit confirmation: %q", d)
 	}
 }
