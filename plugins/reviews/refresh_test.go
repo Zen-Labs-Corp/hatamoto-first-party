@@ -174,3 +174,28 @@ func TestRefreshFailsOpenWhenDbIsDown(t *testing.T) {
 		t.Fatalf("no db state, no fetch: %+v", f.requests)
 	}
 }
+
+func TestFailedSourceIsRetriedAfterAnHour(t *testing.T) {
+	f := newFake(t)
+	f.setBoth()
+	f.fetch = func(string, map[string]string) (int, string, error) { return 403, `{"error":{"message":"bad key"}}`, nil }
+	_ = refreshAll(false)
+	f.requests = nil
+
+	f.clock = f.clock.Add(30 * time.Minute)
+	_ = refreshAll(false)
+	if g, tp := hosts(f); g != 0 || tp != 0 {
+		t.Fatalf("30m: g=%d tp=%d", g, tp)
+	}
+	f.clock = f.clock.Add(31 * time.Minute)
+	_ = refreshAll(false)
+	if g, tp := hosts(f); g != 1 || tp != 1 {
+		t.Fatalf("61m: g=%d tp=%d", g, tp)
+	}
+}
+
+func TestRunBudgetLeavesRoomForWrites(t *testing.T) {
+	if runBudget > 8*time.Second {
+		t.Fatalf("runBudget %v leaves under 2s of the 10s hook for the writes", runBudget)
+	}
+}

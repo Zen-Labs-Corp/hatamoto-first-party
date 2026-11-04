@@ -8,10 +8,14 @@ const (
 	// refreshAfter is how old a source's last attempt must be before the
 	// hourly cron fetches it again.
 	refreshAfter = 23 * time.Hour
+	// retryAfter is the same wait after a failed attempt, so a corrected key
+	// is picked up by the next hourly run.
+	retryAfter = time.Hour
 	// keepFor is how long a source's reviews outlive its last successful refresh.
 	keepFor = 30 * 24 * time.Hour
-	// runBudget is the time a refresh plans for inside the 10 s cron limit.
-	runBudget = 9 * time.Second
+	// runBudget is the time the fetches may take inside the 10 s cron limit; the
+	// rest is for the database writes.
+	runBudget = 8 * time.Second
 	// minForFetch is the least time left for which a source is started.
 	minForFetch = 4 * time.Second
 )
@@ -50,7 +54,11 @@ func refreshAll(force bool) error {
 			continue
 		}
 		prev, seen := known[f.name]
-		if !force && seen && !prev.AttemptedAt.IsZero() && now().Sub(prev.AttemptedAt) < refreshAfter {
+		wait := refreshAfter
+		if prev.LastError != "" {
+			wait = retryAfter
+		}
+		if !force && seen && !prev.AttemptedAt.IsZero() && now().Sub(prev.AttemptedAt) < wait {
 			continue
 		}
 		if deadline.Sub(now()) < minForFetch {

@@ -46,8 +46,12 @@ Show the reviews in one of three ways:
   from Google Maps" linked to `plugin_reviews_profile "google"`, and each Google
   author's name linked to `author_url` with the `photo` when there is one.
 
-With no keys set, or when a source is down, everything stays empty: the section
-renders nothing, the loop shows its empty state, the functions return empty text.
+With no key set up, everything stays empty: the section renders nothing, the loop
+shows its empty state, the functions return empty text. A source that is not set up
+(key or ID missing) is hidden at once, even while its cached rows wait for the
+30-day deletion. When a source is down, the last copy keeps showing (up to 30 days).
+
+If your theme has its own `reviews` section, it takes precedence over the plugin's.
 
 ## Permissions
 
@@ -86,13 +90,16 @@ From the repository root: `scripts/build-plugin.sh plugins/reviews`.
 
 ## Limits
 
+- The Google call asks for the Places `reviews` field, which Google bills per call
+  (Enterprise + Atmosphere SKU). One call per day per place is what the plugin makes.
 - Google returns at most 5 reviews per place (Places API limit), chosen by Google;
   the plugin cannot page or sort them.
 - Trustpilot needs an API key; the plugin reads the newest 20 reviews.
 - The refresh job runs hourly and fetches a source when its last attempt is 23
-  hours old or more, so each source is fetched about once a day even on a host that
-  restarts. *Refresh now* fetches both at once. One refresh has a 10 second budget;
-  a source that does not fit waits for the next run.
+  hours old or more (1 hour after a failed attempt, so a corrected key is picked up
+  soon), so each source is fetched about once a day even on a host that restarts.
+  *Refresh now* fetches both at once. One refresh has a 10 second limit, of which
+  the fetches use 8; a source that does not fit waits for the next run.
 - The section shows up to 12 cards; the page-builder source up to 48 items.
 - Pages are cached by the host (`HATAMOTO_PAGE_CACHE_TTL`, 5 minutes by default), so
   a new review can take that long to show up after a refresh.
