@@ -300,20 +300,16 @@ func checkDue(s settings, deadline time.Time) {
 	checkOutboundLinks(outbound, s, deadline)
 }
 
-// sleep is replaced in tests.
-var sleep = time.Sleep
-
 // checkOutboundLinks sends one request per link, at most one per host per
 // hostGap. A link whose host was used too recently is skipped for now and
-// other hosts go first; when only waiting links are left, the run sleeps until
-// the first host is free again as long as the budget allows. No request starts
-// when less than minRequest would be left for it after the margin.
+// other hosts go first; when only such links are left the run ends and the
+// next run (5 minutes later) takes them. It never sleeps: the host does not
+// really suspend a guest, so a wait would only spin a CPU core. No request
+// starts when less than minRequest would be left for it after the margin.
 func checkOutboundLinks(queue []dueLink, s settings, deadline time.Time) {
 	lastUse := map[string]time.Time{}
 	for len(queue) > 0 {
 		var skipped []dueLink
-		progressed := false
-		wait := hostGap
 		for _, l := range queue {
 			timeout := min(time.Duration(s.TimeoutMS)*time.Millisecond, deadline.Sub(now())-margin)
 			if timeout < minRequest {
@@ -322,18 +318,13 @@ func checkOutboundLinks(queue []dueLink, s settings, deadline time.Time) {
 			host := hostOf(l.URL)
 			if t, ok := lastUse[host]; ok && now().Sub(t) < hostGap {
 				skipped = append(skipped, l)
-				wait = min(wait, hostGap-now().Sub(t))
 				continue
 			}
 			record(l, checkOutbound(l.URL, timeout, deadline, l.FailCount), s)
 			lastUse[host] = now()
-			progressed = true
 		}
-		if !progressed && len(skipped) > 0 {
-			if deadline.Sub(now())-wait-margin < minRequest {
-				return
-			}
-			sleep(wait)
+		if len(skipped) == len(queue) {
+			return
 		}
 		queue = skipped
 	}
