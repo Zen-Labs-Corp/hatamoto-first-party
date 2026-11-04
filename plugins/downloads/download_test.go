@@ -110,7 +110,7 @@ func TestDownloadRefusesUnsafeLocations(t *testing.T) {
 	for _, u := range []string{`"https://cdn.example/a.pdf"`, `"//x/a.pdf"`, `"/\\x"`, `"/a b.pdf"`, `"/a\u0001.pdf"`, `"/a\u007f.pdf"`, `"a.pdf"`, `""`, `null`} {
 		f := mediaHost(t, u, `{}`)
 		res := get(t, "GET", fileID, browser)
-		if res.Status != 404 || res.Body != "not found" || res.Headers["Content-Type"] != "text/plain" || res.Headers["Location"] != "" {
+		if res.Status != 404 || res.Body != "not found" || res.Headers["Content-Type"] != "text/plain" || res.Headers["Cache-Control"] != "no-store" || res.Headers["Location"] != "" {
 			t.Errorf("%s: res = %+v", u, res)
 		}
 		if f.count("db.exec") != 0 {
@@ -145,7 +145,7 @@ func TestDownloadHostFailureIsUnavailable(t *testing.T) {
 		}}
 		f.install(t)
 		res := get(t, "GET", fileID, browser)
-		if res.Status != 503 || res.Body != "unavailable" || res.Headers["Content-Type"] != "text/plain" || f.count("db.exec") != 0 {
+		if res.Status != 503 || res.Body != "unavailable" || res.Headers["Content-Type"] != "text/plain" || res.Headers["Cache-Control"] != "no-store" || f.count("db.exec") != 0 {
 			t.Errorf("%v: %+v", err, res)
 		}
 	}

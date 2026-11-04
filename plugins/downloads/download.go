@@ -46,11 +46,11 @@ func safeLocation(p string) bool {
 }
 
 func notFound() sdk.HTTPResponse {
-	return sdk.HTTPResponse{Status: 404, Headers: map[string]string{"Content-Type": "text/plain"}, Body: "not found"}
+	return sdk.HTTPResponse{Status: 404, Headers: map[string]string{"Content-Type": "text/plain", "Cache-Control": "no-store"}, Body: "not found"}
 }
 
 func unavailable() sdk.HTTPResponse {
-	return sdk.HTTPResponse{Status: 503, Headers: map[string]string{"Content-Type": "text/plain"}, Body: "unavailable"}
+	return sdk.HTTPResponse{Status: 503, Headers: map[string]string{"Content-Type": "text/plain", "Cache-Control": "no-store"}, Body: "unavailable"}
 }
 
 // countsBots reads the setting; any error means the default (off).
