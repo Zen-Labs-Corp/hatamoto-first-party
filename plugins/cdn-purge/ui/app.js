@@ -50,8 +50,11 @@ function resultCell(r) {
   return el("span", { className: "ok", textContent: `${r.status} OK` });
 }
 
-function urlsCell(urls) {
-  if (!urls || urls.length === 0) return "(everything)";
+// A row without URLs is a purge of everything, except a skipped run, which
+// purged nothing.
+function urlsCell(r) {
+  const urls = r.urls;
+  if (!urls || urls.length === 0) return r.error === "set Site URL" ? "(nothing purged)" : "(everything)";
   return urls.length > 1 ? `${urls[0]} +${urls.length - 1}` : urls[0];
 }
 
@@ -62,7 +65,7 @@ function fillLog(list) {
     body.append(el("tr", {},
       el("td", { textContent: new Date(r.at).toLocaleString() }),
       el("td", { textContent: r.trigger }),
-      el("td", { className: "url", textContent: urlsCell(r.urls) }),
+      el("td", { className: "url", textContent: urlsCell(r) }),
       el("td", {}, resultCell(r))));
   }
   $("#log").hidden = list.length === 0;

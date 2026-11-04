@@ -81,3 +81,12 @@ func TestUIColoursHaveFallbacks(t *testing.T) {
 		t.Errorf("ui/style.css uses %q without a fallback", bare)
 	}
 }
+
+func TestUISkippedRowIsNotShownAsEverything(t *testing.T) {
+	js := readUI(t, "app.js")
+	for _, want := range []string{"urlsCell(r)", `r.error === "set Site URL"`, "(nothing purged)"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js lacks %q", want)
+		}
+	}
+}
