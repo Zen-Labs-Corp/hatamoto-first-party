@@ -14,4 +14,5 @@ import (
 
 func init() {
 	guest.OnAction(sdk.FormSubmitted, onSubmitted)
+	guest.OnFilter(sdk.BuilderData, onBuilderData)
 }
