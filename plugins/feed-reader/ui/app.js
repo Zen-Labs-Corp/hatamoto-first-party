@@ -69,8 +69,11 @@ function showLatest(items) {
   }
 }
 
+const grantHint = "Grant this plugin's permissions on the Permissions tab first.";
+
 async function load() {
   const data = await api("GET", "/overview");
+  if (data.needs_grant) say(grantHint);
   showFeeds(data.feeds);
   showLatest(data.latest);
 }
@@ -83,6 +86,10 @@ async function main() {
     try {
       say("");
       const r = await api("POST", "/fetch-now");
+      if (r.needs_grant) {
+        say(grantHint);
+        return;
+      }
       const waiting = r.results.filter((x) => x.status === "waiting for the next run").length;
       say(`Fetched ${r.results.length - waiting} feed(s)${waiting ? `; ${waiting} wait for the next run` : ""}.`);
       await load();

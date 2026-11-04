@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"time"
+
+	"hatamoto.dev/sdk/guest"
 )
 
 const (
@@ -30,13 +32,39 @@ const statusDeferred = "waiting for the next run"
 // failure is stored as a fixed phrase and the others carry on. refresh never
 // returns an error, so neither the cron job nor the route can fail on it.
 func refresh(force bool) []feedResult {
+	res, _ := refreshReport(force)
+	return res
+}
+
+// missingGrant is the first permission a host call was refused for during the
+// current refresh; the plugin runs single-threaded, one call at a time.
+var missingGrant string
+
+// noteDenied records the permission err was refused for, if it was.
+func noteDenied(err error) {
+	if c, ok := guest.CapabilityDenied(err); ok && missingGrant == "" {
+		missingGrant = c
+	}
+}
+
+// refreshReport is refresh that also names a permission the owner has not
+// granted, when a host call was refused for it.
+func refreshReport(force bool) ([]feedResult, string) {
+	missingGrant = ""
+	res := refreshRun(force)
+	return res, missingGrant
+}
+
+func refreshRun(force bool) []feedResult {
 	start := now()
 	cfg, err := loadFeeds()
 	if err != nil {
+		noteDenied(err)
 		logf("error", "feed-reader: settings unavailable")
 		return nil
 	}
 	if err := syncFeeds(cfg); err != nil {
+		noteDenied(err)
 		logf("error", "feed-reader: cannot sync the feed list")
 		return nil
 	}
@@ -47,6 +75,7 @@ func refresh(force bool) []feedResult {
 	}
 	rows, err := feedRows()
 	if err != nil {
+		noteDenied(err)
 		logf("error", "feed-reader: cannot read the feed state")
 		return nil
 	}

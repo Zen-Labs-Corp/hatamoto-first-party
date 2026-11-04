@@ -142,3 +142,49 @@ func TestOverviewShowsSkippedFeedsAsInvalidURL(t *testing.T) {
 		t.Fatalf("%+v", feeds[2])
 	}
 }
+
+func denyAll(f *fakeHost, capability string) {
+	f.settingsErr = &sdk.HostError{Code: sdk.ErrCapabilityDenied, Capability: capability, Message: "not granted"}
+}
+
+func TestOverviewExplainsMissingGrant(t *testing.T) {
+	f := newFake(t)
+	denyAll(f, "settings")
+	status, body := call(t, "GET", "/overview")
+	if status != http.StatusOK || string(body["needs_grant"]) != `"settings"` || string(body["feeds"]) != "[]" || string(body["latest"]) != "[]" {
+		t.Fatalf("%d %s", status, body)
+	}
+}
+
+func TestFetchNowExplainsMissingGrant(t *testing.T) {
+	f := newFake(t)
+	denyAll(f, "settings")
+	status, body := call(t, "POST", "/fetch-now")
+	if status != http.StatusOK || string(body["needs_grant"]) != `"settings"` || string(body["results"]) != "[]" {
+		t.Fatalf("%d %s", status, body)
+	}
+}
+
+func TestFetchNowReportsDeniedHTTPFetch(t *testing.T) {
+	f := newFake(t)
+	setFeeds(f, "alpha")
+	f.fetch = func(string, map[string]string) (fetchRes, error) {
+		return fetchRes{}, &sdk.HostError{Code: sdk.ErrCapabilityDenied, Capability: "http.fetch", Message: "not granted"}
+	}
+	_, body := call(t, "POST", "/fetch-now")
+	if string(body["needs_grant"]) != `"http.fetch"` {
+		t.Fatalf("%s", body)
+	}
+	if _, body := call(t, "POST", "/fetch-now"); body["needs_grant"] == nil {
+		t.Fatal("grant flag lost on the second call")
+	}
+}
+
+func TestOtherHostErrorsStayGeneric(t *testing.T) {
+	f := newFake(t)
+	f.settingsErr = &sdk.HostError{Code: sdk.ErrTimeout, Message: "slow"}
+	res, _ := handleRoute(sdk.HTTPRequest{Method: "GET", Pattern: "/overview"})
+	if res.Status != http.StatusInternalServerError || strings.Contains(res.Body, "needs_grant") {
+		t.Fatalf("%d %s", res.Status, res.Body)
+	}
+}

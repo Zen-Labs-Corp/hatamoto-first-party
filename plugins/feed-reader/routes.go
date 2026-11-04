@@ -27,9 +27,12 @@ func handleRoute(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	case "GET /overview":
 		return overview()
 	case "POST /fetch-now":
-		results := refresh(true)
+		results, grant := refreshReport(true)
 		if results == nil {
 			results = []feedResult{}
+		}
+		if grant != "" {
+			return reply(http.StatusOK, map[string]any{"results": results, "needs_grant": grant})
 		}
 		return reply(http.StatusOK, map[string]any{"results": results})
 	}
@@ -50,6 +53,14 @@ var jsonHeader = map[string]string{"Content-Type": "application/json"}
 func internalError(what string) (sdk.HTTPResponse, error) {
 	logf("error", "feed-reader: %s", what)
 	return reply(http.StatusInternalServerError, map[string]string{"error": "internal error"})
+}
+
+// needsGrant answers 200 with the permission the owner has not granted yet,
+// so the admin page can explain it instead of showing an error.
+func needsGrant(permission string) (sdk.HTTPResponse, error) {
+	return reply(http.StatusOK, map[string]any{
+		"feeds": []overviewFeed{}, "latest": []overviewItem{}, "needs_grant": permission,
+	})
 }
 
 type overviewFeed struct {
@@ -74,10 +85,16 @@ type overviewItem struct {
 func overview() (sdk.HTTPResponse, error) {
 	cfg, skipped, err := readFeeds()
 	if err != nil {
+		if c, ok := guest.CapabilityDenied(err); ok {
+			return needsGrant(c)
+		}
 		return internalError("settings unavailable")
 	}
 	rows, err := feedRows()
 	if err != nil {
+		if c, ok := guest.CapabilityDenied(err); ok {
+			return needsGrant(c)
+		}
 		return internalError("cannot read the feed state")
 	}
 	state := make(map[string]feedRow, len(rows))
@@ -107,6 +124,9 @@ func overview() (sdk.HTTPResponse, error) {
 	}
 	items, err := itemsFor("items", latestItems)
 	if err != nil {
+		if c, ok := guest.CapabilityDenied(err); ok {
+			return needsGrant(c)
+		}
 		return internalError("cannot read the items")
 	}
 	latest := make([]overviewItem, 0, len(items))

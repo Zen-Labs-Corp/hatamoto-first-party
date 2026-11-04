@@ -106,6 +106,7 @@ func fetchFeed(f feedCfg, st feedRow, deadline time.Time) (outcome, error) {
 		"timeout_ms": int(min(maxRequest, left) / time.Millisecond),
 	}, &res)
 	if err != nil {
+		noteDenied(err)
 		return outcome{}, classify(err)
 	}
 	if res.Truncated {

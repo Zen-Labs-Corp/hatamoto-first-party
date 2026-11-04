@@ -76,7 +76,7 @@ func TestUIMatchesTheClientView(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"await hatamoto.ready", "hatamoto.route(", `"/overview"`, `"/fetch-now"`,
-		"min ago", "Error: ", "button.disabled = true", "textContent"} {
+		"min ago", "Error: ", "needs_grant", "Grant this plugin's permissions on the Permissions tab first.", "button.disabled = true", "textContent"} {
 		if !strings.Contains(js, want) {
 			t.Errorf("ui/app.js lacks %q", want)
 		}
