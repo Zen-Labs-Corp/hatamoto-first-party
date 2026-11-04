@@ -99,7 +99,6 @@ func refreshOne(f feedCfg, st feedRow, deadline time.Time) string {
 	case out.NotModified:
 		status = statusNotModified
 	default:
-		etag, lastMod = out.ETag, out.LastModified
 		if out.Feed.SiteURL != "" {
 			siteURL = out.Feed.SiteURL
 		}
@@ -108,6 +107,8 @@ func refreshOne(f feedCfg, st feedRow, deadline time.Time) string {
 			logf("error", "feed-reader: cannot store the items of feed %q", f.Name)
 		} else {
 			count = n
+			// Only a stored response may be skipped by a later 304.
+			etag, lastMod = out.ETag, out.LastModified
 		}
 	}
 	if err := saveState(f.Key, status, etag, lastMod, siteURL, count, now()); err != nil {

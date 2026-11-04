@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -313,5 +314,21 @@ func TestRefreshLateDownloadIsNotParsedAndStaysDue(t *testing.T) {
 	row := f.feeds[f.keyOf("slow")]
 	if len(f.items) != 0 || row.ETag != "" || !row.LastAttempt.IsZero() {
 		t.Fatalf("must not store and must stay due: items %d, row %+v", len(f.items), row)
+	}
+}
+
+func TestRefreshKeepsOldValidatorsWhenStoringFails(t *testing.T) {
+	f := newFake(t)
+	setFeeds(f, "alpha")
+	serve(f, fetchRes{Status: 200, Body: rss(2), Headers: map[string]string{"etag": `"e1"`}})
+	refresh(false)
+	f.clock = f.clock.Add(31 * time.Minute)
+	f.fetch = func(string, map[string]string) (fetchRes, error) {
+		f.itemsErr = errors.New("statement timeout") // storing fails after the download
+		return fetchRes{Status: 200, Body: rss(3), Headers: map[string]string{"etag": `"e2"`}}, nil
+	}
+	refresh(false)
+	if got := f.feeds[f.keyOf("alpha")].ETag; got != `"e1"` {
+		t.Fatalf("etag %q, want the old one so the next fetch is not a 304", got)
 	}
 }

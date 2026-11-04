@@ -38,6 +38,7 @@ type fakeHost struct {
 	clock    time.Time
 
 	dbDown      bool
+	itemsErr    error // fails the item upsert only
 	settingsErr error
 	logs        []string
 
@@ -176,6 +177,9 @@ func (f *fakeHost) exec(sql string, a []any) error {
 		r.SiteURL, r.ItemCount = a[5].(string), a[6].(int)
 		f.feeds[r.Key] = r
 	case strings.HasPrefix(sql, "INSERT INTO items"):
+		if f.itemsErr != nil {
+			return f.itemsErr
+		}
 		var docs []itemDoc
 		if err := json.Unmarshal([]byte(a[1].(string)), &docs); err != nil {
 			return err
