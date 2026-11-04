@@ -235,8 +235,7 @@ func lookupAccount(token string) (id, username string) {
 	return me.UserID.String(), strings.TrimSpace(me.Username)
 }
 
-// runTokenRefresh renews the long-lived token once it is a day old (Instagram
-// refuses younger ones) or close to expiry. On failure the old token stays.
+// runTokenRefresh is the token cron: it renews the stored token when due.
 func runTokenRefresh() {
 	budgetEnd = now().Add(refreshBudget)
 	defer func() { budgetEnd = time.Time{} }()
@@ -245,13 +244,20 @@ func runTokenRefresh() {
 		logf("warn", "token renewal: could not read the connection")
 		return
 	}
-	if tok == nil {
-		return
+	if tok != nil {
+		renewToken(tok)
 	}
+}
+
+// renewToken renews the long-lived token once it is a day old (Instagram
+// refuses younger ones) or close to expiry, and returns the token to use from
+// here on. On failure the old token stays. The refresh cron and Refresh now
+// call it too, since the token cron's clock restarts whenever the plugin does.
+func renewToken(tok *igToken) *igToken {
 	young := now().Sub(tok.ObtainedAt) < minTokenAge
 	nearExpiry := !tok.ExpiresAt.IsZero() && tok.ExpiresAt.Sub(now()) < renewWindow
 	if young && !nearExpiry {
-		return
+		return tok
 	}
 	s := loadSettings()
 	q := url.Values{}
@@ -261,7 +267,7 @@ func runTokenRefresh() {
 	if err == nil {
 		fresh := newToken(l, tok.UserID, tok.Username)
 		if err = saveToken(fresh); err == nil {
-			return
+			return &fresh
 		}
 	}
 	msg := redact("token renewal failed: "+err.Error(), tok.AccessToken, s.AppSecret)
@@ -269,4 +275,5 @@ func runTokenRefresh() {
 	if err := setStatus("instagram", msg, false); err != nil {
 		logf("warn", "token renewal: recording the status failed")
 	}
+	return tok
 }

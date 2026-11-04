@@ -26,6 +26,7 @@ func runRefresh(budget time.Duration) map[string]string {
 	case tok == nil:
 		res["instagram"] = "skipped"
 	default:
+		tok = renewToken(tok)
 		res["instagram"] = refreshSource("instagram", s, func() ([]item, error) { return fetchInstagram(tok) }, tok.AccessToken)
 	}
 

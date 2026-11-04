@@ -199,3 +199,19 @@ func TestCronRefreshNeverReturnsAnError(t *testing.T) {
 		t.Fatal("failure not recorded")
 	}
 }
+
+func TestRefreshRenewsADayOldToken(t *testing.T) {
+	f := useFake(t)
+	saveTokenAged(t, f, 25*time.Hour)
+	f.on(graphURL+"refresh_access_token", 200, `{"access_token":"NEWTOKEN","expires_in":5184000}`)
+	f.on(igMedia, 200, igBody(1, "a"))
+	if got := runRefresh(time.Second)["instagram"]; got != "ok" {
+		t.Fatalf("result = %q", got)
+	}
+	if tok, _ := loadToken(); tok == nil || tok.AccessToken != "NEWTOKEN" {
+		t.Fatalf("token = %+v", tok)
+	}
+	if last := f.fetches[len(f.fetches)-1].URL; !strings.Contains(last, "access_token=NEWTOKEN") {
+		t.Fatalf("media fetched with the old token: %s", last)
+	}
+}
