@@ -128,3 +128,34 @@ func TestUILayoutKeepsTextReadable(t *testing.T) {
 		}
 	}
 }
+
+// Until the settings are complete (provider, token and target id) the two
+// action buttons are disabled and the not-configured message is shown. They
+// start disabled, so the page is never actionable before /log answers.
+func TestUIDisablesActionsWhenNotConfigured(t *testing.T) {
+	html := readUI(t, "index.html")
+	for _, id := range []string{"test", "purge-all"} {
+		if !regexp.MustCompile(`<button id="` + id + `"[^>]*\sdisabled`).MatchString(html) {
+			t.Errorf("button #%s does not start disabled", id)
+		}
+	}
+	js := readUI(t, "app.js")
+	for _, want := range []string{`$("#test").disabled = !st.configured`, `$("#purge-all").disabled = !st.configured`, `$("#setup").hidden = st.configured`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js lacks %q", want)
+		}
+	}
+}
+
+func TestLogReportsNotConfiguredWithoutTargetID(t *testing.T) {
+	for _, c := range []map[string]any{
+		{"provider": "cloudflare", "zone_id": ""},
+		{"provider": "", "api_token": testToken},
+		{"api_token": ""},
+	} {
+		newFake(t, c)
+		if res := serveRoute(t, "GET", "/log"); !strings.Contains(res.Body, `"configured":false`) {
+			t.Errorf("%v: %s", c, res.Body)
+		}
+	}
+}

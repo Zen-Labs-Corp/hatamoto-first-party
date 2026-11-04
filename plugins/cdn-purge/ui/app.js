@@ -43,6 +43,10 @@ function fillSummary(st) {
   $("#setup").hidden = st.configured;
   $("#test").disabled = !st.configured;
   $("#purge-all").disabled = !st.configured;
+  if (!st.configured) {
+    $("#test-result").textContent = "";
+    showConfirm(false);
+  }
 }
 
 function resultCell(r) {
