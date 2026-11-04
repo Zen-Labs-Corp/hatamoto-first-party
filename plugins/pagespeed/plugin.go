@@ -5,8 +5,6 @@
 package main
 
 import (
-	"net/http"
-
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
@@ -14,9 +12,4 @@ import (
 func init() {
 	guest.OnHTTP(serve)
 	guest.OnCron("measure", func(sdk.CronEvent) error { return runCron() })
-}
-
-// serve answers the admin routes.
-func serve(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
-	return sdk.HTTPResponse{Status: http.StatusNotFound, Headers: map[string]string{"Content-Type": "application/json"}, Body: `{"error":"not found"}`}, nil
 }
