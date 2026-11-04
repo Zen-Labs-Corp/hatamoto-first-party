@@ -18,4 +18,8 @@ func init() {
 		runRefresh(refreshBudget)
 		return nil
 	})
+	guest.OnCron("token", func(sdk.CronEvent) error {
+		runTokenRefresh()
+		return nil
+	})
 }

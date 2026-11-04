@@ -17,9 +17,15 @@ func apiError(status int, body string) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
+	var flat struct {
+		Message string `json:"error_message"`
+	}
 	msg := ""
 	if json.Unmarshal([]byte(body), &e) == nil {
 		msg = strings.TrimSpace(e.Error.Message)
+	}
+	if msg == "" && json.Unmarshal([]byte(body), &flat) == nil {
+		msg = strings.TrimSpace(flat.Message)
 	}
 	if msg == "" {
 		msg = "no details"
