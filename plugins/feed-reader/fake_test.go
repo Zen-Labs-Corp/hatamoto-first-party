@@ -40,6 +40,16 @@ type fakeHost struct {
 	dbDown      bool
 	settingsErr error
 	logs        []string
+
+	// fetch answers http.fetch; the default is a host error.
+	fetch    func(url string, headers map[string]string) (fetchRes, error)
+	requests []fetchReq
+}
+
+type fetchReq struct {
+	URL       string
+	Headers   map[string]string
+	TimeoutMS int
 }
 
 func newFake(t *testing.T) *fakeHost {
@@ -73,6 +83,18 @@ func (f *fakeHost) call(fn string, args, out any) error {
 		m := args.(map[string]string)
 		f.logs = append(f.logs, m["level"]+": "+m["message"])
 		return nil
+	case "http.fetch":
+		a := args.(map[string]any)
+		req := fetchReq{URL: a["url"].(string), Headers: a["headers"].(map[string]string), TimeoutMS: a["timeout_ms"].(int)}
+		f.requests = append(f.requests, req)
+		if f.fetch == nil {
+			return errors.New("no fetch configured")
+		}
+		res, err := f.fetch(req.URL, req.Headers)
+		if err != nil {
+			return err
+		}
+		return roundTrip(res, out)
 	case "db.exec":
 		if f.dbDown {
 			return errors.New("db unavailable")
@@ -228,6 +250,9 @@ func (f *fakeHost) query(sql string, a []any, out any) error {
 			return rows[i].Key < rows[j].Key
 		})
 		doc = rows
+	case strings.Contains(sql, "count(*)::integer AS n FROM items"):
+		n := len(f.itemsOf(a[0].(string)))
+		doc = []map[string]int{{"n": n}}
 	case strings.Contains(sql, "FROM items i JOIN feeds f"):
 		group, limit := a[0].(int), a[1].(int)
 		var all []fakeItem

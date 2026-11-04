@@ -203,3 +203,16 @@ WHERE ($1::integer = 0 OR f.grp = $1::integer)
 ORDER BY coalesce(i.published_at, i.fetched_at) DESC, i.guid LIMIT $2::integer) c`, &rows, group, limit)
 	return rows, err
 }
+
+// countItems returns how many items a feed has stored.
+func countItems(key string) (int, error) {
+	var rows []struct {
+		N int `json:"n"`
+	}
+	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(c)), '[]'::jsonb) FROM (
+SELECT count(*)::integer AS n FROM items WHERE feed_key = $1) c`, &rows, key)
+	if err != nil || len(rows) == 0 {
+		return 0, err
+	}
+	return rows[0].N, nil
+}
