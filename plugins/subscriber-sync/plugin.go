@@ -24,6 +24,7 @@ var deliverFn = deliver
 
 func init() {
 	guest.OnAction(sdk.FormSubmitted, onFormSubmitted)
+	guest.OnCron("retry", onRetry)
 }
 
 // onFormSubmitted never returns an error: a problem with settings, the queue
