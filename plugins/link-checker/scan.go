@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -110,6 +111,21 @@ func (st *scanState) addLocale(tag string) {
 	}
 }
 
+// localeSegment matches a URL segment that can be a locale prefix: "fr",
+// "en-gb".
+var localeSegment = regexp.MustCompile(`^[a-z]{2}(-[a-z0-9]{2,4})?$`)
+
+// addSegment remembers the first path segment of a localised entity when it
+// looks like a locale prefix: the URL segment can differ from the locale tag
+// (tag "en-XX", segment "xx").
+func (st *scanState) addSegment(locale, p string) {
+	seg, _, _ := strings.Cut(strings.TrimPrefix(p, "/"), "/")
+	seg = strings.ToLower(seg)
+	if locale != "" && localeSegment.MatchString(seg) && !slices.Contains(st.Locales, seg) {
+		st.Locales = append(st.Locales, seg)
+	}
+}
+
 // finish records the end of a pass and clears the cursor.
 func (st scanState) finish() {
 	if err := dropStaleKnownPaths(st.PassStart); err != nil {
@@ -154,11 +170,17 @@ func markScan() {
 }
 
 // indexEntity stores the links of one entity and remembers the parents of its
-// path as known listing paths.
+// path as known listing paths; its own path is kept apart, so a link to it
+// resolves even where entities.get does not take a locale prefix.
 func indexEntity(e entityWire, exclude []string, origin string) error {
 	refs := extractLinks(e.Attributes, origin, exclude)
 	if err := replacePageLinks(pageRef{ID: e.ID, Name: e.Name, Path: e.Path}, refs); err != nil {
 		return err
+	}
+	if e.Path != "" {
+		if err := upsertPagePath(e.Path); err != nil {
+			return err
+		}
 	}
 	parents := parentPaths(e.Path)
 	if len(parents) == 0 {
@@ -221,6 +243,7 @@ func extractBatch(s settings, until time.Time) {
 		failed := 0
 		for _, e := range res.Items {
 			st.addLocale(e.Locale)
+			st.addSegment(e.Locale, e.Path)
 			if o := siteOrigin(e.URL, e.Path); o != "" {
 				origin = o
 			}

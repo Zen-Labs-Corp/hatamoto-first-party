@@ -158,9 +158,8 @@ func pathAndParents(p string) []string {
 }
 
 // parentPaths returns the parent paths of p, nearest first, without p itself
-// and without "/". Only these are remembered as listings: the page's own path
-// is answered by entities.get while the page exists, and must not stay "known"
-// after the page is gone.
+// and without "/". Only these are remembered as listings; the page's own path
+// goes to page_paths, which a completed pass rebuilds.
 func parentPaths(p string) []string {
 	if all := pathAndParents(p); len(all) > 0 {
 		return all[1:]
@@ -168,10 +167,21 @@ func parentPaths(p string) []string {
 	return nil
 }
 
-// dropStaleKnownPaths forgets the known paths no page of the pass that began at
-// start has refreshed, so the set is rebuilt by every completed pass.
+// dropStaleKnownPaths forgets the known paths and page paths no page of the
+// pass that began at start has refreshed, so both sets are rebuilt by every
+// completed pass and a deleted or unpublished page stops being known.
 func dropStaleKnownPaths(start string) error {
-	return dbExec(`DELETE FROM known_paths WHERE last_seen < $1::timestamptz`, start)
+	if err := dbExec(`DELETE FROM known_paths WHERE last_seen < $1::timestamptz`, start); err != nil {
+		return err
+	}
+	return dbExec(`DELETE FROM page_paths WHERE last_seen < $1::timestamptz`, start)
+}
+
+// upsertPagePath remembers the own path of a published page, as listed by the
+// host (locale prefix included).
+func upsertPagePath(p string) error {
+	return dbExec(`INSERT INTO page_paths (path) VALUES ($1::text)
+		ON CONFLICT (path) DO UPDATE SET last_seen = now()`, trimPath(p))
 }
 
 // upsertKnownPaths remembers the parent paths of published pages.
@@ -187,12 +197,14 @@ func upsertKnownPaths(paths []string) error {
 	return nil
 }
 
-// isKnownParent reports whether path is a parent of a published page.
+// isKnownParent reports whether path is the own path of a published page (as
+// seen by the last passes and publish events) or a parent of one.
 func isKnownParent(path string) (bool, error) {
 	var out struct {
 		Known bool `json:"known"`
 	}
-	err := dbJSON(`SELECT jsonb_build_object('known', EXISTS (SELECT 1 FROM known_paths WHERE path = $1))`, &out, path)
+	err := dbJSON(`SELECT jsonb_build_object('known', EXISTS (SELECT 1 FROM known_paths WHERE path = $1)
+		OR EXISTS (SELECT 1 FROM page_paths WHERE path = $1))`, &out, path)
 	return out.Known, err
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -543,5 +544,28 @@ func TestScanWaitsAnHourBetweenPasses(t *testing.T) {
 	runScan()
 	if len(w.listArgs) != 2 {
 		t.Fatalf("a new pass starts after the hour: %d list calls", len(w.listArgs))
+	}
+}
+
+func TestScanKeepsOwnPathOfLocalisedPages(t *testing.T) {
+	w := newScanWorld(t)
+	w.host.reply = func(c call, out any) error {
+		if c.Fn == "entities.list" {
+			return json.Unmarshal([]byte(`{"items":[{"id":"f1","name":"A propos","path":"/xx/a-propos","url":"https://example.org/xx/a-propos","locale":"en-XX","attributes":{}}],"next_cursor":""}`), out)
+		}
+		return w.reply(c, out)
+	}
+	runScan()
+	var own, dropped bool
+	for _, c := range w.host.calls {
+		own = own || strings.HasPrefix(c.sql(), "INSERT INTO page_paths") && fmt.Sprint(c.params()) == "[/xx/a-propos]"
+		dropped = dropped || strings.HasPrefix(c.sql(), "DELETE FROM page_paths WHERE last_seen <")
+	}
+	if !own || !dropped {
+		t.Fatalf("own path stored %v, stale own paths dropped at pass end %v", own, dropped)
+	}
+	var done passDone
+	if err := json.Unmarshal(w.kv[doneKey], &done); err != nil || !slices.Contains(done.Locales, "xx") {
+		t.Fatalf("the stored segment must be remembered: %s", w.kv[doneKey])
 	}
 }

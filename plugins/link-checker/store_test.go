@@ -299,3 +299,13 @@ func TestSelectRowsCapsPagesPerLink(t *testing.T) {
 		t.Fatalf("pages per link must be capped with a total: %s", q)
 	}
 }
+
+func TestKnownPathCoversPublishedOwnPaths(t *testing.T) {
+	f := newFakeHost(t, func(_ call, out any) error { return cell(out, `{"known":true}`) })
+	if _, err := isKnownParent("/fr/a-propos"); err != nil {
+		t.Fatal(err)
+	}
+	if q := f.sqls()[0]; !strings.Contains(q, "FROM page_paths WHERE path = $1") {
+		t.Fatalf("a published page's own path must count as known: %s", q)
+	}
+}

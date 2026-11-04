@@ -85,9 +85,12 @@ Tables in the plugin's own schema:
 - `link_pages`: which page contains which link, with the page name and path
   copied so the admin table needs no lookups.
 - `known_paths`: the parent paths of published pages (`/blog` for `/blog/a`),
-  used to tell a listing page from a missing one. A page's own path is not
-  kept, and every completed pass drops the paths it did not see again, so a
-  deleted or unpublished page is reported as soon as the next pass has run.
+  used to tell a listing page from a missing one.
+- `page_paths`: the own path of every published page as the host lists it
+  (locale prefix included), so a link to a translated page resolves on
+  multi-locale sites. Every completed pass drops the paths of both tables it
+  did not see again, so a deleted or unpublished page is reported as soon as
+  the next pass has run.
 
 `kv` holds `scan:cursor` (where the current pass over the pages stands),
 `scan:done` (when the last pass over all pages finished, and the locales seen)
