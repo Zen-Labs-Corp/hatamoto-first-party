@@ -12,6 +12,9 @@ import (
 //go:wasmexport on_cron_fetch
 func onCronFetch() int32 { return guest.Run(guest.CronExport("fetch")) }
 
+//go:wasmexport http_handle
+func httpHandle() int32 { return guest.Run(guest.HTTPExport) }
+
 //go:wasmexport filter_builder_data
 func filterBuilderData() int32 { return guest.Run(sdk.BuilderData.Export()) }
 
