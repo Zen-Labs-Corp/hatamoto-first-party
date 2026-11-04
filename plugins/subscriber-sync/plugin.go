@@ -46,7 +46,7 @@ func onFormSubmitted(ev sdk.FormSubmittedEvent) error {
 		record(ev.FormSlug, "skipped", "no consent", 0)
 		return nil
 	}
-	email := fieldText(ev.Fields, c.emailField())
+	email := fieldValue(ev.Fields, c.emailField())
 	if !validEmail(email) {
 		record(ev.FormSlug, "skipped", "invalid email", 0)
 		return nil

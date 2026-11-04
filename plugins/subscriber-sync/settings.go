@@ -79,13 +79,18 @@ func truthy(v any) bool {
 	return false
 }
 
+// fieldValue is a submitted text value, trimmed.
+func fieldValue(fields map[string]any, key string) string {
+	s, _ := fields[key].(string)
+	return strings.TrimSpace(s)
+}
+
 // fieldText is a submitted text value, trimmed and cut to 100 characters.
 func fieldText(fields map[string]any, key string) string {
 	if key == "" {
 		return ""
 	}
-	s, _ := fields[key].(string)
-	s = strings.TrimSpace(s)
+	s := fieldValue(fields, key)
 	if utf8.RuneCountInString(s) > 100 {
 		s = string([]rune(s)[:100])
 	}

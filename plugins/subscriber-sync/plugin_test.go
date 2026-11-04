@@ -286,3 +286,17 @@ func TestTruthyAndValidEmail(t *testing.T) {
 		t.Fatal("bad address accepted")
 	}
 }
+
+func TestLongEmailIsNotCut(t *testing.T) {
+	h := &fakeHost{settings: baseSettings}
+	h.install(t)
+	var got job
+	deliverFn = func(c cfg, j job) result { got = j; return result{kind: kindSent, status: 200} }
+	long := strings.Repeat("a", 110) + "@example.com"
+	if err := onFormSubmitted(event("contact", map[string]any{"email": " " + long + " "})); err != nil {
+		t.Fatal(err)
+	}
+	if got.Email != long {
+		t.Fatalf("email %q", got.Email)
+	}
+}
