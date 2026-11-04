@@ -2,6 +2,13 @@
 // only through the hatamoto bridge. Text is set with textContent and the
 // sparklines are built with SVG DOM calls and presentation attributes only.
 const $ = (sel) => document.querySelector(sel);
+
+// Wrap the table so it scrolls horizontally on narrow screens.
+const urlsTable = $("#urls");
+const tableScroll = document.createElement("div");
+tableScroll.className = "table-scroll";
+urlsTable.replaceWith(tableScroll);
+tableScroll.append(urlsTable);
 const SVG = "http://www.w3.org/2000/svg";
 
 const LABELS = { good: "Good", "needs-improvement": "Needs improvement", poor: "Poor" };
@@ -154,7 +161,7 @@ function render() {
   $("#urls tbody").replaceChildren(...data.urls.map(row));
   const last = data.last_run;
   const when = last.at ? `${last.at.replace("T", " ").replace("Z", "")} UTC` : "not yet";
-  $("#footer").textContent = `Last run: ${when}, ${last.done}/${last.total} URLs done. Thresholds: web.dev`;
+  $("#footer").textContent = `Last run: ${when}, ${last.done}/${last.total} measurements done. Thresholds: web.dev`;
 }
 
 async function load() {
