@@ -25,8 +25,18 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	return status(http.StatusNotFound), nil
 }
 
-// onPrune fails open: it never returns an error.
-func onPrune(sdk.CronEvent) error { return nil }
+// onPrune fails open: a settings or database problem is logged, never returned.
+func onPrune(sdk.CronEvent) error {
+	s, err := loadSettings()
+	if err != nil {
+		logf("warn", "prune: settings unavailable")
+		return nil
+	}
+	if err := prune(s.RetentionMonths); err != nil {
+		logf("warn", "prune: database error")
+	}
+	return nil
+}
 
 // status answers with a code and an empty body.
 func status(code int) sdk.HTTPResponse { return sdk.HTTPResponse{Status: code} }
