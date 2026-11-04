@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example News</title>
+    <link>https://example.com/</link>
+    <atom:link href="https://example.com/feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Channel description that is not an item.</description>
+    <item>
+      <title><![CDATA[Tom &amp; Jerry <b>return</b>]]></title>
+      <link>https://example.com/posts/1</link>
+      <guid isPermaLink="false">post-1</guid>
+      <pubDate>Tue, 03 Nov 2026 09:30:00 +0100</pubDate>
+      <description><![CDATA[<p>Hello <a href="https://example.com/x">world</a>.</p><script>alert(1)</script><style>p{color:red}</style><!-- hidden --><p>Second&nbsp;paragraph &amp; more.</p>]]></description>
+    </item>
+    <item>
+      <title>HTML escaped description</title>
+      <link>https://example.com/posts/2</link>
+      <guid>post-2</guid>
+      <pubDate>Mon, 02 Nov 2026 18:00:00 EST</pubDate>
+      <description>&lt;p&gt;Escaped &lt;em&gt;markup&lt;/em&gt; here&lt;/p&gt;</description>
+      <content:encoded><![CDATA[<div>Full content that must not win over the description.</div>]]></content:encoded>
+    </item>
+    <item>
+      <title>No date and no guid</title>
+      <link>https://example.com/posts/3</link>
+      <content:encoded><![CDATA[<p>Only full content is available.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title>Unsafe link</title>
+      <link>javascript:alert(1)</link>
+      <guid>unsafe-1</guid>
+      <description>Dropped because the link is not http or https.</description>
+    </item>
+    <item>
+      <title>Dublin Core date</title>
+      <link>https://example.com/posts/5</link>
+      <guid>post-5</guid>
+      <dc:date>2026-10-31T12:00:00Z</dc:date>
+    </item>
+  </channel>
+</rss>
