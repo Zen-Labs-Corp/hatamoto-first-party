@@ -1,8 +1,8 @@
 {
   "name": "polls",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "sdk": "^0.11",
-  "description": "Turns Hatamoto forms into polls, surveys and scored quizzes, with live results, per-question breakdowns and CSV export.",
+  "description": "Turns your forms into polls, surveys and scored quizzes, with live results, per-question breakdowns and CSV export.",
   "permissions": ["forms.read", "settings", "db", "builder.data", "mail.send", "log"],
   "routes": [
     { "method": "GET", "path": "/results/{form_slug}", "public": true },
