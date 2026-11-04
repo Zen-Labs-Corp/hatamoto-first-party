@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,7 +46,7 @@ func handleWebhook(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	case code == http.StatusNotFound:
 		return webhookDone("ignored")
 	case code != http.StatusOK:
-		logf("warn", "webhook: stripe answered an unexpected status")
+		logf("warn", "webhook: stripe answered an unexpected status "+strconv.Itoa(code))
 		return unavailable()
 	}
 	p, ok := recordable(ev, id)

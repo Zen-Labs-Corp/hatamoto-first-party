@@ -325,3 +325,13 @@ func TestWebhookContentTypeNameIsCaseInsensitive(t *testing.T) {
 		}
 	}
 }
+
+func TestWebhookLogsTheUnexpectedStripeStatusButNeverTheKey(t *testing.T) {
+	w := newWorld(t)
+	w.stripe["https://api.stripe.com/v1/events/evt_1"] = [2]string{"401", `{"error":{"message":"Invalid API Key ` + testKey + `"}}`}
+	wantStatus(t, w, postedEvent, 503, "")
+	log := w.out.String()
+	if !strings.Contains(log, "unexpected status 401") || strings.Contains(log, testKey) {
+		t.Fatalf("log %q", log)
+	}
+}
