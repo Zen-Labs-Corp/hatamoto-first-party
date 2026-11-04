@@ -270,3 +270,33 @@ func TestExcerptsAreCutWhenStored(t *testing.T) {
 		}
 	}
 }
+
+func TestDisconnectDuringRefreshIsNotUndone(t *testing.T) {
+	f := useFake(t)
+	connect(t, f)
+	f.onFunc(igMedia, func(fetchCall) (int, string, error) {
+		if res, _ := disconnect(settings{}); res.Status != 200 {
+			t.Fatalf("disconnect = %d", res.Status)
+		}
+		return 200, igBody(2, "a"), nil
+	})
+	if got := runRefresh(time.Second)["instagram"]; got != "skipped" {
+		t.Fatalf("result = %q", got)
+	}
+	if tok, _ := loadToken(); tok != nil || len(f.rows("instagram")) != 0 || len(f.status) != 0 {
+		t.Fatalf("resurrected: token %+v rows %d status %v", tok, len(f.rows("instagram")), f.status)
+	}
+}
+
+func TestDisconnectDuringTokenRenewalIsNotUndone(t *testing.T) {
+	f := useFake(t)
+	saveTokenAged(t, f, 25*time.Hour)
+	f.onFunc(graphURL+"refresh_access_token", func(fetchCall) (int, string, error) {
+		_ = deleteToken()
+		return 200, `{"access_token":"NEWTOKEN","expires_in":5184000}`, nil
+	})
+	runTokenRefresh()
+	if tok, _ := loadToken(); tok != nil {
+		t.Fatalf("token came back: %+v", tok)
+	}
+}

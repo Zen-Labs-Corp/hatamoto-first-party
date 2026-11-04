@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 )
@@ -154,6 +155,18 @@ func loadToken() (*igToken, error) {
 		return nil, err
 	}
 	return &t, nil
+}
+
+// errDisconnected means the owner disconnected while a run was in flight.
+var errDisconnected = errors.New("disconnected during the run")
+
+// stillConnected reports whether tok is still the stored connection. A run
+// that read the token and then fetched for seconds checks it before writing, so
+// a Disconnect in between is not undone. (Reads of kv and db cannot be made one
+// atomic step; this leaves a window of milliseconds, not seconds.)
+func stillConnected(tok *igToken) bool {
+	cur, err := loadToken()
+	return err == nil && cur != nil && cur.AccessToken == tok.AccessToken
 }
 
 func saveToken(t igToken) error {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"time"
 )
 
@@ -27,7 +28,13 @@ func runRefresh(budget time.Duration) map[string]string {
 		res["instagram"] = "skipped"
 	default:
 		tok = renewToken(tok)
-		res["instagram"] = refreshSource("instagram", s, func() ([]item, error) { return fetchInstagram(tok) }, tok.AccessToken)
+		res["instagram"] = refreshSource("instagram", s, func() ([]item, error) {
+			items, err := fetchInstagram(tok)
+			if err == nil && !stillConnected(tok) {
+				return nil, errDisconnected
+			}
+			return items, err
+		}, tok.AccessToken)
 	}
 
 	if s.YouTubeKey == "" || s.ChannelID == "" {
@@ -40,6 +47,9 @@ func runRefresh(budget time.Duration) map[string]string {
 
 func refreshSource(source string, s settings, get func() ([]item, error), secrets ...string) string {
 	items, err := get()
+	if errors.Is(err, errDisconnected) {
+		return "skipped"
+	}
 	if err == nil {
 		if len(items) > maxStored {
 			items = items[:maxStored]

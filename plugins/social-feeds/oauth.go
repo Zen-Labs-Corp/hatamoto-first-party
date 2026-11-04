@@ -288,6 +288,9 @@ func renewToken(tok *igToken) *igToken {
 	q.Set("access_token", tok.AccessToken)
 	l, err := getLongLived(graphURL + "refresh_access_token?" + q.Encode())
 	if err == nil {
+		if !stillConnected(tok) {
+			return tok // disconnected meanwhile: do not bring the token back
+		}
 		fresh := newToken(l, tok.UserID, tok.Username)
 		if err = saveToken(fresh); err == nil {
 			return &fresh
