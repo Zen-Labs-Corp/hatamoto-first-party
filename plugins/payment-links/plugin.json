@@ -41,7 +41,7 @@
               "type": "string",
               "title": "Payment Link URL",
               "pattern": "^https://",
-              "maxLength": 500
+              "maxLength": 200
             },
             "kind": {
               "type": "string",
