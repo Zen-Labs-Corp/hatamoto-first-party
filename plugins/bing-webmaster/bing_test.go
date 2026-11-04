@@ -395,3 +395,12 @@ func TestRedactIsCaseInsensitive(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestSubmitFeedNotAuthorizedBlamesTheSiteNotTheKey(t *testing.T) {
+	h := newHost(t)
+	h.bing["SubmitFeed"] = fetched{Status: 400, Body: `{"Message":"NotAuthorized","ErrorCode":14}`}
+	err := submitFeed(h.settings, testSite, testSite+"/sitemap.xml")
+	if err == nil || !strings.Contains(err.Error(), "no access to "+testSite) || strings.Contains(err.Error(), "rejected the API key") {
+		t.Fatalf("%v", err)
+	}
+}

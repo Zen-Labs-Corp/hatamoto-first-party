@@ -81,7 +81,7 @@ func redact(text, key string) string {
 
 // call runs one Bing method and returns the content of the answer's "d". The
 // request URL carries the API key, so it is never put into an error or a log.
-func call(s settings, method, name string, q url.Values, body any) (json.RawMessage, error) {
+func call(s settings, method, name, site string, q url.Values, body any) (json.RawMessage, error) {
 	if s.APIKey == "" {
 		return nil, errNoKey
 	}
@@ -134,7 +134,7 @@ func call(s settings, method, name string, q url.Values, body any) (json.RawMess
 		if !parsed {
 			msg, code = "", ""
 		}
-		return nil, bingError(res.Status, msg, code, q.Get("siteUrl"), s.APIKey)
+		return nil, bingError(res.Status, msg, code, site, s.APIKey)
 	}
 	if !parsed {
 		return nil, fmt.Errorf("Bing's answer for %s was not understood", name)
@@ -252,7 +252,7 @@ type userSite struct {
 }
 
 func getUserSites(s settings) ([]userSite, error) {
-	d, err := call(s, "GET", "GetUserSites", nil, nil)
+	d, err := call(s, "GET", "GetUserSites", "", nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +269,7 @@ type trafficRow struct {
 func siteQuery(site string) url.Values { return url.Values{"siteUrl": {site}} }
 
 func trafficStats(s settings, site string) ([]trafficRow, error) {
-	d, err := call(s, "GET", "GetRankAndTrafficStats", siteQuery(site), nil)
+	d, err := call(s, "GET", "GetRankAndTrafficStats", site, siteQuery(site), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func pageStats(s settings, site string) ([]statRow, error)  { return stats(s, "G
 // stats reads GetQueryStats or GetPageStats; both put the query or the page
 // URL in "Query".
 func stats(s settings, name, site string) ([]statRow, error) {
-	d, err := call(s, "GET", name, siteQuery(site), nil)
+	d, err := call(s, "GET", name, site, siteQuery(site), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +343,7 @@ type crawlRow struct {
 }
 
 func crawlIssues(s settings, site string) ([]crawlRow, error) {
-	d, err := call(s, "GET", "GetCrawlIssues", siteQuery(site), nil)
+	d, err := call(s, "GET", "GetCrawlIssues", site, siteQuery(site), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +375,7 @@ type feedRow struct {
 }
 
 func feeds(s settings, site string) ([]feedRow, error) {
-	d, err := call(s, "GET", "GetFeeds", siteQuery(site), nil)
+	d, err := call(s, "GET", "GetFeeds", site, siteQuery(site), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +401,7 @@ func feeds(s settings, site string) ([]feedRow, error) {
 }
 
 func submitFeed(s settings, site, feedURL string) error {
-	_, err := call(s, "POST", "SubmitFeed", nil, map[string]string{"siteUrl": site, "feedUrl": feedURL})
+	_, err := call(s, "POST", "SubmitFeed", site, nil, map[string]string{"siteUrl": site, "feedUrl": feedURL})
 	return err
 }
 
