@@ -389,3 +389,9 @@ func TestSitemapURLIsBuiltFromTheOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactIsCaseInsensitive(t *testing.T) {
+	if got := redact("failed: ApiKey=abc123&x=1 APIKEY=zzz", testKey); strings.Contains(strings.ToLower(got), "abc123") || strings.Contains(got, "zzz") {
+		t.Fatal(got)
+	}
+}

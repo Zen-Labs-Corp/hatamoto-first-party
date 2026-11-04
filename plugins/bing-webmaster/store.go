@@ -264,7 +264,7 @@ var qOverview = `SELECT jsonb_build_object(` +
 	`'top_queries', ` + topSQL("query_stats", "query") + `, ` +
 	`'top_pages', ` + topSQL("page_stats", "page") + `, ` +
 	`'crawl_issues', (SELECT coalesce(jsonb_agg(c ORDER BY c.in_links DESC, c.url), '[]'::jsonb) FROM (SELECT url, http_code, issues, in_links FROM crawl_issues ORDER BY in_links DESC, url LIMIT 100) c), ` +
-	`'feeds', (SELECT coalesce(jsonb_agg(f ORDER BY f.url), '[]'::jsonb) FROM (SELECT url, type, status, submitted_at, last_crawled_at, url_count FROM feeds ORDER BY url) f), ` +
+	`'feeds', (SELECT coalesce(jsonb_agg(f ORDER BY f.url), '[]'::jsonb) FROM (SELECT url, type, status, submitted_at, last_crawled_at, url_count FROM feeds ORDER BY url LIMIT 100) f), ` +
 	`'last_import', (SELECT jsonb_build_object('at', started_at, 'ok', ok, 'error', error) FROM import_runs ORDER BY started_at DESC, id DESC LIMIT 1), ` +
 	`'last_submission', (SELECT jsonb_build_object('at', submitted_at, 'feed_url', feed_url, 'error', error) FROM sitemap_submissions ORDER BY submitted_at DESC, id DESC LIMIT 1))`
 

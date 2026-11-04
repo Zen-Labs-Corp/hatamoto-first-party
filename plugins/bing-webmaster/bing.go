@@ -66,7 +66,7 @@ type fetched struct {
 	Truncated bool   `json:"truncated"`
 }
 
-var apikeyRx = regexp.MustCompile(`apikey=[^&\s"']*`)
+var apikeyRx = regexp.MustCompile(`(?i)apikey=[^&\s"']*`)
 
 // redact removes the API key (raw and URL-escaped) from text that came from
 // outside the plugin, so no error can carry it.
