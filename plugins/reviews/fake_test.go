@@ -193,9 +193,19 @@ func (f *fakeHost) query(sql string, out any) error {
 	return roundTrip(map[string]any{"rows": [][]json.RawMessage{{cell}}}, out)
 }
 
-// seed stores a successful refresh directly.
+// seed stores a successful refresh directly and sets the source up, unless
+// the test configured that source itself.
 func (f *fakeHost) seed(t *testing.T, src string, rating float64, count int, rs ...review) {
 	t.Helper()
+	if src == sourceGoogle {
+		if _, ok := f.settings["google_api_key"]; !ok {
+			f.set("google_api_key", "G-SECRET")
+			f.set("google_place_id", "PLACE1")
+		}
+	} else if _, ok := f.settings["trustpilot_api_key"]; !ok {
+		f.set("trustpilot_api_key", "T-SECRET")
+		f.set("trustpilot_business_unit_id", "UNIT1")
+	}
 	if err := replaceSource(src, sourceInfo{Rating: rating, Count: count, ProfileURL: "https://example.test/" + src}, rs); err != nil {
 		t.Fatal(err)
 	}

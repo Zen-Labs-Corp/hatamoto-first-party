@@ -25,6 +25,11 @@ func (s settings) googleOn() bool { return s.GoogleKey != "" && s.GooglePlace !=
 // tpOn reports whether Trustpilot is set up: key and business unit ID both present.
 func (s settings) tpOn() bool { return s.TPKey != "" && s.TPUnit != "" }
 
+// sourceOn reports whether the named source is set up.
+func (s settings) sourceOn(src string) bool {
+	return (src == sourceGoogle && s.googleOn()) || (src == sourceTrustpilot && s.tpOn())
+}
+
 func clamp(v, lo, hi, def int) int {
 	if v == 0 {
 		return def

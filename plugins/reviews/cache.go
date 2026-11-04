@@ -39,7 +39,19 @@ func current() snapshot {
 	if err != nil {
 		return empty
 	}
-	cached = snapshot{Reviews: selectReviews(all, s.MinRating, s.MaxItems), Sources: src}
+	// A source that is not set up is hidden at once; its rows stay for retention.
+	var shown []review
+	for _, r := range all {
+		if s.sourceOn(r.Source) {
+			shown = append(shown, r)
+		}
+	}
+	for name := range src {
+		if !s.sourceOn(name) {
+			delete(src, name)
+		}
+	}
+	cached = snapshot{Reviews: selectReviews(shown, s.MinRating, s.MaxItems), Sources: src}
 	cachedAt, cacheOK = now(), true
 	return cached
 }

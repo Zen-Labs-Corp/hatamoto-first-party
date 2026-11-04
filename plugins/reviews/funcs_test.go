@@ -133,3 +133,37 @@ func TestRefreshInvalidatesTheCache(t *testing.T) {
 		t.Fatal("refresh must drop the empty snapshot")
 	}
 }
+
+func TestUnconfiguredSourceIsHiddenEverywhere(t *testing.T) {
+	f := newFake(t)
+	f.seed(t, sourceGoogle, 4.8, 132, rv("google", "g1", 5, 30))
+	f.seed(t, sourceTrustpilot, 4.6, 210, rv("trustpilot", "t1", 5, 21))
+	invalidateCache()
+	if got := fn(t, "count", `[]`); got != "2" {
+		t.Fatalf("both set up: %q", got)
+	}
+	f.set("google_api_key", "")
+	invalidateCache()
+	if got := fn(t, "count", `[]`); got != "1" {
+		t.Fatalf("count after clearing the Google key: %q", got)
+	}
+	if got := fn(t, "summary", `[]`); got != "4.6 from 210 Trustpilot reviews" {
+		t.Fatalf("summary after clearing the Google key: %q", got)
+	}
+	if got := fn(t, "profile", `["google"]`); got != "" {
+		t.Fatalf("profile: %q", got)
+	}
+	if n := len(ask(t, "ext.reviews.latest", 10).Items); n != 1 {
+		t.Fatalf("builder shows %d items, want 1", n)
+	}
+	for _, r := range buildOverview().Reviews {
+		if r.Source == sourceGoogle {
+			t.Fatalf("overview lists a Google review: %+v", r)
+		}
+	}
+	f.set("trustpilot_business_unit_id", "")
+	invalidateCache()
+	if got := fn(t, "count", `[]`); got != "0" || fn(t, "summary", `[]`) != "" {
+		t.Fatalf("nothing is set up but %q shown", got)
+	}
+}

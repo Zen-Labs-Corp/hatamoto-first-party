@@ -88,7 +88,13 @@ func buildOverview() overview {
 	if err == nil {
 		var all []review
 		if all, err = loadReviews(); err == nil {
-			for _, r := range selectReviews(all, s.MinRating, s.MaxItems) {
+			var on []review
+			for _, r := range all {
+				if s.sourceOn(r.Source) {
+					on = append(on, r)
+				}
+			}
+			for _, r := range selectReviews(on, s.MinRating, s.MaxItems) {
 				o.Reviews = append(o.Reviews, overviewReview{Author: r.Author, Source: r.Source, SourceLabel: sourceLabels[r.Source],
 					Rating: r.Rating, Date: r.Published.UTC().Format("2006-01-02"), Text: r.Body, URL: r.Link})
 			}
@@ -101,7 +107,7 @@ func buildOverview() overview {
 	for _, src := range []string{sourceGoogle, sourceTrustpilot} {
 		info := known[src]
 		os := overviewSource{Source: src, Label: sourceLabels[src]}
-		on := (src == sourceGoogle && s.googleOn()) || (src == sourceTrustpilot && s.tpOn())
+		on := s.sourceOn(src)
 		switch {
 		case !on:
 			os.State, os.Missing = "not_set_up", missingText(src, s)
