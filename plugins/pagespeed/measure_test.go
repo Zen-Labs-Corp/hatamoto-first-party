@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hatamoto.dev/sdk"
 )
 
 // world is a fake host: settings, entities, an in-memory db behind the SQL the
@@ -23,7 +25,7 @@ type world struct {
 	fetches  []string // "crux:<url>", "origin:<url>", "psi:<url>"
 	cruxCost time.Duration
 	psiCost  time.Duration
-	psiFail  string // when set, PSI answers this error
+	psiFail  error // when set, PSI answers this error
 	cruxCode int
 }
 
@@ -89,8 +91,8 @@ func (w *world) fetch(a map[string]any, out any) error {
 	default:
 		w.fetches = append(w.fetches, "psi:"+u)
 		w.clock = w.clock.Add(w.psiCost)
-		if w.psiFail != "" {
-			return errors.New(w.psiFail)
+		if w.psiFail != nil {
+			return w.psiFail
 		}
 		res = fetched{Status: 200, Body: `{"lighthouseResult":{"categories":{"performance":{"score":0.9}}}}`}
 	}
@@ -245,7 +247,7 @@ func TestFinishedDayMakesNoFetch(t *testing.T) {
 
 func TestLabTimeoutKeepsFieldDataAndRetriesTwice(t *testing.T) {
 	w := newWorld(t, `{"api_key":"`+testKey+`","public_url":"https://s.example","strategy":"mobile","urls":["/a"]}`)
-	w.psiFail = "context deadline exceeded for " + testKey
+	w.psiFail = &sdk.HostError{Code: sdk.ErrTimeout, Message: "call timed out " + testKey}
 	for range 8 {
 		if err := runCron(); err != nil {
 			t.Fatal(err)
@@ -278,7 +280,7 @@ func TestNoFieldDataIsNotAnError(t *testing.T) {
 
 func TestLogsNeverHoldTheKey(t *testing.T) {
 	w := newWorld(t, `{"api_key":"`+testKey+`","public_url":"https://s.example","strategy":"mobile","urls":["/a"]}`)
-	w.psiFail = "dial tcp: lookup failed for key=" + testKey
+	w.psiFail = errors.New("dial tcp: lookup failed for key=" + testKey)
 	w.cruxCode = 403
 	for range 4 {
 		_ = runCron()
@@ -315,7 +317,7 @@ func TestMeasureNowTimeoutKeepsTodaysLabScore(t *testing.T) {
 	if w.labs[k] != labOK {
 		t.Fatalf("labs = %v", w.labs)
 	}
-	w.psiFail = "context deadline exceeded"
+	w.psiFail = &sdk.HostError{Code: sdk.ErrTimeout, Message: "call timed out"}
 	p, err := loadPlan()
 	if err != nil {
 		t.Fatal(err)

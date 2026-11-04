@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"hatamoto.dev/sdk"
 )
 
 type fetched struct {
@@ -28,9 +30,6 @@ var now = time.Now
 var budgetEnd time.Time
 
 var errBudget = errors.New("out of time for this call")
-
-// errTimeout marks a request that did not finish in time.
-var errTimeout = errors.New("request timed out")
 
 // fetch calls the host's http.fetch. The Google API key travels in the
 // X-Goog-Api-Key header, never in the URL (the host logs URLs). No error built
@@ -63,24 +62,32 @@ func fetch(key, method, rawURL, body string) (fetched, error) {
 	return res, nil
 }
 
-// isTimeout reports whether err is the request running out of time.
+// isTimeout reports whether err is the request running out of time: the host's
+// typed timeout, or the call budget.
 func isTimeout(err error) bool {
-	if errors.Is(err, errBudget) || errors.Is(err, errTimeout) {
-		return true
-	}
-	m := strings.ToLower(err.Error())
-	return strings.Contains(m, "timeout") || strings.Contains(m, "timed out") || strings.Contains(m, "deadline")
+	var he *sdk.HostError
+	return errors.Is(err, errBudget) || (errors.As(err, &he) && he.Code == sdk.ErrTimeout)
 }
 
-// redact returns err with the API key (plain and URL-escaped) replaced.
+// redact returns err with the API key (plain and URL-escaped) replaced. A host
+// error keeps its code.
 func redact(err error, key string) error {
 	if err == nil || key == "" {
 		return err
 	}
-	msg := err.Error()
-	out := strings.ReplaceAll(strings.ReplaceAll(msg, key, "***"), url.QueryEscape(key), "***")
-	if out == msg {
+	clean := func(s string) string {
+		return strings.ReplaceAll(strings.ReplaceAll(s, key, "***"), url.QueryEscape(key), "***")
+	}
+	var he *sdk.HostError
+	if errors.As(err, &he) {
+		if m := clean(he.Message); m != he.Message {
+			return &sdk.HostError{Code: he.Code, Capability: he.Capability, Message: m}
+		}
 		return err
 	}
-	return errors.New(out)
+	msg := err.Error()
+	if out := clean(msg); out != msg {
+		return errors.New(out)
+	}
+	return err
 }
