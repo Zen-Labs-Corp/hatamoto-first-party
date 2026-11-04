@@ -413,6 +413,12 @@ func TestHostileInput(t *testing.T) {
 				"partial": renderWith(t, f, partialName, partialDot(u, ti, "")),
 				"section": renderWith(t, f, sectionName, sectionWith("", "", map[string]any{"url": u, "title": ti})),
 			} {
+				if name == "partial" && strings.HasPrefix(u, "javascript:") {
+					if strings.TrimSpace(out) != "" {
+						t.Fatalf("partial rendered a non-http canonical: %s", out)
+					}
+					continue
+				}
 				links := scanOK(t, out)
 				if len(links) != 6 {
 					t.Fatalf("%s: %d links", name, len(links))
@@ -563,6 +569,24 @@ func TestFallbackIsNotMixed(t *testing.T) {
 			if calls > c.calls {
 				t.Errorf("%s %s: %d network calls, want at most %d", name, tpl, calls, c.calls)
 			}
+		}
+	}
+}
+
+// A site without a public base URL has a bare path as canonical address: a
+// relative share link is useless, so the partial renders nothing.
+func TestPartialNeedsAbsoluteCanonical(t *testing.T) {
+	f := realFuncs(t, `{}`)
+	for _, c := range []string{"/blog/x", "blog/x", "//host/x", "ftp://h/x", "http:/", "https:/", "h", "https://"[:7]} {
+		if out := renderWith(t, f, partialName, partialDot(c, "T", "N")); strings.TrimSpace(out) != "" {
+			t.Errorf("canonical %q rendered %q", c, out)
+		}
+	}
+	for _, c := range []string{"https://example.com/blog/x", "http://example.com/x", "http://a", "https://a"} {
+		out := renderWith(t, f, partialName, partialDot(c, "T", "N"))
+		links := scanOK(t, out)
+		if len(links) == 0 || param(t, links[0], "url") != c {
+			t.Errorf("canonical %q rendered %q", c, out)
 		}
 	}
 }

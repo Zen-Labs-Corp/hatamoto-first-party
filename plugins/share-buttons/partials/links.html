@@ -2,7 +2,10 @@
 {{- $u := .Head.Canonical -}}
 {{- $t := .Page.Name -}}{{- with .Entity -}}{{- if .Title -}}{{- $t = .Title -}}{{- end -}}{{- end -}}
 {{- $s := plugin_share_buttons_style -}}{{- if and (ne $s "icons") (ne $s "labels") -}}{{- $s = "both" -}}{{- end -}}
-{{- if $u -}}
+{{- $abs := false -}}
+{{- if ge (len $u) 8 -}}{{- if eq (slice $u 0 8) "https://" -}}{{- $abs = true -}}{{- end -}}{{- end -}}
+{{- if ge (len $u) 7 -}}{{- if eq (slice $u 0 7) "http://" -}}{{- $abs = true -}}{{- end -}}{{- end -}}
+{{- if $abs -}}
 <nav class="share-buttons share-buttons--{{$s}}" aria-label="Share"><ul class="share-buttons__list">
 {{- $end := false -}}{{- $fb := false -}}
 {{- range $i := 6 -}}{{- if not $end -}}
