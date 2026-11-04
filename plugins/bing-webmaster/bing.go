@@ -129,9 +129,9 @@ func call(s settings, method, name string, q url.Values, body any) (json.RawMess
 	if res.Status < 200 || res.Status > 299 || (fault && env.D == nil) {
 		msg := strings.TrimSpace(env.Message + " " + code)
 		if !parsed {
-			msg = ""
+			msg, code = "", ""
 		}
-		return nil, bingError(res.Status, msg, s.APIKey)
+		return nil, bingError(res.Status, msg, code, q.Get("siteUrl"), s.APIKey)
 	}
 	if !parsed {
 		return nil, fmt.Errorf("Bing's answer for %s was not understood", name)
@@ -139,12 +139,39 @@ func call(s settings, method, name string, q url.Values, body any) (json.RawMess
 	return env.D, nil
 }
 
+// errNoAccess is Bing saying the key is fine but not allowed for the site.
+type errNoAccess struct{ site string }
+
+func (e errNoAccess) Error() string {
+	return "Bing says this key has no access to " + e.site + ". Check that Site URL matches the site exactly as verified in Bing (including the trailing slash)."
+}
+
+// stopsRun reports an error that makes every further call of a run pointless.
+func stopsRun(err error) bool {
+	var na errNoAccess
+	return errors.Is(err, errKeyDenied) || errors.As(err, &na)
+}
+
+// Bing's ApiErrorCode values for a bad key and for a site the key may not use.
+const (
+	codeInvalidAPIKey = "3"
+	codeNotAuthorized = "14"
+)
+
 // bingError maps a failed answer to text for the owner: status and Bing's
-// message only.
-func bingError(status int, message, key string) error {
+// message only. A bad key and a site the key has no access to are told apart.
+func bingError(status int, message, code, site, key string) error {
 	message = redact(strings.TrimSpace(message), key)
 	low := strings.ToLower(message)
-	if status == 401 || status == 403 || strings.Contains(low, "invalidapikey") || strings.Contains(low, "notauthorized") {
+	switch {
+	case strings.Contains(low, "invalidapikey") || code == codeInvalidAPIKey:
+		return errKeyDenied
+	case strings.Contains(low, "notauthorized") || code == codeNotAuthorized:
+		if site == "" { // GetUserSites and the like: nothing but the key to blame
+			return errKeyDenied
+		}
+		return errNoAccess{site}
+	case status == 401 || status == 403:
 		return errKeyDenied
 	}
 	if r := []rune(message); len(r) > 200 {

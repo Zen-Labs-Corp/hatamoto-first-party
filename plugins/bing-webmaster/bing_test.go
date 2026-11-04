@@ -124,8 +124,8 @@ func TestBadKeyIsPlain(t *testing.T) {
 	for name, res := range map[string]fetched{
 		"401":          {Status: 401, Body: `{"Message":"nope"}`},
 		"403 no body":  {Status: 403},
-		"200 fault":    ok(`{"Message":"InvalidApiKey","ErrorCode":14}`),
-		"400 not auth": {Status: 400, Body: `{"Message":"NotAuthorized: key not valid"}`},
+		"200 fault":    ok(`{"Message":"InvalidApiKey","ErrorCode":3}`),
+		"numeric code": {Status: 400, Body: `{"Message":"something else","ErrorCode":3}`},
 		"string code":  ok(`{"ErrorCode":"InvalidApiKey"}`),
 	} {
 		h := newHost(t)
@@ -133,6 +133,25 @@ func TestBadKeyIsPlain(t *testing.T) {
 		_, err := getUserSites(h.settings)
 		if err == nil || err.Error() != "Bing rejected the API key." {
 			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestNotAuthorizedBlamesTheSiteNotTheKey(t *testing.T) {
+	want := "Bing says this key has no access to " + testSite + ". Check that Site URL matches the site exactly as verified in Bing (including the trailing slash)."
+	for name, res := range map[string]fetched{
+		"400 text":     {Status: 400, Body: `{"Message":"NotAuthorized: key not valid"}`},
+		"403 text":     {Status: 403, Body: `{"Message":"NotAuthorized"}`},
+		"numeric code": {Status: 400, Body: `{"Message":"x","ErrorCode":14}`},
+	} {
+		h := newHost(t)
+		h.bing["GetRankAndTrafficStats"] = res
+		_, err := trafficStats(h.settings, testSite)
+		if err == nil || err.Error() != want {
+			t.Errorf("%s: %v", name, err)
+		}
+		if err != nil && !stopsRun(err) {
+			t.Errorf("%s: must stop a run", name)
 		}
 	}
 }

@@ -163,7 +163,7 @@ func runImport(s settings, deadline time.Time, now func() time.Time) (importResu
 			break
 		}
 		n, err := runEndpoint(s, left[0], site, now())
-		if errors.Is(err, errKeyDenied) {
+		if stopsRun(err) {
 			finish(err)
 			return res, err
 		}
