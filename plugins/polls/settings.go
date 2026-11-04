@@ -33,12 +33,16 @@ type formCfg struct {
 	EmailScore  bool      `json:"email_score"`
 }
 
+// warnedClose remembers the forms whose closes_at was already reported.
+var warnedClose = map[string]bool{}
+
 // now is replaced by tests.
 var now = time.Now
 
 // loadConfig reads and normalises the forms setting: slugs are trimmed, empty
 // and duplicate slugs dropped, unknown kinds become poll, unknown visibility
-// becomes never (the safe value) and answer key rows without a field are dropped.
+// becomes never (the safe value), answer key rows without a field are dropped
+// and an unreadable closes_at is treated as not set.
 func loadConfig() ([]formCfg, error) {
 	var raw struct {
 		Forms []formCfg `json:"forms"`
@@ -65,6 +69,13 @@ func loadConfig() ([]formCfg, error) {
 			c.ShowResults = showNever
 		}
 		c.ClosesAt = strings.TrimSpace(c.ClosesAt)
+		if _, ok := parseTime(c.ClosesAt); c.ClosesAt != "" && !ok {
+			if !warnedClose[c.Slug] {
+				warnedClose[c.Slug] = true
+				_ = logf("warn", "polls: closes_at of %q is not a date and time, treated as not set", c.Slug)
+			}
+			c.ClosesAt = ""
+		}
 		c.Key = slices.DeleteFunc(slices.Clone(c.Key), func(k keyPair) bool { return strings.TrimSpace(k.Field) == "" })
 		out = append(out, c)
 	}

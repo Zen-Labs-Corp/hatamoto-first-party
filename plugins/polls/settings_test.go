@@ -101,3 +101,21 @@ func TestBlankAnswerKeyRowsAreIgnored(t *testing.T) {
 		t.Fatalf("max %d, want 1", max)
 	}
 }
+
+func TestUnreadableClosesAtIsNotSetAndLoggedOnce(t *testing.T) {
+	warnedClose = map[string]bool{}
+	f := &fake{t: t, settings: `{"forms":[{"form_slug":"fw","closes_at":"2026-11-04 18:00"}]}`}
+	f.install()
+	for i := 0; i < 2; i++ {
+		cfgs, err := loadConfig()
+		if err != nil || len(cfgs) != 1 {
+			t.Fatalf("cfgs %+v err %v", cfgs, err)
+		}
+		if _, ok := cfgs[0].closes(); ok || cfgs[0].ClosesAt != "" || !cfgs[0].open(time.Now()) {
+			t.Fatalf("unreadable closes_at kept: %+v", cfgs[0])
+		}
+	}
+	if n := len(f.named("log")); n != 1 {
+		t.Fatalf("%d log lines, want 1", n)
+	}
+}
