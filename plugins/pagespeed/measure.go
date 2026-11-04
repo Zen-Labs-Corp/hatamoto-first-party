@@ -52,15 +52,13 @@ func left() time.Duration { return budgetEnd.Sub(now()) }
 func today() string { return now().UTC().Format(dateFmt) }
 
 // measureStep does as much of today's work as the budget allows, with at most
-// one lab run, and reports whether this call completed the day (a day already
-// complete returns false at once). It resumes from the
+// one lab run, and reports whether this call completed the day for the first
+// time today (the caller then runs retention). The plan is read on every call,
+// so settings changed later in the day are measured. It resumes from the
 // checkpoint in the db, so every call continues where the last one stopped.
 func measureStep() (bool, error) {
 	defer startBudget()()
 	day := today() // once per call: a day rollover mid-run changes nothing
-	if done, err := dayDone(day); done || err != nil {
-		return false, err
-	}
 	p, err := loadPlan()
 	if err != nil {
 		return false, err
@@ -99,7 +97,10 @@ func measureStep() (bool, error) {
 			if err != nil || len(done) < len(p.strategies) {
 				return false, err
 			}
-			return true, markDayDone(day)
+			if ran, err := retentionRan(day); ran || err != nil {
+				return false, err // settings changed late may add work, retention stays once a day
+			}
+			return true, markRetentionRan(day)
 		}
 		if w.Step == stepCrux {
 			if err := measureField(p, day, w.URL, w.Strategy); err != nil {

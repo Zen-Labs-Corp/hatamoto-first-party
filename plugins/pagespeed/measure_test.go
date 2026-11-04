@@ -247,14 +247,38 @@ func TestFinishedDayMakesNoFetchAndRunsRetentionOnce(t *testing.T) {
 	if len(w.fetches) != 3 || !w.dayDone || w.deletes != 3 { // origin, crux, psi
 		t.Fatalf("fetches = %v, done %v, deletes %d", w.fetches, w.dayDone, w.deletes)
 	}
-	settingsCalls := w.calls["settings.get"]
 	for range 5 {
 		if err := runCron(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if len(w.fetches) != 3 || w.deletes != 3 || w.calls["settings.get"] != settingsCalls || w.calls["entities.list"] != 0 {
+	if len(w.fetches) != 3 || w.deletes != 3 {
 		t.Fatalf("finished day did work again: fetches %v, deletes %d, calls %v", w.fetches, w.deletes, w.calls)
+	}
+}
+
+func TestSettingsChangedAfterTheDayFinishedArePickedUp(t *testing.T) {
+	w := newWorld(t, `{"api_key":"`+testKey+`","public_url":"https://s.example","strategy":"mobile","urls":["/a"]}`)
+	for range 3 {
+		if err := runCron(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(w.fetches) != 3 || w.deletes != 3 {
+		t.Fatalf("fetches = %v, deletes %d", w.fetches, w.deletes)
+	}
+	w.settings = `{"api_key":"` + testKey + `","public_url":"https://s.example","strategy":"both","urls":["/a","/b"]}`
+	for range 12 {
+		if err := runCron(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// desktop origin, then 3 new page/device pairs, crux and psi each
+	if w.count("origin:") != 2 || w.count("crux:") != 4 || w.count("psi:") != 4 {
+		t.Fatalf("new settings not measured: %v", w.fetches)
+	}
+	if w.deletes != 3 {
+		t.Fatalf("retention ran again: %d", w.deletes)
 	}
 }
 

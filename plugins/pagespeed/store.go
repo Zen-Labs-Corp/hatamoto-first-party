@@ -168,16 +168,15 @@ func markCrux(day, url, strategy string) error {
 		ON CONFLICT (day, url, strategy) DO UPDATE SET crux_done = true`, day, url, strategy)
 }
 
-// markDayDone records that every step of day is finished, so later calls skip
-// the day without loading the plan. The row has no page (url ”), so it is
-// neither work nor counted.
-func markDayDone(day string) error {
+// markRetentionRan records that retention ran on day, so it runs once a day.
+// The row has no page (url ”), so it is neither work nor counted.
+func markRetentionRan(day string) error {
 	return dbExec(`INSERT INTO progress (day, url, strategy, crux_done, lab_state) VALUES ($1::date, '', 'day', true, 'ok')
 		ON CONFLICT (day, url, strategy) DO NOTHING`, day)
 }
 
-// dayDone reports whether markDayDone ran for day.
-func dayDone(day string) (bool, error) {
+// retentionRan reports whether markRetentionRan ran for day.
+func retentionRan(day string) (bool, error) {
 	var marks []string
 	err := dbJSON(`SELECT coalesce(jsonb_agg(strategy), '[]'::jsonb) FROM progress WHERE day = $1::date AND url = '' AND strategy = 'day'`, &marks, day)
 	return len(marks) > 0, err
