@@ -448,3 +448,39 @@ func assertNoLeaks(t *testing.T, h *host) {
 		}
 	}
 }
+
+func TestEventSourceURLFromSourcePath(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"path", "/contact", "https://example.com/contact"},
+		{"path with query", "/contact?x=1#top", "https://example.com/contact"},
+		{"full url", "https://other.example.org/contact/us?fbclid=abc&x=1#frag", "https://example.com/contact/us"},
+		{"full url no path", "https://other.example.org?fbclid=abc", ""},
+		{"no leading slash", "contact", ""},
+		{"protocol relative", "//evil.example.org/x", ""},
+		{"whitespace", "/a b", ""},
+		{"control char", "/a\nb", ""},
+		{"garbage", "javascript:alert(1)", ""},
+		{"empty", "", ""},
+		{"overlong", "/" + strings.Repeat("a", 600), ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := settings{SiteURL: "https://example.com", EventName: "Lead"}
+			ev := sample("sub-1")
+			ev.SourcePath = c.in
+			var body struct {
+				Data []map[string]any `json:"data"`
+			}
+			if err := json.Unmarshal(buildEvent(s, ev, userData{}, ""), &body); err != nil {
+				t.Fatal(err)
+			}
+			want := c.want
+			if want == "" {
+				want = "https://example.com"
+			}
+			if got := body.Data[0]["event_source_url"]; got != want {
+				t.Fatalf("event_source_url = %v, want %q", got, want)
+			}
+		})
+	}
+}

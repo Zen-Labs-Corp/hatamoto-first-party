@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 	"time"
 
@@ -32,6 +33,39 @@ func cut(s string, n int) string {
 	return string(r[:n])
 }
 
+// maxPath caps the path part of event_source_url.
+const maxPath = 512
+
+// cleanPath reduces the client's source path to a safe path: an absolute
+// http(s) URL loses its scheme, host, query and fragment, a plain path loses
+// its query and fragment. Anything that is not a clean path with a leading
+// "/" gives "", so event_source_url falls back to the site URL alone.
+func cleanPath(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > 2048 {
+		return ""
+	}
+	for _, r := range raw {
+		if r <= ' ' || r == 0x7f || r == '\\' {
+			return ""
+		}
+	}
+	if i := strings.IndexAny(raw, "?#"); i >= 0 {
+		raw = raw[:i]
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" {
+			return ""
+		}
+		raw = u.EscapedPath()
+	}
+	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || len(raw) > maxPath {
+		return ""
+	}
+	return raw
+}
+
 // buildEvent is the Conversions API request body for one submission. The token
 // goes in the body, not the URL.
 func buildEvent(s settings, ev sdk.FormSubmittedEvent, ud userData, testCode string) []byte {
@@ -48,7 +82,7 @@ func buildEvent(s settings, ev sdk.FormSubmittedEvent, ud userData, testCode str
 		"custom_data":   map[string]any{"form": ev.FormSlug},
 	}
 	if s.SiteURL != "" {
-		data["event_source_url"] = strings.TrimRight(s.SiteURL, "/") + ev.SourcePath
+		data["event_source_url"] = s.SiteURL + cleanPath(ev.SourcePath)
 	}
 	body := map[string]any{
 		"data":         []any{data},
