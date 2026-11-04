@@ -150,7 +150,10 @@ func checkKey(s settings) (sdk.HTTPResponse, error) {
 
 // submitSitemap sends <site>/sitemap.xml to Bing and records the attempt.
 func submitSitemap(s settings) (sdk.HTTPResponse, error) {
-	site, _, err := siteFor(s)
+	// One deadline for the whole route: resolving the site and submitting share it.
+	budgetEnd = time.Now().Add(importNowBudget)
+	defer func() { budgetEnd = time.Time{} }()
+	site, _, err := resolveSite(s)
 	if err != nil {
 		return problem(err)
 	}
@@ -158,9 +161,7 @@ func submitSitemap(s settings) (sdk.HTTPResponse, error) {
 	if err != nil {
 		return problem(err)
 	}
-	budgetEnd = time.Now().Add(importNowBudget)
 	subErr := submitFeed(s, site, feed)
-	budgetEnd = time.Time{}
 	if err := recordSubmission(feed, time.Now(), subErr); err != nil {
 		logf("warn", "sitemap log: %v", err)
 	}

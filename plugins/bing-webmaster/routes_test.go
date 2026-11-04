@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -205,5 +206,29 @@ func TestUnknownRouteIs404(t *testing.T) {
 	}
 	if status, _, _ := request(t, "GET", "/import-now"); status != http.StatusNotFound {
 		t.Fatal(status)
+	}
+}
+
+func TestSubmitSitemapSharesOneDeadline(t *testing.T) {
+	h := newHost(t)
+	h.bing["GetUserSites"] = ok(`{"d":[{"Url":"https://example.com/","IsVerified":true}]}`)
+	h.bing["SubmitFeed"] = ok(`{"d":null}`)
+	slow := h.call
+	callHost = func(fn string, a, out any) error {
+		if fn == "http.fetch" {
+			time.Sleep(700 * time.Millisecond)
+		}
+		return slow(fn, a, out)
+	}
+	if status, body, _ := request(t, "POST", "/submit-sitemap"); status != 200 {
+		t.Fatalf("%d %v", status, body)
+	}
+	f := h.fetches()
+	if len(f) != 2 {
+		t.Fatalf("%d fetches", len(f))
+	}
+	first, second := f[0].args["timeout_ms"].(int), f[1].args["timeout_ms"].(int)
+	if second >= first {
+		t.Fatalf("timeouts %d then %d: the second must be cut by the time the first took", first, second)
 	}
 }
