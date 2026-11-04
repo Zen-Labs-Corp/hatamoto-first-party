@@ -260,7 +260,7 @@ func TestDeliverConsentGiven(t *testing.T) {
 			t.Errorf("consent %v: fetch calls = %d", v, h.count("http.fetch"))
 		}
 	}
-	for _, v := range []any{false, 0.0, "", "no", "off", []any{"yes"}, nil} {
+	for _, v := range []any{false, 0.0, "", "no", "off", []any{"no"}, nil} {
 		if truthy(v) {
 			t.Errorf("truthy(%v) = true", v)
 		}
@@ -503,5 +503,24 @@ func TestDeliverInvalidPixelOrVersionIsNotConfigured(t *testing.T) {
 				t.Fatalf("row = %+v", r)
 			}
 		})
+	}
+}
+
+func TestTruthyList(t *testing.T) {
+	cases := []struct {
+		v    any
+		want bool
+	}{
+		{[]any{"Yes"}, true},
+		{[]any{"", "on"}, true},
+		{[]any{false, true}, true},
+		{[]any{}, false},
+		{[]any{"no", ""}, false},
+		{[]any{[]any{"yes"}}, true},
+	}
+	for _, c := range cases {
+		if got := truthy(c.v); got != c.want {
+			t.Errorf("truthy(%v) = %v, want %v", c.v, got, c.want)
+		}
 	}
 }
