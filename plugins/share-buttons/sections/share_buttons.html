@@ -3,7 +3,7 @@
 {{- $t := .Title -}}{{- if .Content.title -}}{{- $t = .Content.title -}}{{- end -}}
 {{- $s := plugin_share_buttons_style -}}{{- if and (ne $s "icons") (ne $s "labels") -}}{{- $s = "both" -}}{{- end -}}
 {{- if $u -}}
-<nav class="share-buttons share-buttons--{{$s}}" aria-label="Share"><ul class="share-buttons__list">
+<div class="hm-container share-buttons-section"><nav class="share-buttons share-buttons--{{$s}}" aria-label="Share"><ul class="share-buttons__list">
 {{- $end := false -}}{{- $fb := false -}}
 {{- range $i := 6 -}}{{- if not $end -}}
   {{- $n := "" -}}{{- if not $fb -}}{{- $n = plugin_share_buttons_network $i -}}{{- if eq $n "" -}}{{- if eq $i 0 -}}{{- $fb = true -}}{{- else -}}{{- $n = "-" -}}{{- end -}}{{- end -}}{{- end -}}
@@ -17,6 +17,6 @@
   {{- else if eq $n "email" -}}<li class="share-buttons__item share-buttons__item--email"><a class="share-buttons__link" href="mailto:?subject={{$t}}&body={{$u}}" aria-label="Share by email"><span class="share-buttons__icon" aria-hidden="true"></span><span class="share-buttons__label">Email</span></a></li>
   {{- end -}}
 {{- end -}}{{- end -}}
-</ul></nav>
+</ul></nav></div>
 {{- end -}}
 {{end}}

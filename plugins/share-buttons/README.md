@@ -35,7 +35,8 @@ Social Pug.
    title. With no address the section renders nothing. Section packs carry no
    schema, so the page editor shows no `url` or `title` field: those keys can
    only be set in the page's JSON (API or import). Normally leave them out and
-   set Site URL.
+   set Site URL. The section uses the theme's `hm-container` class for its
+   width.
 
 Remove the `{{template "plugin/share_buttons/links" .}}` call from your theme
 before you disable or uninstall the plugin. Core removes the plugin's partials

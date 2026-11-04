@@ -135,7 +135,7 @@ type link struct {
 	Href  string
 }
 
-var allowedElements = map[string]bool{"nav": true, "ul": true, "li": true, "a": true, "span": true}
+var allowedElements = map[string]bool{"div": true, "nav": true, "ul": true, "li": true, "a": true, "span": true}
 
 var bannedElements = strings.Fields(`script style iframe object embed link meta base form svg math use animate set
 foreignobject noscript template textarea title xmp plaintext noembed noframes frame frameset applet portal dialog`)
@@ -476,6 +476,11 @@ func TestPartialSectionParity(t *testing.T) {
 		f := realFuncs(t, fixture)
 		p := renderWith(t, f, partialName, partialDot("https://example.com/a?b=1", "Title & more", ""))
 		s := renderWith(t, f, sectionName, sectionWith("", "", map[string]any{"url": "https://example.com/a?b=1", "title": "Title & more"}))
+		if i, j := strings.Index(s, "<nav"), strings.LastIndex(s, "</nav>"); i < 0 || j < 0 {
+			t.Fatalf("%s: section has no nav:\n%s", fixture, s)
+		} else {
+			s = s[i : j+len("</nav>")]
+		}
 		if collapse(p) != collapse(s) {
 			t.Errorf("%s: partial and section differ:\n%s\n%s", fixture, p, s)
 		}
@@ -487,7 +492,8 @@ func TestPartialSectionParity(t *testing.T) {
 func TestClassNamesArePrefixed(t *testing.T) {
 	const prefix = "share-buttons"
 	ok := func(c string) bool {
-		return c == prefix || strings.HasPrefix(c, prefix+"__") || strings.HasPrefix(c, prefix+"--")
+		// hm-container is the theme's container class, used on the section wrapper.
+		return c == "hm-container" || c == prefix+"-section" || c == prefix || strings.HasPrefix(c, prefix+"__") || strings.HasPrefix(c, prefix+"--")
 	}
 	actions := regexp.MustCompile(`\{\{.*?\}\}`)
 	attr := regexp.MustCompile(`class="([^"]*)"`)
