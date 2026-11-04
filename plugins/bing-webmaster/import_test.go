@@ -103,8 +103,8 @@ func TestImportStoresEverythingAndPrunes(t *testing.T) {
 	if err != nil || !res.Done || res.Rows != 5 || res.Error != "" || len(res.Remaining) != 0 {
 		t.Fatalf("%v %+v", err, res)
 	}
-	want := []string{"INSERT INTO traffic_daily", "INSERT INTO query_stats", "INSERT INTO page_stats", "DELETE FROM crawl_issues", "INSERT INTO crawl_issues",
-		"DELETE FROM feeds", "INSERT INTO feeds", "INSERT INTO import_runs",
+	want := []string{"INSERT INTO traffic_daily", "INSERT INTO query_stats", "INSERT INTO page_stats", "INSERT INTO crawl_issues", "DELETE FROM crawl_issues",
+		"INSERT INTO feeds", "DELETE FROM feeds", "INSERT INTO import_runs",
 		"DELETE FROM traffic_daily", "DELETE FROM query_stats", "DELETE FROM page_stats", "DELETE FROM import_runs", "DELETE FROM sitemap_submissions"}
 	got := stmts(t, h)
 	if len(got) != len(want) {
@@ -144,7 +144,7 @@ func TestRepeatedImportUpsertsTheSameKeys(t *testing.T) {
 		}
 		runs = append(runs, up)
 	}
-	if len(runs[0]) != 3 || !reflect.DeepEqual(runs[0], runs[1]) {
+	if len(runs[0]) != 5 || !reflect.DeepEqual(runs[0], runs[1]) {
 		t.Fatalf("%d upserts; second run differs", len(runs[0]))
 	}
 }

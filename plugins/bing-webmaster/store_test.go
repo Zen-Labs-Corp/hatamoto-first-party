@@ -94,7 +94,7 @@ func TestStoreBatchesAndDedupes(t *testing.T) {
 	}
 }
 
-func TestSnapshotsAreReplacedDeleteThenInsert(t *testing.T) {
+func TestSnapshotsAreUpsertedThenSwept(t *testing.T) {
 	h := newHost(t)
 	now := time.Date(2026, 11, 4, 9, 0, 0, 0, time.UTC)
 	if err := replaceCrawlIssues([]crawlRow{{URL: "https://example.com/a", HTTPCode: 404, Issues: 4}, {URL: "https://example.com/a"}}, now); err != nil {
@@ -104,7 +104,7 @@ func TestSnapshotsAreReplacedDeleteThenInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := execs(t, h)
-	want := []string{"DELETE FROM crawl_issues", "INSERT INTO crawl_issues", "DELETE FROM feeds", "INSERT INTO feeds"}
+	want := []string{"INSERT INTO crawl_issues", "DELETE FROM crawl_issues WHERE seen_at < $1", "INSERT INTO feeds", "DELETE FROM feeds WHERE seen_at < $1"}
 	if len(got) != len(want) {
 		t.Fatalf("%d statements", len(got))
 	}
@@ -113,16 +113,61 @@ func TestSnapshotsAreReplacedDeleteThenInsert(t *testing.T) {
 			t.Errorf("%d: %s", i, got[i].sql())
 		}
 	}
-	if n := len(got[1].args["args"].([]any)); n != 5 {
+	if !strings.Contains(got[0].sql(), "ON CONFLICT (url) DO UPDATE") || !strings.Contains(got[2].sql(), "ON CONFLICT (url) DO UPDATE") {
+		t.Fatal("snapshot rows must be upserts")
+	}
+	if n := len(got[0].args["args"].([]any)); n != 5 {
 		t.Fatalf("duplicate url not collapsed: %d args", n)
 	}
-	// An empty answer from a successful fetch clears the snapshot and inserts nothing.
+	// An empty answer from a successful fetch sweeps everything and inserts nothing.
 	h.calls = nil
 	if err := replaceCrawlIssues(nil, now); err != nil {
 		t.Fatal(err)
 	}
-	if got := execs(t, h); len(got) != 1 || got[0].sql() != "DELETE FROM crawl_issues" {
+	if got := execs(t, h); len(got) != 1 || !strings.HasPrefix(got[0].sql(), "DELETE FROM crawl_issues WHERE") {
 		t.Fatalf("%+v", got)
+	}
+}
+
+func TestFailedSnapshotInsertKeepsTheOldRows(t *testing.T) {
+	h := newHost(t)
+	inner := callHost
+	callHost = func(fn string, a, out any) error {
+		if fn == "db.exec" && strings.HasPrefix(a.(map[string]any)["sql"].(string), "INSERT") {
+			return errors.New("insert failed")
+		}
+		return inner(fn, a, out)
+	}
+	now := time.Date(2026, 11, 4, 9, 0, 0, 0, time.UTC)
+	if err := replaceCrawlIssues([]crawlRow{{URL: "https://example.com/a"}}, now); err == nil {
+		t.Fatal("want the insert error")
+	}
+	if err := replaceFeeds([]feedRow{{URL: "https://example.com/s.xml"}}, now); err == nil {
+		t.Fatal("want the insert error")
+	}
+	for _, c := range execs(t, h) {
+		if strings.HasPrefix(c.sql(), "DELETE") {
+			t.Fatalf("old snapshot deleted after a failed insert: %s", c.sql())
+		}
+	}
+}
+
+func TestOverLongKeysAreSkipped(t *testing.T) {
+	h := newHost(t)
+	now := time.Date(2026, 11, 4, 9, 0, 0, 0, time.UTC)
+	long := "https://example.com/" + strings.Repeat("x", maxKeyBytes)
+	if err := replaceCrawlIssues([]crawlRow{{URL: long}, {URL: "https://example.com/ok"}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeStats("page_stats", []statRow{{Key: long, Week: "2026-10-01"}, {Key: "https://example.com/ok", Week: "2026-10-01"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := execs(t, h)
+	if n := len(got[0].args["args"].([]any)); n != 5 {
+		t.Fatalf("crawl insert has %d args, want only the short row", n)
+	}
+	if n := len(got[2].args["args"].([]any)); n != 6 {
+		t.Fatalf("stats insert has %d args, want only the short row", n)
 	}
 }
 

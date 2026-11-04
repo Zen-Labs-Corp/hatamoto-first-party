@@ -17,6 +17,7 @@ const (
 	retentionStats = 16  // months traffic_daily, query_stats and page_stats are kept
 	retentionLogs  = 30  // days import_runs and sitemap_submissions are kept
 	maxErrorText   = 500
+	maxKeyBytes    = 2000 // longest url, query or page that is stored
 )
 
 // statTables maps the two weekly stat tables to their key column.
@@ -91,9 +92,11 @@ func storeStats(table string, rows []statRow) error {
 		return fmt.Errorf("unknown stats table %q", table)
 	}
 	rows = dedupe(rows, func(r statRow) string { return r.Week + "\x00" + r.Key })
-	data := make([][]any, len(rows))
-	for i, r := range rows {
-		data[i] = []any{r.Week, clean(r.Key), r.Clicks, r.Impressions, r.AvgClickPos, r.AvgImprPos}
+	data := make([][]any, 0, len(rows))
+	for _, r := range rows {
+		if !tooLong(r.Key) {
+			data = append(data, []any{r.Week, clean(r.Key), r.Clicks, r.Impressions, r.AvgClickPos, r.AvgImprPos})
+		}
 	}
 	return batchInsert("INSERT INTO "+table+" (week, "+col+", clicks, impressions, avg_click_position, avg_impression_position)",
 		[]string{"date", "", "", "", "", ""},
@@ -101,33 +104,48 @@ func storeStats(table string, rows []statRow) error {
 		data)
 }
 
-// replaceCrawlIssues swaps the stored snapshot for rows. Call it only after a
-// successful, complete fetch: an empty rows then means Bing lists no issues.
+// tooLong reports a key over maxKeyBytes: the btree index behind the primary
+// keys refuses rows of about 2.7 KB, so one long spam URL would fail a whole
+// batch. Such rows are skipped.
+func tooLong(s string) bool { return len(s) > maxKeyBytes }
+
+// replaceCrawlIssues swaps the stored snapshot for rows: it upserts each row
+// stamped with now, then deletes the rows this run did not see. A failed
+// insert therefore keeps the old data. Call it only after a successful,
+// complete fetch: an empty rows then means Bing lists no issues.
 func replaceCrawlIssues(rows []crawlRow, now time.Time) error {
-	if err := dbExec("DELETE FROM crawl_issues"); err != nil {
+	rows = dedupe(rows, func(r crawlRow) string { return r.URL })
+	data := make([][]any, 0, len(rows))
+	for _, r := range rows {
+		if !tooLong(r.URL) {
+			data = append(data, []any{clean(r.URL), r.HTTPCode, r.Issues, r.InLinks, now.UTC()})
+		}
+	}
+	err := batchInsert("INSERT INTO crawl_issues (url, http_code, issues, in_links, seen_at)",
+		[]string{"", "", "", "", "timestamptz"},
+		"ON CONFLICT (url) DO UPDATE SET http_code = EXCLUDED.http_code, issues = EXCLUDED.issues, in_links = EXCLUDED.in_links, seen_at = EXCLUDED.seen_at", data)
+	if err != nil {
 		return err
 	}
-	rows = dedupe(rows, func(r crawlRow) string { return r.URL })
-	data := make([][]any, len(rows))
-	for i, r := range rows {
-		data[i] = []any{clean(r.URL), r.HTTPCode, r.Issues, r.InLinks, now.UTC()}
-	}
-	return batchInsert("INSERT INTO crawl_issues (url, http_code, issues, in_links, seen_at)",
-		[]string{"", "", "", "", "timestamptz"}, "", data)
+	return dbExec("DELETE FROM crawl_issues WHERE seen_at < $1::timestamptz", now.UTC())
 }
 
 // replaceFeeds swaps the stored sitemap snapshot, as replaceCrawlIssues does.
 func replaceFeeds(rows []feedRow, now time.Time) error {
-	if err := dbExec("DELETE FROM feeds"); err != nil {
+	rows = dedupe(rows, func(r feedRow) string { return r.URL })
+	data := make([][]any, 0, len(rows))
+	for _, r := range rows {
+		if !tooLong(r.URL) {
+			data = append(data, []any{clean(r.URL), clean(r.Type), clean(r.Status), r.SubmittedAt, r.LastCrawledAt, r.URLCount, now.UTC()})
+		}
+	}
+	err := batchInsert("INSERT INTO feeds (url, type, status, submitted_at, last_crawled_at, url_count, seen_at)",
+		[]string{"", "", "", "timestamptz", "timestamptz", "", "timestamptz"},
+		"ON CONFLICT (url) DO UPDATE SET type = EXCLUDED.type, status = EXCLUDED.status, submitted_at = EXCLUDED.submitted_at, last_crawled_at = EXCLUDED.last_crawled_at, url_count = EXCLUDED.url_count, seen_at = EXCLUDED.seen_at", data)
+	if err != nil {
 		return err
 	}
-	rows = dedupe(rows, func(r feedRow) string { return r.URL })
-	data := make([][]any, len(rows))
-	for i, r := range rows {
-		data[i] = []any{clean(r.URL), clean(r.Type), clean(r.Status), r.SubmittedAt, r.LastCrawledAt, r.URLCount, now.UTC()}
-	}
-	return batchInsert("INSERT INTO feeds (url, type, status, submitted_at, last_crawled_at, url_count, seen_at)",
-		[]string{"", "", "", "timestamptz", "timestamptz", "", "timestamptz"}, "", data)
+	return dbExec("DELETE FROM feeds WHERE seen_at < $1::timestamptz", now.UTC())
 }
 
 func errorText(err error) string {

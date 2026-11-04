@@ -38,9 +38,11 @@ All routes (`GET /overview`, `POST /test`, `POST /submit-sitemap`,
 Everything is in the plugin's own tables; nothing is sent anywhere but Bing.
 
 - `traffic_daily`, `query_stats`, `page_stats`: Bing's daily site totals and weekly
-  query and page rows, kept 16 months, then deleted.
-- `crawl_issues`, `feeds`: the latest snapshot only; each successful import
-  replaces it, a failed one keeps the old one.
+  query and page rows, kept 16 months, then deleted (retention runs after every import, even
+  when one of its lists failed).
+- `crawl_issues`, `feeds`: the latest snapshot only. A successful fetch upserts
+  every row, then removes the rows Bing no longer lists; a failed one keeps the
+  old snapshot. Addresses over 2000 bytes are skipped.
 - `import_runs`, `sitemap_submissions`: kept 30 days.
 - `kv`: the import cursor and the resolved site.
 
