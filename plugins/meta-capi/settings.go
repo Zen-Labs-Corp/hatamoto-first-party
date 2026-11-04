@@ -1,6 +1,14 @@
 package main
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
+
+var (
+	graphVersionRe = regexp.MustCompile(`^v[0-9]{2}\.[0-9]$`)
+	pixelIDRe      = regexp.MustCompile(`^[0-9]{5,20}$`)
+)
 
 // settings is the plugin's configuration as the host returns it.
 type settings struct {
@@ -28,6 +36,13 @@ func loadSettings() (settings, error) {
 	s.AccessToken = strings.TrimSpace(s.AccessToken)
 	s.GraphVersion = orDefault(s.GraphVersion, "v26.0")
 	s.SiteURL = strings.TrimRight(strings.TrimSpace(s.SiteURL), "/")
+	// A malformed value would end up in the request URL; treat it as not set.
+	if !graphVersionRe.MatchString(s.GraphVersion) {
+		s.GraphVersion = ""
+	}
+	if !pixelIDRe.MatchString(s.PixelID) {
+		s.PixelID = ""
+	}
 	s.EventName = orDefault(s.EventName, "Lead")
 	s.EmailField = orDefault(s.EmailField, "email")
 	s.PhoneField = orDefault(s.PhoneField, "phone")
@@ -59,6 +74,9 @@ func (s settings) missing() []string {
 	}
 	if s.AccessToken == "" {
 		m = append(m, "access_token")
+	}
+	if s.GraphVersion == "" {
+		m = append(m, "graph_version")
 	}
 	return m
 }

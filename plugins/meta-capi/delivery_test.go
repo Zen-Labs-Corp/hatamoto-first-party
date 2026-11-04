@@ -484,3 +484,24 @@ func TestEventSourceURLFromSourcePath(t *testing.T) {
 		})
 	}
 }
+
+func TestDeliverInvalidPixelOrVersionIsNotConfigured(t *testing.T) {
+	for name, extra := range map[string]string{
+		"pixel":   `"pixel_id":"123/../x"`,
+		"version": `"graph_version":"v26.0/../x"`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHost(t)
+			h.settings = `{"pixel_id":"123456789","access_token":"` + sampleToken + `",` + extra + `}`
+			if err := onFormSubmitted(sample("sub-1")); err != nil {
+				t.Fatal(err)
+			}
+			if h.count("http.fetch") != 0 {
+				t.Fatal("fetch made with an invalid setting")
+			}
+			if r := h.rows["sub-1"]; r == nil || r.status != "skipped" || r.reason != "not_configured" {
+				t.Fatalf("row = %+v", r)
+			}
+		})
+	}
+}
