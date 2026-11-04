@@ -65,10 +65,12 @@ open: a missing grant, a host error or a bad setting gives the defaults, and
 the templates fall back to the default networks even when a func returns
 nothing, and the templates decide the fallback once per render: if the first
 network call fails they show the default list, otherwise a later failure just
-ends the list. The plugin keeps its settings for 2 seconds, so the 7 or 8 func
-calls of one render cost one settings read. A settings change can therefore
-take up to 2 seconds, plus the page cache clear that saving the settings
-triggers, to show on a page. The output is cached with the page.
+ends the list. The plugin keeps its settings for 300 ms, so the 7 or 8 func
+calls of one render cost one settings read. Core clears the page cache when
+settings are saved but cannot tell the plugin, so a page rendered right after a
+save (the window is under a second) can keep the previous settings until its
+page cache entry expires. Saving the settings again or clearing the page cache
+fixes it. The output is cached with the page.
 
 ## Build
 

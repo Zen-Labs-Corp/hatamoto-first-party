@@ -28,7 +28,7 @@ const (
 
 	// settingsTTL is how long the resolved settings are reused. A render makes
 	// 7-8 func calls; this keeps them to one settings.get.
-	settingsTTL = 2 * time.Second
+	settingsTTL = 300 * time.Millisecond
 )
 
 // now is the clock (replaced in tests).
