@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 const (
 	maxURLs         = 25
@@ -28,21 +31,32 @@ func loadSettings() (settings, error) {
 	default:
 		s.Strategy = strategyBoth
 	}
-	s.URLs = cleanPaths(s.URLs)
-	s.PublicURL = strings.TrimRight(strings.TrimSpace(s.PublicURL), "/")
-	if !strings.HasPrefix(s.PublicURL, "https://") && !strings.HasPrefix(s.PublicURL, "http://") {
-		s.PublicURL = ""
-	}
+	s.PublicURL = cleanOrigin(s.PublicURL)
+	s.URLs = cleanPaths(s.URLs, s.PublicURL)
 	return s, nil
 }
 
+// cleanOrigin returns scheme://host[:port] of an http(s) address, or "" when
+// the address is anything else (a path, query, fragment or credentials too).
+func cleanOrigin(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil ||
+		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 // cleanPaths keeps the paths that start with "/", trimmed and deduplicated,
-// at most maxURLs of them.
-func cleanPaths(in []string) []string {
+// at most maxURLs of them. A full URL on origin is reduced to its path.
+func cleanPaths(in []string, origin string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, p := range in {
 		p = strings.TrimSpace(p)
+		if rest, ok := strings.CutPrefix(p, origin); ok && origin != "" && (rest == "" || rest[0] == '/' || rest[0] == '?') {
+			p = "/" + strings.TrimPrefix(rest, "/")
+		}
 		if !strings.HasPrefix(p, "/") || seen[p] {
 			continue
 		}

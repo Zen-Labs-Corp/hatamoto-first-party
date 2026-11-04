@@ -27,6 +27,8 @@ type world struct {
 	psiCost  time.Duration
 	psiFail  error // when set, PSI answers this error
 	cruxCode int
+	dayDone  bool           // the "day complete" marker row
+	calls    map[string]int // host calls by function
 }
 
 type fieldRow struct{ status string }
@@ -55,6 +57,10 @@ func (w *world) count(prefix string) (n int) {
 }
 
 func (w *world) host(fn string, args, out any) error {
+	if w.calls == nil {
+		w.calls = map[string]int{}
+	}
+	w.calls[fn]++
 	switch fn {
 	case "settings.get":
 		return jsonInto(w.settings, out)
@@ -109,6 +115,12 @@ func (w *world) query(sql string, args []any, out any) error {
 			list = append(list, s)
 		}
 		cell = list
+	case strings.Contains(sql, "url = '' AND strategy = 'day'"):
+		list := []string{}
+		if w.dayDone {
+			list = append(list, "day")
+		}
+		cell = list
 	case strings.Contains(sql, "FROM progress"):
 		rows := []progressRow{}
 		for _, r := range w.progress {
@@ -133,6 +145,8 @@ func (w *world) prog(url, strategy string) *progressRow {
 
 func (w *world) exec(sql string, args []any) error {
 	switch {
+	case strings.Contains(sql, "INSERT INTO progress") && strings.Contains(sql, "'day'"):
+		w.dayDone = true
 	case strings.HasPrefix(sql, "INSERT INTO origin_summary"):
 		w.origins[args[1].(string)] = true
 	case strings.HasPrefix(sql, "INSERT INTO metrics") && strings.Contains(sql, "field_status"):
@@ -223,25 +237,24 @@ func TestNextCallResumesFromCheckpoint(t *testing.T) {
 	}
 }
 
-func TestFinishedDayMakesNoFetch(t *testing.T) {
+func TestFinishedDayMakesNoFetchAndRunsRetentionOnce(t *testing.T) {
 	w := newWorld(t, `{"api_key":"`+testKey+`","public_url":"https://s.example","strategy":"mobile","urls":["/a"]}`)
-	for range 5 {
-		if _, err := measureStep(); err != nil {
+	for range 3 {
+		if err := runCron(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	n := len(w.fetches)
-	if n != 3 { // origin, crux, psi
-		t.Fatalf("fetches = %v", w.fetches)
+	if len(w.fetches) != 3 || !w.dayDone || w.deletes != 3 { // origin, crux, psi
+		t.Fatalf("fetches = %v, done %v, deletes %d", w.fetches, w.dayDone, w.deletes)
 	}
-	if err := runCron(); err != nil {
-		t.Fatal(err)
+	settingsCalls := w.calls["settings.get"]
+	for range 5 {
+		if err := runCron(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if len(w.fetches) != n {
-		t.Fatalf("finished day fetched again: %v", w.fetches)
-	}
-	if w.deletes != 3 {
-		t.Fatalf("retention ran %d deletes", w.deletes)
+	if len(w.fetches) != 3 || w.deletes != 3 || w.calls["settings.get"] != settingsCalls || w.calls["entities.list"] != 0 {
+		t.Fatalf("finished day did work again: fetches %v, deletes %d, calls %v", w.fetches, w.deletes, w.calls)
 	}
 }
 

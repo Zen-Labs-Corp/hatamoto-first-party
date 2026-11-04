@@ -168,6 +168,21 @@ func markCrux(day, url, strategy string) error {
 		ON CONFLICT (day, url, strategy) DO UPDATE SET crux_done = true`, day, url, strategy)
 }
 
+// markDayDone records that every step of day is finished, so later calls skip
+// the day without loading the plan. The row has no page (url ”), so it is
+// neither work nor counted.
+func markDayDone(day string) error {
+	return dbExec(`INSERT INTO progress (day, url, strategy, crux_done, lab_state) VALUES ($1::date, '', 'day', true, 'ok')
+		ON CONFLICT (day, url, strategy) DO NOTHING`, day)
+}
+
+// dayDone reports whether markDayDone ran for day.
+func dayDone(day string) (bool, error) {
+	var marks []string
+	err := dbJSON(`SELECT coalesce(jsonb_agg(strategy), '[]'::jsonb) FROM progress WHERE day = $1::date AND url = '' AND strategy = 'day'`, &marks, day)
+	return len(marks) > 0, err
+}
+
 // markLab records a lab run: its state and one more attempt. A failed run
 // keeps the "ok" state of an earlier run of the same day.
 func markLab(day, url, strategy, state string) error {
@@ -226,6 +241,7 @@ func dayRows(day, url string) ([]metricRow, error) {
 
 type seriesPoint struct {
 	Day string   `json:"d"`
+	Lab *float64 `json:"lab"`
 	LCP *float64 `json:"lcp"`
 	INP *float64 `json:"inp"`
 	CLS *float64 `json:"cls"`
@@ -237,13 +253,16 @@ type series struct {
 	Points   []seriesPoint `json:"points"`
 }
 
-// seriesFor returns the field values per day since sinceDay for the pages.
+// seriesFor returns the field values and ok lab scores per day since sinceDay
+// for the pages.
 func seriesFor(urls []string, sinceDay string) ([]series, error) {
 	list, _ := json.Marshal(urls)
 	var out []series
 	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM
-		(SELECT url, strategy, jsonb_agg(jsonb_build_object('d', to_char(day, 'YYYY-MM-DD'), 'lcp', lcp_ms, 'inp', inp_ms, 'cls', cls) ORDER BY day) AS points
-		   FROM metrics WHERE day >= $1::date AND field_status = 'ok'
+		(SELECT url, strategy, jsonb_agg(jsonb_build_object('d', to_char(day, 'YYYY-MM-DD'),
+			'lcp', CASE WHEN field_status = 'ok' THEN lcp_ms END, 'inp', CASE WHEN field_status = 'ok' THEN inp_ms END,
+			'cls', CASE WHEN field_status = 'ok' THEN cls END, 'lab', CASE WHEN lab_status = 'ok' THEN lab_score END) ORDER BY day) AS points
+		   FROM metrics WHERE day >= $1::date AND (field_status = 'ok' OR lab_status = 'ok')
 		    AND url IN (SELECT jsonb_array_elements_text($2::text::jsonb))
 		  GROUP BY url, strategy) s`, &out, sinceDay, string(list))
 	return out, err
@@ -277,7 +296,7 @@ func dayCounts(day string) (done int, at string, err error) {
 		At   string `json:"at"`
 	}
 	err = dbJSON(`SELECT jsonb_build_object(
-		'done', (SELECT count(*) FROM progress WHERE day = $1::date AND crux_done AND (lab_state <> 'pending' AND (lab_state <> 'timeout' OR lab_attempts >= $2))),
+		'done', (SELECT count(*) FROM progress WHERE day = $1::date AND url <> '' AND crux_done AND (lab_state <> 'pending' AND (lab_state <> 'timeout' OR lab_attempts >= $2))),
 		'at', coalesce((SELECT to_char(max(measured_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM metrics WHERE day = $1::date), ''))`, &r, day, maxLabAttempts)
 	return r.Done, r.At, err
 }

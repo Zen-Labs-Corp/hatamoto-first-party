@@ -76,7 +76,7 @@ type deviceRow struct {
 func urlEntry(path string, strategies []string, rows, labs []metricRow, all []series) map[string]any {
 	entry := map[string]any{"path": path}
 	for _, s := range strategies {
-		d := deviceRow{FieldStatus: "pending", LabStatus: labPending, Series: map[string][]point{"lcp": {}, "inp": {}, "cls": {}}}
+		d := deviceRow{FieldStatus: "pending", LabStatus: labPending, Series: map[string][]point{"lcp": {}, "inp": {}, "cls": {}, "lab": {}}}
 		for _, r := range rows {
 			if r.URL == path && r.Strategy == s {
 				d.Day, d.FieldStatus, d.LabScore, d.LabStatus, d.MeasuredAt = r.Day, r.FieldStatus, r.LabScore, r.LabStatus, r.MeasuredAt
@@ -98,7 +98,7 @@ func urlEntry(path string, strategies []string, rows, labs []metricRow, all []se
 				continue
 			}
 			for _, p := range se.Points {
-				for name, v := range map[string]*float64{"lcp": p.LCP, "inp": p.INP, "cls": p.CLS} {
+				for name, v := range map[string]*float64{"lcp": p.LCP, "inp": p.INP, "cls": p.CLS, "lab": p.Lab} {
 					if v != nil {
 						d.Series[name] = append(d.Series[name], point{p.Day, *v})
 					}

@@ -61,7 +61,7 @@ function badge(cat) {
 function valueNode(metric, value, points) {
   const box = el("div", { className: "metric" });
   if (!value) {
-    box.append(el("span", { className: "muted", textContent: "No data" }));
+    box.append(el("span", { className: "muted", textContent: "Not enough field data" }));
     return box;
   }
   box.append(el("span", { className: "value", textContent: format(metric, value.value) }), " ", badge(value.cat));
@@ -76,7 +76,7 @@ const PAD = 2;
 function sparkline(metric, points) {
   const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: `spark ${metric}`, role: "img" });
   root.append(svg("title"));
-  root.firstChild.textContent = `${metric.toUpperCase()}, last ${points.length} days with data`;
+  root.firstChild.textContent = `${metric === "lab" ? "Lab score" : metric.toUpperCase()}, last ${points.length} days with data`;
   const vs = points.map((p) => p.v);
   const lo = Math.min(...vs);
   const hi = Math.max(...vs);
@@ -96,6 +96,7 @@ function labNode(d) {
     const tier = d.lab_score >= 90 ? "good" : d.lab_score >= 50 ? "needs-improvement" : "poor";
     const box = el("span", {}, el("span", { className: `score ${tier}`, textContent: String(d.lab_score) }));
     if (d.lab_day && d.lab_day !== d.day) box.append(" ", el("span", { className: "muted", textContent: d.lab_day }));
+    if (d.series.lab && d.series.lab.length) box.append(sparkline("lab", d.series.lab));
     return box;
   }
   const text = { timeout: "Lab timed out", error: "Lab failed" }[d.lab_status] || "Waiting";

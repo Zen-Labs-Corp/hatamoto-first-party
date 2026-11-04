@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"testing"
 
 	"hatamoto.dev/sdk"
@@ -122,5 +123,34 @@ func TestResolveTargetsDegradesWhenListFails(t *testing.T) {
 		if !unavailable || !ok || origin != "https://s.example" || !slices.Equal(targets, []string{"/"}) {
 			t.Fatalf("%s: %v %q %v %v", code, targets, origin, ok, unavailable)
 		}
+	}
+}
+
+func TestPublicURLKeepsOnlySchemeAndHost(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://x.example/":      "https://x.example",
+		" http://x.example:8080 ": "http://x.example:8080",
+		"https://x.example/en":    "",
+		"https://x.example?a=1":   "",
+		"https://x.example/#top":  "",
+		"https://u:p@x.example":   "",
+		"ftp://x.example":         "",
+		"https://":                "",
+		"x.example":               "",
+	} {
+		var calls []string
+		fakeSettings(t, `{"public_url":`+strconv.Quote(raw)+`}`, &calls)
+		if s, _ := loadSettings(); s.PublicURL != want {
+			t.Errorf("public_url %q -> %q, want %q", raw, s.PublicURL, want)
+		}
+	}
+}
+
+func TestFullURLsOnTheOriginBecomePaths(t *testing.T) {
+	var calls []string
+	fakeSettings(t, `{"public_url":"https://x.example","urls":["https://x.example/pricing","https://x.example","https://x.example/a?b=1","https://other.example/z","https://x.example.evil/q","/ok"]}`, &calls)
+	s, _ := loadSettings()
+	if want := []string{"/pricing", "/", "/a?b=1", "/ok"}; !slices.Equal(s.URLs, want) {
+		t.Fatalf("urls = %v, want %v", s.URLs, want)
 	}
 }

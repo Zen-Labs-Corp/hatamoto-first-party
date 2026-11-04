@@ -216,3 +216,13 @@ func TestMeasureNowRunsTheLabForTheGivenStrategy(t *testing.T) {
 		t.Fatalf("unconfigured strategy: %d", res.Status)
 	}
 }
+
+func TestLabScoresGetASeries(t *testing.T) {
+	rows := []metricRow{{URL: "/a", Day: "2026-11-04", Strategy: "mobile", FieldStatus: "none", LabStatus: labPending}}
+	lab := 80.0
+	all := []series{{URL: "/a", Strategy: "mobile", Points: []seriesPoint{{Day: "2026-11-03", Lab: &lab}}}}
+	b, _ := json.Marshal(urlEntry("/a", []string{"mobile"}, rows, nil, all))
+	if !strings.Contains(string(b), `"lab":[{"day":"2026-11-03","v":80}]`) {
+		t.Fatalf("entry = %s", b)
+	}
+}
