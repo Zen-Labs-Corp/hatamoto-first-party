@@ -9,6 +9,7 @@ const METRICS = ["lcp", "inp", "cls"];
 const NOTICES = {
   no_api_key: "Add an API key in Settings to load field data.",
   no_site_address: "Set the site address in Settings > General or the Public URL setting.",
+  entities_unavailable: "The page list could not be read, so only the home page is tracked. List the pages in Settings, or allow reading entities.",
   no_data: "First measurements run within the next minutes, or use Measure now.",
 };
 

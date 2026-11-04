@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+
+	"hatamoto.dev/sdk"
 )
 
 func TestPickTargetsDefault(t *testing.T) {
@@ -82,11 +84,43 @@ func TestResolveTargetsSkipsListWhenSettingsAnswer(t *testing.T) {
 	var calls []string
 	fakeSettings(t, `{"urls":["/a"],"public_url":"https://x.example"}`, &calls)
 	s, _ := loadSettings()
-	targets, origin, ok, err := resolveTargets(s)
-	if err != nil || !ok || origin != "https://x.example" || !slices.Equal(targets, []string{"/a"}) {
-		t.Fatalf("%v %q %v %v", targets, origin, ok, err)
+	targets, origin, ok, unavailable := resolveTargets(s)
+	if unavailable || !ok || origin != "https://x.example" || !slices.Equal(targets, []string{"/a"}) {
+		t.Fatalf("%v %q %v %v", targets, origin, ok, unavailable)
 	}
 	if slices.Contains(calls, "entities.list") {
 		t.Fatal("entities.list called although urls and public_url are set")
+	}
+}
+
+func TestListPublishedUsesSmallPages(t *testing.T) {
+	var limits []any
+	callHost = func(fn string, args, out any) error {
+		if fn == "entities.list" {
+			limits = append(limits, args.(map[string]any)["limit"])
+			return jsonInto(`{"items":[],"next_cursor":"c"}`, out)
+		}
+		return nil
+	}
+	if _, err := listPublished(); err != nil {
+		t.Fatal(err)
+	}
+	if len(limits) != 5 || limits[0] != 20 {
+		t.Fatalf("limits = %v", limits)
+	}
+}
+
+func TestResolveTargetsDegradesWhenListFails(t *testing.T) {
+	for _, code := range []string{sdk.ErrCapabilityDenied, sdk.ErrInvalidArgument} {
+		callHost = func(fn string, _, _ any) error {
+			if fn == "entities.list" {
+				return &sdk.HostError{Code: code, Message: "result over 2097152 bytes; ask for less"}
+			}
+			return nil
+		}
+		targets, origin, ok, unavailable := resolveTargets(settings{PublicURL: "https://s.example"})
+		if !unavailable || !ok || origin != "https://s.example" || !slices.Equal(targets, []string{"/"}) {
+			t.Fatalf("%s: %v %q %v %v", code, targets, origin, ok, unavailable)
+		}
 	}
 }

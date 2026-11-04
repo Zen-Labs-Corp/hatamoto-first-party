@@ -34,10 +34,7 @@ func loadPlan() (plan, error) {
 	if s.APIKey == "" {
 		return plan{}, errNoKey
 	}
-	targets, origin, ok, err := resolveTargets(s)
-	if err != nil {
-		return plan{}, err
-	}
+	targets, origin, ok, _ := resolveTargets(s)
 	if !ok {
 		return plan{}, errNoOrigin
 	}

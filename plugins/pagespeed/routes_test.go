@@ -149,3 +149,19 @@ func TestUnknownRoute(t *testing.T) {
 		t.Fatalf("status %d", res.Status)
 	}
 }
+
+func TestOverviewAnswersWhenEntityListFails(t *testing.T) {
+	n := 0
+	routeHost(t, `{"api_key":"k","public_url":"https://s.example"}`, nil, &n)
+	inner := callHost
+	callHost = func(fn string, args, out any) error {
+		if fn == "entities.list" {
+			return &sdk.HostError{Code: sdk.ErrInvalidArgument, Message: "result over 2097152 bytes; ask for less"}
+		}
+		return inner(fn, args, out)
+	}
+	res := call(t, "GET", "/overview", "")
+	if res.Status != 200 || !strings.Contains(res.Body, `"entities_unavailable"`) || !strings.Contains(res.Body, `"path":"/"`) {
+		t.Fatalf("%d %s", res.Status, res.Body)
+	}
+}

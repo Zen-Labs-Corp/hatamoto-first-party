@@ -13,8 +13,10 @@ type entity struct {
 }
 
 const (
-	listLimit = 50
-	listPages = 2
+	// The host refuses a list answer over 2 MiB and each item carries all of
+	// its attributes, so pages stay small; 5 x 20 keeps the ~100 entity cap.
+	listLimit = 20
+	listPages = 5
 )
 
 // listPublished returns the first pages of published entities. The host lists
@@ -91,15 +93,18 @@ func siteOrigin(s settings, ents []entity) (string, bool) {
 }
 
 // resolveTargets returns the pages to track and the site origin. It only asks
-// the host for entities when the settings do not already answer both.
-func resolveTargets(s settings) (targets []string, origin string, ok bool, err error) {
+// the host for entities when the settings do not already answer both. When the
+// list fails (no grant, answer too large, ...) it degrades to the home page and
+// reports unavailable, so the caller can show a notice.
+func resolveTargets(s settings) (targets []string, origin string, ok, unavailable bool) {
 	var ents []entity
 	if len(s.URLs) == 0 || s.PublicURL == "" {
-		if ents, err = listPublished(); err != nil && len(ents) == 0 {
-			return nil, "", false, err
+		var err error
+		if ents, err = listPublished(); err != nil {
+			logf("warn", "pagespeed: entities.list: %v", err)
+			unavailable = len(ents) == 0
 		}
-		err = nil
 	}
 	origin, ok = siteOrigin(s, ents)
-	return pickTargets(s, ents), origin, ok, nil
+	return pickTargets(s, ents), origin, ok, unavailable
 }

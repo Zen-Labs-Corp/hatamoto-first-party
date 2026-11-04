@@ -104,10 +104,7 @@ func overview() (sdk.HTTPResponse, error) {
 	if err != nil {
 		return fail(err)
 	}
-	targets, _, originOK, err := resolveTargets(s)
-	if err != nil {
-		return fail(err)
-	}
+	targets, _, originOK, unavailable := resolveTargets(s)
 	day := today()
 	since := now().UTC().AddDate(0, 0, -seriesDays).Format(dateFmt)
 	rows, err := latestRows()
@@ -133,6 +130,9 @@ func overview() (sdk.HTTPResponse, error) {
 	}
 	if !originOK {
 		notices = append(notices, "no_site_address")
+	}
+	if unavailable {
+		notices = append(notices, "entities_unavailable")
 	}
 	urls := make([]map[string]any, 0, len(targets))
 	stored := false
