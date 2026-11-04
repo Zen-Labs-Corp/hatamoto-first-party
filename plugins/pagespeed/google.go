@@ -32,9 +32,9 @@ var errBudget = errors.New("out of time for this call")
 // errTimeout marks a request that did not finish in time.
 var errTimeout = errors.New("request timed out")
 
-// fetch calls the host's http.fetch. The Google API key travels in the query
-// string, so no error built here carries the request URL, and every error
-// passes through redact. An answer cut at the host's 1 MiB cap is an error.
+// fetch calls the host's http.fetch. The Google API key travels in the
+// X-Goog-Api-Key header, never in the URL (the host logs URLs). No error built
+// here carries the request URL, and every error passes through redact. An answer cut at the host's 1 MiB cap is an error.
 func fetch(key, method, rawURL, body string) (fetched, error) {
 	timeout := fetchTimeout
 	if !budgetEnd.IsZero() {
@@ -47,10 +47,12 @@ func fetch(key, method, rawURL, body string) (fetched, error) {
 	args := map[string]any{
 		"method": method, "url": rawURL, "timeout_ms": int(timeout / time.Millisecond),
 	}
+	headers := map[string]string{"X-Goog-Api-Key": key}
 	if body != "" {
-		args["headers"] = map[string]string{"Content-Type": "application/json"}
+		headers["Content-Type"] = "application/json"
 		args["body"] = body
 	}
+	args["headers"] = headers
 	var res fetched
 	if err := callHost("http.fetch", args, &res); err != nil {
 		return fetched{}, redact(err, key)

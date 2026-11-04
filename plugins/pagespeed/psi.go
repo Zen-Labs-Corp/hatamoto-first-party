@@ -33,7 +33,6 @@ func runPSI(key, target, strategy string) (labResult, error) {
 	q.Set("strategy", strategy)
 	q.Set("category", "performance")
 	q.Set("fields", "lighthouseResult/categories/performance/score")
-	q.Set("key", key)
 	res, err := fetch(key, "GET", psiEndpoint+"?"+q.Encode(), "")
 	if err != nil {
 		if isTimeout(err) {

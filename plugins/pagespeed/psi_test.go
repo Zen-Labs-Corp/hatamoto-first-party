@@ -51,3 +51,28 @@ func TestPSIErrorsHideTheKey(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestKeyTravelsInHeaderNotInURL(t *testing.T) {
+	var reqs []map[string]any
+	fakeFetch(t, &reqs, func(map[string]any) (fetched, error) {
+		return fetched{Status: 200, Body: `{"lighthouseResult":{"categories":{"performance":{"score":0.9}}}}`}, nil
+	})
+	if _, err := runPSI(testKey, "https://s.example/x", "mobile"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queryCrux(testKey, "https://s.example/x", "PHONE", false); err != nil {
+		t.Fatal(err)
+	}
+	if len(reqs) != 2 {
+		t.Fatalf("%d requests", len(reqs))
+	}
+	for _, r := range reqs {
+		u := r["url"].(string)
+		if strings.Contains(u, testKey) || strings.Contains(u, url.QueryEscape(testKey)) || strings.Contains(u, "key=") {
+			t.Fatalf("key in URL %s", u)
+		}
+		if r["headers"].(map[string]string)["X-Goog-Api-Key"] != testKey {
+			t.Fatalf("headers = %v", r["headers"])
+		}
+	}
+}

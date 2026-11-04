@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 )
 
@@ -36,7 +35,7 @@ func queryCrux(key, target, formFactor string, origin bool) (fieldResult, error)
 		"formFactor": formFactor,
 		"metrics":    []string{"largest_contentful_paint", "interaction_to_next_paint", "cumulative_layout_shift"},
 	})
-	res, err := fetch(key, "POST", cruxEndpoint+"?key="+url.QueryEscape(key), string(body))
+	res, err := fetch(key, "POST", cruxEndpoint, string(body))
 	if err != nil {
 		return fieldResult{Status: fieldError}, err
 	}
