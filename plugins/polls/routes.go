@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"hatamoto.dev/sdk"
@@ -65,6 +66,9 @@ func handleRecount(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	n, err := recount(cfg)
 	if err != nil {
 		_ = logf("warn", "polls: recount of %q failed: %v", cfg.Slug, err)
+		if errors.Is(err, errRecountIncomplete) {
+			return fail(http.StatusGatewayTimeout, "Recount ran out of time before it finished. The form has too many submissions to recount within the time limit of a plugin route (about 8 seconds); the tallies were not changed.")
+		}
 		return fail(http.StatusInternalServerError, "recount failed")
 	}
 	return reply(http.StatusOK, map[string]any{"ok": true, "responses": n})

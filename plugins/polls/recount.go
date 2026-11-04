@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	recountPage     = 100
+	recountPage     = 200 // the most forms.submissions returns
 	recountDeadline = 8 * time.Second
 	statusSpam      = "spam"
 )
@@ -50,9 +50,9 @@ ON CONFLICT (form, field, option) DO UPDATE SET n = excluded.n`
 // the same clock.
 const dbNow = `SELECT to_jsonb(clock_timestamp())`
 
-// recountChunkBytes keeps one db.exec argument well under the 1 MiB request
-// limit of the host.
-const recountChunkBytes = 512 << 10
+// recountChunk is the most bytes of response rows one db.exec call carries,
+// well under the 1 MiB request limit of the host.
+var recountChunk = 512 << 10
 
 type submission struct {
 	ID        string         `json:"id"`
@@ -124,7 +124,7 @@ func recount(cfg formCfg) (int, error) {
 			break
 		}
 	}
-	for _, chunk := range chunks(responses, recountChunkBytes) {
+	for _, chunk := range chunks(responses, recountChunk) {
 		if now().Sub(start) > recountDeadline {
 			return 0, errRecountIncomplete
 		}

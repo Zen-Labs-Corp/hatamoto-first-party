@@ -95,7 +95,7 @@ func TestRecountMatchesAnIndependentCount(t *testing.T) {
 	if status != http.StatusOK || body["responses"] != float64(wantResponses) {
 		t.Fatalf("status %d body %v, want %d responses", status, body, wantResponses)
 	}
-	if !reflect.DeepEqual(offsets, []int{0, 100, 200}) {
+	if !reflect.DeepEqual(offsets, []int{0, 200}) {
 		t.Fatalf("offsets %v", offsets)
 	}
 	rows, finish := recounted(t, f)
@@ -338,5 +338,50 @@ func TestRecountRoutePurgesAndToleratesPurgeFailure(t *testing.T) {
 	status, body := postRecount(t, "fw")
 	if status != http.StatusOK || body["responses"] == nil {
 		t.Fatalf("status %d body %v", status, body)
+	}
+}
+
+func TestRecountTimeoutTellsTheAdmin(t *testing.T) {
+	clock := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	now = func() time.Time { clock = clock.Add(5 * time.Second); return clock }
+	defer func() { now = time.Now }()
+	subs, _, _ := seeded(250)
+	f := &fake{t: t, settings: `{"forms":[{"form_slug":"fw"}]}`, forms: formsJSON}
+	var offsets []int
+	pagedHost(f, subs, &offsets)
+	f.install()
+	status, body := postRecount(t, "fw")
+	msg, _ := body["error"].(string)
+	if status != http.StatusGatewayTimeout || !strings.Contains(msg, "ran out of time") || !strings.Contains(msg, "tallies were not changed") {
+		t.Fatalf("status %d body %v", status, body)
+	}
+}
+
+func TestRecountTimeoutWhileWritingKeepsTheTallies(t *testing.T) {
+	subs, _, _ := seeded(30)
+	f := &fake{t: t, forms: formsJSON}
+	var offsets []int
+	pagedHost(f, subs, &offsets)
+	inner := f.answer
+	f.answer = func(c hostCall, out any) error {
+		if c.sql == upsertResponses { // the first write uses up the budget
+			clock := now().Add(time.Minute)
+			now = func() time.Time { return clock }
+		}
+		return inner(c, out)
+	}
+	f.install()
+	defer func() { now = time.Now }()
+	// Enough rows for two chunks.
+	old := recountChunk
+	recountChunk = 200
+	defer func() { recountChunk = old }()
+	if _, err := recount(formCfg{Slug: "fw"}); !errors.Is(err, errRecountIncomplete) {
+		t.Fatalf("err = %v", err)
+	}
+	for _, c := range f.named("db.exec") {
+		if c.sql == finishRecount {
+			t.Fatal("tallies rebuilt after a timeout")
+		}
 	}
 }

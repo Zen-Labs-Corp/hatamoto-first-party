@@ -47,7 +47,7 @@ From the repository root: `scripts/build-plugin.sh plugins/polls`.
 - Submissions after **Closes at** are not counted; core still accepts them.
 - Only choice questions (select, radio, checkbox) are tallied. Other fields count toward the number of responses only. An answer that is not one of the question's current options is counted under "Other".
 - The live count is not retried: if the plugin was down or timed out for a submission, that answer is missing until you press **Recount**, which rebuilds the form's numbers from the stored non-spam submissions. Answers submitted while a Recount runs are kept and counted.
-- A Recount reads 100 submissions at a time within the 10 second limit of a plugin route; on a very large form it can stop early and then changes nothing.
+- A Recount reads 200 submissions at a time and has about 8 seconds of the 10 second limit of a plugin route, so it handles a few thousand submissions. If a form is too large it stops with the message "Recount ran out of time" and the tallies stay as they were. It writes in parts that are each well under the 1 MiB request limit of the host, so size alone is not a limit.
 - Quiz emails follow the host's mail limit (6 recipients a minute, with a burst of 10). Beyond it the email is dropped, not retried; the score is still stored.
 - The page builder source cannot choose a form per block (see Use).
 - A CSV export is limited by the 4 MiB response size of a plugin route.
