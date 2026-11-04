@@ -63,9 +63,11 @@ func fetchGoogle(s settings, deadline time.Time) (sourceInfo, []review, error) {
 		if author == "" || perr != nil || r.Rating != float64(rating) || rating < 1 || rating > 5 {
 			continue
 		}
-		body := r.Text.Text
+		// The original text keeps the language the review was written in; text
+		// may be a translation.
+		body := r.OriginalText.Text
 		if body == "" {
-			body = r.OriginalText.Text
+			body = r.Text.Text
 		}
 		id := r.Name
 		if id == "" {

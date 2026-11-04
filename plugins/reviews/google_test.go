@@ -106,3 +106,15 @@ func TestInvalidJSONIsAnError(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+func TestGooglePrefersTheOriginalText(t *testing.T) {
+	f := newFake(t)
+	f.fetch = func(string, map[string]string) (int, string, error) {
+		return 200, `{"rating":4.8,"userRatingCount":2,"reviews":[
+{"name":"places/P/reviews/a","rating":5,"text":{"text":"Great service"},"originalText":{"text":"Toller Service"},"publishTime":"2026-10-30T10:00:00Z","authorAttribution":{"displayName":"Jan"}}]}`, nil
+	}
+	_, rs, err := fetchGoogle(settings{GoogleKey: "G-SECRET", GooglePlace: "PLACE1"}, f.clock.Add(9*time.Second))
+	if err != nil || len(rs) != 1 || rs[0].Body != "Toller Service" {
+		t.Fatalf("%+v %v", rs, err)
+	}
+}
