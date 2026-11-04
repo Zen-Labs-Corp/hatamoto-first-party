@@ -1,0 +1,19 @@
+{
+  "name": "event-calendar",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Events with dates, venue and ticket link: upcoming and past lists for the page builder, an iCal feed and Event structured data.",
+  "permissions": ["settings"],
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "title": "Greeting",
+        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
+        "maxLength": 64
+      }
+    }
+  }
+}
