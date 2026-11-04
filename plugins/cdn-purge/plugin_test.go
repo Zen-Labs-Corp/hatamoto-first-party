@@ -292,9 +292,8 @@ func TestHookBudgetLeavesRoomForInstanceWait(t *testing.T) {
 
 func TestFastlySingleURLPathIsEscaped(t *testing.T) {
 	cases := map[string]string{
-		"https://example.com/a b/c?x=1&y=2#frag": "https://api.fastly.com/purge/example.com/a%20b/c%3Fx=1&y=2",
-		"https://example.com/a/../b":             "https://api.fastly.com/purge/example.com/a/%2e%2e/b",
-		"https://example.com/p?q=/../x":          "https://api.fastly.com/purge/example.com/p%3Fq=%2F..%2Fx",
+		"https://example.com/a b/c#frag": "https://api.fastly.com/purge/example.com/a%20b/c",
+		"https://example.com/a/../b":     "https://api.fastly.com/purge/example.com/a/%2e%2e/b",
 	}
 	for raw, want := range cases {
 		f := newFake(t, map[string]any{"provider": "fastly", "also_purge": []string{}})
@@ -308,6 +307,24 @@ func TestFastlySingleURLPathIsEscaped(t *testing.T) {
 		if err != nil || u.Host != "api.fastly.com" || u.RawQuery != "" || u.Fragment != "" {
 			t.Fatalf("%s: request leaves the purge path: %v", raw, got[0]["url"])
 		}
+	}
+}
+
+func TestFastlyRefusesQueries(t *testing.T) {
+	f := newFake(t, map[string]any{"provider": "fastly", "also_purge": []string{"/feed?a=b c", "/ok"}})
+	f.setEntity("e1", "published", "/x", "https://example.com/x")
+	f.fire(sdk.EntityPublished, "e1")
+	if len(f.fetches()) != 2 {
+		t.Fatalf("fetches = %d, want the page and /ok only", len(f.fetches()))
+	}
+	var refused int
+	for _, r := range f.rows {
+		if strings.Contains(r.Error, "with a query") {
+			refused++
+		}
+	}
+	if refused != 1 {
+		t.Fatalf("rows = %+v", f.rows)
 	}
 }
 

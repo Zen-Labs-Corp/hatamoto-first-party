@@ -48,6 +48,7 @@ From the repository root: `scripts/build-plugin.sh plugins/cdn-purge`.
 - No coalescing: each event purges on its own, so several events for the same page purge it several times. URLs within one event are de-duplicated.
 - Cloudflare gets one request per 30 URLs. Bunny and Fastly purge one URL per request, so an event costs up to about 22 requests (the page, its old URL and 20 extra paths), and each request is one row in the purge log.
 - The plugin spends at most 6 seconds of the host's 10 second action timeout on provider calls, with 3 seconds per call; the timeout also covers waiting for a free plugin instance. A bulk publish of many pages at once can therefore leave later events waiting for an instance and purge nothing for them. When time runs out, the remaining URLs are logged as one "skipped" row and not purged; use **Purge everything** or save again.
+- Fastly: an extra path with a query (`/feed?page=2`) is not purged and shows as an error row, because Fastly's single-URL purge is not known to match a query in that form. Use **Purge everything** or a path without a query.
 - When the entity has no path although the origin is known, only the extra paths are purged and a warning is logged.
 - Without an origin (the entity's URL is a bare path and Site URL is empty) nothing is purged and "set Site URL" is logged.
 - Imports and other bulk writes fire no entity events, so they are not purged; use **Purge everything** afterwards.

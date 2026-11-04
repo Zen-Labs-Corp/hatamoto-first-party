@@ -179,13 +179,17 @@ func purgeBatch(s settings, urls []string) batchResult {
 }
 
 // fastlyPurgePath turns an absolute URL into the host+path that follows
-// /purge/. The path is escaped, dot segments are encoded and the query is
-// escaped into the path, so nothing in the URL can change the API request. The
-// fragment is dropped.
+// /purge/. The path is escaped and dot segments are encoded, so nothing in
+// the URL can change the API request. The fragment is dropped. A URL with a
+// query is refused: how Fastly matches a query in this form is not verified,
+// and a purge that silently misses is worse than a visible error.
 func fastlyPurgePath(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
 		return "", fmt.Errorf("not a purgeable URL: %q", truncate(raw, 80))
+	}
+	if u.RawQuery != "" || strings.Contains(raw, "?") {
+		return "", fmt.Errorf("Fastly: URLs with a query are not purged: %q", truncate(raw, 80))
 	}
 	segs := strings.Split(u.EscapedPath(), "/")
 	for i, seg := range segs {
@@ -193,11 +197,7 @@ func fastlyPurgePath(raw string) (string, error) {
 			segs[i] = strings.ReplaceAll(seg, ".", "%2e")
 		}
 	}
-	p := u.Host + strings.Join(segs, "/")
-	if u.RawQuery != "" {
-		p += "%3F" + url.PathEscape(u.RawQuery)
-	}
-	return p, nil
+	return u.Host + strings.Join(segs, "/"), nil
 }
 
 // purgeAll drops the whole CDN cache of the configured zone or service.
