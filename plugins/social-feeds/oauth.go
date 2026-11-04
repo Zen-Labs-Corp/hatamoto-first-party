@@ -84,7 +84,7 @@ func connectInstagram(s settings, r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 // flow. Nothing else happens, and no call leaves the plugin, before it checks.
 func oauthCallback(s settings, r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	state := first(r.Query["state"])
-	if state == "" || len(state) > 64 {
+	if !validState(state) {
 		return expired()
 	}
 	var got struct {
@@ -132,6 +132,19 @@ func oauthCallback(s settings, r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	logf("info", "connected to Instagram")
 	// The admin address is private and unknown to the plugin, so no redirect.
 	return page(http.StatusOK, "Instagram connected", "<p>Connected. You can close this tab and go back to the plugin page.</p>", nil), nil
+}
+
+// validState accepts only what randomToken(16) makes: 32 lowercase hex digits.
+func validState(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func expired() (sdk.HTTPResponse, error) {

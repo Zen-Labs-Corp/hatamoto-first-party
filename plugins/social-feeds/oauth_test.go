@@ -287,3 +287,16 @@ func TestCallbackSavesTheTokenWhenTimeRunsShort(t *testing.T) {
 		t.Fatalf("fetches = %d, the account lookup must be skipped with 1 s left", f.fetchCount())
 	}
 }
+
+func TestCallbackMalformedStateNeverReachesKV(t *testing.T) {
+	f := useFake(t)
+	f.settings = igSettings
+	for _, st := range []string{"deadbeef", strings.Repeat("A", 32), strings.Repeat("g", 32), "../" + strings.Repeat("a", 29), strings.Repeat("a", 33)} {
+		if res := callback(t, st, "CODE"); res.Status != 400 {
+			t.Fatalf("state %q: status %d", st, res.Status)
+		}
+	}
+	if len(f.kvCalls) != 0 {
+		t.Fatalf("kv touched: %v", f.kvCalls)
+	}
+}
