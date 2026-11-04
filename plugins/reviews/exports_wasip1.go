@@ -6,6 +6,9 @@ import "hatamoto.dev/sdk/guest"
 
 // //go:wasmexport must sit in package main, one line per handled hook.
 
+//go:wasmexport http_handle
+func httpHandle() int32 { return guest.Run(guest.HTTPExport) }
+
 //go:wasmexport on_cron_refresh
 func onCronRefresh() int32 { return guest.Run(guest.CronExport("refresh")) }
 
