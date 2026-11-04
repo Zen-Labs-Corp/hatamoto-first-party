@@ -12,7 +12,7 @@
     { "method": "GET", "path": "/links" }
   ],
   "cron": [{ "name": "prune", "every": "6h" }],
-  "ui": { "title": "Payment links" },
+  "ui": { "title": "Payments with Stripe Payment Links" },
   "limits": {
     "memory_pages": 256,
     "max_instances": 4,
@@ -63,7 +63,7 @@
         "title": "Notify email",
         "description": "Where the payment emails go.",
         "format": "email",
-        "maxLength": 254
+        "maxLength": 200
       },
       "retention_months": {
         "type": "integer",
