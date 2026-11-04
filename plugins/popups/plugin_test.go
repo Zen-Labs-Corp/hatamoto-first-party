@@ -212,3 +212,36 @@ func TestScriptHasNoInlineHandlers(t *testing.T) {
 		}
 	}
 }
+
+func TestSlashlessGlobNormalised(t *testing.T) {
+	settings := `{"campaigns":[
+		{"id":"blog","kind":"bar","message":"x","include_paths":["blog/**"]},
+		{"id":"nocart","kind":"bar","message":"x","exclude_paths":["cart"]}]}`
+	if got := ids(published(t, head(t, "/blog/a", settings, nil))); got != "blog,nocart" {
+		t.Fatalf("/blog/a: ids = %s", got)
+	}
+	if tags := head(t, "/cart", settings, nil); len(tags) != 0 {
+		t.Fatalf("/cart: tags = %+v", tags)
+	}
+}
+
+func TestLinkURLLengthLimit(t *testing.T) {
+	long, _ := json.Marshal("/" + strings.Repeat("a", maxLinkURL))
+	ok, _ := json.Marshal("/" + strings.Repeat("a", maxLinkURL-1))
+	for u, want := range map[string]bool{string(ok): true, string(long): false} {
+		tags := head(t, "/", `{"campaigns":[{"id":"a","kind":"bar","message":"x","link_label":"Go","link_url":`+u+`}]}`, nil)
+		if got := published(t, tags)[0].LinkURL != ""; got != want {
+			t.Errorf("link kept = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestManifestMatchesLimits(t *testing.T) {
+	b, err := os.ReadFile("plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"maxLength": 200`) || !strings.Contains(string(b), strings.ReplaceAll(idRe.String(), `\`, `\\`)) {
+		t.Fatalf("plugin.json out of sync with idRe %s / link limit", idRe)
+	}
+}

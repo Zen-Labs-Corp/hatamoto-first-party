@@ -329,6 +329,37 @@ test('bars ignore the trigger', function () {
   assert.strictEqual(bars(s).length, 1);
 });
 
+test('popup that cannot show here does not take the popup slot', function () {
+  var exit = Object.assign({}, pop, { id: 'x1', trigger: 'exit' });
+  var touch = setup({ campaigns: [exit, pop], hover: false });
+  p.run(touch.win, touch.doc);
+  assert.strictEqual(dialogs(touch).length, 1);
+  assert.strictEqual(dialogs(touch)[0].open, true);
+  var nodlg = setup({ campaigns: [pop, bar], noDialog: true });
+  p.run(nodlg.win, nodlg.doc);
+  assert.strictEqual(bars(nodlg).length, 1);
+  assert.strictEqual(dialogs(nodlg).length, 0);
+});
+
+test('globs without a leading slash are normalised', function () {
+  assert.ok(p.matchPath('/blog/a', ['blog/**'], []));
+  assert.ok(!p.matchPath('/cart', [], ['cart']) );
+  assert.ok(p.matchPath('/x', ['*'], []));
+});
+
+test('safeLink rejects urls over 200 characters', function () {
+  assert.ok(p.safeLink('/' + 'a'.repeat(199)));
+  assert.ok(!p.safeLink('/' + 'a'.repeat(200)));
+});
+
+test('plugin.json id pattern is valid under the v flag', function () {
+  var schema = JSON.parse(fs.readFileSync(path.join(__dirname, 'plugin.json'), 'utf8'));
+  var item = JSON.stringify(schema).match(/"pattern":"(\^\[a-z0-9\][^"]*)"/);
+  var re = new RegExp(JSON.parse('"' + item[1] + '"'), 'v');
+  assert.ok(re.test('spring-sale-1'));
+  assert.ok(!re.test('-x') && !re.test('Bad') && !re.test('a'.repeat(41)));
+});
+
 test('run never throws', function () {
   p.run({}, {});
   p.run(null, null);

@@ -32,6 +32,7 @@
   function anyGlob(globs, path) {
     for (var i = 0; i < (globs || []).length; i++) {
       var g = String(globs[i]).replace(/^\s+|\s+$/g, '');
+      if (g && g.charAt(0) !== '/') g = '/' + g;
       if (g && globToRegExp(g).test(path)) return true;
     }
     return false;
@@ -70,7 +71,7 @@
   // safeLink: http, https or a site path ("/x", not "//host").
   function safeLink(url) {
     url = String(url == null ? '' : url).replace(/^\s+|\s+$/g, '');
-    if (!url) return false;
+    if (!url || url.length > 200) return false;
     if (url.charAt(0) === '/') return url.charAt(1) !== '/' && url.charAt(1) !== '\\';
     return /^https?:\/\//i.test(url);
   }
@@ -118,8 +119,10 @@
   }
 
   // pick: matching campaigns in settings order, at most one bar per position
-  // and one popup.
-  function pick(list, path, stores, now) {
+  // and one popup. caps says what the device can show ({dialog, exit}); a
+  // popup it cannot show must not take the popup slot.
+  function pick(list, path, stores, now, caps) {
+    caps = caps || { dialog: true, exit: true };
     var bars = {}, popup = null, out = [];
     for (var i = 0; i < list.length; i++) {
       var c = list[i];
@@ -132,6 +135,7 @@
         if (bars[pos]) continue;
         bars[pos] = true;
       } else {
+        if (!caps.dialog || (c.trigger === 'exit' && !caps.exit)) continue;
         if (popup) continue;
         popup = true;
       }
@@ -225,8 +229,6 @@
       win.addEventListener('scroll', check, { passive: true });
       check();
     } else if (c.trigger === 'exit') {
-      var hover = typeof win.matchMedia === 'function' && win.matchMedia('(hover: hover)').matches;
-      if (!hover) return;
       doc.addEventListener('mouseout', function (e) {
         if (e.clientY <= 0 && !e.relatedTarget) fire();
       });
@@ -235,11 +237,18 @@
     }
   }
 
+  function capabilities(win, doc) {
+    return {
+      dialog: typeof doc.createElement('dialog').showModal === 'function',
+      exit: typeof win.matchMedia === 'function' && win.matchMedia('(hover: hover) and (pointer: fine)').matches
+    };
+  }
+
   function run(win, doc) {
     try {
       var now = Date.now();
       var stores = getStores(win);
-      var chosen = pick(readCampaigns(doc), win.location.pathname, stores, now);
+      var chosen = pick(readCampaigns(doc), win.location.pathname, stores, now, capabilities(win, doc));
       var dismiss = function (c) { recordDismissal(c, stores, Date.now()); };
       chosen.forEach(function (c) {
         try {

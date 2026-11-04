@@ -17,9 +17,12 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-const maxCampaigns = 10
+const (
+	maxCampaigns = 10
+	maxLinkURL   = 200
+)
 
-var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+var idRe = regexp.MustCompile(`^[a-z0-9][\-a-z0-9]{0,39}$`)
 
 // now is the clock, replaced in tests.
 var now = time.Now
@@ -159,7 +162,7 @@ func parseUTC(s string, isEnd bool) (time.Time, bool) {
 // safeLink accepts http, https and site paths ("/x", not "//host").
 func safeLink(u string) bool {
 	u = strings.TrimSpace(u)
-	if u == "" {
+	if u == "" || len(u) > maxLinkURL {
 		return false
 	}
 	if strings.HasPrefix(u, "/") {
@@ -180,7 +183,11 @@ func matchPath(path string, include, exclude []string) bool {
 
 func anyGlob(globs []string, path string) bool {
 	for _, g := range globs {
-		if g = strings.TrimSpace(g); g != "" && globRegexp(g).MatchString(path) {
+		g = strings.TrimSpace(g)
+		if g != "" && !strings.HasPrefix(g, "/") {
+			g = "/" + g
+		}
+		if g != "" && globRegexp(g).MatchString(path) {
 			return true
 		}
 	}
