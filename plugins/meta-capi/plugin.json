@@ -1,0 +1,90 @@
+{
+  "name": "meta-capi",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Meta Conversions API: sends a server-side Lead event to Meta for each form submission, with hashed contact details, to back up the browser pixel.",
+  "permissions": ["forms.read", "settings", "http.fetch", "db", "log"],
+  "allowed_hosts": ["graph.facebook.com"],
+  "routes": [
+    { "method": "GET", "path": "/log" },
+    { "method": "POST", "path": "/test" }
+  ],
+  "ui": { "title": "Meta Conversions API" },
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "pixel_id": {
+        "type": "string",
+        "title": "Pixel ID",
+        "description": "The numeric ID of the Meta pixel (dataset) that receives the events.",
+        "pattern": "^$|^[0-9]{5,20}$"
+      },
+      "access_token": {
+        "type": "string",
+        "title": "Access token",
+        "description": "Stored here and never shown again.",
+        "writeOnly": true
+      },
+      "graph_version": {
+        "type": "string",
+        "title": "Graph API version",
+        "description": "The Graph API version the events are sent to, for example v26.0.",
+        "default": "v26.0",
+        "pattern": "^v[0-9]{2}\\.[0-9]$"
+      },
+      "site_url": {
+        "type": "string",
+        "title": "Site address",
+        "description": "The public address of the site, for example https://example.com. Sent as the page the event came from. Leave empty to omit it.",
+        "pattern": "^$|^https?://[^/\\s]+$"
+      },
+      "event_name": {
+        "type": "string",
+        "title": "Event name",
+        "description": "The event sent for each form submission.",
+        "default": "Lead",
+        "pattern": "^[A-Za-z][A-Za-z0-9_]{0,39}$"
+      },
+      "forms": {
+        "type": "array",
+        "title": "Forms",
+        "description": "Form slugs to send events for. Empty = all forms.",
+        "items": { "type": "string", "maxLength": 64 }
+      },
+      "email_field": {
+        "type": "string",
+        "title": "Email field",
+        "description": "Name of the form field that holds the email address.",
+        "default": "email",
+        "maxLength": 64
+      },
+      "phone_field": {
+        "type": "string",
+        "title": "Phone field",
+        "description": "Name of the form field that holds the phone number, with the country code.",
+        "default": "phone",
+        "maxLength": 64
+      },
+      "name_field": {
+        "type": "string",
+        "title": "Name field",
+        "description": "Name of the form field that holds the full name.",
+        "default": "name",
+        "maxLength": 64
+      },
+      "consent_field": {
+        "type": "string",
+        "title": "Consent field",
+        "description": "Optional. When set, an event is sent only if this form field is ticked or answered yes.",
+        "maxLength": 64
+      },
+      "test_event_code": {
+        "type": "string",
+        "title": "Test event code",
+        "description": "Optional. The code from Events Manager > Test events. Events carry it while it is set, so they show up as test events.",
+        "maxLength": 40
+      }
+    }
+  }
+}
