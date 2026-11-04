@@ -34,7 +34,7 @@ What each change purges:
 
 ## Data kept
 
-- `kv` key `url:<entity id>`: the last public absolute URL. Deleted when the entity is deleted. After an unpublish purge it is replaced by an empty marker that expires after 30 days, so later draft saves do not purge again; the next publish stores the URL again.
+- `kv` key `url:<entity id>`: the last public absolute URL. Deleted when the entity is deleted. After an unpublish purge it is replaced by an empty marker that expires after 30 days, so later draft saves do not purge again (once the marker has expired, the first save of a page that stayed unpublished purges it once more and writes a new marker); the next publish stores the URL again.
 - Table `purge_log`: time, trigger, provider, URLs, HTTP status and a short error text of each purge request. Rows older than 14 days are deleted on each insert.
 - The API token lives in the plugin settings only. It is sent as a request header, and never written to the log, the database, `kv` or a route answer (the admin page only learns whether a token is set).
 
