@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -65,10 +66,7 @@ func fetchInstagram(tok *igToken) ([]item, error) {
 		if m.ID == "" {
 			continue
 		}
-		image := m.MediaURL
-		if strings.EqualFold(m.MediaType, "VIDEO") && m.ThumbnailURL != "" {
-			image = m.ThumbnailURL
-		}
+		image := imageOf(m.MediaType, m.MediaURL, m.ThumbnailURL)
 		out = append(out, item{
 			ID:          m.ID,
 			Position:    len(out),
@@ -81,4 +79,20 @@ func fetchInstagram(tok *igToken) ([]item, error) {
 		})
 	}
 	return out, nil
+}
+
+// imageOf picks a picture for a media entry. For a video, media_url is the
+// video file, so only thumbnail_url will do; a carousel whose cover is a video
+// also has a video file there. No picture is better than a broken one.
+func imageOf(mediaType, mediaURL, thumbnailURL string) string {
+	if strings.EqualFold(mediaType, "VIDEO") {
+		return thumbnailURL
+	}
+	if u, err := url.Parse(mediaURL); err == nil {
+		switch strings.ToLower(path.Ext(u.Path)) {
+		case ".mp4", ".mov", ".m4v", ".webm":
+			return thumbnailURL
+		}
+	}
+	return mediaURL
 }

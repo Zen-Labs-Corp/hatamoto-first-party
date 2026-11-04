@@ -241,3 +241,17 @@ func TestRefreshRenewsADayOldToken(t *testing.T) {
 		t.Fatalf("media fetched with the old token: %s", last)
 	}
 }
+
+func TestInstagramNeverUsesAVideoFileAsImage(t *testing.T) {
+	f := useFake(t)
+	connect(t, f)
+	f.on(igMedia, 200, `{"data":[
+	 {"id":"1","media_type":"VIDEO","media_url":"https://cdn.example/reel.mp4","permalink":"https://www.instagram.com/reel/1/"},
+	 {"id":"2","media_type":"CAROUSEL_ALBUM","media_url":"https://cdn.example/cover.mp4?sig=1","permalink":"https://www.instagram.com/p/2/"},
+	 {"id":"3","media_type":"CAROUSEL_ALBUM","media_url":"https://cdn.example/cover.jpg?sig=1","permalink":"https://www.instagram.com/p/3/"}]}`)
+	runRefresh(time.Second)
+	rows := f.rows("instagram")
+	if len(rows) != 3 || rows[0].Image != "" || rows[1].Image != "" || rows[2].Image != "https://cdn.example/cover.jpg?sig=1" {
+		t.Fatalf("rows = %+v", rows)
+	}
+}
