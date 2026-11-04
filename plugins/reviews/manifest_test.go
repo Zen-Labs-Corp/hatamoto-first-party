@@ -30,6 +30,7 @@ type manifest struct {
 		Name string `json:"name"`
 		Kind string `json:"kind"`
 	} `json:"builder_sources"`
+	UI     map[string]any `json:"ui"`
 	Limits struct {
 		HookTimeouts map[string]int `json:"hook_timeouts_ms"`
 	} `json:"limits"`
