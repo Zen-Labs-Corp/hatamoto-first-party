@@ -1,18 +1,62 @@
 {
   "name": "feed-reader",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.11",
   "description": "Pulls items from RSS and Atom feeds you choose on a schedule and shows them as a page-builder data source, linking back to each source.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["settings", "http.fetch", "http.fetch.any", "db", "builder.data", "log"],
+  "allowed_hosts": ["*"],
+  "routes": [
+    { "method": "GET", "path": "/overview" },
+    { "method": "POST", "path": "/fetch-now" }
+  ],
+  "cron": [{ "name": "fetch", "every": "5m" }],
+  "ui": { "title": "Feeds" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "on_cron_fetch": 10000, "http_handle": 10000 }
+  },
+  "builder_sources": [
+    { "name": "items", "label": "Feed items", "kind": "items" },
+    { "name": "group-1", "label": "Feed group 1", "kind": "items" },
+    { "name": "group-2", "label": "Feed group 2", "kind": "items" },
+    { "name": "group-3", "label": "Feed group 3", "kind": "items" },
+    { "name": "group-4", "label": "Feed group 4", "kind": "items" },
+    { "name": "group-5", "label": "Feed group 5", "kind": "items" },
+    { "name": "group-6", "label": "Feed group 6", "kind": "items" },
+    { "name": "group-7", "label": "Feed group 7", "kind": "items" }
+  ],
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+      "feeds": {
+        "type": "array",
+        "title": "Feeds",
+        "description": "RSS or Atom feeds to fetch every 30 minutes. At most 20.",
+        "default": [],
+        "maxItems": 20,
+        "items": {
+          "type": "object",
+          "required": ["name", "url"],
+          "properties": {
+            "name": { "type": "string", "title": "Name", "maxLength": 80 },
+            "url": { "type": "string", "format": "uri", "title": "URL", "maxLength": 2048 },
+            "max_items": {
+              "type": "integer",
+              "title": "Max items",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "group": {
+              "type": "integer",
+              "title": "Group",
+              "description": "1 to 7: the feed shows in the source Feed group N.",
+              "minimum": 1,
+              "maximum": 7
+            }
+          }
+        }
       }
     }
   }
