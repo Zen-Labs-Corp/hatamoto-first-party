@@ -90,14 +90,23 @@ async function act(fn) {
 async function main() {
   await hatamoto.ready;
   $("#test").onclick = () => act(async () => {
-    const r = await api("POST", "/test");
+    let r;
+    try {
+      r = await api("POST", "/test");
+    } finally {
+      await refresh();
+    }
     const n = r.sites_verified;
     $("#status-line").textContent = `Key works. ${n} verified site${n === 1 ? "" : "s"}.` +
       (r.site_url_ok ? "" : " The Site URL does not match one verified site; check Settings.");
   });
   $("#import-now").onclick = () => act(async () => {
-    const r = await api("POST", "/import-now");
-    await refresh();
+    let r;
+    try {
+      r = await api("POST", "/import-now");
+    } finally {
+      await refresh();
+    }
     if (r.error) say(`Import finished with problems: ${r.error}`, true);
     else if (!r.done) say("More to import, run again or wait for the next scheduled import.");
     else $("#status-line").textContent = `Import done, ${num(r.rows)} rows.`;
