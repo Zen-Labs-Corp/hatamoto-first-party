@@ -1,5 +1,7 @@
 package main
 
+import "encoding/json"
+
 // job is one queued submission to deliver.
 type job struct {
 	SubmissionID string `json:"submission_id"`
@@ -53,6 +55,12 @@ type provider interface {
 
 // providerFor is nil for an unknown provider name.
 func providerFor(name string) provider {
+	switch name {
+	case "mailchimp":
+		return mailchimp{}
+	case "brevo":
+		return brevo{}
+	}
 	return nil
 }
 
@@ -64,3 +72,53 @@ func deliver(c cfg, j job) result {
 	}
 	return p.upsert(j, c, doFetch)
 }
+
+// classify turns a non-2xx status into an outcome: 408, 429 and 5xx are tried
+// again later, 401 and 403 mean the key is wrong, any other status is a
+// rejection that retrying cannot fix.
+func classify(status int) result {
+	switch {
+	case status == 408 || status == 429 || status >= 500:
+		return result{kind: kindRetry, status: status}
+	case status == 401 || status == 403:
+		return result{kind: kindFail, status: status, reason: "unauthorized"}
+	}
+	return result{kind: kindFail, status: status, reason: "rejected"}
+}
+
+// failure is the outcome of an answer that is not a 2xx, or false for a 2xx.
+func failure(resp fetchResp) (result, bool) {
+	if resp.Code != "" {
+		return hostResult(resp.Code), true
+	}
+	if resp.Status < 200 || resp.Status > 299 {
+		return classify(resp.Status), true
+	}
+	return result{}, false
+}
+
+// jsonReq is a request with a JSON body (nil body for none).
+func jsonReq(method, url string, headers map[string]string, body any) fetchReq {
+	h := map[string]string{"Accept": "application/json"}
+	for k, v := range headers {
+		h[k] = v
+	}
+	r := fetchReq{Method: method, URL: url, Headers: h}
+	if body != nil {
+		b, _ := json.Marshal(body)
+		r.Body = string(b)
+		h["Content-Type"] = "application/json"
+	}
+	return r
+}
+
+// listName reads the name field of a provider answer.
+func listName(body string) string {
+	var v struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal([]byte(body), &v)
+	return v.Name
+}
+
+var errNoList = result{kind: kindFail, reason: "list not found"}
