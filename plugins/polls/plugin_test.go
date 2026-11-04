@@ -1,50 +1,57 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
-
-	"hatamoto.dev/sdk"
-	"hatamoto.dev/sdk/guest"
 )
 
-// head runs the registered render.head filter with a fake settings.get.
-func head(t *testing.T, settings string, hostErr error) []sdk.HeadTag {
-	t.Helper()
-	callHost = func(fn string, _, out any) error {
-		if fn != "settings.get" {
-			t.Fatalf("unexpected host call %q", fn)
-		}
-		if hostErr != nil {
-			return hostErr
-		}
-		return json.Unmarshal([]byte(settings), out)
+func TestLogfSendsLevelAndMessage(t *testing.T) {
+	var fn string
+	var args map[string]string
+	callHost = func(f string, a, _ any) error {
+		fn, args = f, a.(map[string]string)
+		return errors.New("rate_limited")
 	}
-	in, _ := json.Marshal(sdk.HeadContext{Path: "/"})
-	out, err := guest.Handle(sdk.RenderHead.Export(), in)
-	if err != nil {
-		t.Fatalf("filter returned an error: %v", err)
+	if err := logf("warn", "skipped %s", "x"); err == nil {
+		t.Fatal("host error must surface")
 	}
-	var c sdk.HeadContext
-	if err := json.Unmarshal(out, &c); err != nil {
+	if fn != "log" || args["level"] != "warn" || args["message"] != "skipped x" {
+		t.Fatalf("got %q %v", fn, args)
+	}
+}
+
+func TestDBExecPassesStatementAndArgs(t *testing.T) {
+	var fn string
+	var args map[string]any
+	callHost = func(f string, a, _ any) error {
+		fn, args = f, a.(map[string]any)
+		return nil
+	}
+	if err := dbExec("DELETE FROM t WHERE a = $1", 1); err != nil {
 		t.Fatal(err)
 	}
-	return c.Tags
-}
-
-func TestGreetingEmitsOneMeta(t *testing.T) {
-	tags := head(t, `{"greeting":" hello "}`, nil)
-	if len(tags) != 1 || tags[0].Kind != "meta" || tags[0].Attrs["content"] != "hello" {
-		t.Fatalf("tags = %+v", tags)
+	if fn != "db.exec" || !strings.HasPrefix(args["sql"].(string), "DELETE") {
+		t.Fatalf("got %q %v", fn, args)
 	}
 }
 
-func TestEmptyOrFailingSettingAddsNothing(t *testing.T) {
-	if tags := head(t, `{"greeting":"  "}`, nil); len(tags) != 0 {
-		t.Fatalf("empty greeting: tags = %+v", tags)
+func TestDBJSONUnwrapsValueAndString(t *testing.T) {
+	for name, cell := range map[string]string{
+		"jsonb value": `[{"n":1}]`,
+		"json string": `"[{\"n\":1}]"`,
+	} {
+		callHost = jsonHost(`{"rows":[[` + cell + `]]}`)
+		var got []struct{ N int }
+		if err := dbJSON("SELECT 1", &got); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(got) != 1 || got[0].N != 1 {
+			t.Fatalf("%s: got %+v", name, got)
+		}
 	}
-	if tags := head(t, "", errors.New("host down")); len(tags) != 0 {
-		t.Fatalf("host error: tags = %+v", tags)
+	callHost = jsonHost(`{"rows":[]}`)
+	if err := dbJSON("SELECT 1", new(any)); err == nil {
+		t.Fatal("want an error for no rows")
 	}
 }
