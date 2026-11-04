@@ -315,3 +315,13 @@ func TestWebhookAcceptsARealisticLargeEventBody(t *testing.T) {
 	body := `{"id":"evt_1","type":"checkout.session.completed","data":{"object":{"metadata":{"note":"` + strings.Repeat("a", 20<<10) + `"}}}}`
 	wantStatus(t, w, body, 200, "recorded")
 }
+
+func TestWebhookContentTypeNameIsCaseInsensitive(t *testing.T) {
+	newWorld(t)
+	for _, name := range []string{"content-type", "Content-Type"} {
+		res, err := serve(sdk.HTTPRequest{Method: "POST", Pattern: "/webhook", Body: postedEvent, Headers: map[string]string{name: "application/json"}})
+		if err != nil || res.Status != 200 {
+			t.Errorf("%s: %d %v", name, res.Status, err)
+		}
+	}
+}

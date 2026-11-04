@@ -72,7 +72,7 @@ func eventID(r sdk.HTTPRequest) (string, bool) {
 	if r.BodyB64 != "" || len(r.Body) == 0 || len(r.Body) > maxWebhookBody {
 		return "", false
 	}
-	if mt, _, err := mime.ParseMediaType(r.Headers["content-type"]); err != nil || mt != "application/json" {
+	if mt, _, err := mime.ParseMediaType(headerValue(r.Headers, "content-type")); err != nil || mt != "application/json" {
 		return "", false
 	}
 	var in struct {
@@ -82,6 +82,16 @@ func eventID(r sdk.HTTPRequest) (string, bool) {
 		return "", false
 	}
 	return in.ID, true
+}
+
+// headerValue looks a header up whatever the case of its name.
+func headerValue(h map[string]string, name string) string {
+	for k, v := range h {
+		if strings.EqualFold(k, name) {
+			return v
+		}
+	}
+	return ""
 }
 
 // recordable turns a confirmed event into a payment, or reports that the event
