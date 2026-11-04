@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -189,7 +190,7 @@ func scan(out string) (links []link, problems []string) {
 			}
 			if el == "li" {
 				cur = &link{Class: attrs["class"]}
-				cur.Net = strings.TrimPrefix(strings.Fields(attrs["class"])[1], "sb-")
+				cur.Net = strings.TrimPrefix(strings.Fields(attrs["class"])[1], "share-buttons__item--")
 			}
 			if el == "a" && cur != nil {
 				cur.Attrs, cur.Href = attrs, attrs["href"]
@@ -286,7 +287,7 @@ func TestRenderDefaults(t *testing.T) {
 	if want := defaultNetworks; !reflect.DeepEqual(nets(links), want) {
 		t.Fatalf("order = %v, want %v", nets(links), want)
 	}
-	if !strings.Contains(out, `class="sb sb--both"`) {
+	if !strings.Contains(out, `class="share-buttons share-buttons--both"`) {
 		t.Errorf("style class missing: %s", out)
 	}
 	for _, l := range links {
@@ -310,10 +311,10 @@ func TestOrderSubsetAndStyle(t *testing.T) {
 		want  []string
 		class string
 	}{
-		`{"networks":["email","bluesky","x"],"style":"icons"}`:                  {[]string{"email", "bluesky", "x"}, "sb--icons"},
-		`{"networks":["bluesky"],"style":"labels"}`:                             {[]string{"bluesky"}, "sb--labels"},
-		`{"networks":["x","x","bogus"],"style":"weird"}`:                        {[]string{"x"}, "sb--both"},
-		`{"networks":["linkedin","x","facebook","whatsapp","bluesky","email"]}`: {allNetworks, "sb--both"},
+		`{"networks":["email","bluesky","x"],"style":"icons"}`:                  {[]string{"email", "bluesky", "x"}, "share-buttons--icons"},
+		`{"networks":["bluesky"],"style":"labels"}`:                             {[]string{"bluesky"}, "share-buttons--labels"},
+		`{"networks":["x","x","bogus"],"style":"weird"}`:                        {[]string{"x"}, "share-buttons--both"},
+		`{"networks":["linkedin","x","facebook","whatsapp","bluesky","email"]}`: {allNetworks, "share-buttons--both"},
 	} {
 		for name, out := range map[string]string{
 			"partial": renderWith(t, realFuncs(t, fixture), partialName, partialDot("https://example.com/a", "T", "")),
@@ -322,7 +323,7 @@ func TestOrderSubsetAndStyle(t *testing.T) {
 			if got := nets(scanOK(t, out)); !reflect.DeepEqual(got, c.want) {
 				t.Errorf("%s %s: order = %v, want %v", name, fixture, got, c.want)
 			}
-			if !strings.Contains(out, `class="sb `+c.class+`"`) {
+			if !strings.Contains(out, `class="share-buttons `+c.class+`"`) {
 				t.Errorf("%s %s: class %s missing", name, fixture, c.class)
 			}
 		}
@@ -334,7 +335,7 @@ func TestFuncFailureStillRendersDefaults(t *testing.T) {
 	if got := nets(scanOK(t, out)); !reflect.DeepEqual(got, defaultNetworks) {
 		t.Fatalf("order = %v, want %v", got, defaultNetworks)
 	}
-	if !strings.Contains(out, "sb--both") {
+	if !strings.Contains(out, "share-buttons--both") {
 		t.Errorf("style not defaulted: %s", out)
 	}
 	out = renderWith(t, failingFuncs(t), sectionName, sectionWith("T", "", map[string]any{"url": "https://example.com/a"}))
@@ -472,5 +473,44 @@ func TestPartialSectionParity(t *testing.T) {
 		if collapse(p) != collapse(s) {
 			t.Errorf("%s: partial and section differ:\n%s\n%s", fixture, p, s)
 		}
+	}
+}
+
+// The stylesheet is linked on every public page, so every class must carry the
+// plugin prefix to stay clear of theme classes.
+func TestClassNamesArePrefixed(t *testing.T) {
+	const prefix = "share-buttons"
+	ok := func(c string) bool {
+		return c == prefix || strings.HasPrefix(c, prefix+"__") || strings.HasPrefix(c, prefix+"--")
+	}
+	actions := regexp.MustCompile(`\{\{.*?\}\}`)
+	attr := regexp.MustCompile(`class="([^"]*)"`)
+	seen := 0
+	for _, f := range []string{partialFile, sectionFile} {
+		for _, m := range attr.FindAllStringSubmatch(readFile(t, f), -1) {
+			for _, c := range strings.Fields(actions.ReplaceAllString(m[1], "")) {
+				seen++
+				if !ok(c) {
+					t.Errorf("%s: class %q lacks the %s prefix", f, c, prefix)
+				}
+			}
+		}
+	}
+	sel := regexp.MustCompile(`\.([A-Za-z_][\w-]*)`)
+	css := readFile(t, "assets/plugin.css")
+	for _, rule := range strings.Split(css, "}") {
+		head, _, found := strings.Cut(rule, "{")
+		if !found {
+			continue
+		}
+		for _, m := range sel.FindAllStringSubmatch(head, -1) {
+			seen++
+			if !ok(m[1]) {
+				t.Errorf("plugin.css: class %q lacks the %s prefix", m[1], prefix)
+			}
+		}
+	}
+	if seen < 20 {
+		t.Errorf("only %d class tokens found: the check is not looking", seen)
 	}
 }
