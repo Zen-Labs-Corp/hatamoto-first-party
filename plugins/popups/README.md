@@ -17,7 +17,7 @@ Announcement bars and popups with page targeting, start and end dates and freque
    - **Position** (bars): `top` or `bottom`. Bars always show on load.
 3. Save. Cached pages are refreshed.
 
-A bar is a fixed strip that sits on top of the page and never pushes content. A popup is a native modal dialog: it has a visible close button, closes with Esc, keeps focus inside while open and returns focus to the previous element afterwards. Both can be dismissed.
+A bar is a 48px strip: the top bar sits at the top of the page and scrolls away with it, the bottom bar stays fixed. The bar needs the `site.scripts` grant; without it nothing shows and no space is reserved. A popup is a native modal dialog: it has a visible close button, closes with Esc, keeps focus inside while open and returns focus to the previous element afterwards. Both can be dismissed.
 
 Pages stay cached. The server only publishes the campaigns that can still apply to the page, as one `<meta name="hatamoto-popups">` tag in the head. The browser script checks the dates, paths and frequency again, so a cached page never shows an ended or not yet started campaign.
 
@@ -44,7 +44,7 @@ From the repository root: `scripts/build-plugin.sh plugins/popups`.
 - The exit trigger does not show on touch-only devices.
 - At most one bar per position and one popup per page view; the first match in the settings order wins.
 - No animation.
-- A bar is 48px high, one line; a long message is cut with an ellipsis. The page reserves that space from the stylesheet before first paint. When the bar does not show (not started yet, already dismissed, or closed), the script removes the reserve, so a visitor who already dismissed a bar may see the reserved space drop when the script runs.
+- A bar is 48px high, one line; a long message is cut with an ellipsis. The page reserves that space from the stylesheet before first paint. When the bar does not show (not started yet, already dismissed, or closed), the script removes the reserve, so a visitor who already dismissed a bar may see the reserved space drop when the script runs. A bar that has not started yet reserves nothing; if it starts while a page is cached, content may shift once on those cached pages until the cache refreshes.
 - A scheduled campaign is in the page source up to about 31 days before its start, so do not put secret codes in one until it starts.
 - The theme's base layout must include the plugin slots (the default theme does) so the core links the script and stylesheet.
 

@@ -403,5 +403,14 @@ test('plugin.css has no animation or transition', function () {
   assert.ok(/\.hm-popups-bar\s*\{[^}]*position:\s*fixed/.test(css));
 });
 
+test('plugin.css keeps the header reachable and drops the reserve without the script', function () {
+  var css = fs.readFileSync(path.join(__dirname, 'assets', 'plugin.css'), 'utf8');
+  assert.ok(/\.hm-popups-top\s*\{[^}]*position:\s*absolute/.test(css));
+  var m = css.match(/@media \(scripting: enabled\) \{([\s\S]*?)\n\}/);
+  assert.ok(m, 'reserve is wrapped in a scripting media query');
+  assert.strictEqual((m[1].match(/:has\(script\[src\*="\/p\/popups\/assets\/plugin\.js"\]\)/g) || []).length, 2);
+  assert.ok(!/padding-(top|bottom)/.test(css.replace(m[0], '')));
+});
+
 if (failures) { console.log(failures + ' failed'); process.exit(1); }
 console.log('all passed');

@@ -1,11 +1,17 @@
-/* Announcement bars and popups. No animation. A bar is fixed and 48px high; the
-   head marker meta reserves that space on <body> before first paint, and the
-   script adds hm-popups-no-top / hm-popups-no-bottom on <html> when no bar shows. */
-html:has(meta[name="hatamoto-popups-bar"][content~="top"]):not(.hm-popups-no-top) body {
-  padding-top: 48px;
-}
-html:has(meta[name="hatamoto-popups-bar"][content~="bottom"]):not(.hm-popups-no-bottom) body {
-  padding-bottom: 48px;
+/* Announcement bars and popups. No animation. A bar is 48px high. The top bar is
+   absolute at the document top, so it scrolls away inside its reserved band and
+   never covers a sticky header; the bottom bar is fixed. The head marker meta
+   reserves the space on <body> before first paint, and the script adds
+   hm-popups-no-top / hm-popups-no-bottom on <html> when no bar shows. The reserve
+   only applies when plugin.js is linked (it needs the site.scripts grant) and
+   scripting is on, so it can never leave an empty band behind. */
+@media (scripting: enabled) {
+  html:has(meta[name="hatamoto-popups-bar"][content~="top"]):has(script[src*="/p/popups/assets/plugin.js"]):not(.hm-popups-no-top) body {
+    padding-top: 48px;
+  }
+  html:has(meta[name="hatamoto-popups-bar"][content~="bottom"]):has(script[src*="/p/popups/assets/plugin.js"]):not(.hm-popups-no-bottom) body {
+    padding-bottom: 48px;
+  }
 }
 
 .hm-popups-bar {
@@ -24,7 +30,7 @@ html:has(meta[name="hatamoto-popups-bar"][content~="bottom"]):not(.hm-popups-no-
   color: #ffffff;
   font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-.hm-popups-top { top: 0; }
+.hm-popups-top { position: absolute; top: 0; }
 .hm-popups-bottom { bottom: 0; }
 
 .hm-popups-body {

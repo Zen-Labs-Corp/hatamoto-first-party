@@ -85,7 +85,7 @@ func publishCampaigns(c sdk.HeadContext) (sdk.HeadContext, error) {
 	})
 	// The bar marker lets plugin.css reserve the bar's space before first
 	// paint, so the page does not jump when the script shows the bar.
-	if pos := barPositions(keep); pos != "" {
+	if pos := barPositions(keep, now()); pos != "" {
 		c.Tags = append(c.Tags, sdk.HeadTag{
 			Kind:  "meta",
 			Attrs: map[string]string{"name": "hatamoto-popups-bar", "content": pos},
@@ -95,11 +95,15 @@ func publishCampaigns(c sdk.HeadContext) (sdk.HeadContext, error) {
 }
 
 // barPositions lists the positions ("top", "bottom" or "top bottom") that have
-// a published bar.
-func barPositions(cs []campaign) string {
+// a bar already started at t. A bar that starts later is published but gets no
+// marker, so its space is not reserved (and collapsed) before anyone sees it.
+func barPositions(cs []campaign, t time.Time) string {
 	var top, bottom bool
 	for _, cp := range cs {
 		if cp.Kind != "bar" {
+			continue
+		}
+		if st, _ := parseUTC(cp.Start, false); st.After(t) {
 			continue
 		}
 		if cp.Position == "bottom" {

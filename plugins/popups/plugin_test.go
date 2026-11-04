@@ -264,6 +264,8 @@ func TestBarMarkerPerPosition(t *testing.T) {
 		{"both", `{"id":"a","kind":"bar","message":"x"},{"id":"b","kind":"bar","message":"y","position":"bottom"}`, "top bottom"},
 		{"popup only", `{"id":"a","kind":"popup","message":"x"}`, ""},
 		{"bar excluded here", `{"id":"a","kind":"bar","message":"x","exclude_paths":["/"]}`, ""},
+		{"bar not started", `{"id":"a","kind":"bar","message":"x","start":"2026-11-12"}`, ""},
+		{"bar started", `{"id":"a","kind":"bar","message":"x","start":"2026-11-10 11:00"}`, "top"},
 		{"bar ended", `{"id":"a","kind":"bar","message":"x","end":"2000-01-01"}`, ""},
 	}
 	for _, tc := range cases {
