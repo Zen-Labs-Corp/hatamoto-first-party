@@ -778,7 +778,7 @@ func TestManifest(t *testing.T) {
 	if !m.Schema.Properties["api_token"].WriteOnly || m.Schema.Properties["also_purge"].MaxItems != 20 {
 		t.Fatalf("schema %+v", m.Schema.Properties)
 	}
-	if m.Schema.Properties["site_url"].Pattern != "^https?://" {
+	if m.Schema.Properties["site_url"].Pattern != `^https?://[^/\s]+` {
 		t.Fatalf("site_url pattern %q", m.Schema.Properties["site_url"].Pattern)
 	}
 	// The sdk range matches the module's sdk version (^0.8 with v0.11).
