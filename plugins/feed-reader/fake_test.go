@@ -162,6 +162,11 @@ func (f *fakeHost) exec(sql string, a []any) error {
 				f.feeds[k] = r
 			}
 		}
+	case strings.HasPrefix(sql, "UPDATE feeds SET last_attempt = $2::timestamptz WHERE"):
+		if r, ok := f.feeds[a[0].(string)]; ok {
+			r.LastAttempt = parseStamp(a[1])
+			f.feeds[r.Key] = r
+		}
 	case strings.HasPrefix(sql, "UPDATE feeds SET last_attempt = $2"):
 		r, ok := f.feeds[a[0].(string)]
 		if !ok {

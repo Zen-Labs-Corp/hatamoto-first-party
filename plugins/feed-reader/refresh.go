@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 const (
 	// refreshEvery is how long after its last attempt a feed is due again.
@@ -75,7 +78,19 @@ func refresh(force bool) []feedResult {
 // The attempt time is saved on every outcome, so a failing feed is retried
 // after the normal interval and not on every tick.
 func refreshOne(f feedCfg, st feedRow, deadline time.Time) string {
+	// Claim the feed first: if this run dies on it (timeout, trap), it waits
+	// its interval like any failure instead of being retried first for ever.
+	if err := claimFeed(f.Key, now()); err != nil {
+		logf("error", "feed-reader: cannot record the attempt for feed %q", f.Name)
+	}
 	out, err := fetchFeed(f, st, deadline)
+	if errors.Is(err, errNoTime) {
+		// Downloaded too late to parse and store: leave the feed due.
+		if err := markDue([]string{f.Key}); err != nil {
+			logf("error", "feed-reader: cannot reschedule feed %q", f.Name)
+		}
+		return statusDeferred
+	}
 	status, etag, lastMod, siteURL, count := statusOK, st.ETag, st.LastModified, st.SiteURL, st.ItemCount
 	switch {
 	case err != nil:

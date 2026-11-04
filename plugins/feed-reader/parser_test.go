@@ -273,3 +273,15 @@ func TestCharsetReader(t *testing.T) {
 }
 
 func parseFeedBase(raw string) (*url.URL, error) { return url.Parse(raw) }
+
+func TestStripTagsIsLinear(t *testing.T) {
+	in := strings.Repeat("<style></style>", 70000) + "<SCRIPT>x</SCRIPT>end"
+	start := time.Now()
+	got := stripTags(in)
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("stripTags took %v on 1 MiB", d)
+	}
+	if strings.TrimSpace(got) != "end" {
+		t.Fatalf("got %q", got[len(got)-10:])
+	}
+}

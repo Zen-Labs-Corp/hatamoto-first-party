@@ -369,9 +369,15 @@ func asciiLower(s string) string {
 	return string(b)
 }
 
-// indexFold finds the lower-case ASCII needle in s ignoring ASCII case.
+// indexFold finds the ASCII needle in s ignoring ASCII case. It does not
+// copy s, so scanning a long text stays linear.
 func indexFold(s, needle string) int {
-	return strings.Index(asciiLower(s), needle)
+	for i := 0; i+len(needle) <= len(s); i++ {
+		if strings.EqualFold(s[i:i+len(needle)], needle) {
+			return i
+		}
+	}
+	return -1
 }
 
 // zoneOffsets replaces zone abbreviations, which time.Parse cannot resolve

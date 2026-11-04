@@ -19,7 +19,13 @@ const (
 	maxBody = 1 << 20
 	// maxValidator bounds a stored ETag or Last-Modified value.
 	maxValidator = 512
+	// parseMargin is the least time that must remain before the deadline
+	// after the download for the feed to be parsed and stored.
+	parseMargin = 1500 * time.Millisecond
 )
+
+// errNoTime means the download finished too late to parse and store the feed.
+var errNoTime = errors.New("no time left to process the feed")
 
 // feedErr is a per-feed failure. Its text is one of the fixed phrases below
 // and is what the overview shows: it never holds a URL, a response body or a
@@ -106,6 +112,9 @@ func fetchFeed(f feedCfg, st feedRow, deadline time.Time) (outcome, error) {
 	}
 	if res.Status < 200 || res.Status > 299 {
 		return outcome{}, feedErr("HTTP " + strconv.Itoa(res.Status))
+	}
+	if deadline.Sub(now()) < parseMargin {
+		return outcome{}, errNoTime
 	}
 	body := []byte(res.Body)
 	if res.BodyB64 != "" {

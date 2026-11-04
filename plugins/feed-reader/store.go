@@ -111,6 +111,11 @@ site_url = $6, item_count = $7 WHERE key = $1`,
 		key, stamp(attempt), status, etag, lastMod, siteURL, count)
 }
 
+// claimFeed records an attempt time before the feed is fetched.
+func claimFeed(key string, attempt time.Time) error {
+	return dbExec(`UPDATE feeds SET last_attempt = $2::timestamptz WHERE key = $1`, key, stamp(attempt))
+}
+
 // markDue makes feeds due at the next run (NULL sorts first).
 func markDue(keys []string) error {
 	if len(keys) == 0 {

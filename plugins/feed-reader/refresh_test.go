@@ -167,11 +167,11 @@ func TestRefreshBudgetStopsStartingAndMarksRestDue(t *testing.T) {
 	f := newFake(t)
 	setFeeds(f, "a", "b", "c", "d")
 	f.fetch = func(string, map[string]string) (fetchRes, error) {
-		f.clock = f.clock.Add(3 * time.Second) // every feed takes 3 s
+		f.clock = f.clock.Add(2500 * time.Millisecond) // every feed takes 2.5 s
 		return fetchRes{Status: 200, Body: rss(1)}, nil
 	}
 	res := refresh(false)
-	// Starts at 0 s, 3 s and 6 s; at 9 s nothing more is started.
+	// Starts at 0 s, 2.5 s and 5 s; at 7.5 s nothing more is started.
 	if len(f.requests) != 3 {
 		t.Fatalf("requests %d, results %v", len(f.requests), res)
 	}
@@ -283,5 +283,35 @@ func TestCronHandlerNeverFails(t *testing.T) {
 	f.settingsErr = fmt.Errorf("down")
 	if _, err := guest.Handle(guest.CronExport("fetch"), in); err != nil {
 		t.Fatalf("cron must fail open: %v", err)
+	}
+}
+
+func TestRefreshClaimsFeedBeforeFetching(t *testing.T) {
+	f := newFake(t)
+	setFeeds(f, "poison")
+	var claimed time.Time
+	f.fetch = func(string, map[string]string) (fetchRes, error) {
+		claimed = f.feeds[f.keyOf("poison")].LastAttempt // the run is killed here
+		return fetchRes{Status: 200, Body: rss(1)}, nil
+	}
+	refresh(false)
+	if !claimed.Equal(f.clock) {
+		t.Fatalf("attempt time during the fetch %v, want %v", claimed, f.clock)
+	}
+}
+
+func TestRefreshLateDownloadIsNotParsedAndStaysDue(t *testing.T) {
+	f := newFake(t)
+	setFeeds(f, "slow")
+	f.fetch = func(string, map[string]string) (fetchRes, error) {
+		f.clock = f.clock.Add(8 * time.Second)
+		return fetchRes{Status: 200, Body: rss(2), Headers: map[string]string{"etag": `"e1"`}}, nil
+	}
+	if got := statusOf(refresh(false)); got != "slow="+statusDeferred {
+		t.Fatalf("results %s", got)
+	}
+	row := f.feeds[f.keyOf("slow")]
+	if len(f.items) != 0 || row.ETag != "" || !row.LastAttempt.IsZero() {
+		t.Fatalf("must not store and must stay due: items %d, row %+v", len(f.items), row)
 	}
 }
