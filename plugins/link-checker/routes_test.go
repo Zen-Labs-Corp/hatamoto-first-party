@@ -204,3 +204,21 @@ func TestUnknownRouteIs404(t *testing.T) {
 		t.Fatal(code)
 	}
 }
+
+func TestLinksReportsAPartialScan(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		doc := fmt.Sprintf(`{"found":true,"value":{"started_at":"2026-03-01T00:00:00Z","finished_at":"2026-03-01T01:00:00Z","partial":%v}}`, partial)
+		f := routesHost(t, nil, nil)
+		inner := f.reply
+		f.reply = func(c call, out any) error {
+			if c.Fn == "kv.get" && fmt.Sprint(c.Args["key"]) == doneKey {
+				return json.Unmarshal([]byte(doc), out)
+			}
+			return inner(c, out)
+		}
+		_, body := request(t, "GET", "/links", nil, "")
+		if body["scan_partial"] != partial {
+			t.Fatalf("partial=%v: scan_partial = %v", partial, body["scan_partial"])
+		}
+	}
+}
