@@ -4,10 +4,10 @@
 {{- $s := plugin_share_buttons_style -}}{{- if and (ne $s "icons") (ne $s "labels") -}}{{- $s = "both" -}}{{- end -}}
 {{- if $u -}}
 <nav class="share-buttons share-buttons--{{$s}}" aria-label="Share"><ul class="share-buttons__list">
-{{- $end := false -}}
+{{- $end := false -}}{{- $fb := false -}}
 {{- range $i := 6 -}}{{- if not $end -}}
-  {{- $n := plugin_share_buttons_network $i -}}
-  {{- if eq $n "" -}}{{- if eq $i 0 -}}{{- $n = "linkedin" -}}{{- else if eq $i 1 -}}{{- $n = "x" -}}{{- else if eq $i 2 -}}{{- $n = "facebook" -}}{{- else if eq $i 3 -}}{{- $n = "whatsapp" -}}{{- else if eq $i 4 -}}{{- $n = "email" -}}{{- end -}}{{- end -}}
+  {{- $n := "" -}}{{- if not $fb -}}{{- $n = plugin_share_buttons_network $i -}}{{- if eq $n "" -}}{{- if eq $i 0 -}}{{- $fb = true -}}{{- else -}}{{- $n = "-" -}}{{- end -}}{{- end -}}{{- end -}}
+  {{- if $fb -}}{{- $n = "-" -}}{{- if eq $i 0 -}}{{- $n = "linkedin" -}}{{- else if eq $i 1 -}}{{- $n = "x" -}}{{- else if eq $i 2 -}}{{- $n = "facebook" -}}{{- else if eq $i 3 -}}{{- $n = "whatsapp" -}}{{- else if eq $i 4 -}}{{- $n = "email" -}}{{- end -}}{{- end -}}
   {{- if eq $n "-" -}}{{- $end = true -}}
   {{- else if eq $n "linkedin" -}}<li class="share-buttons__item share-buttons__item--linkedin"><a class="share-buttons__link" href="https://www.linkedin.com/sharing/share-offsite/?url={{$u}}" target="_blank" rel="noopener noreferrer" aria-label="Share on LinkedIn"><span class="share-buttons__icon" aria-hidden="true"></span><span class="share-buttons__label">LinkedIn</span></a></li>
   {{- else if eq $n "x" -}}<li class="share-buttons__item share-buttons__item--x"><a class="share-buttons__link" href="https://x.com/intent/post?url={{$u}}&text={{$t}}" target="_blank" rel="noopener noreferrer" aria-label="Share on X"><span class="share-buttons__icon" aria-hidden="true"></span><span class="share-buttons__label">X</span></a></li>

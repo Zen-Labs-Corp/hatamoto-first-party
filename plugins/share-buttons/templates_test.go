@@ -514,3 +514,55 @@ func TestClassNamesArePrefixed(t *testing.T) {
 		t.Errorf("only %d class tokens found: the check is not looking", seen)
 	}
 }
+
+// funcsWith serves network answers from nets (index -> answer, "" for a
+// failure) and counts the network calls.
+func funcsWith(t *testing.T, nets func(i int) string, calls *int) template.FuncMap {
+	f := stubFuncs(readManifest(t))
+	f["plugin_share_buttons_network"] = func(i int) string { *calls++; return nets(i) }
+	return f
+}
+
+// The fallback is decided once per render: a failure of the first call gives
+// the pure default list, a later failure ends the list, and the two are never
+// mixed.
+func TestFallbackIsNotMixed(t *testing.T) {
+	cfg := []string{"bluesky", "x"}
+	cases := map[string]struct {
+		answer func(i int) string
+		want   []string
+		calls  int
+	}{
+		"first call fails": {func(i int) string { return "" }, defaultNetworks, 1},
+		"later call fails": {func(i int) string {
+			if i == 0 {
+				return "bluesky"
+			}
+			return ""
+		}, []string{"bluesky"}, 2},
+		"configured": {func(i int) string {
+			if i < len(cfg) {
+				return cfg[i]
+			}
+			return "-"
+		}, cfg, 3},
+		"first answer ok, second fails, third would succeed": {func(i int) string {
+			return []string{"bluesky", "", "x"}[i]
+		}, []string{"bluesky"}, 2},
+	}
+	for name, c := range cases {
+		for tpl, data := range map[string]any{
+			partialName: partialDot("https://example.com/a", "T", ""),
+			sectionName: sectionWith("T", "", map[string]any{"url": "https://example.com/a"}),
+		} {
+			calls := 0
+			out := renderWith(t, funcsWith(t, c.answer, &calls), tpl, data)
+			if got := nets(scanOK(t, out)); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("%s %s: networks = %v, want %v", name, tpl, got, c.want)
+			}
+			if calls > c.calls {
+				t.Errorf("%s %s: %d network calls, want at most %d", name, tpl, calls, c.calls)
+			}
+		}
+	}
+}
