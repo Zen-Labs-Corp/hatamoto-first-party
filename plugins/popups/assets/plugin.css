@@ -1,0 +1,123 @@
+/* Announcement bars and popups. No animation. A bar is 48px high. The top bar is
+   absolute at the document top, so it scrolls away inside its reserved band and
+   never covers a sticky header; the bottom bar is fixed. The head marker meta
+   reserves the space on <body> before first paint, and the script adds
+   hm-popups-no-top / hm-popups-no-bottom on <html> when no bar shows. The reserve
+   only applies when plugin.js is linked (it needs the site.scripts grant) and
+   scripting is on, so it can never leave an empty band behind. */
+@media (scripting: enabled) {
+  html:has(meta[name="hatamoto-popups-bar"][content~="top"]):has(script[src*="/p/popups/assets/plugin.js"]):not(.hm-popups-no-top) body {
+    padding-top: 48px;
+  }
+  html:has(meta[name="hatamoto-popups-bar"][content~="bottom"]):has(script[src*="/p/popups/assets/plugin.js"]):not(.hm-popups-no-bottom) body {
+    padding-bottom: 48px;
+  }
+}
+
+.hm-popups-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 48px;
+  padding: 0 4px 0 16px;
+  background: #14213d;
+  color: #ffffff;
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.hm-popups-top { position: absolute; top: 0; }
+.hm-popups-bottom { bottom: 0; }
+
+.hm-popups-body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.hm-popups-message {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hm-popups-link { flex: none; white-space: nowrap; }
+.hm-popups-link { color: inherit; font-weight: 600; text-decoration: underline; }
+.hm-popups-link:focus-visible,
+.hm-popups-close:focus-visible {
+  outline: 3px solid #ffd166;
+  outline-offset: 2px;
+}
+
+.hm-popups-close {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hm-popups-close:hover { background: rgba(255, 255, 255, 0.18); }
+
+.hm-popups-dialog {
+  box-sizing: border-box;
+  width: min(32rem, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  margin: auto;
+  padding: 24px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1a1a1a;
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.hm-popups-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.hm-popups-dialog .hm-popups-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: #1a1a1a;
+}
+.hm-popups-dialog .hm-popups-close:hover { background: rgba(0, 0, 0, 0.08); }
+.hm-popups-dialog .hm-popups-close:focus-visible { outline-color: #14213d; }
+.hm-popups-dialog .hm-popups-body { display: block; }
+.hm-popups-dialog .hm-popups-message {
+  display: block;
+  margin: 0 0 16px;
+  padding-right: 40px;
+  overflow: visible;
+  white-space: normal;
+}
+.hm-popups-dialog .hm-popups-link {
+  display: inline-block;
+  padding: 10px 18px;
+  border-radius: 4px;
+  background: #14213d;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hm-popups-bar,
+  .hm-popups-dialog,
+  .hm-popups-dialog::backdrop,
+  .hm-popups-close,
+  .hm-popups-link {
+    animation: none !important;
+    transition: none !important;
+  }
+}
