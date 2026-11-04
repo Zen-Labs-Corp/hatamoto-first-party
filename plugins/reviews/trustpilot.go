@@ -49,7 +49,7 @@ func tpGet(s settings, path string, q url.Values, out any, deadline time.Time) e
 		return hostErr(err, s.TPKey, s.TPUnit)
 	}
 	if res.Status < 200 || res.Status > 299 {
-		return errors.New("Trustpilot " + redact(apiError(res.Status, res.Body).Error(), s.TPKey, s.TPUnit))
+		return errors.New("Trustpilot " + apiError(res.Status, res.Body, s.TPKey, s.TPUnit).Error())
 	}
 	if err := json.Unmarshal([]byte(res.Body), out); err != nil {
 		return errors.New("Trustpilot sent an answer that is not JSON")

@@ -47,7 +47,7 @@ func fetchGoogle(s settings, deadline time.Time) (sourceInfo, []review, error) {
 		return sourceInfo{}, nil, hostErr(err, s.GoogleKey, s.GooglePlace)
 	}
 	if res.Status < 200 || res.Status > 299 {
-		return sourceInfo{}, nil, errors.New("Google " + redact(apiError(res.Status, res.Body).Error(), s.GoogleKey, s.GooglePlace))
+		return sourceInfo{}, nil, errors.New("Google " + apiError(res.Status, res.Body, s.GoogleKey, s.GooglePlace).Error())
 	}
 	var p googlePlace
 	if err := json.Unmarshal([]byte(res.Body), &p); err != nil {

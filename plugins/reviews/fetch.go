@@ -66,8 +66,9 @@ func hostErr(err error, secrets ...string) error {
 }
 
 // apiError reduces an error answer to its status and a short message. It never
-// includes the request URL or headers.
-func apiError(status int, body string) error {
+// includes the request URL or headers. The secrets are removed before the
+// message is shortened, so a cut can not leave part of one behind.
+func apiError(status int, body string, secrets ...string) error {
 	var api struct {
 		Error struct {
 			Message string `json:"message"`
@@ -81,7 +82,7 @@ func apiError(status int, body string) error {
 			msg = api.Message
 		}
 	}
-	msg = strings.Join(strings.Fields(msg), " ")
+	msg = redact(strings.Join(strings.Fields(msg), " "), secrets...)
 	if len(msg) > 200 {
 		msg = strings.ToValidUTF8(msg[:200], "") + "..."
 	}

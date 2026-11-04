@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -116,5 +117,15 @@ func TestGooglePrefersTheOriginalText(t *testing.T) {
 	_, rs, err := fetchGoogle(settings{GoogleKey: "G-SECRET", GooglePlace: "PLACE1"}, f.clock.Add(9*time.Second))
 	if err != nil || len(rs) != 1 || rs[0].Body != "Toller Service" {
 		t.Fatalf("%+v %v", rs, err)
+	}
+}
+
+func TestApiErrorRedactsBeforeCutting(t *testing.T) {
+	key := "K-0123456789abcdef"
+	msg := strings.Repeat("x", 195) + key + " tail"
+	body, _ := json.Marshal(map[string]any{"error": map[string]string{"message": msg}})
+	got := apiError(403, string(body), key).Error()
+	if strings.Contains(got, "K-0") || strings.Contains(got, key[:5]) {
+		t.Fatalf("part of the key survived the cut: %q", got)
 	}
 }
