@@ -2,7 +2,8 @@
 // targeting, start and end dates and frequency caps.
 //
 // The render.head filter publishes the campaigns that can still apply to the
-// page as one <meta name="hatamoto-popups"> tag; assets/plugin.js (linked on
+// page as one <meta name="hatamoto-popups"> tag (plus a
+// <meta name="hatamoto-popups-bar"> marker when a bar is published); assets/plugin.js (linked on
 // every public page by the core) re-checks everything in the browser and shows
 // them. The plugin never uses render.page, so pages stay cacheable.
 package main
@@ -82,7 +83,40 @@ func publishCampaigns(c sdk.HeadContext) (sdk.HeadContext, error) {
 		Kind:  "meta",
 		Attrs: map[string]string{"name": "hatamoto-popups", "content": string(b)},
 	})
+	// The bar marker lets plugin.css reserve the bar's space before first
+	// paint, so the page does not jump when the script shows the bar.
+	if pos := barPositions(keep); pos != "" {
+		c.Tags = append(c.Tags, sdk.HeadTag{
+			Kind:  "meta",
+			Attrs: map[string]string{"name": "hatamoto-popups-bar", "content": pos},
+		})
+	}
 	return c, nil
+}
+
+// barPositions lists the positions ("top", "bottom" or "top bottom") that have
+// a published bar.
+func barPositions(cs []campaign) string {
+	var top, bottom bool
+	for _, cp := range cs {
+		if cp.Kind != "bar" {
+			continue
+		}
+		if cp.Position == "bottom" {
+			bottom = true
+		} else {
+			top = true
+		}
+	}
+	switch {
+	case top && bottom:
+		return "top bottom"
+	case top:
+		return "top"
+	case bottom:
+		return "bottom"
+	}
+	return ""
 }
 
 // normalize validates a campaign and fills defaults. ok is false when it

@@ -61,7 +61,11 @@ function setup(opts) {
   var body = element('body');
   var doc = {
     body: body, activeElement: null, listeners: {},
-    documentElement: { scrollHeight: (opts.scroll && opts.scroll.h) || 1000 },
+    documentElement: {
+      scrollHeight: (opts.scroll && opts.scroll.h) || 1000,
+      classes: [],
+      classList: { add: function (c) { doc.documentElement.classes.push(c); } },
+    },
     createElement: function (t) {
       var e = element(t);
       e.ownerDoc = doc;
@@ -94,6 +98,8 @@ var bar = { id: 'b1', kind: 'bar', message: 'Spring <b>sale</b>', link_label: 'P
 var pop = { id: 'p1', kind: 'popup', message: 'Webinar', frequency: 'day', trigger: 'load' };
 function dialogs(s) { return find(s.body, function (e) { return e.tag === 'dialog'; }); }
 function bars(s) { return find(s.body, function (e) { return e.className.indexOf('hm-popups-bar') >= 0; }); }
+
+function htmlClasses(s) { return s.doc.documentElement.classes.slice().sort().join(' '); }
 
 // ---- pure functions ----
 test('matchPath globs', function () {
@@ -191,6 +197,24 @@ test('bar: region, textContent, safe link, dismiss stays dismissed', function ()
   var again = setup({ campaigns: [bar], session: s.win.sessionStorage });
   p.run(again.win, again.doc);
   assert.strictEqual(bars(again).length, 0);
+});
+
+test('bar: reserve is kept while shown, dropped on dismiss, other position freed', function () {
+  var s = setup({ campaigns: [bar] });
+  p.run(s.win, s.doc);
+  assert.strictEqual(htmlClasses(s), 'hm-popups-no-bottom');
+  find(bars(s)[0], function (e) { return e.className === 'hm-popups-close'; })[0].emit('click');
+  assert.strictEqual(htmlClasses(s), 'hm-popups-no-bottom hm-popups-no-top');
+});
+
+test('bar: no-bar classes when nothing shows', function () {
+  var done = setup({ campaigns: [bar] });
+  done.win.sessionStorage.setItem('hm-popups:b1', '1');
+  p.run(done.win, done.doc);
+  assert.strictEqual(htmlClasses(done), 'hm-popups-no-bottom hm-popups-no-top');
+  var early = setup({ campaigns: [Object.assign({}, bar, { start: '2999-01-01' })] });
+  p.run(early.win, early.doc);
+  assert.strictEqual(htmlClasses(early), 'hm-popups-no-bottom hm-popups-no-top');
 });
 
 test('bar: clicking the link records the dismissal', function () {

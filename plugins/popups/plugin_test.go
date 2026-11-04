@@ -40,11 +40,15 @@ func head(t *testing.T, path, settings string, hostErr error) []sdk.HeadTag {
 // published decodes the campaigns of the single popups meta tag.
 func published(t *testing.T, tags []sdk.HeadTag) []campaign {
 	t.Helper()
-	if len(tags) != 1 || tags[0].Kind != "meta" || tags[0].Attrs["name"] != "hatamoto-popups" {
+	main := tags
+	if len(tags) == 2 && tags[1].Attrs["name"] == "hatamoto-popups-bar" {
+		main = tags[:1]
+	}
+	if len(main) != 1 || main[0].Kind != "meta" || main[0].Attrs["name"] != "hatamoto-popups" {
 		t.Fatalf("tags = %+v", tags)
 	}
 	var cs []campaign
-	if err := json.Unmarshal([]byte(tags[0].Attrs["content"]), &cs); err != nil {
+	if err := json.Unmarshal([]byte(main[0].Attrs["content"]), &cs); err != nil {
 		t.Fatal(err)
 	}
 	return cs
@@ -250,5 +254,28 @@ func TestManifestMatchesLimits(t *testing.T) {
 	}
 	if !strings.Contains(string(b), `"maxLength": 200`) || !strings.Contains(string(b), strings.ReplaceAll(idRe.String(), `\`, `\\`)) {
 		t.Fatalf("plugin.json out of sync with idRe %s / link limit", idRe)
+	}
+}
+
+func TestBarMarkerPerPosition(t *testing.T) {
+	cases := []struct{ name, settings, want string }{
+		{"top", `{"id":"a","kind":"bar","message":"x"}`, "top"},
+		{"bottom", `{"id":"a","kind":"bar","message":"x","position":"bottom"}`, "bottom"},
+		{"both", `{"id":"a","kind":"bar","message":"x"},{"id":"b","kind":"bar","message":"y","position":"bottom"}`, "top bottom"},
+		{"popup only", `{"id":"a","kind":"popup","message":"x"}`, ""},
+		{"bar excluded here", `{"id":"a","kind":"bar","message":"x","exclude_paths":["/"]}`, ""},
+		{"bar ended", `{"id":"a","kind":"bar","message":"x","end":"2000-01-01"}`, ""},
+	}
+	for _, tc := range cases {
+		tags := head(t, "/", `{"campaigns":[`+tc.settings+`]}`, nil)
+		got := ""
+		for _, tag := range tags {
+			if tag.Attrs["name"] == "hatamoto-popups-bar" {
+				got = tag.Attrs["content"]
+			}
+		}
+		if got != tc.want {
+			t.Errorf("%s: marker = %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }

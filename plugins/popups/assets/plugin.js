@@ -171,6 +171,12 @@
     return wrap;
   }
 
+  // noBar tells the stylesheet that no bar shows at pos, which drops the space
+  // it reserved from the head marker.
+  function noBar(doc, pos) {
+    try { doc.documentElement.classList.add('hm-popups-no-' + pos); } catch (e) { /* no class */ }
+  }
+
   function showBar(doc, c, onDismiss) {
     var bar = doc.createElement('div');
     bar.setAttribute('role', 'region');
@@ -180,6 +186,7 @@
     var close = closeButton(doc);
     close.addEventListener('click', function () {
       if (bar.parentNode) bar.parentNode.removeChild(bar);
+      noBar(doc, c.position === 'bottom' ? 'bottom' : 'top');
       onDismiss(c);
     });
     bar.appendChild(close);
@@ -250,13 +257,19 @@
       var stores = getStores(win);
       var chosen = pick(readCampaigns(doc), win.location.pathname, stores, now, capabilities(win, doc));
       var dismiss = function (c) { recordDismissal(c, stores, Date.now()); };
+      var shown = { top: false, bottom: false };
       chosen.forEach(function (c) {
         try {
-          if (c.kind === 'bar') showBar(doc, c, dismiss);
+          if (c.kind === 'bar') {
+            showBar(doc, c, dismiss);
+            shown[c.position === 'bottom' ? 'bottom' : 'top'] = true;
+          }
           else arm(win, doc, c, function () { try { showPopup(doc, c, dismiss); } catch (e) { /* no popup */ } });
         } catch (e) { /* skip this campaign */ }
       });
-    } catch (e) { /* never break the page */ }
+      if (!shown.top) noBar(doc, 'top');
+      if (!shown.bottom) noBar(doc, 'bottom');
+    } catch (e) { noBar(doc, 'top'); noBar(doc, 'bottom'); /* never break the page */ }
   }
 
   var api = {
