@@ -41,13 +41,21 @@ func TestFetchTrustpilotRequestsAndMapping(t *testing.T) {
 		t.Fatalf("requests %+v", f.requests)
 	}
 	u0, _ := url.Parse(f.requests[0].URL)
-	if u0.Host != "api.trustpilot.com" || u0.Path != "/v1/business-units/UNIT1" || u0.Query().Get("apikey") != "T-SECRET" {
+	if u0.Host != "api.trustpilot.com" || u0.Path != "/v1/business-units/UNIT1" {
 		t.Fatalf("unit request %s", f.requests[0].URL)
 	}
 	u1, _ := url.Parse(f.requests[1].URL)
 	q := u1.Query()
-	if u1.Path != "/v1/business-units/UNIT1/reviews" || q.Get("perPage") != "20" || q.Get("orderBy") != "createdat.desc" || q.Get("apikey") != "T-SECRET" {
+	if u1.Path != "/v1/business-units/UNIT1/reviews" || q.Get("perPage") != "20" || q.Get("orderBy") != "createdat.desc" {
 		t.Fatalf("reviews request %s", f.requests[1].URL)
+	}
+	for _, r := range f.requests {
+		if strings.Contains(r.URL, "T-SECRET") || strings.Contains(strings.ToLower(r.URL), "apikey") {
+			t.Fatalf("the key is in the URL %s", r.URL)
+		}
+		if r.Headers["apikey"] != "T-SECRET" {
+			t.Fatalf("apikey header missing: %+v", r.Headers)
+		}
 	}
 	if info.Rating != 4.6 || info.Count != 210 || info.Name != "Acme" || info.ProfileURL != "https://www.trustpilot.com/review/www.acme.example" {
 		t.Fatalf("info %+v", info)

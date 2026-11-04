@@ -37,11 +37,14 @@ type tpReviews struct {
 
 const tpBase = "https://api.trustpilot.com/v1/business-units/"
 
-// tpGet runs one Trustpilot call. The key travels as the apikey query
-// parameter, so every error text is redacted and never names the URL.
+// tpGet runs one Trustpilot call. The key travels in the apikey request
+// header, never in the URL (the host logs URLs); error texts are redacted too.
 func tpGet(s settings, path string, q url.Values, out any, deadline time.Time) error {
-	q.Set("apikey", s.TPKey)
-	res, err := fetchJSON("GET", tpBase+url.PathEscape(s.TPUnit)+path+"?"+q.Encode(), nil, deadline)
+	u := tpBase + url.PathEscape(s.TPUnit) + path
+	if len(q) > 0 {
+		u += "?" + q.Encode()
+	}
+	res, err := fetchJSON("GET", u, map[string]string{"apikey": s.TPKey}, deadline)
 	if err != nil {
 		return hostErr(err, s.TPKey, s.TPUnit)
 	}
