@@ -11,7 +11,8 @@ func init() {
 
 // onPublished re-reads the links of a page the moment it is published: its
 // page rows are replaced (removed links drop off, new ones are queued as
-// pending and checked by the next cron run). It uses no network. Any failure
+// pending and checked by the next cron run), and broken internal links are
+// queued again. It uses no network. Any failure
 // is logged and swallowed, so publishing is never affected.
 func onPublished(ev sdk.EntityEvent) error {
 	var e entityWire
@@ -22,6 +23,10 @@ func onPublished(ev sdk.EntityEvent) error {
 	s := loadSettings()
 	if err := indexEntity(e, s.Exclude, siteOrigin(e.URL, e.Path)); err != nil {
 		logf("warn", "storing links of a published page: %v", err)
+	}
+	// The page may be the target a broken internal link was missing.
+	if err := recheckBrokenInternal(); err != nil {
+		logf("warn", "queueing broken internal links: %v", err)
 	}
 	return nil
 }

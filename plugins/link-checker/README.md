@@ -53,7 +53,9 @@ Settings (plugin settings tab):
 
 - **Links never checked**: address prefixes to skip, either a full address such
   as `https://example.org/private` or a site path such as `/members`.
-- **Days between checks of a working link**: 1 to 90, default 7.
+- **Days between checks of a working link**: 1 to 90, default 7. Broken and
+  Unknown links are checked again after a day, and broken internal links when
+  any page is published.
 - **Timeout per outbound request**: 1000 to 10000 ms, default 5000. A run also
   never starts a request that would not finish inside its time budget.
 

@@ -108,3 +108,22 @@ func TestPublishedAlwaysReturnsNil(t *testing.T) {
 		}
 	}
 }
+
+func TestPublishedRequeuesBrokenInternalLinks(t *testing.T) {
+	f := newFakeHost(t, func(c call, out any) error {
+		if c.Fn == "entities.get" {
+			return json.Unmarshal([]byte(`{"id":"e1","name":"P","path":"/p","attributes":{}}`), out)
+		}
+		return nil
+	})
+	if err := onPublished(sdk.EntityEvent{ID: "e1"}); err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, q := range f.sqls() {
+		found = found || strings.Contains(q, "kind = 'internal' AND status = 'broken'")
+	}
+	if !found {
+		t.Fatalf("broken internal links must be due after a publish: %v", f.sqls())
+	}
+}

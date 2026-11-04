@@ -297,3 +297,10 @@ func removeExcluded(exclude []string) error {
 		(SELECT l.id FROM links l WHERE EXISTS
 		  (SELECT 1 FROM jsonb_array_elements_text($1::jsonb) e WHERE left(l.url, length(e)) = e))`, string(b))
 }
+
+// recheckBrokenInternal makes every broken internal link due now: a newly
+// published page may be the target one of them was missing.
+func recheckBrokenInternal() error {
+	return dbExec(`UPDATE links SET next_check = $1::timestamptz
+		WHERE kind = 'internal' AND status = 'broken'`, ts(now()))
+}

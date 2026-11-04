@@ -253,12 +253,12 @@ func TestScanChecksDueLinksAndSchedules(t *testing.T) {
 			got = append(got, fmt.Sprintf("%v %v %v", p[1], p[2], p[6]))
 		}
 	}
-	// Internal first (no page, rechecked in 7 days), then outbound; each
+	// Internal first (no page, rechecked in a day), then outbound; each
 	// request advances the fake clock by 300 ms.
 	want := []string{
-		"broken 0 2026-03-08T12:00:00Z",
+		"broken 0 2026-03-02T12:00:00Z",
 		"ok 200 2026-03-08T12:00:00Z",
-		"broken 404 2026-03-08T12:00:00Z",
+		"broken 404 2026-03-02T12:00:00Z",
 		"unknown 503 2026-03-02T12:00:00Z", // 429/503: one day
 	}
 	if len(got) != len(want) {

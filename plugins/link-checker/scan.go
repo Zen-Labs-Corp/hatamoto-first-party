@@ -314,12 +314,17 @@ func hostOf(raw string) string {
 }
 
 // record stores a check result and schedules the next check: after the
-// result's own delay, or recheck_days.
+// result's own delay, else after a day for a broken or unknown link (it may
+// have been fixed, or the failure may have been a blip) and recheck_days for
+// the rest.
 func record(l dueLink, r result, s settings) {
 	if r.Keep {
 		return
 	}
 	delay := r.Delay
+	if delay == 0 && (r.Status == statusBroken || r.Status == statusUnknown) {
+		delay = retryLater
+	}
 	if delay == 0 {
 		delay = time.Duration(s.RecheckDays) * 24 * time.Hour
 	}
