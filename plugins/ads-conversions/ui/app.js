@@ -70,8 +70,7 @@ function detail(r) {
 }
 
 function fillLog() {
-  const platform = $("#filter").value;
-  const rows = state.rows.filter((r) => !platform || r.platform === platform);
+  const rows = state.rows;
   const body = $("#log tbody");
   body.replaceChildren();
   for (const r of rows) {
@@ -156,7 +155,8 @@ function fillCards() {
 }
 
 async function refresh() {
-  state = await api("GET", "/log");
+  const platform = $("#filter").value;
+  state = await api("GET", platform ? `/log?platform=${encodeURIComponent(platform)}` : "/log");
   fillCards();
   fillLog();
 }
@@ -206,7 +206,7 @@ function test(p, btn) {
 
 async function main() {
   await hatamoto.ready;
-  $("#filter").onchange = fillLog;
+  $("#filter").onchange = () => guarded(refresh);
   await refresh();
 }
 

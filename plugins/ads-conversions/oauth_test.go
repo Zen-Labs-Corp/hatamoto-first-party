@@ -216,3 +216,26 @@ func TestOAuthCallsLeakNoTokensOrSecrets(t *testing.T) {
 		t.Fatal("nothing was scanned")
 	}
 }
+
+func TestRefusedClientBreaksConnectionLikeInvalidGrant(t *testing.T) {
+	for _, c := range []struct {
+		status int
+		body   string
+	}{{400, `{"error":"invalid_client"}`}, {401, `{"error":"invalid_client"}`}, {400, `{"error":"unauthorized_client"}`}, {401, `{"error":"invalid_grant"}`}} {
+		h := newHost(t)
+		s := settingsFor(t, h)
+		_ = saveTokens(s, platGoogle, tokenSet{Access: "old", Refresh: "ref", Expires: testNow.Add(-time.Hour)})
+		stubHTTP(t, fetched{Status: c.status, Body: c.body}, nil)
+		if _, err := accessToken(s, platGoogle, false); err != errReconnect || !broken(platGoogle) {
+			t.Fatalf("%d %s: err %v broken %v", c.status, c.body, err, broken(platGoogle))
+		}
+	}
+	// Other 400s stay transient.
+	h := newHost(t)
+	s := settingsFor(t, h)
+	_ = saveTokens(s, platGoogle, tokenSet{Access: "old", Refresh: "ref", Expires: testNow.Add(-time.Hour)})
+	stubHTTP(t, fetched{Status: 400, Body: `{"error":"invalid_request"}`}, nil)
+	if _, err := accessToken(s, platGoogle, false); err == errReconnect || broken(platGoogle) {
+		t.Fatalf("err %v", err)
+	}
+}

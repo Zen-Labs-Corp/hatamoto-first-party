@@ -120,6 +120,10 @@ func authorizationURL(s settings, platform, state, challenge string) string {
 	return linkedInAuthURL + "?" + q.Encode()
 }
 
+// refusedGrant lists the token endpoint errors that mean the grant or the
+// client is no longer accepted, so only connecting again helps.
+var refusedGrant = map[string]bool{"invalid_grant": true, "invalid_client": true, "unauthorized_client": true}
+
 type tokenAnswer struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -148,7 +152,7 @@ func tokenRequest(s settings, platform string, form url.Values) (tokenAnswer, er
 	}
 	var a tokenAnswer
 	_ = json.Unmarshal([]byte(f.Body), &a)
-	if f.Status == 400 && a.Error == "invalid_grant" {
+	if (f.Status == 400 || f.Status == 401) && refusedGrant[a.Error] {
 		return a, errInvalidGrant
 	}
 	if f.Status != 200 || f.Truncated || a.AccessToken == "" {
@@ -187,7 +191,7 @@ func exchangeCode(s settings, platform, code, verifier string) (tokenSet, error)
 }
 
 // refreshTokens swaps the refresh token for a new access token and saves it.
-// invalid_grant breaks the connection.
+// A refused grant or client breaks the connection.
 func refreshTokens(s settings, platform string, cur tokenSet) (tokenSet, error) {
 	a, err := tokenRequest(s, platform, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {cur.Refresh}})
 	if errors.Is(err, errInvalidGrant) {

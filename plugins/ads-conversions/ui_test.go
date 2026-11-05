@@ -102,7 +102,7 @@ func TestUIColoursHaveFallbacks(t *testing.T) {
 
 func TestUICallsTheRoutes(t *testing.T) {
 	js := readUI(t, "app.js")
-	for _, want := range []string{`api("GET", "/log")`, `api("POST", "/test"`, "`/connect/${p}`", "`/disconnect/${p}`", "textContent", "hatamoto.ready"} {
+	for _, want := range []string{"`/log?platform=${encodeURIComponent(platform)}`", `api("POST", "/test"`, "`/connect/${p}`", "`/disconnect/${p}`", "textContent", "hatamoto.ready"} {
 		if !strings.Contains(js, want) {
 			t.Errorf("ui/app.js lacks %q", want)
 		}

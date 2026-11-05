@@ -21,7 +21,7 @@ The conversion carries the hashed email (SHA-256, trimmed and lower-cased; for G
 
 Ad click IDs (`gclid`, `gbraid`, `wbraid`, `ttclid`, `li_fat_id`) come from two places. The plugin's page script (loaded with `site.scripts`) keeps them in a first-party cookie `hm_adc` for 90 days and posts them with the submission id when the form is stored. The submission's page address is the fallback: only those five parameters are read from it and the address itself is never stored. When a **Consent field** is set, only submissions where it is ticked are sent. The script itself does nothing until the visitor has agreed to marketing cookies; with no consent banner it starts at once.
 
-A conversion is sent about a minute after the submission, so that the page script's click IDs can arrive first.
+A conversion is sent one to two minutes after the submission, so that the page script's click IDs can arrive first.
 
 ## Permissions
 
@@ -53,7 +53,7 @@ From the repository root: `scripts/build-plugin.sh plugins/ads-conversions`.
 - **TikTok**: needs an Events API access token from Events Manager.
 - The host never passes the visitor's IP address or user agent to plugins, so match quality comes from the hashed contact details and the click IDs.
 - Click IDs need the plugin script (`site.scripts`) and marketing consent. Without them a conversion is still sent with the hashes only.
-- A conversion may arrive up to about a minute after the submission.
+- A conversion may arrive one to two minutes after the submission.
 - Names are not sent: LinkedIn's `userInfo` and Google's address matching need plain names, which this plugin never keeps.
 - A platform that needs reconnecting is paused; its queued conversions are kept for up to 24 hours and then logged as expired.
 - No browser tags, no Meta, no offline or CRM-stage conversions, no reporting, and no backfill of submissions from before the plugin was set up.

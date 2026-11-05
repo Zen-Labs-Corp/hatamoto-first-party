@@ -90,6 +90,9 @@ func normPhone(v any, defaultCC string) (string, bool) {
 	d := digitsOf(s)
 	switch {
 	case strings.HasPrefix(s, "+"):
+		// "+49 (0)30 ..." writes the trunk zero in brackets; it is not dialled
+		// with the country code.
+		d = digitsOf(strings.Replace(s, "(0)", "", 1))
 	case strings.HasPrefix(d, "00"):
 		d = d[2:]
 	case defaultCC != "":
