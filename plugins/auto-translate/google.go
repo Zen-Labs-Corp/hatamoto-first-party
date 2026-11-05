@@ -36,6 +36,9 @@ func (g google) translate(texts []string, target, source string) ([]string, erro
 		},
 		Body: string(body),
 	})
+	if errors.Is(err, errBudget) {
+		return nil, err // the step resumes, see fetchStep
+	}
 	if err != nil {
 		return nil, errors.New(redact(err.Error(), g.key))
 	}

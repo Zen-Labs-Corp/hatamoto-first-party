@@ -30,6 +30,7 @@ type stageWorld struct {
 	finished   bool
 	fails      []string
 	seq        int
+	gets       int // buffer.get calls
 }
 
 func newStageWorld(t *testing.T) *stageWorld {
@@ -58,7 +59,7 @@ func (w *stageWorld) add(id, parent, name, slug string, mod ...func(*record)) st
 		m(&r)
 	}
 	b, _ := json.Marshal(r)
-	key := bufferKey(w.seq, id, parent)
+	key := bufferKey(w.seq, r)
 	w.seq++
 	w.buffer[key] = b
 	return key
@@ -92,6 +93,7 @@ func (w *stageWorld) call(fn string, args, out any) error {
 		}
 		res = sdk.BufferKeys{Keys: keys, Next: next}
 	case sdk.FnBufferGet:
+		w.gets++
 		v, ok := w.buffer[args.(sdk.BufferGetArgs).Key]
 		res = sdk.BufferValue{Found: ok, ValueB64: base64.StdEncoding.EncodeToString(v)}
 	case sdk.FnEntitiesSlugTaken:
@@ -433,5 +435,27 @@ func TestTransformKeepsThePublishedCopysSlug(t *testing.T) {
 	got := w.slugs()
 	if got["p1"] != "kontakt" || got["p2"] != "kontakt-2" {
 		t.Fatalf("slugs %v", got)
+	}
+}
+
+// A step must not read the records it already staged: reads stay linear in
+// the number of records, not quadratic.
+func TestTransformDoesNotReReadEarlierRecords(t *testing.T) {
+	w := newStageWorld(t)
+	for i := 0; i < 80; i++ {
+		w.add(fmt.Sprintf("p%03d", i), "", "Kontakt", fmt.Sprintf("kontakt-%d", i%5))
+	}
+	if n := w.run(); n < 3 {
+		t.Fatalf("%d steps, fails %v", n, w.fails)
+	}
+	if w.gets != 80 || len(w.upserts) != 80 {
+		t.Fatalf("%d reads, %d upserts", w.gets, len(w.upserts))
+	}
+	seen := map[string]bool{}
+	for _, u := range w.upserts {
+		if seen[u.Slug] {
+			t.Fatalf("slug %s twice", u.Slug)
+		}
+		seen[u.Slug] = true
 	}
 }

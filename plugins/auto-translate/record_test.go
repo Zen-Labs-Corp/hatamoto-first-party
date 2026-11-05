@@ -184,13 +184,16 @@ func TestFillCountsLostGlossaryTerms(t *testing.T) {
 func TestBufferKey(t *testing.T) {
 	id := "11111111-1111-1111-1111-111111111111"
 	parent := "22222222-2222-2222-2222-222222222222"
-	if got := bufferKey(42, id, parent); got != "src/00000042/"+id+"/"+parent {
+	r := record{ID: id, ParentID: parent, SourceLocale: "en", T: translated{Slug: "Über uns"}}
+	if got := bufferKey(42, r); got != "src/00000042/"+id+"/"+parent+"/en/nuber-uns" {
 		t.Fatalf("key %q", got)
 	}
-	if got := bufferKey(1, id, ""); got != "src/00000001/"+id+"/-" {
+	r = record{ID: id, SourceLocale: "en", SourceSlug: "about", ExistingSlug: "kontakt"}
+	if got := bufferKey(1, r); got != "src/00000001/"+id+"/-/en/ekontakt" {
 		t.Fatalf("key %q", got)
 	}
-	if n := len(bufferKey(99999999, id, parent)); n > 256 {
+	r = record{ID: id, ParentID: parent, SourceLocale: "en-GB-oxendict", T: translated{Slug: strings.Repeat("a", 300)}}
+	if n := len(bufferKey(99999999, r)); n > 256 {
 		t.Fatalf("%d bytes", n)
 	}
 }
@@ -215,7 +218,7 @@ func TestPutRecord(t *testing.T) {
 	if err := putRecord(3, r); err != nil {
 		t.Fatal(err)
 	}
-	if gotKey != "src/00000003/i1/-" {
+	if gotKey != "src/00000003/i1/-/en/ni1" {
 		t.Fatalf("key %q", gotKey)
 	}
 	var back record

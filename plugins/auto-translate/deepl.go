@@ -38,6 +38,9 @@ func (d deepl) translate(texts []string, target, source string) ([]string, error
 		},
 		Body: string(body),
 	})
+	if errors.Is(err, errBudget) {
+		return nil, err // the step resumes, see fetchStep
+	}
 	if err != nil {
 		return nil, errors.New(redact(err.Error(), d.key))
 	}

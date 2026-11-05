@@ -149,18 +149,48 @@ func fill(e entity, out []string, slots []slot, g []glossaryEntry) (record, int)
 	return r, lost
 }
 
-// bufferKey is the run buffer key of a record. The parent id is part of the
-// key so the transform phase can order parents first without reading values.
-func bufferKey(seq int, id, parentID string) string {
-	if parentID == "" {
-		parentID = "-"
+// maxKeyBase bounds the slug base carried in a buffer key, which the host
+// limits to 256 bytes.
+const maxKeyBase = 120
+
+// recordBase is the slug the copy is built from: the slug of the copy already
+// published, else the translated words, else the source slug, else the id.
+func recordBase(r record) string {
+	base := slugBase(r.T.Slug, r.SourceSlug)
+	if r.ExistingSlug != "" {
+		base = strings.ReplaceAll(r.ExistingSlug, "/", "")
 	}
-	return fmt.Sprintf("src/%08d/%s/%s", seq, id, parentID)
+	if base == "" {
+		base = slugify(r.ID)
+	}
+	if base = strings.Trim(cutBytes(base, maxKeyBase), "-"); base != "" {
+		return base
+	}
+	return "x"
+}
+
+// bufferKey is the run buffer key of a record: src/<seq>/<id>/<parent>/
+// <source locale>/<n|e><slug base>. The transform phase orders parents first,
+// drops other-language records and keeps slugs unique from the keys alone,
+// without reading any value. "e" marks a base that is the slug of an already
+// published copy.
+func bufferKey(seq int, r record) string {
+	parent, loc, flag := r.ParentID, r.SourceLocale, "n"
+	if parent == "" {
+		parent = "-"
+	}
+	if loc == "" {
+		loc = "-"
+	}
+	if r.ExistingSlug != "" {
+		flag = "e"
+	}
+	return fmt.Sprintf("src/%08d/%s/%s/%s/%s%s", seq, r.ID, parent, loc, flag, recordBase(r))
 }
 
 // putRecord stores a record in the run buffer (fetch phase only).
 func putRecord(seq int, r record) error {
-	key := bufferKey(seq, r.ID, r.ParentID)
+	key := bufferKey(seq, r)
 	if len(key) > 256 {
 		return errors.New("buffer key too long")
 	}

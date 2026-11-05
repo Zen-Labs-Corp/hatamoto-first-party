@@ -22,8 +22,8 @@ const (
 // tcursor is the transform checkpoint: the position in the ordered record
 // list, and for records whose slug had to be moved aside because a published
 // entity holds it, the suffix chosen (position -> n, as in base-n). A resumed
-// step replays the slug choices of the earlier records from the records
-// themselves and these suffixes, without asking the host again. Conflicts is
+// step replays the slug choices of the earlier records from their keys and
+// these suffixes, without asking the host again. Conflicts is
 // the number of records the host refused.
 type tcursor struct {
 	I         int            `json:"i"`
@@ -33,8 +33,9 @@ type tcursor struct {
 
 // recKey is a buffer key split into its parts.
 type recKey struct {
-	key, id, parent string
-	depth           int
+	key, id, parent, locale, base string
+	existing                      bool
+	depth                         int
 }
 
 // listKeys lists every buffer key under prefix.
@@ -61,11 +62,12 @@ func orderKeys(keys []string) []recKey {
 	rks := make([]recKey, 0, len(keys))
 	parentOf := map[string]string{}
 	for _, k := range keys {
-		parts := strings.Split(k, "/") // src, seq, id, parent
-		if len(parts) != 4 {
+		parts := strings.Split(k, "/") // src, seq, id, parent, locale, flag+base
+		if len(parts) != 6 || parts[5] == "" {
 			continue
 		}
-		rk := recKey{key: k, id: parts[2], parent: parts[3]}
+		rk := recKey{key: k, id: parts[2], parent: parts[3], locale: parts[4],
+			base: parts[5][1:], existing: parts[5][0] == 'e'}
 		if rk.parent == "-" {
 			rk.parent = ""
 		}
@@ -151,8 +153,8 @@ func upsertFor(r record, locale, siteLocale, slug, parentKey string) (sdk.Entity
 func sourceKey(locale, id string) string { return "tr:" + locale + ":" + id }
 
 // transformStep stages up to 25 translated copies per step, parents first.
-// Earlier records are read again each step to rebuild the slug set and the set
-// of staged parents; see tcursor.
+// The slug set and the set of staged parents are rebuilt each step from the
+// record keys; see tcursor.
 func transformStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 	start := time.Now()
 	info, err := guest.RunInfo(callHost)
@@ -195,52 +197,60 @@ func transformStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 	slugs := newSlugSet()
 	inRun := map[string]bool{} // ids staged earlier in the run
 	valid, dropped := 0, 0
+	for _, rk := range ordered {
+		if strings.EqualFold(rk.locale, site.Language) {
+			valid++
+		} else {
+			dropped++
+		}
+	}
 	suffix := cur.Suffix
 	newSuffix := map[string]int{}
 
+	// Earlier records are replayed from their keys alone (slug base, parent,
+	// language), so a resumed step costs no host call per record.
+	for i := 0; i < cur.I && i < len(ordered); i++ {
+		rk := ordered[i]
+		if !strings.EqualFold(rk.locale, site.Language) {
+			continue
+		}
+		if n, moved := suffix[strconv.Itoa(i)]; moved && !rk.existing {
+			slugs.add(p.Schema, siteLocale, candidate(rk.base, n))
+		} else if rk.existing {
+			slugs.add(p.Schema, siteLocale, rk.base)
+		} else {
+			slug, _ := slugs.freeLocally(p.Schema, siteLocale, rk.base)
+			slugs.add(p.Schema, siteLocale, slug)
+		}
+		inRun[rk.id] = true
+	}
+
 	end := min(cur.I+transformBatch, len(ordered))
-	i := 0
+	i := cur.I
 	for ; i < len(ordered); i++ {
-		replay := i < cur.I
-		if !replay && (i >= end || (i > cur.I && time.Since(start) > transformBudget)) {
+		if i >= end || (i > cur.I && time.Since(start) > transformBudget) {
 			break
 		}
-		rec, err := getRecord(ordered[i].key)
+		rk := ordered[i]
+		if !strings.EqualFold(rk.locale, site.Language) {
+			continue
+		}
+		rec, err := getRecord(rk.key)
 		if err != nil {
 			return failRun(err.Error())
 		}
-		if !strings.EqualFold(rec.SourceLocale, site.Language) {
-			dropped++
-			continue
-		}
-		valid++
-		base := slugBase(rec.T.Slug, rec.SourceSlug)
-		if rec.ExistingSlug != "" {
-			base = rec.ExistingSlug
-		}
-		if base == "" {
-			base = slugify(rec.ID)
-		}
-		key := strconv.Itoa(i)
 		var slug string
-		switch n, moved := suffix[key]; {
-		case rec.ExistingSlug != "":
+		if rk.existing {
 			// The published copy holds this slug itself: no check, no suffix.
-			slug = base
-			slugs.add(rec.SchemaSlug, siteLocale, slug)
-		case replay && moved:
-			slug = candidate(base, n)
-			slugs.add(rec.SchemaSlug, siteLocale, slug)
-		case replay:
-			slug, _ = slugs.freeLocally(rec.SchemaSlug, siteLocale, base)
-			slugs.add(rec.SchemaSlug, siteLocale, slug)
-		default:
-			local, _ := slugs.freeLocally(rec.SchemaSlug, siteLocale, base)
-			if slug, err = slugs.pick(rec.SchemaSlug, siteLocale, base); err != nil {
+			slug = rec.ExistingSlug
+			slugs.add(p.Schema, siteLocale, rk.base)
+		} else {
+			local, _ := slugs.freeLocally(p.Schema, siteLocale, rk.base)
+			if slug, err = slugs.pick(p.Schema, siteLocale, rk.base); err != nil {
 				return failRun(err.Error())
 			}
 			if slug != local {
-				newSuffix[key] = suffixOf(base, slug)
+				newSuffix[strconv.Itoa(i)] = suffixOf(rk.base, slug)
 			}
 		}
 		parentKey := ""
@@ -248,9 +258,6 @@ func transformStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 			parentKey = sourceKey(loc, rec.ParentID)
 		}
 		inRun[rec.ID] = true
-		if replay {
-			continue
-		}
 		up, err := upsertFor(rec, loc, siteLocale, slug, parentKey)
 		if err != nil {
 			return failRun(err.Error())

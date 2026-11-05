@@ -28,6 +28,7 @@ type runWorld struct {
 	groups   map[string][]string
 	status   int    // DeepL status; 0 = 200
 	errBody  string // DeepL body when status != 200
+	onList   func() // called on every entities.list
 
 	buffer      map[string][]byte
 	fetches     int
@@ -63,6 +64,9 @@ func (w *runWorld) call(fn string, args, out any) error {
 	case "settings.get":
 		res = json.RawMessage(w.settings)
 	case sdk.FnEntitiesList:
+		if w.onList != nil {
+			w.onList()
+		}
 		a := args.(map[string]any)
 		cur, _ := a["cursor"].(string)
 		items, ok := w.pages[cur]
@@ -416,5 +420,29 @@ func TestFetchGlossaryLossIsCounted(t *testing.T) {
 	}
 	if w.stats().GlossaryLost != 0 {
 		t.Fatalf("stats %+v", w.stats())
+	}
+}
+
+// A step that has no time left for the provider resumes instead of failing.
+func TestFetchResumesWhenTheStepBudgetIsUsedUp(t *testing.T) {
+	w := newRunWorld(t)
+	w.pages[""] = []entity{ent("a", "en", "", `{"content":"<p>x</p>"}`)}
+	slow := true
+	w.onList = func() {
+		if slow {
+			budgetEnd = time.Now() // the list used the whole step
+		}
+	}
+	w.step()
+	if len(w.failReasons) != 0 || w.fetches != 0 || w.finished || len(w.records()) != 0 {
+		t.Fatalf("fails=%v fetches=%d finished=%v", w.failReasons, w.fetches, w.finished)
+	}
+	if w.checkpoint != `{"c":"","i":0,"q":0,"n":0}` {
+		t.Fatalf("checkpoint %q", w.checkpoint)
+	}
+	slow = false
+	w.run()
+	if len(w.failReasons) != 0 || len(w.records()) != 1 {
+		t.Fatalf("fails=%v records=%d", w.failReasons, len(w.records()))
 	}
 }

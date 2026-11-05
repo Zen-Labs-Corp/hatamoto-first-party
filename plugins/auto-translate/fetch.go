@@ -176,6 +176,11 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 			texts = append(texts, u...)
 		}
 		out, err := setup.tr.translate(texts, setup.target, setup.sourceCode(cands))
+		if errors.Is(err, errBudget) {
+			// Too little step time is left for the provider: nothing was
+			// stored, so the next step starts this slice again.
+			return resumeAt(cur, fail)
+		}
 		if err != nil {
 			return fail(err)
 		}
@@ -225,6 +230,18 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 		if err := guest.RunFinish(callHost, map[string]string{"phase": "fetch"}); err != nil {
 			return fail(fmt.Errorf("the phase could not be finished: %w", hostReason(err)))
 		}
+	}
+	return sdk.RunStepResult{}, nil
+}
+
+// resumeAt ends the step with the checkpoint it started from.
+func resumeAt(cur cursor, fail func(error) (sdk.RunStepResult, error)) (sdk.RunStepResult, error) {
+	cp, err := json.Marshal(cur)
+	if err != nil {
+		return failRun("the run cursor could not be encoded")
+	}
+	if err := guest.RunCheckpoint(callHost, string(cp)); err != nil {
+		return fail(fmt.Errorf("the checkpoint was refused: %w", hostReason(err)))
 	}
 	return sdk.RunStepResult{}, nil
 }
