@@ -17,7 +17,12 @@ func init() {
 }
 
 // onStep routes a run step to its stage; an unknown phase does nothing.
-func onStep(s sdk.RunStep) (sdk.RunStepResult, error) {
+func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
+	defer func() {
+		if recover() != nil {
+			res, err = failFromError(nil)
+		}
+	}()
 	switch s.Phase {
 	case sdk.RunPhaseFetch:
 		return fetchStep(s)

@@ -240,19 +240,3 @@ func tolerated(err error) string {
 	}
 	return ""
 }
-
-// failRun ends the run with a message for the owner. It never returns an
-// error: the host sees a clean step and the failed run.
-func failRun(msg string) (sdk.RunStepResult, error) {
-	_ = guest.RunFail(callHost, cleanText(msg, 500))
-	return sdk.RunStepResult{}, nil
-}
-
-// failFromError ends the run for a provider or host error.
-func failFromError(err error) (sdk.RunStepResult, error) {
-	var pe *providerError
-	if errors.As(err, &pe) {
-		return failRun(pe.Message)
-	}
-	return failRun("Stock photo search failed.")
-}
