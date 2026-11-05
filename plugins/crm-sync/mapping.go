@@ -58,6 +58,18 @@ func saveMap(provider string, rows []mapRow) error {
 }
 
 // validateMap checks a mapping before it is saved. Errors are fixed sentences.
+// privilegedFields are ownership and system fields of the three CRMs. A form
+// value must never set them, so they cannot be mapped and are not offered.
+var privilegedFields = []string{
+	"OwnerId", "RecordTypeId", "Id", "IsConverted", "IsDeleted", "CreatedById", "LastModifiedById",
+	"hubspot_owner_id",
+	"owner_id", "visible_to",
+}
+
+func isPrivileged(name string) bool {
+	return slices.ContainsFunc(privilegedFields, func(p string) bool { return strings.EqualFold(p, strings.TrimSpace(name)) })
+}
+
 func validateMap(rows []mapRow) error {
 	if len(rows) > maxMapRows {
 		return fmt.Errorf("at most %d rows", maxMapRows)
@@ -70,6 +82,9 @@ func validateMap(rows []mapRow) error {
 		}
 		if utf8.RuneCountInString(form) > maxNameLen || utf8.RuneCountInString(crm) > maxNameLen {
 			return fmt.Errorf("names are at most %d characters", maxNameLen)
+		}
+		if isPrivileged(crm) {
+			return fmt.Errorf("%s cannot be mapped", crm)
 		}
 		if seen[crm] {
 			return errors.New("a CRM field can be mapped once")

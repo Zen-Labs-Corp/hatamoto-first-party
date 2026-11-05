@@ -67,6 +67,7 @@ From the repository root: `scripts/build-plugin.sh plugins/crm-sync`.
 - Salesforce: a Contact is created without an account.
 - Delivery runs at most once a minute. A delivery that does not finish within one run's time budget is retried later (log message `too slow`).
 - The field mapping has at most 50 rows and at most 50 forms can be synced.
+- Ownership and system fields cannot be mapped (Salesforce `OwnerId`, `RecordTypeId`, `Id`, `IsConverted`, `IsDeleted`, `CreatedById`, `LastModifiedById`; HubSpot `hubspot_owner_id`; Pipedrive `owner_id`, `visible_to`). Use the owner id setting instead.
 - A submission with no valid email address (`name@example.com`, at most 254 characters) is skipped.
 
 ## License

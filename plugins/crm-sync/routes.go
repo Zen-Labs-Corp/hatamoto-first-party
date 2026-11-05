@@ -169,7 +169,7 @@ func fieldsRoute() (sdk.HTTPResponse, error) {
 	if r.kind != "" && r.kind != kindCreated && r.kind != kindUpdated {
 		out["error"] = testError(r)
 	} else if fields != nil {
-		out["crm_fields"] = fields
+		out["crm_fields"] = slices.DeleteFunc(slices.Clone(fields), func(f crmField) bool { return isPrivileged(f.Name) })
 	}
 	return reply(http.StatusOK, out), nil
 }

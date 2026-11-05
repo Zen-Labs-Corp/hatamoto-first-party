@@ -149,6 +149,18 @@ func TestValidateMap(t *testing.T) {
 	}
 }
 
+func TestValidateMapRefusesPrivilegedFields(t *testing.T) {
+	for _, crm := range []string{"OwnerId", "RecordTypeId", "Id", "IsConverted", "IsDeleted", "CreatedById", "LastModifiedById", "hubspot_owner_id", "owner_id", "visible_to", "ownerid"} {
+		err := validateMap([]mapRow{{"a", crm}})
+		if err == nil || !strings.Contains(err.Error(), crm) {
+			t.Errorf("%s: %v", crm, err)
+		}
+	}
+	if err := validateMap([]mapRow{{"a", "lifecyclestage"}, {"b", "LeadSource"}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestNoteTextBoundedAndSorted(t *testing.T) {
 	j := job{
 		FormSlug: "contact", SourcePath: "/contact",

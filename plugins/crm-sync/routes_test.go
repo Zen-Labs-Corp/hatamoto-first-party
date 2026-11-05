@@ -210,6 +210,25 @@ func TestMapRoutePutAndGet(t *testing.T) {
 	}
 }
 
+func TestFieldsRouteHidesPrivilegedFields(t *testing.T) {
+	routeEnv(t, routeSettings, &routeStub{
+		crmList: []crmField{{Name: "firstname"}, {Name: "hubspot_owner_id"}, {Name: "OwnerId"}},
+		fldRes:  result{kind: kindUpdated},
+	})
+	_, m, body := call(t, "GET", "/fields", "")
+	if crm, _ := m["crm_fields"].([]any); len(crm) != 1 {
+		t.Fatalf("crm_fields %s", body)
+	}
+}
+
+func TestMapRoutePrivilegedFieldIs400(t *testing.T) {
+	routeEnv(t, routeSettings, &routeStub{})
+	code, m, body := call(t, "PUT", "/map", `{"rows":[{"form_field":"a","crm_field":"hubspot_owner_id"}]}`)
+	if code != 400 || !strings.Contains(body, "hubspot_owner_id") {
+		t.Fatalf("%d %v", code, m)
+	}
+}
+
 func TestMapRouteRejectsBadRows(t *testing.T) {
 	var many []string
 	for i := range 51 {
