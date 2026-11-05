@@ -59,8 +59,8 @@ func TestCleanAltLongStaysWithinLimit(t *testing.T) {
 }
 
 func TestIsDecorative(t *testing.T) {
-	yes := []string{"DECORATIVE", "decorative", " Decorative. ", "\"DECORATIVE\"", "DECORATIVE - a divider"}
-	no := []string{"", "A decorative vase", "Decorativeness", "Two cats"}
+	yes := []string{"DECORATIVE", "decorative", " Decorative. ", "\"DECORATIVE\"", "\"Decorative.\"", "DECORATIVE."}
+	no := []string{"", "A decorative vase", "Decorativeness", "Two cats", "Decorative cushion on a sofa", "Decorative wall clock with Roman numerals", "DECORATIVE - a divider", "Decorative, blue"}
 	for _, s := range yes {
 		if !isDecorative(s) {
 			t.Errorf("isDecorative(%q) = false", s)

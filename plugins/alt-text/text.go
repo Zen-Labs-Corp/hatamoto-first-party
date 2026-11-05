@@ -95,17 +95,11 @@ func lastSpace(r []rune) int {
 }
 
 // isDecorative reports whether the model answered with the DECORATIVE token
-// (alone, or as the first word).
+// alone (any case, optionally in quotes or with a final period). An answer
+// that merely starts with the word, like "Decorative cushion on a sofa", is a
+// description.
 func isDecorative(s string) bool {
-	const tok = "DECORATIVE"
-	u := strings.ToUpper(strings.TrimSpace(strings.Trim(strings.TrimSpace(s), "\"'`*")))
-	if !strings.HasPrefix(u, tok) {
-		return false
-	}
-	rest := u[len(tok):]
-	if rest == "" {
-		return true
-	}
-	r, _ := utf8.DecodeRuneInString(rest)
-	return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	s = strings.Trim(strings.TrimSpace(s), "\"'`*\u201c\u201d\u2018\u2019 ")
+	s = strings.Trim(strings.TrimRight(s, ". "), "\"'`*\u201c\u201d\u2018\u2019 ")
+	return strings.EqualFold(s, "DECORATIVE")
 }
