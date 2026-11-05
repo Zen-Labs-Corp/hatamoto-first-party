@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -112,6 +114,25 @@ func TestConfigAllows(t *testing.T) {
 	for in, want := range map[string]bool{"post": true, "page": true, "event": false, "": false} {
 		if got := c.allows(in); got != want {
 			t.Errorf("allows(%q) = %v", in, got)
+		}
+	}
+}
+
+// The migration repeats the guest's validation, so a guest bug cannot store
+// rows the guest itself would refuse.
+func TestMigrationRepeatsGuestValidation(t *testing.T) {
+	b, err := os.ReadFile("migrations/001_init.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(b)
+	for _, want := range []string{
+		"CHECK (voter ~ '^[0-9a-f]{32}$')",
+		fmt.Sprintf("CHECK (length(path) <= %d)", maxPath),
+		"CHECK (stars BETWEEN 1 AND 5)",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("migration lacks %s", want)
 		}
 	}
 }
