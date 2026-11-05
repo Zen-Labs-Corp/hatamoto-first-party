@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Form alerts</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Form alerts</h1>
+    <p id="notice" class="notice" hidden></p>
+
+    <section>
+      <div id="channels"></div>
+      <p class="muted">Change these in Settings.</p>
+    </section>
+
+    <section>
+      <dl id="settings"></dl>
+      <ul id="warnings" class="notice error" hidden></ul>
+      <p id="suggest" class="notice" hidden></p>
+    </section>
+
+    <section>
+      <h2>Preview</h2>
+      <div id="preview"></div>
+    </section>
+
+    <section>
+      <h2>Log (last 100, kept 30 days, no field values)</h2>
+      <table id="log">
+        <thead><tr><th>Time</th><th>Form</th><th>Channel</th><th>Status</th><th class="num">Code</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="muted" hidden>Nothing sent yet.</p>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
