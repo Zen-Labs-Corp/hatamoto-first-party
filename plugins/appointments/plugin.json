@@ -1,18 +1,45 @@
 {
   "name": "appointments",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.18",
   "description": "Booking from Cal.com or Calendly: an embedded scheduler section and a booking button that use your scheduling link.",
-  "permissions": ["settings"],
+  "permissions": ["settings", "site.scripts"],
+  "funcs": ["embed_url", "booking_url", "button_label", "height", "provider_name"],
+  "csp": {
+    "frame_src": ["https://cal.com", "https://*.cal.com", "https://calendly.com"]
+  },
   "limits": { "memory_pages": 256, "max_instances": 4 },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
+      "provider": {
         "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+        "title": "Provider",
+        "description": "Cal.com or Calendly. Only a hint: the host of the link decides.",
+        "enum": ["calcom", "calendly"],
+        "default": "calcom"
+      },
+      "link": {
+        "type": "string",
+        "title": "Scheduling link",
+        "description": "Your public https link on cal.com or calendly.com, for example https://cal.com/your-name/30min. Leave empty to show nothing.",
+        "maxLength": 500,
+        "pattern": "^$|^https://(cal\\.com|([a-z0-9-]+\\.)+cal\\.com|calendly\\.com)/.+$"
+      },
+      "button_label": {
+        "type": "string",
+        "title": "Button label",
+        "description": "Text of the booking button.",
+        "maxLength": 60,
+        "default": "Book an appointment"
+      },
+      "height": {
+        "type": "integer",
+        "title": "Embed height",
+        "description": "Height of the embedded scheduler in pixels (300 to 2000).",
+        "minimum": 300,
+        "maximum": 2000,
+        "default": 700
       }
     }
   }
