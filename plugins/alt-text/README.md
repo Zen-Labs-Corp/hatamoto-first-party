@@ -14,7 +14,9 @@ It does the job of the "auto image attributes" and AI alt-text plugins for WordP
    - **Language of the alt text**: a language name or code, default `en`.
    - **Longest alt text**: default 125 characters, between 20 and 300.
    - **Address of this site**: for example `https://example.com`. Media links are relative (`/media/...`) unless your install serves media from an absolute address, and a provider can only open a full link, so set this unless your media links are already absolute. Without it the run stops and says so.
-3. Open the plugin's runs, choose **Suggest alt text**, set how many images to check (1-200, empty means 50) and whether to check only images without alt text, then start it. An empty "only images without alt text" counts as yes; to check every image, send `false`.
+   - **Images to check per run**: from 1 to 200, default 50.
+   - **Only images without alt text**: on by default. Turn it off to also get suggestions for images that already have alt text.
+3. Open the plugin's runs and choose **Suggest alt text**. The run has no form fields of its own; the two settings above decide how many images it checks and which ones. Save the settings first, then start it.
 4. Confirm the provider hosts when the run starts, then wait. The run page shows how far it is and, at the end, the counts: images checked, suggestions, decorative images skipped, errors.
 5. Review the staged changes and publish or discard them. Each suggestion is plain text, at most the length you set, without a lead such as "image of".
 

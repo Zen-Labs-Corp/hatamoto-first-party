@@ -59,12 +59,8 @@ func TestManifestRun(t *testing.T) {
 	if r.Name != "suggest" || !slices.Equal(r.Stages, []string{"fetch", "transform"}) || !slices.Equal(r.Proposes, []string{"media_alt"}) {
 		t.Fatalf("run %+v", r)
 	}
-	var inputs []string
-	for _, in := range r.Inputs {
-		inputs = append(inputs, in.Name+":"+in.Type)
-	}
-	if want := []string{"limit:number", "only_missing:bool"}; !slices.Equal(inputs, want) {
-		t.Fatalf("inputs %v", inputs)
+	if len(r.Inputs) != 0 {
+		t.Fatalf("the run declares inputs %v; core shows them as hidden fields, use settings", r.Inputs)
 	}
 }
 
@@ -86,7 +82,7 @@ func TestManifestSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := m.Settings.Properties
-	for _, name := range []string{"provider", "api_key", "model", "language", "max_length", "site_url"} {
+	for _, name := range []string{"provider", "api_key", "model", "language", "max_length", "site_url", "limit", "only_missing"} {
 		if _, ok := p[name]; !ok {
 			t.Errorf("setting %q missing", name)
 		}
@@ -104,6 +100,9 @@ func TestManifestSettings(t *testing.T) {
 	}
 	if !slices.Equal(p["provider"].Enum, []string{"openai", "anthropic", "gemini"}) || p["provider"].Default != "openai" {
 		t.Errorf("provider: %+v", p["provider"])
+	}
+	if p["limit"].Default != float64(defaultLimit) || p["only_missing"].Default != true {
+		t.Errorf("limit/only_missing defaults %v %v", p["limit"].Default, p["only_missing"].Default)
 	}
 	if p["language"].Default != "en" {
 		t.Errorf("language default %v", p["language"].Default)

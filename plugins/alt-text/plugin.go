@@ -9,7 +9,6 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 
 	"hatamoto.dev/sdk"
@@ -22,6 +21,15 @@ const (
 
 	msgNoKey = "Add an API key in the plugin settings."
 )
+
+// clampLimit returns the number of images to check: blank or invalid gives
+// the default, anything outside 1-200 is cut to it.
+func clampLimit(v float64) float64 {
+	if v < 1 {
+		return defaultLimit
+	}
+	return min(float64(int(v)), maxLimit)
+}
 
 func init() {
 	guest.OnRunStep(onStep)
@@ -38,29 +46,6 @@ func onStep(st sdk.RunStep) (sdk.RunStepResult, error) {
 	return sdk.RunStepResult{}, nil
 }
 
-// params are the owner's inputs. Blank inputs are absent.
-type params struct {
-	Limit       int
-	OnlyMissing bool
-}
-
-// parseParams reads the run inputs: limit is clamped to 1-200 (blank: 50),
-// only_missing is true unless given as false.
-func parseParams(raw json.RawMessage) params {
-	var in struct {
-		Limit       float64 `json:"limit"`
-		OnlyMissing *bool   `json:"only_missing"`
-	}
-	if len(raw) > 0 {
-		_ = json.Unmarshal(raw, &in)
-	}
-	p := params{Limit: defaultLimit, OnlyMissing: in.OnlyMissing == nil || *in.OnlyMissing}
-	if in.Limit >= 1 {
-		p.Limit = int(min(in.Limit, maxLimit))
-	}
-	return p
-}
-
 // loadSettings reads and normalises the plugin settings.
 func loadSettings() (settings, error) {
 	var s settings
@@ -74,5 +59,6 @@ func loadSettings() (settings, error) {
 	s.APIKey = strings.TrimSpace(s.APIKey)
 	s.SiteURL = strings.TrimRight(strings.TrimSpace(s.SiteURL), "/")
 	s.MaxLength = clampMax(s.MaxLength)
+	s.Limit = clampLimit(s.Limit)
 	return s, nil
 }

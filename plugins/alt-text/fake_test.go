@@ -28,7 +28,6 @@ type visionReq struct {
 type fakeHost struct {
 	t        *testing.T
 	settings map[string]any
-	params   map[string]any
 	media    []map[string]any
 	// listFilter drops items from a page after paging, as core does for
 	// media no public page uses.
@@ -56,7 +55,6 @@ func newFake(t *testing.T) *fakeHost {
 	f := &fakeHost{
 		t:        t,
 		settings: map[string]any{"provider": "openai", "api_key": testKey, "site_url": "https://example.com/"},
-		params:   map[string]any{},
 		buf:      map[string][]byte{},
 		stageErr: map[string]error{},
 		phase:    sdk.RunPhaseFetch,
@@ -102,8 +100,7 @@ func (f *fakeHost) call(fn string, args, out any) error {
 	case "settings.get":
 		return roundTrip(f.settings, out)
 	case "run.info":
-		p, _ := json.Marshal(f.params)
-		return roundTrip(sdk.RunInfo{RunID: "r", Name: "suggest", Phase: f.phase, Cursor: f.cursor, Params: p}, out)
+		return roundTrip(sdk.RunInfo{RunID: "r", Name: "suggest", Phase: f.phase, Cursor: f.cursor}, out)
 	case "run.checkpoint":
 		f.cursor = str("cursor")
 		if len(f.cursor) > 4096 {

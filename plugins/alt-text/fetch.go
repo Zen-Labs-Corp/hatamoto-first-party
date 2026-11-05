@@ -53,11 +53,6 @@ var sendable = map[string]bool{"image/jpeg": true, "image/png": true, "image/gif
 // A problem with one image is counted and skipped; only a problem with the
 // whole run (no key, no site address, no listing) fails the run.
 func fetchStep(st sdk.RunStep) error {
-	info, err := guest.RunInfo(callHost)
-	if err != nil {
-		return err
-	}
-	p := parseParams(info.Params)
 	s, err := loadSettings()
 	if err != nil {
 		return guest.RunFail(callHost, msgNoSettings)
@@ -65,6 +60,7 @@ func fetchStep(st sdk.RunStep) error {
 	if s.APIKey == "" {
 		return guest.RunFail(callHost, msgNoKey)
 	}
+	limit := int(s.Limit)
 	var cur fetchCursor
 	if st.Cursor != "" {
 		if json.Unmarshal([]byte(st.Cursor), &cur) != nil {
@@ -73,7 +69,7 @@ func fetchStep(st sdk.RunStep) error {
 	}
 
 	for calls := 0; calls < maxListCalls; calls++ {
-		if cur.N >= p.Limit {
+		if cur.N >= limit {
 			return finishFetch(cur)
 		}
 		var page mediaPage
@@ -84,13 +80,13 @@ func fetchStep(st sdk.RunStep) error {
 		if cur.Off >= page.Total {
 			return finishFetch(cur)
 		}
-		for ; cur.I < len(page.Items) && cur.N < p.Limit; cur.I++ {
+		for ; cur.I < len(page.Items) && cur.N < limit; cur.I++ {
 			it := page.Items[cur.I]
 			if !sendable[strings.ToLower(it.MimeType)] {
 				cur.K++
 				continue
 			}
-			if p.OnlyMissing && strings.TrimSpace(it.AltText) != "" {
+			if s.onlyMissing() && strings.TrimSpace(it.AltText) != "" {
 				continue
 			}
 			sent, err := suggest(s, it, &cur)
@@ -101,12 +97,12 @@ func fetchStep(st sdk.RunStep) error {
 				continue
 			}
 			cur.I++
-			return checkpointFetch(cur, len(page.Items), p.Limit)
+			return checkpointFetch(cur, len(page.Items), limit)
 		}
 		cur.Off += pageSize
 		cur.I = 0
 	}
-	return checkpointFetch(cur, -1, p.Limit)
+	return checkpointFetch(cur, -1, limit)
 }
 
 // suggest handles one image that qualifies and updates the counts. sent is

@@ -1,28 +1,29 @@
 package main
 
 import (
-	"encoding/json"
 	"testing"
 )
 
-func TestParseParams(t *testing.T) {
+func TestLoadSettingsLimitAndOnlyMissing(t *testing.T) {
 	cases := []struct {
-		in   string
-		want params
+		set         map[string]any
+		limit       float64
+		onlyMissing bool
 	}{
-		{``, params{50, true}},
-		{`{}`, params{50, true}},
-		{`{"limit":0}`, params{50, true}},
-		{`{"limit":-3}`, params{50, true}},
-		{`{"limit":7}`, params{7, true}},
-		{`{"limit":7.0,"only_missing":false}`, params{7, false}},
-		{`{"limit":1000,"only_missing":true}`, params{200, true}},
-		{`{"limit":0.5}`, params{50, true}},
-		{`not json`, params{50, true}},
+		{map[string]any{}, 50, true},
+		{map[string]any{"limit": 0}, 50, true},
+		{map[string]any{"limit": -3}, 50, true},
+		{map[string]any{"limit": 7}, 7, true},
+		{map[string]any{"limit": 7.0, "only_missing": false}, 7, false},
+		{map[string]any{"limit": 1000, "only_missing": true}, 200, true},
+		{map[string]any{"limit": 0.5}, 50, true},
 	}
 	for _, c := range cases {
-		if got := parseParams(json.RawMessage(c.in)); got != c.want {
-			t.Errorf("parseParams(%q) = %+v, want %+v", c.in, got, c.want)
+		f := newFake(t)
+		f.settings = c.set
+		s, err := loadSettings()
+		if err != nil || s.Limit != c.limit || s.onlyMissing() != c.onlyMissing {
+			t.Errorf("settings %v: limit %v only_missing %v, want %v %v (%v)", c.set, s.Limit, s.onlyMissing(), c.limit, c.onlyMissing, err)
 		}
 	}
 }

@@ -61,7 +61,7 @@ func TestFetchOnlyMissingReachesProvider(t *testing.T) {
 
 func TestFetchAllImagesWhenOnlyMissingFalse(t *testing.T) {
 	f := newFake(t)
-	f.params["only_missing"] = false
+	f.settings["only_missing"] = false
 	f.media = append(f.media, img("a", "Has alt"), img("b", ""))
 	fetchPhase(t, f)
 	if len(f.requests) != 2 {
@@ -72,7 +72,7 @@ func TestFetchAllImagesWhenOnlyMissingFalse(t *testing.T) {
 func TestFetchLimitClamp(t *testing.T) {
 	f := newFake(t)
 	f.addImages("i", 30, "")
-	f.params["limit"] = 5.0
+	f.settings["limit"] = 5.0
 	fetchPhase(t, f)
 	if len(f.requests) != 5 || f.lastMeta().Checked != 5 {
 		t.Fatalf("limit 5: %d calls, meta %+v", len(f.requests), f.lastMeta())
@@ -87,7 +87,7 @@ func TestFetchLimitClamp(t *testing.T) {
 
 	f = newFake(t)
 	f.addImages("i", 230, "")
-	f.params["limit"] = 9999.0
+	f.settings["limit"] = 9999.0
 	fetchPhase(t, f)
 	if len(f.requests) != 200 {
 		t.Fatalf("max limit: %d calls, want 200", len(f.requests))
@@ -298,7 +298,7 @@ func TestFetchListFailureFailsTheRun(t *testing.T) {
 func TestFetchCursorStaysSmallAndKeyFree(t *testing.T) {
 	f := newFake(t)
 	f.addImages("i", 45, "")
-	f.params["limit"] = 45.0
+	f.settings["limit"] = 45.0
 	fetchPhase(t, f)
 	if len(f.cursor) > 200 {
 		t.Fatalf("cursor %d bytes", len(f.cursor))

@@ -34,6 +34,9 @@ type settings struct {
 	Language  string `json:"language"`
 	SiteURL   string `json:"site_url"`
 	MaxLength int    `json:"max_length"`
+	// Limit is the number of images to check; OnlyMissing nil means true.
+	Limit       float64 `json:"limit"`
+	OnlyMissing *bool   `json:"only_missing"`
 }
 
 func (s settings) model() string {
@@ -42,6 +45,8 @@ func (s settings) model() string {
 	}
 	return defaultModels[s.Provider]
 }
+
+func (s settings) onlyMissing() bool { return s.OnlyMissing == nil || *s.OnlyMissing }
 
 func (s settings) language() string {
 	if l := strings.TrimSpace(s.Language); l != "" {
