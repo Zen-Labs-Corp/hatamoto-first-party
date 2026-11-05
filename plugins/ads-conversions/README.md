@@ -2,7 +2,7 @@
 
 Replaces the server-side part of Pixel Manager, Conversios, the official TikTok and LinkedIn plugins and Google Ads conversion tracking add-ons for WordPress.
 
-Sends a server-side conversion to Google Ads, TikTok and LinkedIn for each form submission, with hashed contact details and the ad click ID, to back up the browser tags.
+Sends a server-side conversion to Google Ads, TikTok and LinkedIn for each form submission, with hashed contact details and the ad click ID.
 
 ## Use
 

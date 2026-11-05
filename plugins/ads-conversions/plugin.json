@@ -1,8 +1,8 @@
 {
   "name": "ads-conversions",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "sdk": "^0.8",
-  "description": "Sends a server-side conversion to Google Ads, TikTok and LinkedIn for each form submission, with hashed contact details and the ad click ID, to back up the browser tags.",
+  "description": "Sends a server-side conversion to Google Ads, TikTok and LinkedIn for each form submission, with hashed contact details and the ad click ID.",
   "permissions": ["forms.read", "settings", "http.fetch", "db", "kv", "mail.send", "site.scripts", "log"],
   "allowed_hosts": [
     "datamanager.googleapis.com",
