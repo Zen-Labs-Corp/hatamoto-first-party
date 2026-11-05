@@ -30,6 +30,7 @@ func onRefresh(sdk.CronEvent) error {
 			logf("error", "ads-conversions: token refresh stopped by an internal error")
 		}
 	}()
+	defer startBudget(now())()
 	s, err := loadSettings()
 	if err != nil {
 		logf("warn", "ads-conversions: settings unreadable")
@@ -138,8 +139,7 @@ func onRetry(sdk.CronEvent) error {
 // drain delivers the claimed rows until the time budget is spent and releases
 // the rest for the next run.
 func drain(s settings, jobs []job, start time.Time) {
-	budgetEnd = start.Add(cronBudget)
-	defer func() { budgetEnd = time.Time{} }()
+	defer startBudget(start)()
 	stalled := map[string]bool{}
 	for i, j := range jobs {
 		if budgetEnd.Sub(now()) < minCall {
@@ -187,6 +187,11 @@ func deliverRow(s settings, j job) (unreachable bool) {
 		// The platform refused the access token: refresh once and try again.
 		o = attempt(s, j, true)
 	}
+	if o.Reason == "budget" {
+		// No time was left to call: not an attempt, the next run takes the row.
+		release(j)
+		return true
+	}
 	switch o.Kind {
 	case kindSent:
 		settleSent(j, o.Code, "")
@@ -225,6 +230,8 @@ func hasIdentifier(j job) bool {
 // forced refresh), anything else is a retry.
 func tokenOutcome(err error) outcome {
 	switch err {
+	case errBudget:
+		return outcome{Kind: kindRetry, Reason: "budget", Code: "budget"}
 	case errReconnect:
 		return outcome{Kind: kindAuth, Reason: "token", Code: "reconnect"}
 	case errNotConnected:

@@ -485,3 +485,60 @@ func TestDeliverTimeoutOfOnePlatformReleasesItsRestAndSparesOthers(t *testing.T)
 		t.Fatalf("released %v, deleted %v", ids, deletes(h))
 	}
 }
+
+// slowHTTP answers every call with ok after the clock moved by each, and records the hosts.
+func slowHTTP(t *testing.T, each time.Duration, ok fetched) *[]string {
+	t.Helper()
+	clock := testNow
+	now = func() time.Time { return clock }
+	var hosts []string
+	httpDo = func(req request, timeoutMS int) (fetched, error) {
+		u, _ := url.Parse(req.URL)
+		hosts = append(hosts, u.Host)
+		clock = clock.Add(each)
+		if u.Host == "oauth2.googleapis.com" {
+			return tokenJSON("g-new", "", 3600), nil
+		}
+		return ok, nil
+	}
+	t.Cleanup(func() { httpDo = realHTTPDo })
+	return &hosts
+}
+
+func TestDeliverDoesNotCallWithUnderASecondLeft(t *testing.T) {
+	h := deliveryHost(t, rowJSON(1, "google", 0, ""))
+	s, _ := loadSettings()
+	// The token is due for a refresh, which eats the budget before the call.
+	_ = saveTokens(s, platGoogle, tokenSet{Access: "old", Refresh: "ref", Expires: testNow.Add(time.Minute)})
+	hosts := slowHTTP(t, 7500*time.Millisecond, fetched{Status: 200, Body: `{}`})
+	runDeliver(t)
+	if len(*hosts) != 1 || (*hosts)[0] != "oauth2.googleapis.com" {
+		t.Fatalf("calls %v: the conversion call must wait for the next run", *hosts)
+	}
+	if len(h.execs("UPDATE queue SET lease_until = NULL")) != 1 || len(h.execs("UPDATE queue SET attempts")) != 0 || len(deletes(h)) != 0 {
+		t.Fatal("the row must be released without counting an attempt")
+	}
+}
+
+func TestRefreshCronHasABudgetToo(t *testing.T) {
+	h := newHost(t)
+	s := settingsFor(t, h)
+	_ = saveTokens(s, platGoogle, tokenSet{Access: "old", Refresh: "ref", Expires: testNow.Add(time.Hour)})
+	_ = saveTokens(s, platLinkedIn, tokenSet{Access: "li", Refresh: "li-ref", Expires: testNow.Add(time.Hour)})
+	hosts := slowHTTP(t, 8500*time.Millisecond, fetched{})
+	runRefresh(t)
+	if len(*hosts) != 1 {
+		t.Fatalf("calls %v: the second platform must wait once the budget is spent", *hosts)
+	}
+}
+
+func TestTestRouteStaysInsideTheBudget(t *testing.T) {
+	deliveryHost(t)
+	s, _ := loadSettings()
+	_ = saveTokens(s, platGoogle, tokenSet{Access: "old", Refresh: "ref", Expires: testNow.Add(time.Minute)})
+	hosts := slowHTTP(t, 8500*time.Millisecond, fetched{Status: 200, Body: `{}`})
+	res := post(t, "/test", `{"platform":"google"}`)
+	if len(*hosts) != 1 || !strings.Contains(res.Body, `"ok":false`) {
+		t.Fatalf("calls %v, answer %s", *hosts, res.Body)
+	}
+}

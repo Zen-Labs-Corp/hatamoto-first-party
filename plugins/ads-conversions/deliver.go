@@ -11,16 +11,35 @@ import (
 // fetchTimeoutMS stays under the 10 s the host allows a cron run.
 const fetchTimeoutMS = 8000
 
-// budgetEnd is when the running cron job must stop; zero outside a job. Calls
-// shrink their timeout to what is left, so a job stays inside the host's limit.
+// minFetch is the least time left that a call is still started with.
+const minFetch = time.Second
+
+// budgetEnd is when the running cron job or route must stop; zero outside
+// one. Calls shrink their timeout to what is left, so a run stays inside the
+// host's 10 s limit.
 var budgetEnd time.Time
 
-// callTimeout is the timeout of the next call in milliseconds.
-func callTimeout() int {
+// errBudget means too little time was left to start a call.
+var errBudget = errors.New("out of time")
+
+// startBudget gives the running job or route cronBudget from start; the
+// returned func ends it.
+func startBudget(start time.Time) func() {
+	budgetEnd = start.Add(cronBudget)
+	return func() { budgetEnd = time.Time{} }
+}
+
+// callTimeout is the timeout of the next call in milliseconds; ok is false
+// when less than minFetch is left, and no call may be made.
+func callTimeout() (ms int, ok bool) {
 	if budgetEnd.IsZero() {
-		return fetchTimeoutMS
+		return fetchTimeoutMS, true
 	}
-	return int(max(min(budgetEnd.Sub(now()).Milliseconds(), fetchTimeoutMS), 1000))
+	left := budgetEnd.Sub(now())
+	if left < minFetch {
+		return 0, false
+	}
+	return int(min(left.Milliseconds(), fetchTimeoutMS)), true
 }
 
 // Outcome kinds.
@@ -96,11 +115,16 @@ func hostReason(err error) string {
 	return sdk.ErrInternal
 }
 
-// send makes the call. A host or transport error becomes a retry (a refusal
+// send makes the call. With no time left it makes none and answers a retry
+// with Reason "budget". A host or transport error becomes a retry (a refusal
 // such as a missing grant heals once the owner fixes it); a truncated answer
 // counts as a server error. The returned fetched has Status 0 on an error.
 func send(req request) (fetched, outcome) {
-	f, err := httpDo(req, callTimeout())
+	ms, ok := callTimeout()
+	if !ok {
+		return fetched{}, outcome{Kind: kindRetry, Reason: "budget", Code: "budget"}
+	}
+	f, err := httpDo(req, ms)
 	if err != nil {
 		return fetched{}, outcome{Kind: kindRetry, Reason: "network", Code: hostReason(err)}
 	}

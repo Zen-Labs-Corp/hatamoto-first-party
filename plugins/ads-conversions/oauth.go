@@ -137,8 +137,12 @@ func tokenRequest(s settings, platform string, form url.Values) (tokenAnswer, er
 	if platform == platLinkedIn {
 		endpoint = linkedInTokenURL
 	}
+	ms, ok := callTimeout()
+	if !ok {
+		return tokenAnswer{}, errBudget
+	}
 	f, err := httpDo(request{Method: "POST", URL: endpoint, Body: []byte(form.Encode()),
-		Headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}}, callTimeout())
+		Headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}}, ms)
 	if err != nil {
 		return tokenAnswer{}, errors.New("token endpoint unreachable: " + hostReason(err))
 	}
@@ -309,6 +313,10 @@ func clearTikTokBroken(s settings) {
 
 // revokeGoogle asks Google to forget the grant. It is best effort.
 func revokeGoogle(token string) {
+	ms, ok := callTimeout()
+	if !ok {
+		return
+	}
 	_, _ = httpDo(request{Method: "POST", URL: googleRevokeURL, Body: []byte(url.Values{"token": {token}}.Encode()),
-		Headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded"}}, callTimeout())
+		Headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded"}}, ms)
 }

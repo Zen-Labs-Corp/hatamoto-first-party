@@ -28,6 +28,7 @@ func init() {
 
 // serve answers the plugin's routes; which are public is decided in plugin.json.
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
+	defer startBudget(now())()
 	platform := r.PathValues["platform"]
 	switch r.Method + " " + r.Pattern {
 	case "GET /log":
