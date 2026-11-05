@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"hatamoto.dev/sdk"
@@ -48,6 +49,7 @@ type cursor struct {
 	C   string `json:"c"`
 	I   int    `json:"i"`
 	Seq int    `json:"q"`
+	N   int    `json:"n"` // steps done, names the step's stat record
 }
 
 type entity struct {
@@ -59,6 +61,12 @@ type entity struct {
 	Group      string                     `json:"translation_group"`
 	ParentID   string                     `json:"parent_id"`
 	Attributes map[string]json.RawMessage `json:"attributes"`
+
+	// Set by nextCandidates on a candidate: its index in the page and the
+	// skip counts up to and including it, so a caller that uses only the
+	// first candidates can resume right after them.
+	idx      int
+	countsAt map[string]int
 }
 
 type pageResult struct {
@@ -194,6 +202,7 @@ func nextCandidates(p params, cur cursor, max int) (cands []entity, next cursor,
 				continue
 			}
 		}
+		e.idx, e.countsAt = i, maps.Clone(counts)
 		cands = append(cands, e)
 	}
 	next.C, next.I = page.Next, 0

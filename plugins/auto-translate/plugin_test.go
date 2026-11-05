@@ -8,14 +8,15 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-// TestSkeletonStepsMakeNoHostCall drives both phases through the registered
-// handler: the skeleton returns cleanly and touches no host function.
-func TestSkeletonStepsMakeNoHostCall(t *testing.T) {
+// TestUnknownPhaseMakesNoHostCall drives a phase the plugin does not know
+// through the registered handler: it returns cleanly and touches no host
+// function.
+func TestUnknownPhaseMakesNoHostCall(t *testing.T) {
 	callHost = func(fn string, _, _ any) error {
 		t.Fatalf("unexpected host call %q", fn)
 		return nil
 	}
-	for _, phase := range []string{sdk.RunPhaseFetch, sdk.RunPhaseTransform, "other"} {
+	for _, phase := range []string{"other", ""} {
 		in, _ := json.Marshal(sdk.RunStep{RunID: "r1", Phase: phase})
 		if _, err := guest.Handle(sdk.RunStepExport, in); err != nil {
 			t.Fatalf("phase %q: step returned an error: %v", phase, err)

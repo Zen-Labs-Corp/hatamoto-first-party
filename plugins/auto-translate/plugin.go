@@ -29,6 +29,4 @@ func onStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 	return sdk.RunStepResult{}, nil
 }
 
-func fetchStep(sdk.RunStep) (sdk.RunStepResult, error) { return sdk.RunStepResult{}, nil }
-
 func transformStep(sdk.RunStep) (sdk.RunStepResult, error) { return sdk.RunStepResult{}, nil }
