@@ -48,7 +48,7 @@ func loadManifest(t *testing.T) manifest {
 
 func TestManifestPermissionsAndHosts(t *testing.T) {
 	m := loadManifest(t)
-	if m.Name != "form-alerts" || m.Version != "0.1.0" || m.SDK != "^0.8" {
+	if m.Name != "form-alerts" || m.Version != "0.1.1" || m.SDK != "^0.8" {
 		t.Fatalf("identity %q %q %q", m.Name, m.Version, m.SDK)
 	}
 	got := slices.Clone(m.Permissions)

@@ -1,8 +1,8 @@
 {
   "name": "form-alerts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "sdk": "^0.8",
-  "description": "Posts each form submission to Slack, Microsoft Teams, Google Chat or Telegram the moment it arrives, with the fields you choose and a link to the submission in your admin.",
+  "description": "Posts each form submission to Slack, Microsoft Teams, Google Chat or Telegram as it arrives, with the fields you choose and a link to it in your admin.",
   "permissions": ["forms.read", "settings", "http.fetch", "db", "log"],
   "allowed_hosts": ["hooks.slack.com", "api.telegram.org", "chat.googleapis.com", "*.logic.azure.com", "*.environment.api.powerplatform.com"],
   "routes": [
