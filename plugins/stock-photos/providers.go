@@ -25,11 +25,15 @@ const (
 	maxImportBytes  = 8 << 20 // a larger known original would not download in time
 )
 
+// Core limits alt, caption and credit in bytes (1024, 2000 and 500).
 const (
-	maxAlt     = 500
-	maxCredit  = 500
-	maxCaption = 200
-	maxName    = 120
+	maxAlt         = 500 // runes, then cut to maxAltBytes
+	maxAltBytes    = 1024
+	maxCreditBytes = 500
+	maxCaption     = 200 // runes: at most 800 bytes, under core's 2000
+	maxName        = 120
+	maxCreditWho   = 120 // bytes of the author name kept in a credit
+	maxCreditURL   = 200 // longer source URLs are left out of the credit
 )
 
 type fetchReq struct {
@@ -140,23 +144,23 @@ func searchPexels(key string, p searchParams) (photos []photo, more bool, rawCou
 			continue
 		}
 		id := strconv.FormatInt(r.ID, 10)
-		who := cleanText(r.Photographer, 100)
+		who := cutBytes(cleanText(r.Photographer, 100), maxCreditWho)
 		if who == "" {
 			who = "unknown photographer"
 		}
-		alt := cleanText(r.Alt, maxAlt)
+		alt := cleanAlt(r.Alt)
 		if alt == "" {
-			alt = cleanText(p.Query, maxAlt)
+			alt = cleanAlt(p.Query)
 		}
 		credit := "Photo by " + who + " on Pexels (Pexels License)"
-		if isHTTP(r.URL) {
+		if isCreditURL(r.URL) {
 			credit += " " + r.URL
 		}
 		photos = append(photos, photo{
 			Provider: "pexels", ID: id, ImageURL: img,
 			Filename: filenameFor("pexels", id, img, ""),
 			Alt:      alt,
-			Credit:   cleanText(credit, maxCredit),
+			Credit:   cutBytes(cleanText(credit, maxCreditBytes), maxCreditBytes),
 			Caption:  cleanText(who+" / Pexels", maxCaption),
 		})
 	}
@@ -215,12 +219,12 @@ func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, e
 			continue
 		}
 		title := cleanText(r.Title, 200)
-		alt := title
+		alt := cleanAlt(title)
 		if alt == "" {
-			alt = cleanText(p.Query, maxAlt)
+			alt = cleanAlt(p.Query)
 			title = "Untitled"
 		}
-		who := cleanText(r.Creator, 100)
+		who := cutBytes(cleanText(r.Creator, 100), maxCreditWho)
 		if who == "" {
 			who = "unknown author"
 		}
@@ -231,19 +235,29 @@ func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, e
 		if src == "" {
 			src = "Openverse"
 		}
-		credit := title + " by " + who + ", " + licenceLabel(lic, r.LicenseVersion)
-		if isHTTP(r.ForeignLandingURL) {
-			credit += ", " + r.ForeignLandingURL
+		// The licence and the source URL are never cut: only the title gives way.
+		tail := licenceLabel(lic, r.LicenseVersion)
+		if isCreditURL(r.ForeignLandingURL) {
+			tail += ", " + r.ForeignLandingURL
 		}
+		suffix := " by " + who + ", " + tail
+		credit := cutBytes(title, maxCreditBytes-len(suffix)) + suffix
 		photos = append(photos, photo{
 			Provider: "openverse", ID: r.ID, ImageURL: r.URL,
 			Filename: filenameFor("openverse", r.ID, r.URL, r.Filetype),
 			Alt:      alt,
-			Credit:   cleanText(credit, maxCredit),
+			Credit:   cutBytes(cleanText(credit, maxCreditBytes), maxCreditBytes),
 			Caption:  cleanText(who+" / "+src, maxCaption),
 		})
 	}
 	return photos, out.Page < out.PageCount, len(out.Results), nil
+}
+
+// isCreditURL reports whether a source URL may go into a credit: plain http(s),
+// no credentials, short enough to keep whole.
+func isCreditURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && isHTTP(s) && u.User == nil && len(s) <= maxCreditURL
 }
 
 func hasToken(lic, tok string) bool {
@@ -322,4 +336,23 @@ func cleanText(s string, max int) string {
 		s = string([]rune(s)[:max])
 	}
 	return strings.TrimSpace(s)
+}
+
+// cleanAlt cleans alt text to core's limit (bytes, not runes).
+func cleanAlt(s string) string {
+	return strings.TrimSpace(cutBytes(cleanText(s, maxAlt), maxAltBytes))
+}
+
+// cutBytes cuts s to at most n bytes on a rune boundary.
+func cutBytes(s string, n int) string {
+	if n < 0 {
+		n = 0
+	}
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }

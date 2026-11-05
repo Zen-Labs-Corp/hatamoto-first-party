@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"hatamoto.dev/sdk"
 )
@@ -223,5 +224,41 @@ func TestOpenverseSkipsKnownHugeOriginal(t *testing.T) {
 	photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
 	if err != nil || len(photos) != 1 || !photos[0].Skip {
 		t.Fatalf("photos=%+v err=%v", photos, err)
+	}
+}
+
+func TestOpenverseCreditCutsTitleKeepsLicenceAndURL(t *testing.T) {
+	landing := "https://www.flickr.com/photos/someone/12345678901/"
+	body := `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"` + strings.Repeat("山", 190) +
+		`","creator":"` + strings.Repeat("作", 90) + `","url":"https://live.staticflickr.com/a.jpg","foreign_landing_url":"` + landing +
+		`","license":"by-sa","license_version":"2.0"}]}`
+	fakeFetch(t, fetchResp{Status: 200, Body: body}, nil)
+	photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+	if err != nil || len(photos) != 1 {
+		t.Fatalf("photos=%+v err=%v", photos, err)
+	}
+	c := photos[0].Credit
+	if len(c) > 500 || !utf8.ValidString(c) || !strings.HasSuffix(c, ", CC BY-SA 2.0, "+landing) {
+		t.Errorf("credit (%d bytes) = %q", len(c), c)
+	}
+	if len(photos[0].Alt) > 1024 || !utf8.ValidString(photos[0].Alt) {
+		t.Errorf("alt %d bytes", len(photos[0].Alt))
+	}
+}
+
+func TestCreditDropsLongOrCredentialedURL(t *testing.T) {
+	for _, u := range []string{"https://u:p@www.flickr.com/x", "https://www.flickr.com/" + strings.Repeat("a", 300)} {
+		if isCreditURL(u) {
+			t.Errorf("%q accepted", u)
+		}
+	}
+}
+
+func TestCutBytes(t *testing.T) {
+	if got := cutBytes("ééé", 5); got != "éé" {
+		t.Errorf("got %q", got)
+	}
+	if got := cutBytes("abc", 10); got != "abc" {
+		t.Errorf("got %q", got)
 	}
 }
