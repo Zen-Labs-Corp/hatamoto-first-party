@@ -3,16 +3,37 @@
   "version": "0.1.0",
   "sdk": "^0.18",
   "description": "Search Pexels and Openverse from the admin and stage the photos you pick into your media library with alt text and credit.",
-  "permissions": ["settings"],
+  "permissions": ["settings", "http.fetch"],
+  "allowed_hosts": [
+    "api.pexels.com",
+    "images.pexels.com",
+    "api.openverse.org",
+    "upload.wikimedia.org",
+    "*.staticflickr.com"
+  ],
+  "ui": { "title": "Stock photos" },
+  "runs": [
+    {
+      "name": "import",
+      "title": "Import stock photos",
+      "inputs": [
+        { "name": "query", "label": "Search", "type": "text", "required": true },
+        { "name": "provider", "label": "Provider", "type": "select", "options": ["pexels", "openverse"] },
+        { "name": "count", "label": "Photos (1-30)", "type": "number" },
+        { "name": "orientation", "label": "Orientation", "type": "select", "options": ["any", "landscape", "portrait", "square"] }
+      ],
+      "stages": ["fetch", "transform"]
+    }
+  ],
   "limits": { "memory_pages": 256, "max_instances": 4 },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
+      "pexels_api_key": {
         "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+        "title": "Pexels API key",
+        "writeOnly": true,
+        "description": "Free key from the Pexels API page. Openverse needs none."
       }
     }
   }
