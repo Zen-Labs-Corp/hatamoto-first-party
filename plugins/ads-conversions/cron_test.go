@@ -39,8 +39,8 @@ func TestRefreshGoogleRevokedGrantBreaksOnceAcrossRuns(t *testing.T) {
 	runRefresh(t)
 	runRefresh(t)
 	runRefresh(t)
-	if !isBroken(platGoogle) || len(h.callsOf("mail.send")) != 1 || len(*seen) != 1 {
-		t.Fatalf("broken %v, mails %d, token calls %d (a broken platform is left alone)", isBroken(platGoogle), len(h.callsOf("mail.send")), len(*seen))
+	if !broken(platGoogle) || len(h.callsOf("mail.send")) != 1 || len(*seen) != 1 {
+		t.Fatalf("broken %v, mails %d, token calls %d (a broken platform is left alone)", broken(platGoogle), len(h.callsOf("mail.send")), len(*seen))
 	}
 }
 
@@ -58,7 +58,7 @@ func TestRefreshSkipsDisabledUnconnectedAndTransientFailures(t *testing.T) {
 	h.configure()
 	stubHTTP(t, fetched{Status: 503}, nil)
 	runRefresh(t)
-	if isBroken(platGoogle) || len(h.callsOf("mail.send")) != 0 {
+	if broken(platGoogle) || len(h.callsOf("mail.send")) != 0 {
 		t.Fatal("a server error must not break the connection")
 	}
 }
@@ -89,13 +89,13 @@ func TestRefreshLinkedInWithoutRefreshTokenMailsOnce(t *testing.T) {
 	runRefresh(t)
 	runRefresh(t)
 	mails := h.callsOf("mail.send")
-	if len(mails) != 1 || !strings.Contains(mails[0].args, "2026-11-08") || len(*seen) != 0 || isBroken(platLinkedIn) {
-		t.Fatalf("mails %d, calls %d, broken %v", len(mails), len(*seen), isBroken(platLinkedIn))
+	if len(mails) != 1 || !strings.Contains(mails[0].args, "2026-11-08") || len(*seen) != 0 || broken(platLinkedIn) {
+		t.Fatalf("mails %d, calls %d, broken %v", len(mails), len(*seen), broken(platLinkedIn))
 	}
 	// Once it has run out the connection is marked broken.
 	now = func() time.Time { return testNow.Add(4 * 24 * time.Hour) }
 	runRefresh(t)
-	if !isBroken(platLinkedIn) {
+	if !broken(platLinkedIn) {
 		t.Fatal("expired token without refresh token must need a reconnect")
 	}
 }
@@ -307,8 +307,8 @@ func TestDeliverRefusedTokenRefreshesOnceThenBreaksAndMailsOnce(t *testing.T) {
 	if strings.Join(hosts, ",") != want {
 		t.Fatalf("calls %v: one refresh, one retry, then the platform is left alone", hosts)
 	}
-	if !isBroken(platGoogle) || len(h.callsOf("mail.send")) != 1 || len(deletes(h)) != 0 {
-		t.Fatalf("broken %v, mails %d, deletes %v", isBroken(platGoogle), len(h.callsOf("mail.send")), deletes(h))
+	if !broken(platGoogle) || len(h.callsOf("mail.send")) != 1 || len(deletes(h)) != 0 {
+		t.Fatalf("broken %v, mails %d, deletes %v", broken(platGoogle), len(h.callsOf("mail.send")), deletes(h))
 	}
 	if len(h.execs("UPDATE queue SET next_attempt_at")) != 2 {
 		t.Fatal("rows of a stopped platform must be paused on later runs")
@@ -320,8 +320,8 @@ func TestDeliverTikTokAuthCodeBreaksImmediately(t *testing.T) {
 	platformHTTP(t, map[string]fetched{"business-api.tiktok.com": {Status: 200, Body: `{"code":40105,"message":"token expired"}`}})
 	runDeliver(t)
 	runDeliver(t)
-	if !isBroken(platTikTok) || len(h.callsOf("mail.send")) != 1 || len(deletes(h)) != 0 {
-		t.Fatalf("broken %v mails %d", isBroken(platTikTok), len(h.callsOf("mail.send")))
+	if !broken(platTikTok) || len(h.callsOf("mail.send")) != 1 || len(deletes(h)) != 0 {
+		t.Fatalf("broken %v mails %d", broken(platTikTok), len(h.callsOf("mail.send")))
 	}
 }
 
@@ -396,5 +396,43 @@ func TestDeliverCronsNeverError(t *testing.T) {
 	h.panicOn = "settings.get"
 	if err := onDeliver(sdk.CronEvent{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTikTokBrokenFlagIsBoundToTheToken(t *testing.T) {
+	h := deliveryHost(t, rowJSON(1, "tiktok", 0, ""))
+	platformHTTP(t, map[string]fetched{"business-api.tiktok.com": {Status: 200, Body: `{"code":40105,"message":"token expired"}`}})
+	runDeliver(t)
+	if !broken(platTikTok) {
+		t.Fatal("a refused token must break TikTok")
+	}
+	if strings.Contains(fmt.Sprint(h.kv["status:tiktok"]), "tok-secret") {
+		t.Fatal("the token itself must not be stored")
+	}
+	h.configure(`"notify_email":"owner@example.com"`, `"tiktok_access_token":"tok-new"`)
+	if broken(platTikTok) {
+		t.Fatal("a new access token must lift the broken state")
+	}
+	// The new token is refused too: it breaks again and is mailed again.
+	runDeliver(t)
+	if !broken(platTikTok) || len(h.callsOf("mail.send")) != 2 {
+		t.Fatalf("broken %v, mails %d", broken(platTikTok), len(h.callsOf("mail.send")))
+	}
+}
+
+func TestTikTokTestClearsBrokenAndCardShowsIt(t *testing.T) {
+	h := deliveryHost(t)
+	h.configure(`"tiktok_test_event_code":"TEST123"`)
+	s, _ := loadSettings()
+	markBroken(s, platTikTok)
+	h.query["jsonb_agg(to_jsonb(t))"] = `[]`
+	if res, _ := serve(sdk.HTTPRequest{Method: "GET", Pattern: "/log"}); !strings.Contains(res.Body, `"tiktok":{`) ||
+		!strings.Contains(res.Body, `"needs_reconnect":true`) {
+		t.Fatalf("card must show needs_reconnect: %s", res.Body)
+	}
+	platformHTTP(t, map[string]fetched{"business-api.tiktok.com": {Status: 200, Body: `{"code":0,"message":"OK"}`}})
+	post(t, "/test", `{"platform":"tiktok"}`)
+	if broken(platTikTok) || h.kv["status:tiktok"] != nil {
+		t.Fatal("a passing Test must clear the broken state")
 	}
 }

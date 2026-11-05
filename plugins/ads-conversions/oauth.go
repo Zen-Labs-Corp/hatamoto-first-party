@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/url"
@@ -225,16 +227,46 @@ func accessToken(s settings, platform string, force bool) (string, error) {
 	return t.Access, nil
 }
 
+// tokenFingerprint names an access token without keeping it: the first 16 hex
+// characters of its SHA-256.
+func tokenFingerprint(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// statusValue is what the platform's status key holds while it is broken.
+// TikTok has no reconnect: its broken flag is bound to the access token that
+// was refused, so pasting a new token (or a passing Test) lifts it.
+func statusValue(s settings, platform string) string {
+	if platform == platTikTok {
+		return tokenFingerprint(s.TikTok.AccessToken)
+	}
+	return statusReconnect
+}
+
+// alertKey is the "alert sent" flag of the platform; TikTok's is per token, so
+// a second refused token is mailed again.
+func alertKey(s settings, platform string) string {
+	if platform == platTikTok {
+		return alertedKeyPrefix + platform + ":" + tokenFingerprint(s.TikTok.AccessToken)
+	}
+	return alertedKeyPrefix + platform
+}
+
 // markBroken stops the platform and tells the owner once. The alert flag is
 // set only after a mail went out, so a mail that was refused is tried again
 // by a later run.
 func markBroken(s settings, platform string) {
-	if err := kvSet(statusKeyPrefix+platform, statusReconnect, 0); err != nil {
+	if err := kvSet(statusKeyPrefix+platform, statusValue(s, platform), 0); err != nil {
 		logf("warn", "ads-conversions: could not mark %s as needing a reconnect", platform)
 	}
-	notifyOnce(s, alertedKeyPrefix+platform, platformLabel[platform]+" needs reconnecting",
-		"The "+platformLabel[platform]+" connection of the server-side conversions plugin stopped working, so no conversions are sent to it.\n"+
-			"Open the plugin page in the admin area and choose Connect (or update the access token in the settings).\n")
+	text := "The " + platformLabel[platform] + " connection of the server-side conversions plugin stopped working, so no conversions are sent to it.\n" +
+		"Open the plugin page in the admin area and choose Connect (or update the access token in the settings).\n"
+	if platform == platTikTok {
+		text = "TikTok refused the access token of the server-side conversions plugin, so no conversions are sent to it.\n" +
+			"Create a new access token in Events Manager, enter it in the plugin settings and press Test on the plugin page.\n"
+	}
+	notifyOnce(s, alertKey(s, platform), platformLabel[platform]+" needs reconnecting", text)
 }
 
 // notifyOnce mails notify_email unless the flag key says it already did. Mail
@@ -265,6 +297,13 @@ func clearBroken(platform string) {
 	}
 	if platform == platLinkedIn {
 		_ = kvDelete(linkedInExpiryKey)
+	}
+}
+
+// clearTikTokBroken lifts TikTok's broken state for the current token.
+func clearTikTokBroken(s settings) {
+	for _, k := range []string{statusKeyPrefix + platTikTok, alertKey(s, platTikTok)} {
+		_ = kvDelete(k)
 	}
 }
 

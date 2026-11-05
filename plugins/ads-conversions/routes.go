@@ -226,7 +226,7 @@ func platformStatus(s settings, p string) map[string]any {
 	}
 	out := map[string]any{
 		"label": platformLabel[p], "enabled": s.enabled(p), "configured": len(missing) == 0, "missing": missing,
-		"needs_reconnect": isBroken(p),
+		"needs_reconnect": isBroken(s, p),
 	}
 	switch p {
 	case platGoogle:
@@ -339,6 +339,9 @@ func postTest(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		}
 	}
 	if o.Kind == kindSent {
+		if p == platTikTok {
+			clearTikTokBroken(s)
+		}
 		record(j.SubmissionID, "test", p, "test", "ok", o.Code, cut(okMsg, maxMessage))
 		return testResult(true, okMsg)
 	}

@@ -335,3 +335,9 @@ func TestHookLeaksNothingToLogsOrLogRows(t *testing.T) {
 		t.Fatal("no log calls were scanned")
 	}
 }
+
+// broken reads the platform's broken state against the current settings.
+func broken(platform string) bool {
+	s, _ := loadSettings()
+	return isBroken(s, platform)
+}

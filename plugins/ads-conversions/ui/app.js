@@ -91,6 +91,7 @@ function fillLog() {
 function stateLine(p, c) {
   if (p === "tiktok") {
     const pixel = c.pixel_code ? `Pixel ${c.pixel_code}` : "No pixel code";
+    if (c.needs_reconnect) return `${pixel} · Reconnect needed: TikTok refused the token, enter a new one in Settings and press Test`;
     return `${pixel} · ${c.token_set ? "token set" : "no token"}`;
   }
   const expires = c.token_expires ? new Date(c.token_expires) : null;

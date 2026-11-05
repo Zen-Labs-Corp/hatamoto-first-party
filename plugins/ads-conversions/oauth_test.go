@@ -130,7 +130,7 @@ func TestAccessTokenInvalidGrantBreaksConnectionAndMailsOnce(t *testing.T) {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
-	if !isBroken(platGoogle) {
+	if !broken(platGoogle) {
 		t.Fatal("status:google must say reconnect")
 	}
 	if n := len(h.callsOf("mail.send")); n != 1 {
@@ -141,7 +141,7 @@ func TestAccessTokenInvalidGrantBreaksConnectionAndMailsOnce(t *testing.T) {
 		t.Fatalf("mail %s", mail)
 	}
 	clearBroken(platGoogle)
-	if isBroken(platGoogle) || h.kv["alerted:google"] != nil {
+	if broken(platGoogle) || h.kv["alerted:google"] != nil {
 		t.Fatal("clearBroken must reset the state and the alert flag")
 	}
 }
@@ -151,14 +151,15 @@ func TestMailRefusedLeavesAlertFlagUnset(t *testing.T) {
 	s := settingsFor(t, h)
 	h.mailErr = errTestMail
 	markBroken(s, platTikTok)
-	if _, ok := h.kv["alerted:tiktok"]; ok {
+	flag := alertKey(s, platTikTok)
+	if _, ok := h.kv[flag]; ok {
 		t.Fatal("flag set although the mail failed")
 	}
 	h.mailErr = nil
 	markBroken(s, platTikTok)
 	markBroken(s, platTikTok)
-	if _, ok := h.kv["alerted:tiktok"]; !ok || len(h.callsOf("mail.send")) != 2 {
-		t.Fatalf("flag %v, mails %d", h.kv["alerted:tiktok"], len(h.callsOf("mail.send")))
+	if _, ok := h.kv[flag]; !ok || len(h.callsOf("mail.send")) != 2 {
+		t.Fatalf("flag %v, mails %d", h.kv[flag], len(h.callsOf("mail.send")))
 	}
 	s.NotifyEmail = ""
 	h.calls = nil
@@ -177,8 +178,8 @@ func TestLinkedInWithoutRefreshTokenUsedUntilExpiry(t *testing.T) {
 		t.Fatalf("%q %v", tok, err)
 	}
 	// A 401 (force) with nothing to refresh with breaks the connection.
-	if _, err := accessToken(s, platLinkedIn, true); err != errReconnect || !isBroken(platLinkedIn) {
-		t.Fatalf("forced: %v broken %v", err, isBroken(platLinkedIn))
+	if _, err := accessToken(s, platLinkedIn, true); err != errReconnect || !broken(platLinkedIn) {
+		t.Fatalf("forced: %v broken %v", err, broken(platLinkedIn))
 	}
 }
 
@@ -187,8 +188,8 @@ func TestTransientTokenFailureDoesNotBreak(t *testing.T) {
 	s := settingsFor(t, h)
 	_ = saveTokens(s, platGoogle, tokenSet{Access: "old", Refresh: "ref", Expires: testNow.Add(-time.Minute)})
 	stubHTTP(t, fetched{Status: 503, Body: "down"}, nil)
-	if _, err := accessToken(s, platGoogle, false); err == nil || err == errReconnect || isBroken(platGoogle) {
-		t.Fatalf("err %v broken %v", err, isBroken(platGoogle))
+	if _, err := accessToken(s, platGoogle, false); err == nil || err == errReconnect || broken(platGoogle) {
+		t.Fatalf("err %v broken %v", err, broken(platGoogle))
 	}
 }
 

@@ -91,9 +91,10 @@ func classifyTikTok(status int, body []byte) outcome {
 	case code == 0:
 		o.Kind = kindSent
 		o.Message = ""
-	case code == 40001 || (code >= 40100 && code <= 40105):
+	case code == 40001 || (code >= 40101 && code <= 40105):
 		o.Kind, o.Reason = kindAuth, "platform"
-	case code == 40016 || code == 50000 || (code >= 51000 && code < 52000):
+	// 40100 is "requests made too frequently", a rate limit.
+	case code == 40016 || code == 40100 || code == 50000 || (code >= 51000 && code < 52000):
 		o.Kind, o.Reason = kindRetry, "platform"
 	default:
 		o.Kind, o.Reason = kindFailed, "platform"

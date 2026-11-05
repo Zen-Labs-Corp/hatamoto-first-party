@@ -40,10 +40,10 @@ func truthy(v any) bool {
 
 // isBroken reports whether the platform's connection needs reconnecting. A
 // host error counts as not broken, so the hook fails open.
-func isBroken(platform string) bool {
+func isBroken(s settings, platform string) bool {
 	var v string
-	found, err := kvGet("status:"+platform, &v)
-	return err == nil && found && v == "reconnect"
+	found, err := kvGet(statusKeyPrefix+platform, &v)
+	return err == nil && found && v == statusValue(s, platform)
 }
 
 // onFormSubmitted queues one conversion per active platform. It returns nil on
@@ -69,7 +69,7 @@ func queueSubmission(ev sdk.FormSubmittedEvent) {
 	}
 	var active []string
 	for _, p := range platforms {
-		if s.enabled(p) && s.configured(p) && !isBroken(p) {
+		if s.enabled(p) && s.configured(p) && !isBroken(s, p) {
 			active = append(active, p)
 		}
 	}

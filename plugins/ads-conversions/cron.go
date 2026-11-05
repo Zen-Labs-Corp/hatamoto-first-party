@@ -36,7 +36,7 @@ func onRefresh(sdk.CronEvent) error {
 		return nil
 	}
 	for _, p := range []string{platGoogle, platLinkedIn} {
-		if s.enabled(p) && !isBroken(p) {
+		if s.enabled(p) && !isBroken(s, p) {
 			refreshPlatform(s, p)
 		}
 	}
@@ -156,7 +156,7 @@ func drain(s settings, jobs []job, start time.Time) {
 // expires after 24 h); each row is independent of the others.
 func deliverRow(s settings, j job) {
 	p := j.Platform
-	if !s.enabled(p) || !s.configured(p) || isBroken(p) {
+	if !s.enabled(p) || !s.configured(p) || isBroken(s, p) {
 		pause(j)
 		return
 	}

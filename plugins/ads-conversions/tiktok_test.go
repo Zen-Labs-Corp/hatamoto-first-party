@@ -113,7 +113,8 @@ func TestClassifyTikTok(t *testing.T) {
 	}{
 		{200, `{"code":0,"message":"OK"}`, kindSent, "0"},
 		{200, `{"code":40001,"message":"no auth"}`, kindAuth, "40001"},
-		{200, `{"code":40100,"message":"x"}`, kindAuth, "40100"},
+		{200, `{"code":40100,"message":"too frequent"}`, kindRetry, "40100"},
+		{200, `{"code":40101,"message":"x"}`, kindAuth, "40101"},
 		{200, `{"code":40105,"message":"x"}`, kindAuth, "40105"},
 		{200, `{"code":40016,"message":"rate"}`, kindRetry, "40016"},
 		{200, `{"code":50000,"message":"system"}`, kindRetry, "50000"},
