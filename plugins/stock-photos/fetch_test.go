@@ -431,3 +431,16 @@ func TestSearchTimeoutLeavesRoomForImports(t *testing.T) {
 		t.Fatalf("timeout = %d", req.TimeoutMS)
 	}
 }
+
+func TestFetchForeignHostNotSuggested(t *testing.T) {
+	h := newHost(t, "fetch", `{"query":"owl","provider":"openverse","count":2}`, "api.openverse.org")
+	h.search = func(string) (fetchResp, error) {
+		return fetchResp{Status: 200, Body: `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"t","url":"https://inaturalist-open-data.s3.amazonaws.com/a.jpg","license":"by"}]}`}, nil
+	}
+	if err := h.step(""); err != nil {
+		t.Fatal(err)
+	}
+	if r := h.failReason(); strings.Contains(r, "amazonaws") || !strings.Contains(r, "does not support") {
+		t.Fatalf("reason = %q", r)
+	}
+}

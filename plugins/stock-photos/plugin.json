@@ -9,7 +9,7 @@
     "images.pexels.com",
     "api.openverse.org",
     "upload.wikimedia.org",
-    "*.staticflickr.com"
+    "live.staticflickr.com"
   ],
   "ui": { "title": "Stock photos" },
   "runs": [

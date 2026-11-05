@@ -25,11 +25,12 @@ const (
 )
 
 // cursor is the run checkpoint: I counts raw search results walked so far, N
-// the photos staged so far, Missing the first image hosts that were not ticked.
+// the photos staged so far, Missing the first declared image hosts that were not ticked.
 type cursor struct {
 	I       int      `json:"i"`
 	N       int      `json:"n"`
 	Missing []string `json:"m,omitempty"`
+	Foreign bool     `json:"f,omitempty"` // a result came from a host the plugin does not declare
 }
 
 type params struct {
@@ -144,8 +145,14 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 		sk := ph.Provider + ":" + ph.ID
 		if !hostCovered(ph.ImageURL, info.Hosts) {
 			host := hostOf(ph.ImageURL)
-			cur.noteMissing(host)
-			if err := putSkip(sk, "host not ticked: "+host); err != nil {
+			reason := "host not supported: "
+			if hostCovered(ph.ImageURL, declaredHosts) {
+				cur.noteMissing(host)
+				reason = "host not ticked: "
+			} else {
+				cur.Foreign = true
+			}
+			if err := putSkip(sk, reason+host); err != nil {
 				return failFromError(err)
 			}
 			continue
@@ -195,6 +202,16 @@ func orFail(err error) error {
 	return nil
 }
 
+// declaredHosts are the allowed_hosts of plugin.json (checked by a test); only
+// these can be ticked in the start form.
+var declaredHosts = []string{
+	"api.pexels.com",
+	"images.pexels.com",
+	"api.openverse.org",
+	"upload.wikimedia.org",
+	"live.staticflickr.com",
+}
+
 func (c *cursor) noteMissing(host string) {
 	if host == "" || len(c.Missing) >= 3 {
 		return
@@ -211,6 +228,8 @@ func noPhotosMessage(query string, c cursor) string {
 	switch {
 	case len(c.Missing) > 0:
 		return "No usable photos. Tick these hosts when you start the run: " + strings.Join(c.Missing, ", ") + "."
+	case c.Foreign:
+		return "No usable photos: the results came from sources this plugin does not support."
 	case c.I == 0:
 		return `No photos found for "` + query + `".`
 	}

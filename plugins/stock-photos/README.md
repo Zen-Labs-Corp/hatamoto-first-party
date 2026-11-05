@@ -26,15 +26,15 @@ Nothing: the plugin has no database tables and no stored keys of its own. Result
 
 ## Hosts you tick
 
-`api.pexels.com` is always needed for Pexels. The plugin declares these hosts:
+The start form offers only the hosts the plugin declares; you cannot type others. Each one is there for a reason:
 
-- `api.pexels.com`
-- `images.pexels.com`
-- `api.openverse.org`
-- `upload.wikimedia.org`
-- `*.staticflickr.com`
+- `api.pexels.com`: the Pexels search API. It is always ticked in the form.
+- `images.pexels.com`: where Pexels photos are downloaded from.
+- `api.openverse.org`: the Openverse search API.
+- `live.staticflickr.com`: where Openverse photos from Flickr are downloaded from.
+- `upload.wikimedia.org`: where Openverse photos from Wikimedia Commons are downloaded from.
 
-Openverse images live on other sites, so with Openverse tick `api.openverse.org` plus the image hosts you want (for example `live.staticflickr.com` and `upload.wikimedia.org`). A photo from a host you did not tick is skipped and named in the run summary; if no photo could be used, the summary lists the hosts to tick.
+For Pexels tick `api.pexels.com` and `images.pexels.com`. For Openverse tick `api.openverse.org` plus the image hosts you want: `live.staticflickr.com` for Flickr photos, `upload.wikimedia.org` for Wikimedia Commons photos. Openverse searches are limited to those two sources, the ones whose image hosts the plugin declares. A photo from a declared host you did not tick is skipped and named in the run summary; if no photo could be used, the summary lists the hosts to tick.
 
 ## Licences
 

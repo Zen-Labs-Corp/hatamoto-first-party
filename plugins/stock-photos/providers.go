@@ -170,9 +170,10 @@ func searchPexels(key string, p searchParams) (photos []photo, more bool, rawCou
 var imageExts = map[string]bool{"jpg": true, "jpeg": true, "png": true, "webp": true, "gif": true}
 
 func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, err error) {
-	// The comma in license_type is sent literally: the API answers 500 to %2C.
+	// Commas in license_type and source are sent literally: the API answers 500
+	// to %2C. The sources are the ones whose image hosts the manifest declares.
 	q := "q=" + url.QueryEscape(p.Query) + "&page_size=" + strconv.Itoa(openversePageSize) + "&page=" + strconv.Itoa(p.Page) +
-		"&license_type=commercial,modification"
+		"&license_type=commercial,modification&source=flickr,wikimedia"
 	switch p.Orientation {
 	case "landscape":
 		q += "&aspect_ratio=wide"

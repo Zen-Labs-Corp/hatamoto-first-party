@@ -95,7 +95,7 @@ func TestSearchOpenverse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(req.URL, "license_type=commercial,modification") || !strings.Contains(req.URL, "aspect_ratio=tall") ||
+	if !strings.Contains(req.URL, "license_type=commercial,modification&source=flickr,wikimedia") || !strings.Contains(req.URL, "aspect_ratio=tall") ||
 		!strings.Contains(req.URL, "page_size=20") || !strings.HasPrefix(req.URL, "https://api.openverse.org/v1/images/?q=lake") {
 		t.Fatalf("url = %s", req.URL)
 	}
