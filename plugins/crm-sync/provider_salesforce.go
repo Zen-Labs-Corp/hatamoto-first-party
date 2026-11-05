@@ -25,6 +25,9 @@ type sfToken struct {
 	AccessToken string    `json:"access_token"`
 	InstanceURL string    `json:"instance_url"`
 	FetchedAt   time.Time `json:"fetched_at"`
+	// MyDomain and ClientID bind the token to the configured org and client.
+	MyDomain string `json:"my_domain"`
+	ClientID string `json:"client_id"`
 }
 
 var (
@@ -75,7 +78,7 @@ func (s *sfClient) token(force bool) (sfToken, result) {
 	}
 	if !force {
 		var t sfToken
-		if ok, err := kvGet(sfTokenKey, &t); err == nil && ok && t.AccessToken != "" {
+		if ok, err := kvGet(sfTokenKey, &t); err == nil && ok && t.AccessToken != "" && t.MyDomain == host && t.ClientID == s.c.clientID() {
 			if inst, good := sfInstanceOK(t.InstanceURL); good {
 				t.InstanceURL = inst
 				return t, result{}
@@ -109,6 +112,7 @@ func (s *sfClient) token(force bool) (sfToken, result) {
 	}
 	t.InstanceURL = inst
 	t.FetchedAt = now().UTC()
+	t.MyDomain, t.ClientID = host, s.c.clientID()
 	_ = kvSet(sfTokenKey, t, sfTokenTTL)
 	return t, result{}
 }

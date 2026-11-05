@@ -31,7 +31,7 @@ var sfMap = []mapRow{{"first_name", "FirstName"}, {"phone", "Phone"}, {"x", "Foo
 
 func sfSeed(t *testing.T, inst string) {
 	t.Helper()
-	if err := kvSet("sf_token", sfToken{AccessToken: "AT0", InstanceURL: inst}, 0); err != nil {
+	if err := kvSet("sf_token", sfToken{AccessToken: "AT0", InstanceURL: inst, MyDomain: "acme.my.salesforce.com", ClientID: "cid"}, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -74,6 +74,33 @@ func TestSalesforceTokenCachedInKV(t *testing.T) {
 	}
 	if len(f.reqs) != 5 {
 		t.Fatalf("second upsert made a token request: %d requests", len(f.reqs))
+	}
+}
+
+func TestSalesforceCachedTokenIsBoundToOrgAndClient(t *testing.T) {
+	for name, change := range map[string]func(*cfg){
+		"my domain": func(c *cfg) { c.MyDomain = "other.my.salesforce.com" },
+		"client id": func(c *cfg) { c.ClientID = "cid2" },
+	} {
+		h := &fakeHost{}
+		h.install(t)
+		sfSeed(t, sfInst)
+		c := sfNoNote(sfCfg())
+		change(&c)
+		inst := "https://" + c.sfHost()
+		f := newFake(t, fetchResp{Status: 200, Body: `{"access_token":"AT9","instance_url":"` + inst + `"}`},
+			sfResp(sfNoRec), fetchResp{Status: 201, Body: sfCreate})
+		if r := (salesforce{}).upsert(sfJob(), c, sfMap, f.fetch); r.kind != kindCreated {
+			t.Fatalf("%s: %+v", name, r)
+		}
+		if !strings.HasPrefix(f.reqs[0].URL, inst+"/services/oauth2/token") {
+			t.Fatalf("%s: first request %s", name, f.reqs[0].URL)
+		}
+		for _, q := range f.reqs[1:] {
+			if !strings.HasPrefix(q.URL, inst+"/") || q.Headers["Authorization"] != "Bearer AT9" {
+				t.Fatalf("%s: request %s %v", name, q.URL, q.Headers)
+			}
+		}
 	}
 }
 
