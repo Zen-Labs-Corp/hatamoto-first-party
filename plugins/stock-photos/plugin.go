@@ -26,7 +26,3 @@ func onStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 	}
 	return sdk.RunStepResult{}, nil
 }
-
-func transformStep(sdk.RunStep) (sdk.RunStepResult, error) {
-	return sdk.RunStepResult{}, guest.RunFinish(callHost, nil)
-}

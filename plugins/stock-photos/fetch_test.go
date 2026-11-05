@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 
@@ -74,6 +75,30 @@ func (h *fakeHost) call(fn string, args, out any) error {
 		var a sdk.MediaImportURLArgs
 		_ = json.Unmarshal(raw, &a)
 		res = sdk.MediaHandle{Handle: "h-" + a.Filename}
+	case "changeset.media.attach":
+		var a sdk.MediaAttach
+		_ = json.Unmarshal(raw, &a)
+		res = sdk.UpsertResult{SourceKey: a.SourceKey, Created: true}
+	case "buffer.get":
+		var a sdk.BufferGetArgs
+		_ = json.Unmarshal(raw, &a)
+		v, ok := h.buffer[a.Key]
+		res = sdk.BufferValue{Found: ok, ValueB64: base64.StdEncoding.EncodeToString([]byte(v))}
+	case "buffer.list":
+		var a sdk.BufferListArgs
+		_ = json.Unmarshal(raw, &a)
+		var keys []string
+		for k := range h.buffer {
+			if strings.HasPrefix(k, a.Prefix) && k > a.After {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
+		out := sdk.BufferKeys{Keys: keys}
+		if a.Limit > 0 && len(keys) > a.Limit {
+			out = sdk.BufferKeys{Keys: keys[:a.Limit], Next: keys[a.Limit-1]}
+		}
+		res = out
 	case "buffer.put":
 		var a sdk.BufferPutArgs
 		_ = json.Unmarshal(raw, &a)
