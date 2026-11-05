@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -39,7 +40,17 @@ func startFlow(t *testing.T, h *fakeHost, platform string) string {
 	return u.Query().Get("state")
 }
 
-func location(res sdk.HTTPResponse) string { return res.Headers["Location"] }
+// outcomeOf reduces a callback answer to its status and page text, and checks
+// that it is a page (never a redirect).
+func outcomeOf(t *testing.T, res sdk.HTTPResponse) string {
+	t.Helper()
+	if res.Headers["Location"] != "" || !strings.HasPrefix(res.Headers["Content-Type"], "text/html") {
+		t.Fatalf("a callback must answer a page, got %d %v", res.Status, res.Headers)
+	}
+	return fmt.Sprintf("%d %s", res.Status, res.Body[strings.Index(res.Body, "<p>"):])
+}
+
+const unknownState = "0123456789abcdef0123456789abcdef"
 
 func TestConnectJSONAndHTML(t *testing.T) {
 	h := newHost(t)
@@ -84,8 +95,8 @@ func TestCallbackHappyPathStoresSealedTokensAndClearsBroken(t *testing.T) {
 	state := startFlow(t, h, platGoogle)
 	seen := stubHTTP(t, tokenJSON("acc-new", "ref-new", 3600), nil)
 	res := route(t, "GET", "/oauth/{platform}/callback", platGoogle, callbackQuery(state, "the-code"), nil)
-	if res.Status != 302 || location(res) != "/admin/plugins/ads-conversions" {
-		t.Fatalf("%d %v", res.Status, res.Headers)
+	if got := outcomeOf(t, res); got != "200 <p>Google Ads is connected. Go back to the plugin page and reload it.</p>" {
+		t.Fatal(got)
 	}
 	if len(*seen) != 1 || !strings.Contains(string((*seen)[0].Body), "code=the-code") {
 		t.Fatalf("exchange %v", *seen)
@@ -107,12 +118,12 @@ func TestCallbackStateIsSingleUse(t *testing.T) {
 	h.configure()
 	state := startFlow(t, h, platGoogle)
 	stubHTTP(t, tokenJSON("a", "r", 3600), nil)
-	if res := route(t, "GET", "/oauth/{platform}/callback", platGoogle, callbackQuery(state, "c"), nil); location(res) != uiPath {
-		t.Fatalf("first use: %v", res.Headers)
+	if res := route(t, "GET", "/oauth/{platform}/callback", platGoogle, callbackQuery(state, "c"), nil); !strings.Contains(outcomeOf(t, res), "is connected") {
+		t.Fatalf("first use: %v", res.Body)
 	}
 	res := route(t, "GET", "/oauth/{platform}/callback", platGoogle, callbackQuery(state, "c"), nil)
-	if location(res) != uiPath+"?error=expired" {
-		t.Fatalf("replay: %v", res.Headers)
+	if !strings.Contains(outcomeOf(t, res), "400 <p>Connection failed: The link has expired") {
+		t.Fatalf("replay: %v", res.Body)
 	}
 }
 
@@ -122,33 +133,44 @@ func TestCallbackRejectsWrongPlatformUnknownOversizedAndDenied(t *testing.T) {
 	stub := stubHTTP(t, tokenJSON("a", "r", 3600), nil)
 	state := startFlow(t, h, platGoogle)
 	res := route(t, "GET", "/oauth/{platform}/callback", platLinkedIn, callbackQuery(state, "c"), nil)
-	if location(res) != uiPath+"?error=wrong_platform" {
-		t.Fatalf("wrong platform: %v", res.Headers)
+	if !strings.Contains(outcomeOf(t, res), "Connection failed: The link belongs to another platform") {
+		t.Fatalf("wrong platform: %v", res.Body)
 	}
 	if _, ok := h.kv["oauth:"+state]; ok {
 		t.Fatal("a wrong-platform attempt must still use the state up")
 	}
-	res = route(t, "GET", "/oauth/{platform}/callback", platGoogle, callbackQuery("nosuchstate", "c"), nil)
-	if location(res) != uiPath+"?error=expired" {
-		t.Fatalf("unknown: %v", res.Headers)
+	res = route(t, "GET", "/oauth/{platform}/callback", platGoogle, callbackQuery(unknownState, "c"), nil)
+	if !strings.Contains(outcomeOf(t, res), "The link has expired") {
+		t.Fatalf("unknown: %v", res.Body)
+	}
+	// A state of the wrong shape never reaches the store.
+	h.calls = nil
+	for _, bad := range []string{"nosuchstate", strings.ToUpper(unknownState), unknownState + "0", "../token:google"} {
+		res = route(t, "GET", "/oauth/{platform}/callback", platGoogle, callbackQuery(bad, "c"), nil)
+		if !strings.Contains(outcomeOf(t, res), "The link is not valid") {
+			t.Fatalf("state %q: %v", bad, res.Body)
+		}
+	}
+	if len(h.callsOf("kv.get")) != 0 {
+		t.Fatal("a malformed state must not be looked up")
 	}
 	big := strings.Repeat("a", 513)
 	for _, q := range []map[string][]string{callbackQuery(big, "c"), callbackQuery(startFlow(t, h, platGoogle), big), callbackQuery("", "c")} {
-		if res := route(t, "GET", "/oauth/{platform}/callback", platGoogle, q, nil); !strings.HasPrefix(location(res), uiPath+"?error=invalid_link") {
-			t.Fatalf("oversized: %v", res.Headers)
+		if res := route(t, "GET", "/oauth/{platform}/callback", platGoogle, q, nil); !strings.Contains(outcomeOf(t, res), "The link is not valid") {
+			t.Fatalf("oversized: %v", res.Body)
 		}
 	}
 	denied := callbackQuery(startFlow(t, h, platGoogle), "")
 	denied["error"] = []string{"access_denied provider text"}
 	res = route(t, "GET", "/oauth/{platform}/callback", platGoogle, denied, nil)
-	if location(res) != uiPath+"?error=denied" || strings.Contains(location(res), "provider") {
-		t.Fatalf("denied: %v", res.Headers)
+	if got := outcomeOf(t, res); got != "400 <p>Connection failed: Access was not granted.</p>" {
+		t.Fatalf("denied: %v", got)
 	}
 	if len(*stub) != 0 {
 		t.Fatal("no code exchange expected for a rejected callback")
 	}
-	if res := route(t, "GET", "/oauth/{platform}/callback", platTikTok, callbackQuery("s", "c"), nil); !strings.HasPrefix(location(res), uiPath+"?error=") {
-		t.Fatalf("tiktok callback: %v", res.Headers)
+	if res := route(t, "GET", "/oauth/{platform}/callback", platTikTok, callbackQuery(unknownState, "c"), nil); !strings.Contains(outcomeOf(t, res), "Connection failed") {
+		t.Fatalf("tiktok callback: %v", res.Body)
 	}
 }
 
@@ -158,7 +180,7 @@ func TestCallbackExchangeFailureGivesShortCodeOnly(t *testing.T) {
 	state := startFlow(t, h, platLinkedIn)
 	stubHTTP(t, fetched{Status: 400, Body: `{"error":"invalid_request","error_description":"secret provider text lsecret"}`}, nil)
 	res := route(t, "GET", "/oauth/{platform}/callback", platLinkedIn, callbackQuery(state, "c"), nil)
-	if location(res) != uiPath+"?error=exchange_failed" || res.Body != "" {
+	if got := outcomeOf(t, res); !strings.HasPrefix(got, "400 <p>Connection failed: The platform did not accept") || strings.Contains(res.Body, "secret provider text") {
 		t.Fatalf("%d %v %q", res.Status, res.Headers, res.Body)
 	}
 	if _, ok := h.kv["token:linkedin"]; ok {

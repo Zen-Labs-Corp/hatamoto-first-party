@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
-	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -15,11 +15,9 @@ import (
 )
 
 const (
-	// uiPath is the plugin's admin page, a same-site path as a redirect needs.
-	uiPath = "/admin/plugins/ads-conversions"
 	// stateTTL is how long a started OAuth flow stays valid, in seconds.
 	stateTTL = 600
-	// maxQueryValue caps the state and code a callback may carry.
+	// maxQueryValue caps the code a callback may carry.
 	maxQueryValue = 512
 )
 
@@ -135,14 +133,32 @@ func connect(r sdk.HTTPRequest, platform string) (sdk.HTTPResponse, error) {
 		`<meta http-equiv="refresh" content="0;url=`+link+`"><p><a href="`+link+`">Continue to `+platformLabel[platform]+`</a></p>`), nil
 }
 
-// back sends the browser to the admin page; code, when set, is a short error
-// code (never provider text).
-func back(code string) (sdk.HTTPResponse, error) {
-	loc := uiPath
-	if code != "" {
-		loc += "?error=" + url.QueryEscape(code)
+// stateRe is the shape of a state randomToken(16) makes.
+var stateRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+// failureText is the fixed words for each way a callback can fail; provider
+// text is never shown. The host does not know the admin address of every
+// install, so the callback answers a page instead of redirecting.
+var failureText = map[string]string{
+	"invalid_link":    "The link is not valid. Start again from the plugin page.",
+	"expired":         "The link has expired or was already used. Start again from the plugin page.",
+	"wrong_platform":  "The link belongs to another platform. Start again from the plugin page.",
+	"denied":          "Access was not granted.",
+	"exchange_failed": "The platform did not accept the connection. Check the client ID and secret in the plugin settings, then start again from the plugin page.",
+	"internal":        "Something went wrong on the server. See the server log.",
+}
+
+// back answers the browser tab the OAuth flow ends in; code, when set, is a
+// short error code (never provider text).
+func back(platform, code string) (sdk.HTTPResponse, error) {
+	if code == "" {
+		return page(http.StatusOK, "Connected", "<p>"+html.EscapeString(platformLabel[platform])+" is connected. Go back to the plugin page and reload it.</p>"), nil
 	}
-	return sdk.HTTPResponse{Status: http.StatusFound, Headers: map[string]string{"Location": loc, "Cache-Control": "no-store"}}, nil
+	status := http.StatusBadRequest
+	if code == "internal" {
+		status = http.StatusInternalServerError
+	}
+	return page(status, "Connection failed", "<p>Connection failed: "+html.EscapeString(failureText[code])+"</p>"), nil
 }
 
 func first(v []string) string {
@@ -157,42 +173,42 @@ func first(v []string) string {
 // this browser began the flow. Whatever happens, the state is used up.
 func callback(r sdk.HTTPRequest, platform string) (sdk.HTTPResponse, error) {
 	state, code := first(r.Query["state"]), first(r.Query["code"])
-	if !oauthPlatform(platform) || state == "" || len(state) > maxQueryValue {
-		return back("invalid_link")
+	if !oauthPlatform(platform) || !stateRe.MatchString(state) {
+		return back(platform, "invalid_link")
 	}
 	var st oauthState
 	found, err := kvGet("oauth:"+state, &st)
 	_ = kvDelete("oauth:" + state)
 	if err != nil {
 		logf("warn", "ads-conversions: could not read the OAuth state: %s", hostReason(err))
-		return back("internal")
+		return back(platform, "internal")
 	}
 	switch {
 	case !found:
-		return back("expired")
+		return back(platform, "expired")
 	case st.Platform != platform:
-		return back("wrong_platform")
+		return back(platform, "wrong_platform")
 	case first(r.Query["error"]) != "":
-		return back("denied")
+		return back(platform, "denied")
 	case code == "" || len(code) > maxQueryValue:
-		return back("invalid_link")
+		return back(platform, "invalid_link")
 	}
 	s, err := loadSettings()
 	if err != nil {
-		return back("internal")
+		return back(platform, "internal")
 	}
 	tok, err := exchangeCode(s, platform, code, st.Verifier)
 	if err != nil {
 		logf("warn", "ads-conversions: %s code exchange failed", platform)
-		return back("exchange_failed")
+		return back(platform, "exchange_failed")
 	}
 	if err := saveTokens(s, platform, tok); err != nil {
 		logf("warn", "ads-conversions: could not store the %s token", platform)
-		return back("internal")
+		return back(platform, "internal")
 	}
 	clearBroken(platform)
 	logf("info", "ads-conversions: connected to %s", platformLabel[platform])
-	return back("")
+	return back(platform, "")
 }
 
 // disconnect forgets the stored tokens and the broken state; Google is asked
