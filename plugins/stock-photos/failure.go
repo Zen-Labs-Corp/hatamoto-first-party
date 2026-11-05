@@ -7,10 +7,16 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-// failRun ends the run with a message for the owner. It never returns an
-// error: the host sees a clean step and a failed run.
+// errEndRun is returned when the run could not be ended; the SDK then fails
+// the step. It is a fixed text: a host error could echo a request.
+var errEndRun = errors.New("could not end the run")
+
+// failRun ends the run with a message for the owner. If the host refuses the
+// failure itself, the step returns an error instead of ending with nothing.
 func failRun(msg string) (sdk.RunStepResult, error) {
-	_ = guest.RunFail(callHost, cleanText(msg, 500))
+	if err := guest.RunFail(callHost, cleanText(msg, 500)); err != nil {
+		return sdk.RunStepResult{}, errEndRun
+	}
 	return sdk.RunStepResult{}, nil
 }
 

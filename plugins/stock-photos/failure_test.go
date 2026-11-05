@@ -68,11 +68,11 @@ func TestFetchFailuresEndWithOneRunFail(t *testing.T) {
 	}
 }
 
-func TestFailRunSurvivesFailingHost(t *testing.T) {
+func TestFailRunReturnsErrorWhenRunFailFails(t *testing.T) {
 	h := newHost(t, "fetch", `{"query":""}`)
 	h.errs["run.fail"] = &sdk.HostError{Code: sdk.ErrInternal}
-	if err := h.step(""); err != nil {
-		t.Fatalf("handler error: %v", err)
+	if err := h.step(""); err == nil {
+		t.Fatal("step ended with neither fail nor error")
 	}
 }
 

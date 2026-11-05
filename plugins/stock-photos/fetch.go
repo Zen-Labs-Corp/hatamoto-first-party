@@ -205,7 +205,8 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 // orFail turns a failed finish call into a failed run.
 func orFail(err error) error {
 	if err != nil {
-		_, _ = failFromError(err)
+		_, e := failFromError(err)
+		return e
 	}
 	return nil
 }
