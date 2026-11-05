@@ -101,9 +101,6 @@ func setNow(t *testing.T, s string) time.Time {
 	return at
 }
 
-// hostErr is a host error with code.
-func hostErr(code, msg string) error { return &sdk.HostError{Code: code, Message: msg} }
-
 // oneStatement fails when sql is more than one statement, builds a value into
 // the text, or uses a word the host's SQL guard refuses.
 func oneStatement(t *testing.T, sql string) {

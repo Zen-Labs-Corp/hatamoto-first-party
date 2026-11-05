@@ -80,6 +80,9 @@ func hostErrCode(err error) string {
 	return ""
 }
 
+// hostErr builds a host error, as the host returns one.
+func hostErr(code, msg string) error { return &sdk.HostError{Code: code, Message: msg} }
+
 // hostErrMessage returns the host's message for a host error, else err's text.
 func hostErrMessage(err error) string {
 	var he *sdk.HostError
