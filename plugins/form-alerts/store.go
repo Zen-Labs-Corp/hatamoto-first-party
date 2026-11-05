@@ -84,20 +84,35 @@ ON CONFLICT (submission_id, channel) DO NOTHING`,
 	return res.RowsAffected > 0, err
 }
 
-// claim leases up to batchSize due rows so that no other run takes them.
+// claim leases up to batchSize due rows so that no other run takes them. The
+// claim itself returns ids only and each body is read on its own, because the
+// host drops a db.query result over 1 MiB after the lease is already written.
 func claim(t time.Time) ([]job, error) {
-	var jobs []job
+	var ids []int64
 	err := dbJSON(`WITH c AS (
   SELECT id FROM queue
   WHERE next_at <= $1::timestamptz AND lease_until <= $1::timestamptz AND created_at >= $2::timestamptz
   ORDER BY next_at, id LIMIT $3 FOR UPDATE SKIP LOCKED
 ), u AS (
   UPDATE queue q SET lease_until = $4::timestamptz FROM c WHERE q.id = c.id
-  RETURNING q.id, q.next_at, q.submission_id, q.form_slug, q.channel, q.body, q.attempts, q.created_at
+  RETURNING q.id, q.next_at
 )
-SELECT coalesce(jsonb_agg(to_jsonb(u) ORDER BY u.next_at, u.id), '[]'::jsonb) FROM u`,
-		&jobs, ts(t), ts(t.Add(-maxAge)), batchSize, ts(t.Add(leaseTime)))
-	return jobs, err
+SELECT coalesce(jsonb_agg(u.id ORDER BY u.next_at, u.id), '[]'::jsonb) FROM u`,
+		&ids, ts(t), ts(t.Add(-maxAge)), batchSize, ts(t.Add(leaseTime)))
+	if err != nil {
+		return nil, err
+	}
+	jobs := make([]job, 0, len(ids))
+	for _, id := range ids {
+		var j job
+		if err := dbJSON(`SELECT to_jsonb(r) FROM (SELECT id, submission_id, form_slug, channel, body, attempts, created_at FROM queue WHERE id = $1) r`, &j, id); err != nil {
+			// The lease runs out and the row is tried again later.
+			logf("warn", "form-alerts: could not read a queued message")
+			continue
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, nil
 }
 
 // settle applies one delivery outcome: finished messages leave the queue, a

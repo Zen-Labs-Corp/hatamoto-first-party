@@ -19,10 +19,14 @@ func dbExec(sql string, args ...any) error {
 // it into out. Selecting one document keeps column typing out of the guest.
 func dbJSON(sql string, out any, args ...any) error {
 	var res struct {
-		Rows [][]json.RawMessage `json:"rows"`
+		Rows      [][]json.RawMessage `json:"rows"`
+		Truncated bool                `json:"truncated"`
 	}
 	if err := callHost("db.query", map[string]any{"sql": sql, "args": args}, &res); err != nil {
 		return err
+	}
+	if res.Truncated {
+		return errors.New("query result over the host limit")
 	}
 	if len(res.Rows) == 0 || len(res.Rows[0]) == 0 {
 		return errors.New("query returned no rows")

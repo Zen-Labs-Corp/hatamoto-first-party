@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,8 +53,7 @@ func (h *fakeHost) install(t *testing.T) {
 		case "db.query":
 			m := a.(map[string]any)
 			h.calls = append(h.calls, hostCallRec{fn: fn, sql: m["sql"].(string), args: m["args"].([]any)})
-			cell, _ := json.Marshal(h.query)
-			return json.Unmarshal([]byte(`{"rows":[[`+string(cell)+`]]}`), out)
+			return h.dbQuery(m["sql"].(string), m["args"].([]any), out)
 		case "log":
 			h.calls = append(h.calls, hostCallRec{fn: fn, msg: a.(map[string]string)["message"]})
 		default:
@@ -104,3 +105,38 @@ func unmarshal(s string, out any) error { return json.Unmarshal([]byte(s), out) 
 func itoa(n int) string { return strconv.Itoa(n) }
 
 func quote(s string) string { b, _ := json.Marshal(s); return string(b) }
+
+// maxDBResultBytes is the host's cap on one db.query result.
+const maxDBResultBytes = 1 << 20
+
+// dbQuery answers a db.query like the host: one jsonb cell, and a result over
+// the cap comes back empty with truncated set. h.query holds queue rows; the
+// claim statement returns their ids, a single-row read returns that row.
+func (h *fakeHost) dbQuery(sql string, args []any, out any) error {
+	doc := h.query
+	var rows []map[string]json.RawMessage
+	if strings.Contains(sql, "FROM queue") && json.Unmarshal([]byte(h.query), &rows) == nil {
+		switch {
+		case strings.Contains(sql, "jsonb_agg(u.id"):
+			ids := []json.RawMessage{}
+			for _, r := range rows {
+				ids = append(ids, r["id"])
+			}
+			b, _ := json.Marshal(ids)
+			doc = string(b)
+		case strings.Contains(sql, "WHERE id = $1"):
+			doc = "null"
+			for _, r := range rows {
+				if string(r["id"]) == fmt.Sprint(args[0]) {
+					b, _ := json.Marshal(r)
+					doc = string(b)
+				}
+			}
+		}
+	}
+	cell, _ := json.Marshal(doc)
+	if len(cell) > maxDBResultBytes {
+		return json.Unmarshal([]byte(`{"rows":[],"truncated":true}`), out)
+	}
+	return json.Unmarshal([]byte(`{"rows":[[`+string(cell)+`]]}`), out)
+}

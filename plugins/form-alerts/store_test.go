@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -119,5 +120,28 @@ func TestClaimDecodesRows(t *testing.T) {
 	}
 	if h.calls[0].args[1] != "2026-11-04T04:00:00Z" {
 		t.Fatalf("claim ignores rows older than six hours: %v", h.calls[0].args)
+	}
+}
+
+func TestClaimStaysUnderTheHostResultCap(t *testing.T) {
+	var rows []string
+	for i := 1; i <= batchSize; i++ {
+		rows = append(rows, fmt.Sprintf(`{"id":%d,"submission_id":"%d","form_slug":"contact","channel":"slack","body":%q,"attempts":0,"created_at":"2026-11-04T09:00:00Z"}`,
+			i, i, strings.Repeat(`"`, maxBody)))
+	}
+	h := &fakeHost{query: "[" + strings.Join(rows, ",") + "]"}
+	h.install(t)
+	jobs, err := claim(now())
+	if err != nil || len(jobs) != batchSize || len(jobs[0].Body) != maxBody {
+		t.Fatalf("jobs %d err %v", len(jobs), err)
+	}
+}
+
+func TestDBJSONReportsATruncatedResult(t *testing.T) {
+	h := &fakeHost{query: `"` + strings.Repeat("x", maxDBResultBytes) + `"`}
+	h.install(t)
+	var v any
+	if err := dbJSON(`SELECT 1`, &v); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatal("a truncated result must be an error")
 	}
 }
