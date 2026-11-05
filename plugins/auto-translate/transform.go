@@ -215,12 +215,19 @@ func transformStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 		}
 		valid++
 		base := slugBase(rec.T.Slug, rec.SourceSlug)
+		if rec.ExistingSlug != "" {
+			base = rec.ExistingSlug
+		}
 		if base == "" {
 			base = slugify(rec.ID)
 		}
 		key := strconv.Itoa(i)
 		var slug string
 		switch n, moved := suffix[key]; {
+		case rec.ExistingSlug != "":
+			// The published copy holds this slug itself: no check, no suffix.
+			slug = base
+			slugs.add(rec.SchemaSlug, siteLocale, slug)
 		case replay && moved:
 			slug = candidate(base, n)
 			slugs.add(rec.SchemaSlug, siteLocale, slug)

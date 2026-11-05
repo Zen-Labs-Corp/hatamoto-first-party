@@ -421,3 +421,17 @@ func TestTransformEmptyBufferFinishes(t *testing.T) {
 		t.Fatalf("finished=%v summary=%v", w.finished, w.summary)
 	}
 }
+
+// A re-run must not move a published copy: the host's slug check sees the copy
+// itself as a collision.
+func TestTransformKeepsThePublishedCopysSlug(t *testing.T) {
+	w := newStageWorld(t)
+	w.taken["kontakt"] = true
+	w.add("p1", "", "Kontakt", "kontakt", func(r *record) { r.ExistingSlug = "kontakt" })
+	w.add("p2", "", "Kontakt", "kontakt")
+	w.run()
+	got := w.slugs()
+	if got["p1"] != "kontakt" || got["p2"] != "kontakt-2" {
+		t.Fatalf("slugs %v", got)
+	}
+}

@@ -30,12 +30,15 @@ type translated struct {
 // record is what the fetch phase stores per entity for the transform phase.
 // Attributes holds every attribute except the translated ones, byte for byte.
 type record struct {
-	ID           string                     `json:"id"`
-	SchemaSlug   string                     `json:"schema_slug"`
-	SourceLocale string                     `json:"source_locale"`
-	SourceSlug   string                     `json:"source_slug,omitempty"`
-	TargetLocale string                     `json:"target_locale"`
-	Group        string                     `json:"group,omitempty"`
+	ID           string `json:"id"`
+	SchemaSlug   string `json:"schema_slug"`
+	SourceLocale string `json:"source_locale"`
+	SourceSlug   string `json:"source_slug,omitempty"`
+	TargetLocale string `json:"target_locale"`
+	Group        string `json:"group,omitempty"`
+	// ExistingSlug is the slug of the copy already published in the target
+	// locale; the copy keeps it.
+	ExistingSlug string                     `json:"existing_slug,omitempty"`
 	ParentID     string                     `json:"parent_id,omitempty"`
 	Attributes   map[string]json.RawMessage `json:"attributes"`
 	T            translated                 `json:"t"`
@@ -98,7 +101,7 @@ func unitFor(e entity, g []glossaryEntry) (texts []string, slots []slot) {
 func fill(e entity, out []string, slots []slot, g []glossaryEntry) (record, int) {
 	r := record{
 		ID: e.ID, SchemaSlug: e.SchemaSlug, SourceLocale: e.Locale, SourceSlug: e.Slug,
-		Group: e.Group, ParentID: e.ParentID,
+		Group: e.Group, ParentID: e.ParentID, ExistingSlug: e.existingSlug,
 		Attributes: map[string]json.RawMessage{},
 	}
 	translatedKeys := map[string]bool{}

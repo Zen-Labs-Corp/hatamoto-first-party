@@ -12,6 +12,7 @@ type sourceWorld struct {
 	pages  map[string][]entity // list cursor -> items
 	next   map[string]string   // list cursor -> next cursor
 	groups map[string][]string // entity id -> locales of its translations
+	paths  map[string]string   // locale -> path of a translation member
 	calls  []hostCall
 }
 
@@ -53,7 +54,7 @@ func (w *sourceWorld) call(fn string, args, out any) error {
 		id := args.(map[string]string)["id"]
 		var items []map[string]string
 		for _, l := range w.groups[id] {
-			items = append(items, map[string]string{"id": "x", "locale": l})
+			items = append(items, map[string]string{"id": "x", "locale": l, "path": w.paths[l]})
 		}
 		res = items
 	default:
@@ -192,13 +193,18 @@ func TestNextCandidatesOnlyMissing(t *testing.T) {
 	}
 }
 
-func TestNextCandidatesWithoutOnlyMissingNeverReadsTranslations(t *testing.T) {
+func TestNextCandidatesWithoutOnlyMissingKeepsTheCopysSlug(t *testing.T) {
 	w := newSourceWorld(t)
-	w.pages[""] = []entity{ent("a", "en", "g1", "")}
+	w.pages[""] = []entity{ent("a", "en", "g1", ""), ent("b", "en", "g2", "")}
 	w.groups["a"] = []string{"en", "de"}
+	w.groups["b"] = []string{"en", "fr"}
+	w.paths = map[string]string{"de": "/de/ueber/uns?x=1"}
 	cands, _, _, _, err := nextCandidates(params{Locale: "de", Schema: "page"}, cursor{}, 20)
-	if err != nil || len(cands) != 1 || w.count("entities.translations") != 0 {
-		t.Fatal(err, ids(cands), w.count("entities.translations"))
+	if err != nil || len(cands) != 2 {
+		t.Fatal(err, ids(cands))
+	}
+	if cands[0].existingSlug != "uns" || cands[1].existingSlug != "" {
+		t.Fatalf("slugs %q %q", cands[0].existingSlug, cands[1].existingSlug)
 	}
 }
 

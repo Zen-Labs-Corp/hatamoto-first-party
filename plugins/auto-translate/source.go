@@ -67,6 +67,10 @@ type entity struct {
 	// first candidates can resume right after them.
 	idx      int
 	countsAt map[string]int
+
+	// existingSlug is the slug of the copy already published in the target
+	// locale, set on a candidate.
+	existingSlug string
 }
 
 type pageResult struct {
@@ -142,25 +146,28 @@ func translatable(e entity, target string) (bool, string) {
 	return true, ""
 }
 
-// hasTarget reports whether the entity's translation group has a member in
-// the target locale.
-func hasTarget(id, target string) (bool, error) {
+// targetCopy looks for the translation group's member in the target locale
+// and returns its slug, the last segment of its public path ("" when the host
+// gave no path).
+func targetCopy(id, target string) (found bool, slug string, err error) {
 	var items []struct {
 		Locale string `json:"locale"`
+		Path   string `json:"path"`
 	}
 	if err := callHost(sdk.FnEntitiesTranslations, map[string]string{"id": id}, &items); err != nil {
 		var he *sdk.HostError
 		if errors.As(err, &he) && he.Code == sdk.ErrNotFound {
-			return false, nil
+			return false, "", nil
 		}
-		return false, fmt.Errorf("the translations could not be read: %w", hostReason(err))
+		return false, "", fmt.Errorf("the translations could not be read: %w", hostReason(err))
 	}
 	for _, it := range items {
 		if strings.EqualFold(it.Locale, target) {
-			return true, nil
+			p, _, _ := strings.Cut(it.Path, "?")
+			return true, p[strings.LastIndex(p, "/")+1:], nil
 		}
 	}
-	return false, nil
+	return false, "", nil
 }
 
 // nextCandidates re-lists the page at cur.C, skips cur.I items and collects
@@ -187,20 +194,21 @@ func nextCandidates(p params, cur cursor, max int) (cands []entity, next cursor,
 			counts[reason]++
 			continue
 		}
-		if p.OnlyMissing && e.Group != "" {
+		if e.Group != "" {
 			if reads+1 > readBudget {
 				next.I = i
 				return cands, next, false, counts, nil
 			}
 			reads++
-			has, err := hasTarget(e.ID, p.Locale)
+			has, slug, err := targetCopy(e.ID, p.Locale)
 			if err != nil {
 				return nil, cur, false, counts, err
 			}
-			if has {
+			if has && p.OnlyMissing {
 				counts["has_translation"]++
 				continue
 			}
+			e.existingSlug = slug // a re-run keeps the published URL
 		}
 		e.idx, e.countsAt = i, maps.Clone(counts)
 		cands = append(cands, e)
