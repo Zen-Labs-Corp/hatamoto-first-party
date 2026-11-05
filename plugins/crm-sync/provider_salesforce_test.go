@@ -182,7 +182,7 @@ func TestSalesforceExistingLeadIsPatched(t *testing.T) {
 		t.Fatalf("%+v", p)
 	}
 	b := sfProps(t, p)
-	if b["OwnerId"] != nil || b["LeadSource"] != nil || b["FirstName"] != "Ann" || b["Email"] != "ann@example.com" || b["Company"] != "Website visitor" {
+	if b["OwnerId"] != nil || b["LeadSource"] != nil || b["FirstName"] != "Ann" || b["Email"] != "ann@example.com" || b["Company"] != nil || b["LastName"] != nil {
 		t.Fatalf("patch body %s", p.Body)
 	}
 	for _, x := range f.reqs {
@@ -211,6 +211,22 @@ func TestSalesforceExistingContactIsPatched(t *testing.T) {
 	}
 	b := sfProps(t, f.reqs[1])
 	if b["Company"] != nil || b["OwnerId"] != nil || b["LeadSource"] != nil {
+		t.Fatalf("body %s", f.reqs[1].Body)
+	}
+}
+
+func TestSalesforceUpdateKeepsLastNameAndCompanyWhenUnmapped(t *testing.T) {
+	h := &fakeHost{}
+	h.install(t)
+	sfSeed(t, sfInst)
+	c := sfNoNote(sfCfg())
+	c.Object = "contact"
+	f := newFake(t, sfResp(`{"records":[{"Id":"003000000000001AAA"}]}`), fetchResp{Status: 204})
+	j := job{Email: "ann@example.com", Fields: map[string]string{"first_name": "Ann"}}
+	if r := (salesforce{}).upsert(j, c, []mapRow{{"first_name", "FirstName"}}, f.fetch); r.kind != kindUpdated {
+		t.Fatalf("%+v", r)
+	}
+	if b := sfProps(t, f.reqs[1]); b["LastName"] != nil || b["Company"] != nil {
 		t.Fatalf("body %s", f.reqs[1].Body)
 	}
 }

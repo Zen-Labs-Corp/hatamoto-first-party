@@ -243,15 +243,15 @@ func (salesforce) upsert(j job, c cfg, m []mapRow, f fetcher) result {
 
 	props := applyMapping(j.Fields, m)
 	props["Email"] = j.Email
-	if props["LastName"] == "" {
-		props["LastName"] = j.Email
-	}
 	if obj == "Lead" {
-		if props["Company"] == "" {
+		if create && props["Company"] == "" {
 			props["Company"] = c.defaultCompany()
 		}
 	} else {
 		delete(props, "Company")
+	}
+	if create && props["LastName"] == "" {
+		props["LastName"] = j.Email
 	}
 	if create {
 		if obj == "Lead" {
