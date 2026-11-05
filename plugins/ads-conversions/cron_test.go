@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -456,5 +457,31 @@ func TestDeliverClickOnlySubmissionIsSentWithPostedClickID(t *testing.T) {
 	runDeliver(t)
 	if len(*seen) != 1 || !strings.Contains(string((*seen)[0].Body), `"gclid":"CLICK-1"`) || len(logRows(h, "skipped")) != 0 {
 		t.Fatalf("a click-only submission must be sent: %v", *seen)
+	}
+}
+
+func TestDeliverTimeoutOfOnePlatformReleasesItsRestAndSparesOthers(t *testing.T) {
+	h := deliveryHost(t, rowJSON(1, "tiktok", 0, ""), rowJSON(2, "tiktok", 0, ""), rowJSON(3, "linkedin", 0, ""), rowJSON(4, "tiktok", 0, ""))
+	var hosts []string
+	httpDo = func(req request, timeoutMS int) (fetched, error) {
+		u, _ := url.Parse(req.URL)
+		hosts = append(hosts, u.Host)
+		if u.Host == "business-api.tiktok.com" {
+			return fetched{}, errors.New("timeout")
+		}
+		return fetched{Status: 201}, nil
+	}
+	t.Cleanup(func() { httpDo = realHTTPDo })
+	runDeliver(t)
+	if got := strings.Join(hosts, ","); got != "business-api.tiktok.com,api.linkedin.com" {
+		t.Fatalf("calls %s: a timed-out platform must not be tried again in this run", got)
+	}
+	rel := h.execs("UPDATE queue SET lease_until = NULL WHERE id")
+	var ids []string
+	for _, c := range rel {
+		ids = append(ids, fmt.Sprint(argsOf(c)[0]))
+	}
+	if strings.Join(ids, ",") != "2,4" || strings.Join(deletes(h), ",") != "3" {
+		t.Fatalf("released %v, deleted %v", ids, deletes(h))
 	}
 }

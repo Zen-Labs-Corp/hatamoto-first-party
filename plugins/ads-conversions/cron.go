@@ -140,6 +140,7 @@ func onRetry(sdk.CronEvent) error {
 func drain(s settings, jobs []job, start time.Time) {
 	budgetEnd = start.Add(cronBudget)
 	defer func() { budgetEnd = time.Time{} }()
+	stalled := map[string]bool{}
 	for i, j := range jobs {
 		if budgetEnd.Sub(now()) < minCall {
 			for _, rest := range jobs[i:] {
@@ -147,29 +148,39 @@ func drain(s settings, jobs []job, start time.Time) {
 			}
 			return
 		}
-		deliverRow(s, j)
+		// A platform that just timed out would eat the budget of the others:
+		// its remaining rows wait for the next run.
+		if stalled[j.Platform] {
+			release(j)
+			continue
+		}
+		if deliverRow(s, j) {
+			stalled[j.Platform] = true
+		}
 	}
 }
 
-// deliverRow makes one attempt for one row. A platform that is off, not
+// deliverRow makes one attempt for one row and reports whether the platform
+// could not be reached (a timeout or transport error), so the run leaves its
+// other rows alone. A platform that is off, not
 // configured or needs reconnecting is left alone (the row waits, then
 // expires after 24 h) but still keeps the posted click IDs, which are purged
 // after an hour; each row is independent of the others.
-func deliverRow(s settings, j job) {
+func deliverRow(s settings, j job) (unreachable bool) {
 	p := j.Platform
 	if err := joinClicks(&j); err != nil {
 		logf("warn", "ads-conversions: could not read the click IDs")
 		release(j)
-		return
+		return false
 	}
 	if !s.enabled(p) || !s.configured(p) || isBroken(s, p) {
 		pause(j)
-		return
+		return false
 	}
 	if !hasIdentifier(j) {
 		deleteJob(j)
 		record(j.SubmissionID, j.Form, p, "skipped", "no_identifier", "", "")
-		return
+		return false
 	}
 	o := attempt(s, j, false)
 	if o.Kind == kindAuth && o.Reason != "token" && p != platTikTok {
@@ -187,6 +198,7 @@ func deliverRow(s settings, j job) {
 		markBroken(s, p)
 		release(j)
 	}
+	return o.Kind == kindRetry && (o.Reason == "network" || o.Code == "token")
 }
 
 // pause pushes a row back so a stopped platform's rows do not crowd out the
