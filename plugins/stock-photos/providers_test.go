@@ -290,3 +290,24 @@ func TestOpenverseSkipsIdThatIsNotAUUID(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenverseRewritesLegacyFlickrHosts(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://farm4.staticflickr.com/3/123_abc_b.jpg?x=1": "https://live.staticflickr.com/3/123_abc_b.jpg?x=1",
+		"https://c2.staticflickr.com/9/8/1_s.jpg":            "https://live.staticflickr.com/9/8/1_s.jpg",
+		"https://live.staticflickr.com/3/1_s.jpg":            "https://live.staticflickr.com/3/1_s.jpg",
+		"http://farm4.staticflickr.com/3/1_s.jpg":            "http://farm4.staticflickr.com/3/1_s.jpg",
+		"https://farm.staticflickr.com/3/1_s.jpg":            "https://farm.staticflickr.com/3/1_s.jpg",
+		"https://evil.example/farm4.staticflickr.com/1.jpg":  "https://evil.example/farm4.staticflickr.com/1.jpg",
+		"https://farm4.staticflickr.com.evil.example/1.jpg":  "https://farm4.staticflickr.com.evil.example/1.jpg",
+	} {
+		if got := liveFlickrURL(in); got != want {
+			t.Errorf("liveFlickrURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	fakeFetch(t, fetchResp{Status: 200, Body: `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"t","url":"https://farm4.staticflickr.com/3/1_s.jpg","license":"by"}]}`}, nil)
+	photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+	if err != nil || len(photos) != 1 || photos[0].Skip || photos[0].ImageURL != "https://live.staticflickr.com/3/1_s.jpg" {
+		t.Fatalf("photos=%+v err=%v", photos, err)
+	}
+}

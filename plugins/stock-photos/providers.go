@@ -220,6 +220,7 @@ func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, e
 			photos = append(photos, photo{Skip: true, SkipReason: "not a supported image type"})
 			continue
 		}
+		r.URL = liveFlickrURL(r.URL)
 		title := cleanText(r.Title, 200)
 		alt := cleanAlt(title)
 		if alt == "" {
@@ -253,6 +254,20 @@ func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, e
 		})
 	}
 	return photos, out.Page < out.PageCount, len(out.Results), nil
+}
+
+// legacyFlickrHost matches Flickr's older static hosts (farm4, c2, ...).
+var legacyFlickrHost = regexp.MustCompile(`^(farm|c)[0-9]+\.staticflickr\.com$`)
+
+// liveFlickrURL moves an https image URL on a legacy Flickr static host to
+// live.staticflickr.com, which serves the same path. Other URLs are returned as is.
+func liveFlickrURL(s string) string {
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "https" || !legacyFlickrHost.MatchString(u.Host) {
+		return s
+	}
+	u.Host = "live.staticflickr.com"
+	return u.String()
 }
 
 // isCreditURL reports whether a source URL may go into a credit: plain http(s),
