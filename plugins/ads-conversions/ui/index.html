@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Server-side conversions</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Server-side conversions</h1>
+    <p id="notice" class="notice" hidden></p>
+    <p id="forms" class="muted">Loading…</p>
+
+    <section id="cards" class="cards"></section>
+
+    <p id="connect-help" class="notice" hidden></p>
+
+    <p class="muted">
+      Note: the host never passes the visitor's IP address or browser to plugins,
+      so matching uses hashed email and phone plus the ad click ID.
+    </p>
+
+    <section>
+      <div class="row">
+        <h2>Delivery log <span class="muted">(last 200, kept 30 days)</span></h2>
+        <label class="filter">Platform:
+          <select id="filter">
+            <option value="">All</option>
+            <option value="google">Google</option>
+            <option value="tiktok">TikTok</option>
+            <option value="linkedin">LinkedIn</option>
+          </select>
+        </label>
+      </div>
+      <table id="log">
+        <thead><tr><th>Time</th><th>Platform</th><th>Form</th><th>Submission</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="muted" hidden>No deliveries yet.</p>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
