@@ -33,6 +33,8 @@ func loadCfg() (cfg, error) {
 	if err := callHost("settings.get", struct{}{}, &c); err != nil {
 		return cfg{}, err
 	}
+	c.EmailField = strings.TrimSpace(c.EmailField)
+	c.ConsentField = strings.TrimSpace(c.ConsentField)
 	return c, nil
 }
 

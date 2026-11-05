@@ -66,6 +66,17 @@ func TestConsentRequired(t *testing.T) {
 	}
 }
 
+func TestFieldNamesAreTrimmed(t *testing.T) {
+	h := &fakeHost{settings: `{"provider":"hubspot","access_token":"tok","forms":["contact"],"consent_field":" ok ","email_field":" mail "}`}
+	h.install(t)
+	if err := onFormSubmitted(submission(map[string]any{"mail": "ann@example.com", "ok": "yes"})); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.execs("INSERT INTO queue")); n != 1 {
+		t.Fatalf("queued = %d, log = %v", n, h.logRows())
+	}
+}
+
 func TestNoProviderQueuesNothing(t *testing.T) {
 	h := &fakeHost{settings: `{"forms":["contact"],"access_token":"tok"}`}
 	h.install(t)
