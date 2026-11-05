@@ -47,11 +47,12 @@ type incidentView struct {
 }
 
 type settingsView struct {
-	AlertEmails    int   `json:"alert_emails"`
-	Heartbeat      bool  `json:"heartbeat"`
-	FailThreshold  int   `json:"fail_threshold"`
-	SSLWarnDays    []int `json:"ssl_warn_days"`
-	MailConfigured bool  `json:"mail_configured"`
+	AlertEmails    int      `json:"alert_emails"` // valid addresses
+	InvalidEmails  []string `json:"invalid_emails"`
+	Heartbeat      bool     `json:"heartbeat"`
+	FailThreshold  int      `json:"fail_threshold"`
+	SSLWarnDays    []int    `json:"ssl_warn_days"`
+	MailConfigured bool     `json:"mail_configured"`
 }
 
 type overview struct {
@@ -194,7 +195,7 @@ func buildOverview() overview {
 	out := overview{
 		Monitors: []monitorView{}, Incidents: []incidentView{}, Missing: missingPermissions(),
 		Settings: settingsView{
-			AlertEmails: len(st.AlertEmails), Heartbeat: st.HeartbeatURL != "", FailThreshold: st.FailThreshold,
+			AlertEmails: len(st.AlertEmails), InvalidEmails: append([]string{}, st.InvalidEmails...), Heartbeat: st.HeartbeatURL != "", FailThreshold: st.FailThreshold,
 			SSLWarnDays: st.SSLWarnDays, MailConfigured: mailConfigured(),
 		},
 	}

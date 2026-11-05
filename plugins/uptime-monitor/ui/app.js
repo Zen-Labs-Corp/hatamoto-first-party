@@ -144,6 +144,7 @@ function notices(d) {
   const msgs = [];
   if (d.missing.length) msgs.push("Permissions not granted: " + d.missing.join(", ") + ". Grant them under Plugins > Permissions.");
   if (!d.db_ready && !d.missing.includes("db")) msgs.push("The database is not ready. Reload in a minute.");
+  if (d.settings.invalid_emails.length) msgs.push("Not alert addresses, skipped (use plain addresses like name@example.com): " + d.settings.invalid_emails.join(", ") + ".");
   if (!d.settings.mail_configured) msgs.push("Mail is not set up on this site: alert emails stay queued until it is.");
   show($("#notice"), msgs.join(" "));
   const setup = d.db_ready && (d.monitors.length === 0 || d.settings.alert_emails === 0);

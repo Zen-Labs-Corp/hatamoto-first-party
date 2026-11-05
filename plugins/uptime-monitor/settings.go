@@ -1,5 +1,10 @@
 package main
 
+import (
+	"net/mail"
+	"strings"
+)
+
 // settings are the owner's options with the defaults the host does not merge
 // for us applied.
 type settings struct {
@@ -7,6 +12,9 @@ type settings struct {
 	FailThreshold int      `json:"fail_threshold"`
 	SSLWarnDays   []int    `json:"ssl_warn_days"`
 	HeartbeatURL  string   `json:"heartbeat_url"`
+	// InvalidEmails are the alert_emails entries dropped for not being plain
+	// addresses; never part of the stored settings.
+	InvalidEmails []string `json:"-"`
 }
 
 const defaultFailThreshold = 2
@@ -25,6 +33,7 @@ func loadSettings() settings {
 		logf("warn", "uptime-monitor: settings unavailable, using defaults code=%s", hostErrCode(err))
 		return defaultSettings()
 	}
+	s.AlertEmails, s.InvalidEmails = splitEmails(s.AlertEmails)
 	if s.FailThreshold < 1 || s.FailThreshold > 10 {
 		s.FailThreshold = defaultFailThreshold
 	}
@@ -32,4 +41,18 @@ func loadSettings() settings {
 		s.SSLWarnDays = append([]int(nil), defaultSSLWarnDays...)
 	}
 	return s
+}
+
+// splitEmails separates the bare addresses mail.send accepts from the rest.
+// The host does not enforce the settings format, and one bad entry would make
+// every alert mail fail.
+func splitEmails(all []string) (valid, invalid []string) {
+	for _, e := range all {
+		if a, err := mail.ParseAddress(e); err == nil && a.Address == e && !strings.ContainsAny(e, "\r\n") {
+			valid = append(valid, e)
+		} else {
+			invalid = append(invalid, e)
+		}
+	}
+	return valid, invalid
 }

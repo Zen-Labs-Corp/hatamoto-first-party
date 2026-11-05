@@ -144,7 +144,7 @@ func TestUIClientView(t *testing.T) {
 	for _, want := range []string{
 		"textContent", "Setup: add your site as the first monitor", "Permissions not granted", "The database is not ready",
 		"Mail is not set up", "Check now", "Edit", "Confirm delete", "Heartbeat: set", "Heartbeat: not set", "ongoing",
-		"This site", "Alerts: ", `startsWith(DATA_SVG)`, `"data:image/svg+xml"`, `setAttribute("src"`, "hatamoto.ready",
+		"This site", "Alerts: ", "invalid_emails", `startsWith(DATA_SVG)`, `"data:image/svg+xml"`, `setAttribute("src"`, "hatamoto.ready",
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("app.js lacks %q", want)

@@ -37,3 +37,17 @@ func TestLoadSettingsDefaultsAndFailsOpen(t *testing.T) {
 		t.Fatalf("logs %v", logs)
 	}
 }
+
+func TestLoadSettingsKeepsOnlyPlainAddresses(t *testing.T) {
+	newFakeHost(t, func(_ call, out any) error {
+		return json.Unmarshal([]byte(`{"alert_emails":["ops@example.org","Ops <ops@example.org>","ops","a@example.org\nBcc: x@example.org"]}`), out)
+	})
+	s := loadSettings()
+	if !slices.Equal(s.AlertEmails, []string{"ops@example.org"}) || len(s.InvalidEmails) != 3 {
+		t.Fatalf("%+v", s)
+	}
+	v := buildOverview().Settings
+	if v.AlertEmails != 1 || len(v.InvalidEmails) != 3 || v.InvalidEmails[0] != "Ops <ops@example.org>" {
+		t.Fatalf("%+v", v)
+	}
+}
