@@ -91,3 +91,15 @@ func TestUIRolesNotSet(t *testing.T) {
 		t.Fatal("ui.roles must stay absent (owner only)")
 	}
 }
+
+func TestUICallsTheAdminSuggestionAGuess(t *testing.T) {
+	js := readUI(t, "app.js")
+	for _, want := range []string{"A guess is", "check your admin address; it may differ", `add("Admin address", s.admin_url`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js lacks %q", want)
+		}
+	}
+	if strings.Contains(js, "Suggested admin address") {
+		t.Error("the suggestion must not read as the answer")
+	}
+}

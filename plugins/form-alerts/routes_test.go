@@ -195,3 +195,20 @@ func TestUnknownRouteIs404(t *testing.T) {
 		t.Fatalf("%d", code)
 	}
 }
+
+func TestTestRouteSendsNoLinkForANonHTTPSAdminAddress(t *testing.T) {
+	routeHost(t, strings.Replace(routeSettings, `"admin_url":"https://example.com/admin"`, `"admin_url":"javascript:alert(1)"`, 1), "", 200, "ok", nil)
+	inner := callHost
+	var sent string
+	callHost = func(fn string, a, out any) error {
+		if fn == "http.fetch" {
+			b, _ := json.Marshal(a)
+			sent = string(b)
+		}
+		return inner(fn, a, out)
+	}
+	call(t, "POST", "/test", `{"channel":"slack"}`)
+	if sent == "" || strings.Contains(sent, "javascript") {
+		t.Fatalf("request %s", sent)
+	}
+}

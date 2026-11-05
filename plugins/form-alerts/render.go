@@ -38,7 +38,7 @@ const maxBody = 20000
 func buildView(s submission, c cfg) view {
 	slug := clean(s.FormSlug)
 	v := view{Form: slug, ID: clean(s.ID), Title: "New submission on " + slug}
-	if a := strings.TrimRight(strings.TrimSpace(c.AdminURL), "/"); a != "" && v.ID != "" {
+	if a := adminBase(c); a != "" && v.ID != "" {
 		v.Link = a + "/settings/submissions/" + url.PathEscape(v.ID)
 	}
 	if !c.includeValues() {
@@ -52,6 +52,17 @@ func buildView(s submission, c cfg) view {
 		v.Pairs = append(v.Pairs, pair{Key: cut(clean(k), 100), Val: cut(val, c.maxLen())})
 	}
 	return v
+}
+
+// adminBase is the configured admin address without a trailing slash, or ""
+// when it is empty or not an https address. The settings pattern enforces the
+// scheme on save; this keeps a bad stored value out of every link.
+func adminBase(c cfg) string {
+	a := strings.TrimRight(strings.TrimSpace(c.AdminURL), "/")
+	if !strings.HasPrefix(a, "https://") {
+		return ""
+	}
+	return a
 }
 
 // pickKeys returns the keys to send: the chosen ones, or every key except

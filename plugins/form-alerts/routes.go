@@ -175,7 +175,7 @@ func testRoute(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	v := view{
 		Title: "Test message from Form alerts",
 		Pairs: []pair{{Key: "name", Val: "Sample sender"}, {Key: "message", Val: "This is a test."}},
-		Link:  strings.TrimRight(strings.TrimSpace(c.AdminURL), "/"),
+		Link:  adminBase(c),
 	}
 	budgetEnd = now().Add(testBudget)
 	defer func() { budgetEnd = time.Time{} }()

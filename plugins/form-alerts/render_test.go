@@ -221,3 +221,11 @@ func TestBodyCapDropsTrailingPairs(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkNeedsAnHTTPSAdminAddress(t *testing.T) {
+	for _, a := range []string{"javascript:alert(1)", "http://example.com/admin", "example.com/admin", "ftp://x"} {
+		if v := buildView(sample(), cfg{AdminURL: a}); v.Link != "" {
+			t.Errorf("admin address %q gave link %q", a, v.Link)
+		}
+	}
+}

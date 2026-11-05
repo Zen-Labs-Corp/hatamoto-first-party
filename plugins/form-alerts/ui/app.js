@@ -82,7 +82,7 @@ function fillSettings(s) {
   try {
     const origin = new URL(location.href).origin;
     if (!origin || origin === "null") return;
-    hint.textContent = `Suggested admin address: ${origin}/admin. Paste it in Settings if it is right.`;
+    hint.textContent = `Admin address is not set. A guess is ${origin}/admin, but check your admin address; it may differ. Paste the right one in Settings to get a link in each message.`;
     hint.hidden = false;
   } catch { /* the address is not readable here */ }
 }
