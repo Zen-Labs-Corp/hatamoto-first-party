@@ -1,9 +1,9 @@
 {
   "name": "crm-sync",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "title": "CRM sync for HubSpot, Pipedrive and Salesforce",
   "sdk": "^0.8",
-  "description": "Sends people who submit your forms to HubSpot, Pipedrive or Salesforce as contacts or leads, with field mapping, an optional consent field, a note with the message and retries.",
+  "description": "Sends people who submit your forms to HubSpot, Pipedrive or Salesforce as contacts or leads, with field mapping, consent and retries.",
   "permissions": ["forms.read", "settings", "http.fetch", "db", "kv", "log"],
   "allowed_hosts": ["api.hubapi.com", "*.pipedrive.com", "*.my.salesforce.com"],
   "routes": [
