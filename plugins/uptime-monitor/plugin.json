@@ -1,9 +1,9 @@
 {
   "name": "uptime-monitor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "title": "Uptime and SSL expiry monitor",
   "sdk": "^0.11",
-  "description": "Checks your site and other web addresses every few minutes, emails you when one goes down or comes back, warns before an SSL certificate expires and can ping an outside heartbeat.",
+  "description": "Checks web addresses every few minutes, emails you when one goes down or comes back, warns before an SSL certificate expires and can ping an outside heartbeat.",
   "permissions": ["settings", "http.fetch", "http.fetch.any", "db", "kv", "mail.send", "log"],
   "allowed_hosts": ["*", "crt.sh"],
   "cron": [

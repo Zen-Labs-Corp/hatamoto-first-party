@@ -28,7 +28,7 @@ func TestManifestValid(t *testing.T) {
 	if err := m.WithDefaults().Validate(); err != nil {
 		t.Fatalf("manifest refused by the SDK: %v", err)
 	}
-	if m.Name != "uptime-monitor" || m.Version != "0.1.0" || m.SDK != "^0.11" {
+	if m.Name != "uptime-monitor" || m.Version != "0.1.1" || m.SDK != "^0.11" {
 		t.Fatalf("name %q version %q sdk %q", m.Name, m.Version, m.SDK)
 	}
 }
