@@ -61,7 +61,7 @@
       "tiktok_pixel_code": { "type": "string", "title": "TikTok pixel code", "pattern": "^$|^[A-Za-z0-9]{5,40}$" },
       "tiktok_access_token": { "type": "string", "title": "TikTok access token", "description": "The Events API token from Events Manager. Stored here and never shown again.", "writeOnly": true },
       "tiktok_event": { "type": "string", "title": "TikTok event", "default": "SubmitForm", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,39}$" },
-      "tiktok_test_event_code": { "type": "string", "title": "TikTok test event code", "description": "Optional. From Events Manager > Test events. Required for the Test button.", "maxLength": 40 },
+      "tiktok_test_event_code": { "type": "string", "title": "TikTok test event code", "description": "Optional. From Events Manager > Test events. Used only by the Test button; live conversions never carry it.", "maxLength": 40 },
 
       "linkedin_enabled": { "type": "boolean", "title": "LinkedIn: send conversions", "default": false },
       "linkedin_client_id": { "type": "string", "title": "LinkedIn client ID", "description": "From a LinkedIn app with Conversions API access." },

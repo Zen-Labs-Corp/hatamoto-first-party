@@ -49,9 +49,9 @@ func buildTikTok(s settings, j job, test bool) request {
 		"event_source_id": s.TikTok.PixelCode,
 		"data":            []any{ev},
 	}
-	// The code marks the events as test events in Events Manager; it is sent
-	// whenever it is set, and the Test button needs it.
-	if s.TikTok.TestEventCode != "" {
+	// The code marks events as test events in Events Manager, so it goes only
+	// with the Test button, never with a live conversion.
+	if test && s.TikTok.TestEventCode != "" {
 		body["test_event_code"] = s.TikTok.TestEventCode
 	}
 	b, _ := json.Marshal(body)

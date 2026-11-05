@@ -36,7 +36,7 @@ func TestBuildTikTokGolden(t *testing.T) {
 	}
 	const want = `{"data":[{"event":"SubmitForm","event_id":"7f3c1d52-0000-4000-8000-00000000a91e","event_time":1793872800,` +
 		`"page":{"url":"https://example.com/thanks"},"properties":{"currency":"EUR","value":12.5},` +
-		`"user":{"email":"emhash","phone":"phhash","ttclid":"TT1"}}],"event_source":"web","event_source_id":"CABC123","test_event_code":"TEST123"}`
+		`"user":{"email":"emhash","phone":"phhash","ttclid":"TT1"}}],"event_source":"web","event_source_id":"CABC123"}`
 	if string(req.Body) != want {
 		t.Fatalf("body = %s\nwant   %s", req.Body, want)
 	}
@@ -78,9 +78,18 @@ func TestBuildTikTokTestEventCodeOnlyWhenSet(t *testing.T) {
 	if _, ok := m["test_event_code"]; ok {
 		t.Fatal("test_event_code without a setting")
 	}
-	_ = json.Unmarshal(buildTikTok(tiktokSettings(t, `"tiktok_test_event_code":" T1 "`), tiktokJob(), false).Body, &m)
+	m = nil
+	_ = json.Unmarshal(buildTikTok(tiktokSettings(t, `"tiktok_test_event_code":" T1 "`), tiktokJob(), true).Body, &m)
 	if m["test_event_code"] != "T1" {
 		t.Fatalf("test_event_code = %v", m["test_event_code"])
+	}
+}
+
+func TestBuildTikTokLiveConversionNeverCarriesTestEventCode(t *testing.T) {
+	var m map[string]any
+	_ = json.Unmarshal(buildTikTok(tiktokSettings(t, `"tiktok_test_event_code":"T1"`), tiktokJob(), false).Body, &m)
+	if _, ok := m["test_event_code"]; ok {
+		t.Fatal("a live conversion must not be sent as a test event")
 	}
 }
 
