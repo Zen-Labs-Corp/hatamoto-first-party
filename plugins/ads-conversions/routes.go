@@ -100,9 +100,9 @@ func connectMissing(s settings, platform string) []string {
 	return m
 }
 
-// connect begins the OAuth flow. Asked for JSON it returns the consent page
-// address; navigated to it returns a page that sends the browser on (a plugin
-// may not redirect to another host).
+// connect begins the OAuth flow. A browser navigation (Accept: text/html)
+// gets a page that sends it on; any other caller gets the consent page
+// address as JSON (a plugin may not redirect to another host).
 func connect(r sdk.HTTPRequest, platform string) (sdk.HTTPResponse, error) {
 	if !oauthPlatform(platform) {
 		return invalid("this platform does not use a connect flow")
@@ -127,7 +127,7 @@ func connect(r sdk.HTTPRequest, platform string) (sdk.HTTPResponse, error) {
 		return fail(err)
 	}
 	target := authorizationURL(s, platform, state, challenge)
-	if strings.Contains(r.Headers["accept"], "application/json") {
+	if !strings.Contains(r.Headers["accept"], "text/html") {
 		return reply(http.StatusOK, map[string]string{"authorization_url": target})
 	}
 	link := html.EscapeString(target)
