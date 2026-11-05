@@ -32,8 +32,8 @@ func TestFuncSummary(t *testing.T) {
 	}{
 		{"no votes", rawArgs(testID), rowsDB(`[[0,0]]`), "", true},
 		{"no rows", rawArgs(testID), rowsDB(`[]`), "", true},
-		{"one vote", rawArgs(testID), rowsDB(`[[1,5]]`), "5.0 out of 5 (1 rating)", true},
-		{"many votes", rawArgs(testID), rowsDB(`[[27,"4.2963"]]`), "4.3 out of 5 (27 ratings)", true},
+		{"one vote", rawArgs(testID), rowsDB(`[[1,"5.0"]]`), "5.0 out of 5 (1 rating)", true},
+		{"many votes", rawArgs(testID), rowsDB(`[[27,"4.3"]]`), "4.3 out of 5 (27 ratings)", true},
 		{"numbers as strings", rawArgs(testID), rowsDB(`[["27","4.3"]]`), "4.3 out of 5 (27 ratings)", true},
 		{"short row", rawArgs(testID), rowsDB(`[[3]]`), "", true},
 		{"db error", rawArgs(testID), func(hostCall, any) error { return errors.New("unavailable") }, "", true},
@@ -58,6 +58,21 @@ func TestFuncSummary(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The page and the admin table must round the average in SQL with the same
+// expression; Go formatting would turn 4.25 into 4.2 against SQL's 4.3.
+func TestSummaryAndOverviewRoundTheSameWay(t *testing.T) {
+	const expr = "round(avg(stars)::numeric, 1)::text"
+	if !strings.Contains(qSummary, expr) || !strings.Contains(strings.ReplaceAll(qOverview, "v.stars", "stars"), expr) {
+		t.Fatalf("both queries must contain %s", expr)
+	}
+	f := &fakeHost{db: rowsDB(`[[4,"4.3"]]`)} // votes 5, 5, 4, 3
+	f.install(t)
+	got, _ := funcSummary(rawArgs(testID))
+	if got != "4.3 out of 5 (4 ratings)" {
+		t.Fatalf("summary %q", got)
 	}
 }
 
