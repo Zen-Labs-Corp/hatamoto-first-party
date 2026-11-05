@@ -16,7 +16,7 @@ type result struct {
 	HTTP   int    // final HTTP status, 0 when there was none
 	MS     int    // time the request took
 	Cause  string // why the check failed or could not run; empty for up and slow
-	// Skip: no verdict (the host's rate limit or another host error); try again next tick.
+	// Skip: no verdict (the host's rate limit); try again next tick.
 	Skip bool
 }
 
@@ -80,11 +80,19 @@ func failedFetch(m monitor, err error, ms, timeoutMS int) result {
 		// The monitor cannot run as configured: not an outage.
 		r.Status = statusConfig
 		r.Cause = hostErrMessage(err)
-	default:
-		// rate_limited, unavailable, invalid_argument and the like say
-		// something about the host or this plugin, not the site: no verdict,
-		// try again next tick.
+	case sdk.ErrRateLimited:
+		// The host's own limit clears by itself: no verdict, try again next tick.
 		r.Skip = true
+	default:
+		// invalid_argument, unavailable and the like will repeat on every
+		// check: show them as a configuration problem instead of hiding them.
+		r.Status = statusConfig
+		r.Cause = "host refused the check: " + code
+		host := ""
+		if u, err := url.Parse(m.URL); err == nil {
+			host = u.Hostname()
+		}
+		logf("warn", "uptime-monitor: host refused the check code=%s host=%s", code, host)
 	}
 	return r
 }

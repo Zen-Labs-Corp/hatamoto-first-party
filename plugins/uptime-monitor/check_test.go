@@ -263,13 +263,18 @@ func TestCheckRateLimitedIsSkipped(t *testing.T) {
 	}
 }
 
-func TestCheckHostTroubleIsSkippedNotDown(t *testing.T) {
-	for _, err := range []error{
-		hostErr(sdk.ErrUnavailable, "x"), hostErr(sdk.ErrInvalidArgument, "x"), hostErr("reentrant", "x"), fmt.Errorf("plain"),
+func TestCheckRepeatingHostErrorsAreConfigNotSilent(t *testing.T) {
+	for code, err := range map[string]error{
+		sdk.ErrUnavailable: hostErr(sdk.ErrUnavailable, "x"), sdk.ErrInvalidArgument: hostErr(sdk.ErrInvalidArgument, "x"),
+		"reentrant": hostErr("reentrant", "x"),
 	} {
-		checkHost(t, []answer{{err: err}}, `[]`)
-		if r := checkMonitor(site, 8000); !r.Skip || r.Cause != "" {
-			t.Fatalf("%v: got %+v", err, r)
+		f, _ := checkHost(t, []answer{{err: err}}, `[]`)
+		r := checkMonitor(site, 8000)
+		if r.Skip || r.Status != statusConfig || r.Cause != "host refused the check: "+code {
+			t.Fatalf("%s: got %+v", code, r)
+		}
+		if n := len(f.logs()); n != 1 || !strings.Contains(f.logs()[0], "host=example.org") {
+			t.Fatalf("%s: logs %v", code, f.logs())
 		}
 	}
 }
@@ -282,7 +287,7 @@ func TestTickSkippedCheckSendsNoMailAndKeepsState(t *testing.T) {
 	newFakeHost(t, func(c call, out any) error {
 		switch {
 		case c.Fn == "http.fetch":
-			return hostErr(sdk.ErrUnavailable, "fetch service down")
+			return hostErr(sdk.ErrRateLimited, "rate limited")
 		case strings.HasPrefix(c.sql(), "INSERT INTO outbox"):
 			queued++
 		}
