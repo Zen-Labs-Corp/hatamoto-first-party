@@ -1,0 +1,66 @@
+{
+  "name": "uptime-monitor",
+  "version": "0.1.0",
+  "title": "Uptime and SSL expiry monitor",
+  "sdk": "^0.11",
+  "description": "Checks your site and other web addresses every few minutes, emails you when one goes down or comes back, warns before an SSL certificate expires and can ping an outside heartbeat.",
+  "permissions": ["settings", "http.fetch", "http.fetch.any", "db", "kv", "mail.send", "log"],
+  "allowed_hosts": ["*", "crt.sh"],
+  "cron": [
+    { "name": "check", "every": "1m" },
+    { "name": "certs", "every": "1h" },
+    { "name": "rollup", "every": "24h" }
+  ],
+  "routes": [
+    { "method": "GET", "path": "/overview" },
+    { "method": "POST", "path": "/monitors" },
+    { "method": "POST", "path": "/check-now" },
+    { "method": "POST", "path": "/test-alert" }
+  ],
+  "ui": { "title": "Uptime monitor" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 2,
+    "hook_timeouts_ms": {
+      "on_cron_check": 10000,
+      "on_cron_certs": 10000,
+      "on_cron_rollup": 10000
+    }
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "alert_emails": {
+        "type": "array",
+        "title": "Alert emails",
+        "description": "Where down, recovery and certificate mails go. At most 5.",
+        "items": { "type": "string", "format": "email", "maxLength": 200 },
+        "maxItems": 5,
+        "default": []
+      },
+      "fail_threshold": {
+        "type": "integer",
+        "title": "Failed checks before a down alert",
+        "default": 2,
+        "minimum": 1,
+        "maximum": 10
+      },
+      "ssl_warn_days": {
+        "type": "array",
+        "title": "SSL warning days",
+        "description": "Warn once when a certificate has this many days left.",
+        "items": { "type": "integer", "minimum": 1, "maximum": 90 },
+        "maxItems": 5,
+        "default": [21, 7, 1]
+      },
+      "heartbeat_url": {
+        "type": "string",
+        "title": "Heartbeat URL",
+        "description": "Pinged after each good check of the monitor marked This site. Use an outside service so you hear about a full outage. Stored here and never shown again.",
+        "writeOnly": true,
+        "maxLength": 500,
+        "pattern": "^https?://"
+      }
+    }
+  }
+}
