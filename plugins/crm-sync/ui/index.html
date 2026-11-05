@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CRM sync</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+
+    <section>
+      <dl id="status"></dl>
+      <p id="setup" class="notice" hidden>Not set up yet: choose a provider and enter its credentials in Settings.</p>
+      <div class="row">
+        <button id="test" type="button">Test connection</button>
+        <span id="test-result" role="status"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Field mapping <span id="map-default" class="muted" hidden>(default mapping in use)</span></h2>
+      <table id="map">
+        <thead><tr><th>Form field</th><th>CRM field</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row">
+        <button id="add" type="button">+ Add row</button>
+        <button id="save" type="button">Save mapping</button>
+        <span class="muted">Email always goes to the email field.</span>
+      </div>
+      <p id="map-note" class="muted" hidden>CRM fields could not be loaded: test the connection first.</p>
+    </section>
+
+    <section>
+      <h2>Recent deliveries (last 100, kept 30 days, no form values)</h2>
+      <table id="log">
+        <thead><tr><th>Time</th><th>Form</th><th>Status</th><th class="num">Code</th><th>Message</th><th>Record</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="muted" hidden>No deliveries yet.</p>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
