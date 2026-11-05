@@ -1,0 +1,8 @@
+body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: var(--color-shiro, #fafaf8); color: var(--color-sumi, #1a1a1a); }
+main { padding: 16px; max-width: 980px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--color-kinu, #e2e0da); text-align: left; overflow-wrap: anywhere; }
+th { font-weight: 600; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.muted { color: var(--color-hai, #6b6b6b); }
+.notice { padding: 8px 12px; border-radius: 6px; background: var(--color-danger-soft, #fbe9e7); color: var(--color-danger, #b3261e); }

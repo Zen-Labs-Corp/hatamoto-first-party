@@ -1,0 +1,44 @@
+{
+  "name": "ratings",
+  "version": "0.1.0",
+  "sdk": "^0.18",
+  "description": "Star ratings for posts and pages: visitors rate with a plain form, the average shows on the page and you see totals per page.",
+  "permissions": ["db", "settings"],
+  "cookies": ["voter"],
+  "request_headers": ["sec-fetch-site"],
+  "routes": [
+    { "method": "POST", "path": "/rate", "public": true },
+    { "method": "GET", "path": "/overview" }
+  ],
+  "funcs": ["summary", "enabled"],
+  "ui": { "title": "Star ratings" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": {
+      "http_handle": 10000,
+      "func_summary": 2000,
+      "func_enabled": 2000,
+      "entity.deleted": 10000
+    }
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "schemas": {
+        "type": "array",
+        "title": "Entity types",
+        "description": "Rate only these entity types (schema slugs).",
+        "items": { "type": "string" },
+        "default": ["post"],
+        "uniqueItems": true
+      },
+      "allow_change": {
+        "type": "boolean",
+        "title": "Allow changing a vote",
+        "description": "A visitor with a voter cookie may change their vote; otherwise the second vote is ignored.",
+        "default": false
+      }
+    }
+  }
+}
