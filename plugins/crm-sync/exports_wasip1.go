@@ -21,5 +21,8 @@ func onCronRetry() int32 { return guest.Run(guest.CronExport("retry")) }
 //go:wasmexport on_cron_refresh
 func onCronRefresh() int32 { return guest.Run(guest.CronExport("refresh")) }
 
+//go:wasmexport http_handle
+func httpHandleExport() int32 { return guest.Run(guest.HTTPExport) }
+
 // main is never called: a c-shared wasm module is a reactor.
 func main() {}
