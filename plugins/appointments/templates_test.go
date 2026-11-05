@@ -134,7 +134,7 @@ type el struct {
 	Text  string
 }
 
-var allowedElements = map[string]bool{"section": true, "h2": true, "iframe": true, "p": true, "a": true}
+var allowedElements = map[string]bool{"section": true, "div": true, "h2": true, "iframe": true, "p": true, "a": true}
 
 var bannedElements = strings.Fields(`script style object embed link meta base form svg math use animate set
 foreignobject noscript template textarea title xmp plaintext noembed noframes frame frameset applet portal dialog`)
@@ -146,16 +146,20 @@ var bannedAttrs = map[string]bool{"srcdoc": true, "formaction": true, "http-equi
 // allowed because site.scripts is granted).
 func scan(out string) (els []el, problems []string) {
 	z := html.NewTokenizer(strings.NewReader(out))
+	inEl := false
 	for {
 		tt := z.Next()
 		switch tt {
 		case html.ErrorToken:
 			return
 		case html.TextToken:
-			if len(els) > 0 {
+			if inEl {
 				els[len(els)-1].Text += string(z.Text())
 			}
+		case html.EndTagToken:
+			inEl = false
 		case html.StartTagToken, html.SelfClosingTagToken:
+			inEl = true
 			name, hasAttr := z.TagName()
 			e := el{Name: string(name), Attrs: map[string]string{}}
 			for _, b := range bannedElements {
@@ -338,6 +342,13 @@ func TestSectionRenders(t *testing.T) {
 			if f["loading"] != "lazy" || f["title"] == "" || f["referrerpolicy"] != "strict-origin-when-cross-origin" || f["height"] != "700" {
 				t.Errorf("iframe attrs = %v", f)
 			}
+			inner := find(els, "div")
+			if len(inner) != 1 || inner[0].Attrs["class"] != "appointments__inner" {
+				t.Errorf("want one appointments__inner wrapper, got %v", inner)
+			}
+			if o, c := strings.Index(out, `<div class="appointments__inner">`), strings.LastIndex(out, "</div>"); o < 0 || c < strings.Index(out, "</iframe>") || c < strings.LastIndex(out, "</a>") || o > strings.Index(out, "<iframe") {
+				t.Errorf("wrapper does not enclose the content: %s", out)
+			}
 			if h := find(els, "h2"); len(h) != 1 || h[0].Text != "Book us" {
 				t.Errorf("title = %v", h)
 			}
@@ -450,7 +461,7 @@ func TestHostileTitleAndLabel(t *testing.T) {
 func TestBannedMarkupScanner(t *testing.T) {
 	for _, bad := range []string{
 		`<svg></svg>`, `<script>1</script>`, `<style>a{}</style>`, `<a onclick="x">`, `<a href="JaVa script:alert(1)">`,
-		`<a href=" data:text/html,x">`, `<a href="vbscript:x">`, `<form action="/x">`, `<iframe srcdoc="x">`, `<div>`,
+		`<a href=" data:text/html,x">`, `<a href="vbscript:x">`, `<form action="/x">`, `<iframe srcdoc="x">`, `<table>`,
 	} {
 		if _, problems := scan(bad); len(problems) == 0 {
 			t.Errorf("scanner accepted %s", bad)

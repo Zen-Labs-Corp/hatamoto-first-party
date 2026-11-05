@@ -1,4 +1,5 @@
 .appointments{margin:1.5rem 0}
+.appointments__inner{box-sizing:border-box;width:100%;max-width:var(--hm-container,75rem);margin:0 auto;padding:0 1.5rem}
 .appointments__title{margin:0 0 1rem}
 .appointments__frame{display:block;width:100%;border:0}
 .appointments__fallback{margin:.75rem 0 0;font-size:.9em}
