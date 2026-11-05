@@ -33,6 +33,7 @@ type record struct {
 	ID           string                     `json:"id"`
 	SchemaSlug   string                     `json:"schema_slug"`
 	SourceLocale string                     `json:"source_locale"`
+	SourceSlug   string                     `json:"source_slug,omitempty"`
 	TargetLocale string                     `json:"target_locale"`
 	Group        string                     `json:"group,omitempty"`
 	ParentID     string                     `json:"parent_id,omitempty"`
@@ -96,7 +97,7 @@ func unitFor(e entity, g []glossaryEntry) (texts []string, slots []slot) {
 // caller. lost counts glossary terms the provider dropped or broke.
 func fill(e entity, out []string, slots []slot, g []glossaryEntry) (record, int) {
 	r := record{
-		ID: e.ID, SchemaSlug: e.SchemaSlug, SourceLocale: e.Locale,
+		ID: e.ID, SchemaSlug: e.SchemaSlug, SourceLocale: e.Locale, SourceSlug: e.Slug,
 		Group: e.Group, ParentID: e.ParentID,
 		Attributes: map[string]json.RawMessage{},
 	}

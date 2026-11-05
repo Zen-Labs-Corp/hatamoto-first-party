@@ -96,14 +96,22 @@ func (s *slugSet) pick(schema, locale, base string) (string, error) {
 	return "", fmt.Errorf("no free slug for %s", base)
 }
 
-// pickLocal is pick without the host check: it replays a choice against the
-// set alone (used to rebuild the set when a run resumes).
-func (s *slugSet) pickLocal(schema, locale, base string) string {
-	for n := 1; ; n++ {
-		c := candidate(base, n)
-		if !s.used[slugKey(schema, locale, c)] {
-			s.add(schema, locale, c)
-			return c
+// freeLocally is the slug pickLocal would choose, without recording it.
+func (s *slugSet) freeLocally(schema, locale, base string) (slug string, n int) {
+	for n = 1; ; n++ {
+		slug = candidate(base, n)
+		if !s.used[slugKey(schema, locale, slug)] {
+			return slug, n
 		}
 	}
+}
+
+// suffixOf is the n for which candidate(base, n) is slug, 0 when none is.
+func suffixOf(base, slug string) int {
+	for n := 1; n <= maxSlugSuffixes; n++ {
+		if candidate(base, n) == slug {
+			return n
+		}
+	}
+	return 0
 }
