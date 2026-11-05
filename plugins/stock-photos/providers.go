@@ -209,7 +209,7 @@ func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, e
 		case r.ID == "" || !isHTTP(r.URL):
 			photos = append(photos, photo{Skip: true, SkipReason: "incomplete result"})
 			continue
-		case lic == "" || hasToken(lic, "nc") || hasToken(lic, "nd"):
+		case !allowedLicences[lic]:
 			photos = append(photos, photo{Skip: true, SkipReason: "licence not allowed: " + lic})
 			continue
 		case r.Filesize > maxImportBytes:
@@ -261,14 +261,9 @@ func isCreditURL(s string) bool {
 	return err == nil && isHTTP(s) && u.User == nil && len(s) <= maxCreditURL
 }
 
-func hasToken(lic, tok string) bool {
-	for _, t := range strings.Split(lic, "-") {
-		if t == tok {
-			return true
-		}
-	}
-	return false
-}
+// allowedLicences are the Openverse licence codes that may be staged: they
+// allow commercial use and modification.
+var allowedLicences = map[string]bool{"cc0": true, "pdm": true, "by": true, "by-sa": true}
 
 func licenceLabel(lic, version string) string {
 	switch lic {

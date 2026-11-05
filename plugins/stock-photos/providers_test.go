@@ -262,3 +262,14 @@ func TestCutBytes(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestOpenverseLicenceAllowList(t *testing.T) {
+	for lic, ok := range map[string]bool{"cc0": true, "pdm": true, "by": true, "by-sa": true, "BY": true, "sampling+": false, "by-nc": false, "gpl": false, "": false} {
+		body := `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"t","url":"https://live.staticflickr.com/a.jpg","license":"` + lic + `"}]}`
+		fakeFetch(t, fetchResp{Status: 200, Body: body}, nil)
+		photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+		if err != nil || len(photos) != 1 || photos[0].Skip == ok {
+			t.Errorf("licence %q: skip=%v want %v (err %v)", lic, photos[0].Skip, !ok, err)
+		}
+	}
+}
