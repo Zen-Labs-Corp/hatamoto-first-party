@@ -21,6 +21,8 @@ func TestCleanAlt(t *testing.T) {
 		{"lead colon", "Image of: a tree", 125, "A tree"},
 		{"mid sentence untouched", "Visitors take a photo of the harbour", 125, "Visitors take a photo of the harbour"},
 		{"word not prefix", "Imagery of a forest", 125, "Imagery of a forest"},
+		{"quotes inside lead", "Image of \"a red car\"", 125, "A red car"},
+		{"curly quotes inside lead", "A photo of: \u201cTwo birds\u201d.", 125, "Two birds"},
 		{"quotes", "\"A blue door\"", 125, "A blue door"},
 		{"backticks and stars", "**`A blue door`**", 125, "A blue door"},
 		{"multiline", "A blue\n  door\r\nwith a *handle*", 125, "A blue door with a *handle"},

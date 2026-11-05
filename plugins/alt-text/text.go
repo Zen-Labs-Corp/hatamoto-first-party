@@ -48,7 +48,7 @@ func cleanAlt(s string, max int) string {
 	const quotes = "\"'`*\u201c\u201d\u2018\u2019"
 	s = strings.Join(strings.Fields(s), " ")
 	s = strings.Trim(s, quotes+" ")
-	s = stripLead(s)
+	s = strings.Trim(stripLead(s), quotes+" .")
 	s = upperFirst(s)
 	if utf8.RuneCountInString(s) > max {
 		r := []rune(s)
