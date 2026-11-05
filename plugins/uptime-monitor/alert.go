@@ -50,6 +50,10 @@ func recovered(m monitor, at time.Time, st settings) (monitor, error) {
 	m.FailCount, m.DownSince, m.AlertedDown = 0, nil, false
 	m.LastError = ""
 	if !wasAlerted {
+		// An incident can be open without an alert (no emails were set): end it.
+		if since != nil {
+			return m, closeIncidents(m.ID, at, false)
+		}
 		return m, nil
 	}
 	cause := ""
@@ -72,7 +76,9 @@ func recovered(m monitor, at time.Time, st settings) (monitor, error) {
 
 // failed handles a failed check. The incident and the mail are written before
 // the monitor is marked alerted, so a crash in between alerts again instead of
-// never.
+// never. The incident is opened once per outage, so that retry does not repeat
+// it. Without alert emails nothing is queued and the monitor stays unalerted,
+// so the mail is queued by the first check after an address exists.
 func failed(m monitor, r result, at time.Time, st settings) (monitor, error) {
 	m.FailCount++
 	if m.DownSince == nil {
@@ -82,13 +88,18 @@ func failed(m monitor, r result, at time.Time, st settings) (monitor, error) {
 	if m.AlertedDown || (m.FailCount < st.FailThreshold && !expired) {
 		return m, nil
 	}
-	if err := insertIncident(m.ID, *m.DownSince, r.Cause); err != nil {
+	if _, found, err := openIncident(m.ID); err != nil {
 		return m, err
-	}
-	if len(st.AlertEmails) > 0 {
-		if err := enqueueMail(downSubject(m), downBody(m, r.Cause), st.AlertEmails); err != nil {
+	} else if !found {
+		if err := insertIncident(m.ID, *m.DownSince, r.Cause, len(st.AlertEmails) > 0); err != nil {
 			return m, err
 		}
+	}
+	if len(st.AlertEmails) == 0 {
+		return m, nil
+	}
+	if err := enqueueMail(downSubject(m), downBody(m, r.Cause), st.AlertEmails); err != nil {
+		return m, err
 	}
 	m.AlertedDown = true
 	return m, nil

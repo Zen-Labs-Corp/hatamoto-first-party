@@ -206,18 +206,64 @@ func TestAlertSkipChangesNothing(t *testing.T) {
 	}
 }
 
-func TestAlertNoEmailsQueuesNothingButTracksTheIncident(t *testing.T) {
+func TestAlertNoEmailsQueuesNothingAndStaysUnalerted(t *testing.T) {
 	d, _ := newAlertDB(t)
 	st := alertSettings
 	st.AlertEmails = nil
-	m := run(t, alertMonitor(), st, t0, downResult, downResult, downResult)
-	if len(d.mails) != 0 || len(d.incidents) != 1 || !m.AlertedDown {
-		t.Fatalf("mails %d incidents %d", len(d.mails), len(d.incidents))
+	m := run(t, alertMonitor(), st, t0, downResult, downResult, downResult, downResult)
+	if len(d.mails) != 0 || len(d.incidents) != 1 || m.AlertedDown {
+		t.Fatalf("mails %d incidents %d %+v", len(d.mails), len(d.incidents), m)
 	}
-	run(t, m, st, t0.Add(time.Hour), upResult)
-	if len(d.mails) != 0 || d.incidents[0].EndedAt == nil {
+	// An address appears while the outage lasts: the down mail is queued once,
+	// on the incident that is already open.
+	m = run(t, m, alertSettings, t0.Add(10*time.Minute), downResult, downResult)
+	if len(d.mails) != 1 || len(d.incidents) != 1 || !m.AlertedDown {
+		t.Fatalf("mails %d incidents %d %+v", len(d.mails), len(d.incidents), m)
+	}
+	run(t, m, alertSettings, t0.Add(time.Hour), upResult)
+	if len(d.mails) != 2 || d.incidents[0].EndedAt == nil {
 		t.Fatalf("mails %d", len(d.mails))
 	}
+}
+
+func TestAlertUnalertedIncidentIsClosedOnRecovery(t *testing.T) {
+	d, _ := newAlertDB(t)
+	st := alertSettings
+	st.AlertEmails = nil
+	run(t, run(t, alertMonitor(), st, t0, downResult, downResult, downResult), st, t0.Add(time.Hour), upResult)
+	if len(d.mails) != 0 || d.incidents[0].EndedAt == nil {
+		t.Fatalf("mails %d incident %+v", len(d.mails), d.incidents[0])
+	}
+}
+
+func TestAlertRetryAfterPartialFailureKeepsOneIncident(t *testing.T) {
+	d, f := newAlertDB(t)
+	inner := f.reply
+	fail := true
+	f.reply = func(c call, out any) error {
+		if fail && strings.HasPrefix(c.sql(), "INSERT INTO outbox") {
+			return hostErr("unavailable", "db down")
+		}
+		return inner(c, out)
+	}
+	m := alertMonitor()
+	now = func() time.Time { return t0 }
+	for range 2 { // the mail cannot be queued: state is not saved, the next tick retries
+		if _, err := applyResult(monitorAtThreshold(m), downResult, alertSettings); err == nil {
+			t.Fatal("expected the queue error")
+		}
+	}
+	fail = false
+	got, err := applyResult(monitorAtThreshold(m), downResult, alertSettings)
+	if err != nil || len(d.incidents) != 1 || len(d.mails) != 1 || !got.AlertedDown {
+		t.Fatalf("err %v incidents %d mails %d", err, len(d.incidents), len(d.mails))
+	}
+}
+
+// monitorAtThreshold is m as saved after the failures before the alert.
+func monitorAtThreshold(m monitor) monitor {
+	m.FailCount, m.DownSince = alertSettings.FailThreshold-1, &t0
+	return m
 }
 
 func TestAlertStateIsSaved(t *testing.T) {

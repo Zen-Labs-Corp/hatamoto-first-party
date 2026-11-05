@@ -176,9 +176,10 @@ func openIncident(monitorID int64) (incident, bool, error) {
 }
 
 // insertIncident opens an incident that has already crossed the alert point.
-func insertIncident(monitorID int64, started time.Time, cause string) error {
+// alerted says whether a down mail is queued with it.
+func insertIncident(monitorID int64, started time.Time, cause string, alerted bool) error {
 	return dbExec(`INSERT INTO incidents (monitor_id, started_at, cause, alerted_down)
-		VALUES ($1::bigint, $2::timestamptz, $3::text, true)`, monitorID, ts(started), cause)
+		VALUES ($1::bigint, $2::timestamptz, $3::text, $4::boolean)`, monitorID, ts(started), cause, alerted)
 }
 
 // closeIncidents ends the monitor's ongoing incidents. alertedUp records
