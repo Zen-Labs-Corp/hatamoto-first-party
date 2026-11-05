@@ -3,16 +3,60 @@
   "version": "0.1.0",
   "sdk": "^0.18",
   "description": "Machine translation with DeepL or Google Cloud Translation: stages translated copies of your pages and posts for review, linked as translations.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["entities.read", "settings", "http.fetch"],
+  "allowed_hosts": ["api.deepl.com", "api-free.deepl.com", "translation.googleapis.com"],
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "on_run_step": 10000 }
+  },
+  "runs": [
+    {
+      "name": "translate",
+      "title": "Machine translation",
+      "stages": ["fetch", "transform"],
+      "inputs": [
+        { "name": "locale", "label": "Target locale (a locale the site serves, e.g. de)", "type": "text", "required": true },
+        { "name": "schema", "label": "Content type", "type": "select", "options": ["page", "post"], "required": true },
+        { "name": "only_missing", "label": "Only entries without a translation in this locale", "type": "bool" }
+      ]
+    }
+  ],
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
+      "provider": {
         "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+        "title": "Provider",
+        "enum": ["deepl", "google"],
+        "default": "deepl"
+      },
+      "api_key": {
+        "type": "string",
+        "title": "API key",
+        "writeOnly": true,
+        "maxLength": 256,
+        "description": "Stored in the settings only; never shown again."
+      },
+      "glossary": {
+        "type": "array",
+        "title": "Glossary",
+        "maxItems": 100,
+        "description": "Terms kept as written (empty target) or replaced by a fixed translation.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "source": { "type": "string", "maxLength": 100 },
+            "target": { "type": "string", "maxLength": 100 }
+          },
+          "required": ["source"]
+        }
+      },
+      "formality": {
+        "type": "string",
+        "title": "Formality (DeepL only)",
+        "enum": ["default", "more", "less", "prefer_more", "prefer_less"],
+        "default": "default"
       }
     }
   }
