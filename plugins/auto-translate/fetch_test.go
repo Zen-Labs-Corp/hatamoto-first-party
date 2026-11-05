@@ -462,3 +462,18 @@ func TestFetchFailsAfterThreeStepsOutOfTime(t *testing.T) {
 		t.Fatalf("fails=%v", w.failReasons)
 	}
 }
+
+func TestResumeAtKeepsTheLimitShrunkInThisStep(t *testing.T) {
+	var got string
+	callHost = func(fn string, args, out any) error {
+		got = args.(sdk.RunCheckpointArgs).Cursor
+		return nil
+	}
+	t.Cleanup(func() { callHost = nil })
+	if _, err := resumeAt(cursor{C: "c", I: 2}, 5, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got != `{"c":"c","i":2,"q":0,"n":0,"l":5,"r":1}` {
+		t.Fatalf("checkpoint %q", got)
+	}
+}

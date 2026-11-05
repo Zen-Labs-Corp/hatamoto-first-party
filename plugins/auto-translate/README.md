@@ -32,6 +32,7 @@ From the repository root: `scripts/build-plugin.sh plugins/auto-translate`.
 ## Limits
 
 - Entries with page builder content are skipped and counted in the run summary, even when they also have a plain body. Only entries with a plain body are translated.
+- Slugs use only a-z, 0-9 and hyphens. A copy in a language written in another script (Russian, Greek, Japanese and so on), or with a letter the plugin cannot fold to ASCII (Vietnamese), keeps the source-language slug.
 - Only the title, slug, body, excerpt, description, SEO title and description, and social title and description are translated. The canonical URL is not copied, so a copy is its own canonical page. Other fields are copied unchanged.
 - The plugin makes one provider call per step, so a large site takes many steps.
 - The run buffer holds at most 10,000 keys and 64 MiB. Every translated entry uses one key, and every fetch step adds one more for its statistics, so a run reaches the key limit somewhat before 10,000 entries. Entries of 100 KiB each fill the buffer at about 650 entries, and the run then fails.
