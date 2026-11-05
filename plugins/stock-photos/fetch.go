@@ -132,7 +132,15 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 		photos, more, raw, err = searchOpenverse(sp)
 	}
 	if err != nil {
-		return failFromError(err)
+		if cur.N == 0 {
+			return failFromError(err)
+		}
+		// Keep what was already imported and say why the search stopped.
+		if err := putSkip("search:stopped", errorMessage(err)); err != nil {
+			return failFromError(err)
+		}
+		_ = guest.RunProgress(callHost, cur.N, p.Count, "Fetched "+strconv.Itoa(cur.N)+" of "+strconv.Itoa(p.Count))
+		return sdk.RunStepResult{}, orFail(guest.RunFinish(callHost, nil))
 	}
 
 	i, imports := cur.I%pageSize, 0

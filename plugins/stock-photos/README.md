@@ -46,7 +46,7 @@ For Pexels tick `api.pexels.com` and `images.pexels.com`. For Openverse tick `ap
 ## Limits
 
 - 1 to 30 photos per run (12 by default).
-- Pexels allows about 200 requests an hour per key; Openverse caps anonymous use. The run stops with a message when a provider rate limits it.
+- Pexels allows about 200 requests an hour per key; Openverse caps anonymous use. A provider error on the first step fails the run with a message; on a later step the run keeps the photos already fetched and names the error in the summary.
 - Up to 3 images are downloaded per run step, and a search is read at most 5 pages deep, so a query with many unusable results can stage fewer photos than asked for.
 - Needs a Hatamoto host with plugin SDK 0.18.
 

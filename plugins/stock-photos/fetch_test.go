@@ -446,3 +446,15 @@ func TestFetchForeignHostNotSuggested(t *testing.T) {
 		t.Fatalf("reason = %q", r)
 	}
 }
+
+func TestFetchSearchErrorOnLaterStepKeepsImportedPhotos(t *testing.T) {
+	h := newHost(t, "fetch", `{"query":"barn","count":12}`, pexelsHosts...)
+	h.search = status(429)
+	if err := h.step(`{"i":3,"n":3}`); err != nil {
+		t.Fatal(err)
+	}
+	h.ends("run.finish")
+	if !strings.Contains(h.buffer["skip/search:stopped"], "rate limiting") {
+		t.Fatalf("buffer = %v", h.buffer)
+	}
+}

@@ -14,27 +14,32 @@ func failRun(msg string) (sdk.RunStepResult, error) {
 	return sdk.RunStepResult{}, nil
 }
 
-// failFromError ends the run for a provider or host error. Host error text is
-// never passed on: it could echo a request.
+// failFromError ends the run for a provider or host error.
 func failFromError(err error) (sdk.RunStepResult, error) {
+	return failRun(errorMessage(err))
+}
+
+// errorMessage is the owner-facing text for a provider or host error. Host
+// error text is never passed on: it could echo a request.
+func errorMessage(err error) string {
 	var pe *providerError
 	if errors.As(err, &pe) {
-		return failRun(pe.Message)
+		return pe.Message
 	}
 	var he *sdk.HostError
 	if errors.As(err, &he) {
 		switch he.Code {
 		case sdk.ErrBlocked:
-			return failRun("Tick api.pexels.com / api.openverse.org when you start the run.")
+			return "Tick api.pexels.com / api.openverse.org when you start the run."
 		case sdk.ErrCapabilityDenied:
 			capability := he.Capability
 			if capability == "" {
 				capability = "http.fetch"
 			}
-			return failRun("Grant the " + capability + " permission to this plugin.")
+			return "Grant the " + capability + " permission to this plugin."
 		case sdk.ErrRateLimited:
-			return failRun("Rate limited, try again in a few minutes.")
+			return "Rate limited, try again in a few minutes."
 		}
 	}
-	return failRun("Stock photo search failed.")
+	return "Stock photo search failed."
 }
