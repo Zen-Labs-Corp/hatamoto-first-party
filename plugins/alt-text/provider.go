@@ -15,9 +15,9 @@ const (
 	providerAnthropic = "anthropic"
 	providerGemini    = "gemini"
 
-	// visionTimeoutMS leaves room in the 10 s step for the list, buffer and
-	// checkpoint calls around the one provider call.
-	visionTimeoutMS = 8000
+	// visionTimeoutMS leaves room in the 10 s step for the list calls the step
+	// may make first (listBudget, fetch.go), the buffer put and the checkpoint.
+	visionTimeoutMS = 6500
 	maxAnswerTokens = 120
 )
 

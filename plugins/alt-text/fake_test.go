@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -31,6 +32,10 @@ type fakeHost struct {
 	media    []map[string]any
 	// hosts are the hosts ticked at the start of the run.
 	hosts []string
+	// clock is the time seen by the plugin; each media.list takes listCost.
+	clock     time.Time
+	listCost  time.Duration
+	stepStart time.Time
 	// listFilter drops items from a page after paging, as core does for
 	// media no public page uses.
 	listFilter func(m map[string]any) bool
@@ -63,8 +68,10 @@ func newFake(t *testing.T) *fakeHost {
 		phase:    sdk.RunPhaseFetch,
 	}
 	f.vision = func(visionReq) (fetched, error) { return answer("A calm lake at dawn"), nil }
+	f.clock = time.Unix(1700000000, 0)
 	callHost = f.call
-	t.Cleanup(func() { callHost = nil })
+	now = func() time.Time { return f.clock }
+	t.Cleanup(func() { callHost, now = nil, time.Now })
 	return f
 }
 
@@ -179,6 +186,7 @@ func (f *fakeHost) call(fn string, args, out any) error {
 }
 
 func (f *fakeHost) list(m map[string]any, out any) error {
+	f.clock = f.clock.Add(f.listCost)
 	off, _ := m["offset"].(float64)
 	lim, _ := m["limit"].(float64)
 	if lim == 0 {
@@ -234,6 +242,7 @@ func (f *fakeHost) count(fn string) int {
 // step runs one on_run_step with the stored phase and cursor.
 func (f *fakeHost) step() error {
 	f.steps++
+	f.stepStart = f.clock
 	_, err := onStep(sdk.RunStep{RunID: "r", Phase: f.phase, Cursor: f.cursor})
 	return err
 }

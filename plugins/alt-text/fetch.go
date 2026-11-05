@@ -7,12 +7,18 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
 
 const (
+	// listBudget is how long a step may spend before the provider call. Past
+	// it the step checkpoints, so the call starts in a fresh step and list
+	// plus call stay inside the 10 s step.
+	listBudget = 1500 * time.Millisecond
+
 	pageSize      = 20 // media.list page size; offsets advance by it
 	maxListCalls  = 20 // media.list calls per step
 	msgNoSiteURL  = "Set the site address in the plugin settings so providers can reach your images."
@@ -61,6 +67,9 @@ func validSiteURL(raw string) bool {
 // msgTick names the host the owner has to tick when starting the run.
 func msgTick(host string) string { return "Tick " + host + " when you start the run." }
 
+// now is the clock; tests replace it.
+var now = time.Now
+
 var errNoSiteURL = errors.New(msgNoSiteURL)
 
 // sendable are the image types the providers accept.
@@ -70,6 +79,7 @@ var sendable = map[string]bool{"image/jpeg": true, "image/png": true, "image/gif
 // A problem with one image is counted and skipped; only a problem with the
 // whole run (no key, no site address, no listing) fails the run.
 func fetchStep(st sdk.RunStep) error {
+	start := now()
 	s, err := loadSettings()
 	if err != nil {
 		return guest.RunFail(callHost, msgNoSettings)
@@ -117,6 +127,10 @@ func fetchStep(st sdk.RunStep) error {
 			}
 			if s.onlyMissing() && strings.TrimSpace(it.AltText) != "" {
 				continue
+			}
+			if calls > 0 && now().Sub(start) > listBudget {
+				// Long paging: continue at this image in a fresh step.
+				return checkpointFetch(cur, -1, limit)
 			}
 			sent, err := suggest(s, it, &cur)
 			if errors.Is(err, errNoSiteURL) {

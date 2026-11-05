@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -402,5 +403,32 @@ func TestFetchBadSiteURLFailsTheRun(t *testing.T) {
 		if f.failed != "" {
 			t.Errorf("site_url %q: failed=%q", ok, f.failed)
 		}
+	}
+}
+
+func TestFetchLongPagingDefersTheProviderCall(t *testing.T) {
+	f := newFake(t)
+	f.listCost = time.Second
+	f.addImages("a", 60, "Has alt")
+	f.addImages("m", 2, "")
+	f.vision = func(visionReq) (fetched, error) {
+		if used := f.clock.Sub(f.stepStart); used > 1500*time.Millisecond {
+			t.Errorf("provider call after %v of paging in the step", used)
+		}
+		return answer("A lake"), nil
+	}
+	first := true
+	for f.phase == "fetch" && f.steps < 100 {
+		before := len(f.requests)
+		if err := f.step(); err != nil {
+			t.Fatal(err)
+		}
+		if first && len(f.requests) != before {
+			t.Fatal("the step that paged through 60 images also called the provider")
+		}
+		first = false
+	}
+	if len(f.requests) != 2 || f.failed != "" {
+		t.Fatalf("requests=%d failed=%q", len(f.requests), f.failed)
 	}
 }

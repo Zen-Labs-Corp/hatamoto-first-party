@@ -155,7 +155,7 @@ func TestDescribe(t *testing.T) {
 	if err != nil || got != "Two cats" {
 		t.Fatalf("%q %v", got, err)
 	}
-	if h.args["method"] != "POST" || h.args["timeout_ms"] != 8000 || h.args["url"] != "https://api.openai.com/v1/chat/completions" {
+	if h.args["method"] != "POST" || h.args["timeout_ms"] != 6500 || h.args["url"] != "https://api.openai.com/v1/chat/completions" {
 		t.Fatalf("call args: %v", h.args)
 	}
 
