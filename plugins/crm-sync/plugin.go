@@ -1,37 +1,27 @@
 // Command crm-sync is a Hatamoto plugin. Sends people who submit your forms to HubSpot, Pipedrive or Salesforce as contacts or leads, with field mapping, an optional consent field, a note with the message and retries.
 //
-// Starting point from the first-party template: a render.head filter that
-// reads one setting and adds a meta tag. Replace it with the real hooks; keep
-// the logic in plain Go (this file) and the //go:wasmexport lines in
-// exports_wasip1.go, so everything but the exports builds and tests on the host.
+// The form hook only validates a submission and queues one row: it never calls
+// a provider. The deliver and retry crons send the queue, the refresh cron
+// renews the Salesforce token. Problems end up in the delivery log, which holds
+// no email and no field values.
 package main
 
-import (
-	"strings"
+import "time"
 
-	"hatamoto.dev/sdk"
-	"hatamoto.dev/sdk/guest"
+// now is the clock; tests replace it.
+var now = time.Now
+
+const (
+	// maxAge is how long a submission may wait in the queue.
+	maxAge = 24 * time.Hour
+	// logKeep is how long delivery log rows are kept.
+	logKeep = 30 * 24 * time.Hour
+	// batchSize is how many rows one cron run claims.
+	batchSize = 25
+	// cronBudget and routeBudget are how long a cron or a route keeps starting
+	// requests; the hook limit is 10 s (plugin.json).
+	cronBudget  = 8 * time.Second
+	routeBudget = 8 * time.Second
+	// leaseTime is how long a claimed row is hidden from other runs.
+	leaseTime = 2 * time.Minute
 )
-
-func init() {
-	guest.OnFilter(sdk.RenderHead, addMeta)
-}
-
-// addMeta never fails the render: an unreadable or empty setting adds nothing.
-func addMeta(c sdk.HeadContext) (sdk.HeadContext, error) {
-	var s struct {
-		Greeting string `json:"greeting"`
-	}
-	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return c, nil
-	}
-	g := strings.TrimSpace(s.Greeting)
-	if g == "" {
-		return c, nil
-	}
-	c.Tags = append(c.Tags, sdk.HeadTag{
-		Kind:  "meta",
-		Attrs: map[string]string{"name": "crm-sync", "content": g},
-	})
-	return c, nil
-}
