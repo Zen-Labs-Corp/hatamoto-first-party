@@ -21,7 +21,6 @@ func init() {
 }
 
 // Stubs, replaced by the real jobs and routes.
-func runCheckTick(sdk.CronEvent) error { return nil }
 func runCertsTick(sdk.CronEvent) error { return nil }
 func runRollup(sdk.CronEvent) error    { return nil }
 

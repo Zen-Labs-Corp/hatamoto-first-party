@@ -229,3 +229,12 @@ func dropOldOutbox(cutoff time.Time) (int, error) {
 		SELECT to_jsonb(count(*)) FROM d`, &n, ts(cutoff))
 	return n, err
 }
+
+// dueMonitors returns the monitors whose next check is at or before at, the
+// most overdue first.
+func dueMonitors(at time.Time) ([]monitor, error) {
+	var out []monitor
+	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY m.next_check, m.id), '[]'::jsonb)
+		FROM monitors m WHERE m.next_check <= $1::timestamptz`, &out, ts(at))
+	return out, err
+}

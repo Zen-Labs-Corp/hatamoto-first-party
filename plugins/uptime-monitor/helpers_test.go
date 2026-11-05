@@ -222,3 +222,6 @@ func TestFetchAndMailSendCallShape(t *testing.T) {
 		t.Fatalf("mail args %v", m)
 	}
 }
+
+// jsonInto decodes the JSON text s into out, as a host answer.
+func jsonInto(out any, s string) error { return json.Unmarshal([]byte(s), out) }
