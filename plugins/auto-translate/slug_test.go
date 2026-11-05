@@ -36,13 +36,13 @@ func (w *slugWorld) call(fn string, args, out any) error {
 func TestSlugify(t *testing.T) {
 	for in, want := range map[string]string{
 		"Hello, World!":    "hello-world",
-		"  --Über uns--  ": "über-uns",
-		"日本 語":             "日本-語",
+		"  --Über uns--  ": "uber-uns",
+		"日本 語":             "",
 		"a___b   c":        "a-b-c",
 		"":                 "",
 		"!!!":              "",
-		"Straße 2":         "straße-2",
-		"ÄÖÜ":              "äöü",
+		"Straße 2":         "strasse-2",
+		"ÄÖÜ":              "aou",
 	} {
 		if got := slugify(in); got != want {
 			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
@@ -54,10 +54,6 @@ func TestSlugifyLengthCap(t *testing.T) {
 	got := slugify(strings.Repeat("a", 300))
 	if len(got) != 200 {
 		t.Fatalf("len %d", len(got))
-	}
-	got = slugify(strings.Repeat("日", 100)) // 3 bytes each
-	if len(got) != 198 || strings.ContainsRune(got, '\uFFFD') {
-		t.Fatalf("len %d, %q", len(got), got)
 	}
 	if got := slugify(strings.Repeat("a", 199) + " b"); got != strings.Repeat("a", 199) {
 		t.Fatalf("trailing hyphen kept: %q", got[190:])
@@ -143,7 +139,13 @@ func TestSlugBaseFallsBackToSource(t *testing.T) {
 	if got := slugBase("???", "About Us"); got != "about-us" {
 		t.Fatal(got)
 	}
-	if got := slugBase("日本", "x"); got != "日本" {
+	if got := slugBase("о нас", "about-us"); got != "about-us" {
+		t.Fatal(got) // Cyrillic has no slug letters: core would publish ""
+	}
+	if got := slugBase("日本 語", "about-us"); got != "about-us" {
+		t.Fatal(got)
+	}
+	if got := slugBase("Über uns", "about-us"); got != "uber-uns" {
 		t.Fatal(got)
 	}
 }

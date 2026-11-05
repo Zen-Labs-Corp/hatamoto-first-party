@@ -14,14 +14,34 @@ const (
 	maxSlugSuffixes = 20
 )
 
-// slugify lower-cases s, keeps letters and digits of any script and turns
-// every other run of characters into one hyphen. The result has no leading or
-// trailing hyphen and is at most 200 bytes, cut on a rune boundary.
+// latinFold turns common Latin letters with diacritics into the ASCII letters
+// core's slug alphabet keeps. Core drops everything outside [a-z0-9-] when a
+// copy is published, so a letter left as is would vanish from the live URL.
+var latinFold = strings.NewReplacer(
+	"ß", "ss", "æ", "ae", "œ", "oe", "ø", "o", "đ", "d", "ð", "d", "þ", "th", "ł", "l", "ı", "i",
+	"à", "a", "á", "a", "â", "a", "ã", "a", "ä", "a", "å", "a", "ā", "a", "ă", "a", "ą", "a",
+	"ç", "c", "ć", "c", "ĉ", "c", "ċ", "c", "č", "c", "ď", "d",
+	"è", "e", "é", "e", "ê", "e", "ë", "e", "ē", "e", "ĕ", "e", "ė", "e", "ę", "e", "ě", "e",
+	"ĝ", "g", "ğ", "g", "ġ", "g", "ģ", "g", "ĥ", "h",
+	"ì", "i", "í", "i", "î", "i", "ï", "i", "ĩ", "i", "ī", "i", "ĭ", "i", "į", "i", "ĵ", "j", "ķ", "k",
+	"ĺ", "l", "ļ", "l", "ľ", "l", "ñ", "n", "ń", "n", "ņ", "n", "ň", "n",
+	"ò", "o", "ó", "o", "ô", "o", "õ", "o", "ö", "o", "ō", "o", "ŏ", "o", "ő", "o",
+	"ŕ", "r", "ŗ", "r", "ř", "r", "ś", "s", "ŝ", "s", "ş", "s", "š", "s", "ș", "s",
+	"ţ", "t", "ť", "t", "ț", "t",
+	"ù", "u", "ú", "u", "û", "u", "ü", "u", "ũ", "u", "ū", "u", "ŭ", "u", "ů", "u", "ű", "u", "ų", "u",
+	"ŵ", "w", "ý", "y", "ÿ", "y", "ŷ", "y", "ź", "z", "ż", "z", "ž", "z",
+)
+
+// slugify builds a slug in core's alphabet: it lower-cases s, folds Latin
+// diacritics to ASCII, keeps only a-z, 0-9 and hyphens, and turns every other
+// run of characters into one hyphen. Letters of other scripts are not kept, so
+// the result can be empty. It has no leading or trailing hyphen and is at most
+// 200 bytes.
 func slugify(s string) string {
 	var b strings.Builder
 	dash := true // swallows a leading hyphen
-	for _, r := range strings.ToLower(s) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+	for _, r := range latinFold.Replace(strings.ToLower(s)) {
+		if r < unicode.MaxASCII && (unicode.IsLower(r) || unicode.IsDigit(r)) {
 			b.WriteRune(r)
 			dash = false
 		} else if !dash {
