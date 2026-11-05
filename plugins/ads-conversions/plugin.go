@@ -81,7 +81,13 @@ func queueSubmission(ev sdk.FormSubmittedEvent) {
 		return
 	}
 	id := buildIdentity(ev.Fields, s.EmailField, s.PhoneField, s.DefaultCountryCode)
-	ids := idsFromSourcePath(ev.SourcePath)
+	// Without a consent field there is no consent signal, so the page address
+	// is not read: only the click IDs the page script posts after consent
+	// (joined at send time) are used.
+	var ids clickIDs
+	if s.ConsentField != "" {
+		ids = idsFromSourcePath(ev.SourcePath)
+	}
 	// A submission with nothing to match on is still queued: the page script
 	// may post a click ID within a minute, and the send step decides.
 	for _, p := range active {

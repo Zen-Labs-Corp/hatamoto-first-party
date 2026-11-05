@@ -1,6 +1,10 @@
 package main
 
-import "time"
+import (
+	"regexp"
+	"strings"
+	"time"
+)
 
 const (
 	// leaseTime is how long a claimed row is left alone by other runs.
@@ -29,6 +33,19 @@ func cut(s string, n int) string {
 		return s
 	}
 	return string(r[:n])
+}
+
+var hexRunRe = regexp.MustCompile(`[0-9a-fA-F]{64}`)
+
+// scrub removes what a platform message must never carry into the log: any
+// 64-character hex run (a hash) and any of the row's click IDs.
+func scrub(msg string, ids clickIDs) string {
+	for _, v := range ids {
+		if v != "" {
+			msg = strings.ReplaceAll(msg, v, "…")
+		}
+	}
+	return hexRunRe.ReplaceAllString(msg, "…")
 }
 
 // backoff is the wait after the given number of earlier attempts: 1m, 2m,
@@ -114,7 +131,7 @@ func nullable(s string) any {
 func record(submissionID, form, platform, status, reason, code, msg string) {
 	if err := dbExec(`INSERT INTO log (created_at, submission_id, form_slug, platform, status, reason, code, message)
 VALUES ($1::timestamptz, $2, $3, $4, $5, $6, $7, $8)`,
-		ts(now()), submissionID, form, platform, status, reason, code, cut(msg, maxMessage)); err != nil {
+		ts(now()), submissionID, form, platform, status, reason, code, cut(scrub(msg, nil), maxMessage)); err != nil {
 		logf("warn", "ads-conversions: could not write the delivery log")
 	}
 }

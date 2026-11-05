@@ -187,6 +187,7 @@ func deliverRow(s settings, j job) (unreachable bool) {
 		// The platform refused the access token: refresh once and try again.
 		o = attempt(s, j, true)
 	}
+	o.Message = scrub(o.Message, j.IDs)
 	if o.Reason == "budget" {
 		// No time was left to call: not an attempt, the next run takes the row.
 		release(j)

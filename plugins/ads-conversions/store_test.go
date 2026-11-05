@@ -159,3 +159,11 @@ func TestStoreSQLNeverTakesRawContactArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestScrubRemovesHashesAndClickIDs(t *testing.T) {
+	h64 := sha("jane@example.com")
+	got := scrub("bad value "+h64+" and CLICK-9 seen, ttclid TT_1", clickIDs{"gclid": "CLICK-9", "ttclid": "TT_1"})
+	if got != "bad value … and … seen, ttclid …" {
+		t.Fatalf("scrub = %q", got)
+	}
+}

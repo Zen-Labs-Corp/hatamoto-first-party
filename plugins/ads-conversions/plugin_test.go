@@ -262,12 +262,22 @@ func TestHookNoContact(t *testing.T) {
 	if len(queuedPlatforms(h)) != 3 || len(h.execs("INSERT INTO log")) != 0 {
 		t.Fatalf("queued %v", queuedPlatforms(h))
 	}
-	// A click ID in the page address alone is enough to queue.
+	// A click ID in the page address is read only when a consent field is set.
 	h.calls = nil
 	ev := event("contact", map[string]any{"message": "hi"})
 	ev.SourcePath = "/x?gclid=" + sampleGclid
 	if err := run(t, ev); err != nil || len(queuedPlatforms(h)) != 3 {
 		t.Fatalf("err %v, queued %v", err, queuedPlatforms(h))
+	}
+	if strings.Contains(h.execs("INSERT INTO queue")[0].args, sampleGclid) {
+		t.Fatal("without a consent field the page address must not be read for click IDs")
+	}
+	h.configure(`"consent_field":"consent"`)
+	h.calls = nil
+	ev = event("contact", map[string]any{"message": "hi", "consent": true})
+	ev.SourcePath = "/x?gclid=" + sampleGclid
+	if err := run(t, ev); err != nil || !strings.Contains(h.execs("INSERT INTO queue")[0].args, sampleGclid) {
+		t.Fatalf("with a consent field the click ID from the page address is kept: err %v", err)
 	}
 }
 

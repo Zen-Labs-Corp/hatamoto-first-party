@@ -542,3 +542,14 @@ func TestTestRouteStaysInsideTheBudget(t *testing.T) {
 		t.Fatalf("calls %v, answer %s", *hosts, res.Body)
 	}
 }
+
+func TestDeliverLogMessageDoesNotEchoHashesOrClickIDs(t *testing.T) {
+	h := deliveryHost(t, rowJSON(1, "tiktok", 0, `,"ttclid":"CLICK-SECRET"`))
+	platformHTTP(t, map[string]fetched{"business-api.tiktok.com": {Status: 200,
+		Body: `{"code":40002,"message":"bad user CLICK-SECRET ` + sha("jane.doe@example.com") + `"}`}})
+	runDeliver(t)
+	failed := logRows(h, "failed")
+	if len(failed) != 1 || argsOf(failed[0])[7] != "bad user … …" {
+		t.Fatalf("failed %+v", failed)
+	}
+}
