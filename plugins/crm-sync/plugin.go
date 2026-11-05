@@ -6,7 +6,11 @@
 // no email and no field values.
 package main
 
-import "time"
+import (
+	"time"
+
+	"hatamoto.dev/sdk/guest"
+)
 
 // now is the clock; tests replace it.
 var now = time.Now
@@ -25,3 +29,9 @@ const (
 	// leaseTime is how long a claimed row is hidden from other runs.
 	leaseTime = 2 * time.Minute
 )
+
+func init() {
+	guest.OnCron("deliver", onDeliver)
+	guest.OnCron("retry", onRetry)
+	guest.OnCron("refresh", onRefresh)
+}
