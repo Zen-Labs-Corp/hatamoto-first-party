@@ -5,11 +5,13 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"unicode/utf8"
 )
 
 type manifest struct {
 	Name         string   `json:"name"`
 	Version      string   `json:"version"`
+	Description  string   `json:"description"`
 	Permissions  []string `json:"permissions"`
 	AllowedHosts []string `json:"allowed_hosts"`
 	Routes       []struct {
@@ -46,7 +48,7 @@ func loadManifest(t *testing.T) manifest {
 
 func TestManifestPermissionsAndHosts(t *testing.T) {
 	m := loadManifest(t)
-	if m.Name != "crm-sync" || m.Version != "0.1.0" {
+	if m.Name != "crm-sync" || m.Version != "0.1.1" {
 		t.Fatalf("name %q version %q", m.Name, m.Version)
 	}
 	want := []string{"db", "forms.read", "http.fetch", "kv", "log", "settings"}
@@ -59,6 +61,19 @@ func TestManifestPermissionsAndHosts(t *testing.T) {
 	slices.Sort(hosts)
 	if !slices.Equal(hosts, []string{"*.my.salesforce.com", "*.pipedrive.com", "api.hubapi.com"}) {
 		t.Fatalf("allowed_hosts %v", m.AllowedHosts)
+	}
+}
+
+func TestManifestDescriptionLength(t *testing.T) {
+	n := utf8.RuneCountInString(loadManifest(t).Description)
+	if n < 20 || n > 160 {
+		t.Fatalf("description is %d characters, want 20 to 160", n)
+	}
+	m := loadManifest(t)
+	for k, v := range m.Schema.Properties {
+		if v["description"] == m.Description {
+			t.Fatalf("setting %s repeats the plugin description", k)
+		}
 	}
 }
 
