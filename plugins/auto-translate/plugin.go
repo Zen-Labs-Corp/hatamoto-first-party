@@ -1,37 +1,34 @@
 // Command auto-translate is a Hatamoto plugin. Machine translation with DeepL or Google Cloud Translation: stages translated copies of your pages and posts for review, linked as translations.
 //
-// Starting point from the first-party template: a render.head filter that
-// reads one setting and adds a meta tag. Replace it with the real hooks; keep
-// the logic in plain Go (this file) and the //go:wasmexport lines in
-// exports_wasip1.go, so everything but the exports builds and tests on the host.
+// The plugin has one run, "translate": a fetch phase that sends published
+// content to the provider and a transform phase that stages the translated
+// copies in a changeset. Keep the logic in plain Go (this file and its
+// siblings) and the //go:wasmexport line in exports_wasip1.go, so everything
+// but the export builds and tests on the host.
 package main
 
 import (
-	"strings"
-
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
 
 func init() {
-	guest.OnFilter(sdk.RenderHead, addMeta)
+	guest.OnRunStep(onStep)
 }
 
-// addMeta never fails the render: an unreadable or empty setting adds nothing.
-func addMeta(c sdk.HeadContext) (sdk.HeadContext, error) {
-	var s struct {
-		Greeting string `json:"greeting"`
+// onStep dispatches by phase. Any error returned fails the run (host contract),
+// so every provider or host problem is turned into run.fail plus a nil error
+// by the phase code.
+func onStep(s sdk.RunStep) (sdk.RunStepResult, error) {
+	switch s.Phase {
+	case sdk.RunPhaseFetch:
+		return fetchStep(s)
+	case sdk.RunPhaseTransform:
+		return transformStep(s)
 	}
-	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return c, nil
-	}
-	g := strings.TrimSpace(s.Greeting)
-	if g == "" {
-		return c, nil
-	}
-	c.Tags = append(c.Tags, sdk.HeadTag{
-		Kind:  "meta",
-		Attrs: map[string]string{"name": "auto-translate", "content": g},
-	})
-	return c, nil
+	return sdk.RunStepResult{}, nil
 }
+
+func fetchStep(sdk.RunStep) (sdk.RunStepResult, error) { return sdk.RunStepResult{}, nil }
+
+func transformStep(sdk.RunStep) (sdk.RunStepResult, error) { return sdk.RunStepResult{}, nil }
