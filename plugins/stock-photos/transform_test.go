@@ -154,3 +154,23 @@ func TestTransformCountsOnlyCreatedMedia(t *testing.T) {
 		t.Fatalf("summary = %+v", s)
 	}
 }
+
+func TestTransformSummaryNamesSearchStopFirst(t *testing.T) {
+	h := newHost(t, "transform", `{}`)
+	for i := 0; i < 70; i++ {
+		h.buffer[fmt.Sprintf("skip/openverse:s%03d", i)] = `{"reason":"r"}`
+	}
+	h.buffer["skip/search:stopped"] = `{"reason":"The provider is rate limiting"}`
+	if err := h.step(""); err != nil {
+		t.Fatal(err)
+	}
+	s := summary(t, h)
+	if len(s.Skipped) != maxSkipped || s.Skipped[0].Key != "search:stopped" || s.Skipped[0].Reason == "" || s.SkippedTotal != 71 {
+		t.Fatalf("first=%+v len=%d total=%d", s.Skipped[0], len(s.Skipped), s.SkippedTotal)
+	}
+	for _, e := range s.Skipped[1:] {
+		if e.Key == "search:stopped" {
+			t.Fatalf("listed twice: %+v", s.Skipped)
+		}
+	}
+}

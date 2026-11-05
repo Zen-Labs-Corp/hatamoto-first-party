@@ -18,6 +18,9 @@ const (
 	maxCarriedSkip = 20   // attach rejections carried in the checkpoint
 )
 
+// stopKey is the skip entry the fetch phase writes when the search stopped early.
+const stopKey = "skip/search:stopped"
+
 type skipped struct {
 	Key    string `json:"key"`
 	Reason string `json:"reason"`
@@ -128,6 +131,16 @@ func stageItem(bufKey string, cur *transformCursor) error {
 // skippedEntries reads what the fetch phase left in skip/: the first
 // maxSkipped entries and the total.
 func skippedEntries() (list []skipped, total int, err error) {
+	// The reason the search stopped always comes first, ahead of the capped list.
+	if val, found, err := guest.BufferGet(callHost, stopKey); err != nil {
+		return nil, 0, err
+	} else if found {
+		var v struct {
+			Reason string `json:"reason"`
+		}
+		_ = json.Unmarshal(val, &v)
+		list = append(list, skipped{strings.TrimPrefix(stopKey, "skip/"), cleanText(v.Reason, 200)})
+	}
 	after := ""
 	for total < maxSkipKeys {
 		keys, next, err := guest.BufferList(callHost, "skip/", after, listLimit)
@@ -136,7 +149,7 @@ func skippedEntries() (list []skipped, total int, err error) {
 		}
 		for _, k := range keys {
 			total++
-			if len(list) >= maxSkipped {
+			if k == stopKey || len(list) >= maxSkipped {
 				continue
 			}
 			val, found, err := guest.BufferGet(callHost, k)
