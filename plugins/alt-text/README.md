@@ -17,7 +17,7 @@ It does the job of the "auto image attributes" and AI alt-text plugins for WordP
    - **Images to check per run**: from 1 to 200, default 50.
    - **Only images without alt text**: on by default. Turn it off to also get suggestions for images that already have alt text.
 3. Open the plugin's runs and choose **Suggest alt text**. The run has no form fields of its own; the two settings above decide how many images it checks and which ones. Save the settings first, then start it.
-4. Confirm the provider hosts when the run starts, then wait. The run page shows how far it is and, at the end, the counts: images checked, suggestions, decorative images skipped, errors.
+4. When the run starts, tick the host of your provider: `api.openai.com`, `api.anthropic.com` or `generativelanguage.googleapis.com`. Only the OpenAI host is ticked for you; if yours is not ticked the run stops and names it. Then wait. The run page shows how far it is and, at the end, the counts: images checked, suggestions, decorative images skipped, errors.
 5. Review the staged changes and publish or discard them. Each suggestion is plain text, at most the length you set, without a lead such as "image of".
 
 Images the model judges purely decorative (a divider, a background pattern) are not given alt text. Their file names are kept in the summary stored with the run, not on the run page.

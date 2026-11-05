@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"hatamoto.dev/sdk"
@@ -44,6 +45,9 @@ type mediaPage struct {
 	Total int         `json:"total"`
 }
 
+// msgTick names the host the owner has to tick when starting the run.
+func msgTick(host string) string { return "Tick " + host + " when you start the run." }
+
 var errNoSiteURL = errors.New(msgNoSiteURL)
 
 // sendable are the image types the providers accept.
@@ -61,6 +65,15 @@ func fetchStep(st sdk.RunStep) error {
 		return guest.RunFail(callHost, msgNoKey)
 	}
 	limit := int(s.Limit)
+	if st.Cursor == "" {
+		info, err := guest.RunInfo(callHost)
+		if err != nil {
+			return err
+		}
+		if host := providerHosts[s.Provider]; host != "" && !slices.Contains(info.Hosts, host) {
+			return guest.RunFail(callHost, msgTick(host))
+		}
+	}
 	var cur fetchCursor
 	if st.Cursor != "" {
 		if json.Unmarshal([]byte(st.Cursor), &cur) != nil {
@@ -93,6 +106,10 @@ func fetchStep(st sdk.RunStep) error {
 			if errors.Is(err, errNoSiteURL) {
 				return guest.RunFail(callHost, msgNoSiteURL)
 			}
+			var re *runError
+			if errors.As(err, &re) {
+				return guest.RunFail(callHost, re.Reason)
+			}
 			if !sent {
 				continue
 			}
@@ -118,6 +135,10 @@ func suggest(s settings, it mediaItem, cur *fetchCursor) (sent bool, err error) 
 		return false, nil
 	}
 	answer, err := describe(s, imageURL, strings.ToLower(it.MimeType))
+	var re *runError
+	if errors.As(err, &re) {
+		return false, err
+	}
 	if err != nil {
 		cur.E++
 		return true, nil

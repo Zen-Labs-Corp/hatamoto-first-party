@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"hatamoto.dev/sdk"
 )
 
 const (
@@ -18,6 +20,19 @@ const (
 	visionTimeoutMS = 8000
 	maxAnswerTokens = 120
 )
+
+// providerHosts are the hosts the owner must tick when starting a run.
+var providerHosts = map[string]string{
+	providerOpenAI:    "api.openai.com",
+	providerAnthropic: "api.anthropic.com",
+	providerGemini:    "generativelanguage.googleapis.com",
+}
+
+// runError is a problem that affects every image: the run stops with Reason,
+// which never contains the key or a response body.
+type runError struct{ Reason string }
+
+func (e *runError) Error() string { return e.Reason }
 
 // defaultModels are used when the model setting is empty.
 var defaultModels = map[string]string{
@@ -206,6 +221,10 @@ func describe(s settings, imageURL, mime string) (string, error) {
 	if err := callHost("http.fetch", map[string]any{
 		"method": "POST", "url": endpoint, "headers": headers, "body": string(body), "timeout_ms": visionTimeoutMS,
 	}, &res); err != nil {
+		var he *sdk.HostError
+		if errors.As(err, &he) && he.Code == sdk.ErrBlocked {
+			return "", &runError{msgTick(providerHosts[s.Provider])}
+		}
 		return "", fmt.Errorf("%s request failed", s.Provider)
 	}
 	if res.Truncated {

@@ -29,6 +29,8 @@ type fakeHost struct {
 	t        *testing.T
 	settings map[string]any
 	media    []map[string]any
+	// hosts are the hosts ticked at the start of the run.
+	hosts []string
 	// listFilter drops items from a page after paging, as core does for
 	// media no public page uses.
 	listFilter func(m map[string]any) bool
@@ -55,6 +57,7 @@ func newFake(t *testing.T) *fakeHost {
 	f := &fakeHost{
 		t:        t,
 		settings: map[string]any{"provider": "openai", "api_key": testKey, "site_url": "https://example.com/"},
+		hosts:    []string{"api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com"},
 		buf:      map[string][]byte{},
 		stageErr: map[string]error{},
 		phase:    sdk.RunPhaseFetch,
@@ -100,7 +103,7 @@ func (f *fakeHost) call(fn string, args, out any) error {
 	case "settings.get":
 		return roundTrip(f.settings, out)
 	case "run.info":
-		return roundTrip(sdk.RunInfo{RunID: "r", Name: "suggest", Phase: f.phase, Cursor: f.cursor}, out)
+		return roundTrip(sdk.RunInfo{RunID: "r", Name: "suggest", Phase: f.phase, Cursor: f.cursor, Hosts: f.hosts}, out)
 	case "run.checkpoint":
 		f.cursor = str("cursor")
 		if len(f.cursor) > 4096 {

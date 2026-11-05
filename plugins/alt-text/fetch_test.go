@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"hatamoto.dev/sdk"
 )
 
 func (f *fakeHost) addImages(prefix string, n int, alt string) {
@@ -302,6 +304,45 @@ func TestFetchCursorStaysSmallAndKeyFree(t *testing.T) {
 	fetchPhase(t, f)
 	if len(f.cursor) > 200 {
 		t.Fatalf("cursor %d bytes", len(f.cursor))
+	}
+	f.noKeyLeak()
+}
+
+func TestFetchUntickedProviderHostFailsTheRun(t *testing.T) {
+	cases := map[string]string{
+		"anthropic": "api.anthropic.com",
+		"gemini":    "generativelanguage.googleapis.com",
+		"openai":    "api.openai.com",
+	}
+	for provider, host := range cases {
+		f := newFake(t)
+		f.settings["provider"] = provider
+		f.hosts = []string{"example.org"}
+		f.addImages("i", 3, "")
+		fetchPhase(t, f)
+		if !strings.Contains(f.failed, "Tick "+host) || len(f.requests) != 0 || f.count("media.list") != 0 {
+			t.Errorf("%s: failed=%q requests=%d", provider, f.failed, len(f.requests))
+		}
+	}
+	f := newFake(t)
+	f.settings["provider"] = "anthropic"
+	f.hosts = []string{"api.anthropic.com"}
+	f.addImages("i", 1, "")
+	fetchPhase(t, f)
+	if f.failed != "" || len(f.requests) != 1 {
+		t.Fatalf("ticked host: failed=%q requests=%d", f.failed, len(f.requests))
+	}
+}
+
+func TestFetchBlockedCallFailsTheRun(t *testing.T) {
+	f := newFake(t)
+	f.addImages("i", 3, "")
+	f.vision = func(visionReq) (fetched, error) {
+		return fetched{}, &sdk.HostError{Code: sdk.ErrBlocked, Message: "host not allowed " + testKey}
+	}
+	fetchPhase(t, f)
+	if !strings.Contains(f.failed, "Tick api.openai.com") || len(f.requests) != 1 {
+		t.Fatalf("failed=%q requests=%d", f.failed, len(f.requests))
 	}
 	f.noKeyLeak()
 }
