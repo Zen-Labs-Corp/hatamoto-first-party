@@ -21,22 +21,24 @@ const glossaryAttr = "data-hm-g"
 type htmlSegment struct {
 	text   string
 	markup bool
+	code   bool // script or style content
 }
 
 // scanHTML splits a fragment into text and markup segments by hand. A '<' that
 // does not start a tag, comment or declaration is plain text. The segments
-// concatenate back to the input.
+// concatenate back to the input. Every tag, comment and code block is a
+// segment of its own.
 func scanHTML(s string) []htmlSegment {
 	var segs []htmlSegment
-	add := func(t string, markup bool) {
+	add := func(t string, markup, code bool) {
 		if t == "" {
 			return
 		}
-		if n := len(segs); n > 0 && segs[n-1].markup == markup {
+		if n := len(segs); n > 0 && !markup && !segs[n-1].markup {
 			segs[n-1].text += t
 			return
 		}
-		segs = append(segs, htmlSegment{t, markup})
+		segs = append(segs, htmlSegment{t, markup, code})
 	}
 	for i := 0; i < len(s); {
 		if s[i] != '<' || !startsMarkup(s[i:]) {
@@ -44,13 +46,13 @@ func scanHTML(s string) []htmlSegment {
 			for j < len(s) && !(s[j] == '<' && startsMarkup(s[j:])) {
 				j++
 			}
-			add(s[i:j], false)
+			add(s[i:j], false, false)
 			i = j
 			continue
 		}
 		end := markupEnd(s, i)
 		tag := s[i:end]
-		add(tag, true)
+		add(tag, true, false)
 		i = end
 		if name := rawTextTag(tag); name != "" {
 			// script and style content is code, not prose.
@@ -58,7 +60,7 @@ func scanHTML(s string) []htmlSegment {
 			if j < 0 {
 				j = len(s) - i
 			}
-			add(s[i:i+j], true)
+			add(s[i:i+j], true, true)
 			i += j
 		}
 	}
