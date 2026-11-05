@@ -27,7 +27,7 @@ func slackBody(v view) []byte {
 	}
 	blocks := []any{map[string]any{
 		"type": "header",
-		"text": map[string]any{"type": "plain_text", "text": fit(v.Title, slackText, 150), "emoji": false},
+		"text": map[string]any{"type": "plain_text", "text": fit(v.Title, raw, 150), "emoji": false},
 	}}
 	for i := 0; i < len(v.Pairs); i += 10 {
 		var fields []any

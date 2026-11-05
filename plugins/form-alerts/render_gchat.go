@@ -40,7 +40,7 @@ func gchatBody(v view) []byte {
 	} else if v.ID != "" {
 		widgets = append(widgets, map[string]any{"textParagraph": map[string]any{"text": gchatText(idLine(v))}})
 	}
-	card := map[string]any{"header": map[string]any{"title": gchatText(v.Title)}}
+	card := map[string]any{"header": map[string]any{"title": v.Title}}
 	if len(widgets) > 0 {
 		card["sections"] = []any{map[string]any{"widgets": widgets}}
 	}

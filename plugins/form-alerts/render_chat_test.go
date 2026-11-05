@@ -164,3 +164,27 @@ func slackWithoutFields(doc any) any {
 	}
 	return map[string]any{"text": m["text"], "blocks": blocks}
 }
+
+func TestHeadersShowAmpersandsAsTyped(t *testing.T) {
+	v := buildView(submission{FormSlug: "a&b<c", ID: "1"}, cfg{})
+	var slack struct {
+		Blocks []struct{ Text struct{ Text string } } `json:"blocks"`
+	}
+	if err := json.Unmarshal(renderSlack(v), &slack); err != nil {
+		t.Fatal(err)
+	}
+	if got := slack.Blocks[0].Text.Text; got != "New submission on a&b<c" {
+		t.Errorf("slack header %q", got)
+	}
+	var gchat struct {
+		CardsV2 []struct {
+			Card struct{ Header struct{ Title string } }
+		} `json:"cardsV2"`
+	}
+	if err := json.Unmarshal(renderGChat(v), &gchat); err != nil {
+		t.Fatal(err)
+	}
+	if got := gchat.CardsV2[0].Card.Header.Title; got != "New submission on a&b<c" {
+		t.Errorf("gchat header %q", got)
+	}
+}
