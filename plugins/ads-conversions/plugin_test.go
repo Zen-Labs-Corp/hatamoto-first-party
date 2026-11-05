@@ -37,6 +37,8 @@ type fakeHost struct {
 	// failExec makes db.exec fail; panicOn makes the named call panic.
 	failExec bool
 	panicOn  string
+	// mailErr is returned by mail.send.
+	mailErr error
 	// query maps a SQL fragment to the jsonb cell db.query returns.
 	query map[string]string
 }
@@ -114,6 +116,15 @@ func (h *fakeHost) call(fn string, args, out any) error {
 		v, ok := h.kv[key]
 		res, _ := json.Marshal(map[string]any{"found": ok, "value": v})
 		return json.Unmarshal(res, out)
+	case "kv.set":
+		a := args.(map[string]any)
+		h.kv[a["key"].(string)] = a["value"]
+		return nil
+	case "kv.delete":
+		delete(h.kv, args.(map[string]string)["key"])
+		return nil
+	case "mail.send":
+		return h.mailErr
 	case "log":
 		return nil
 	}

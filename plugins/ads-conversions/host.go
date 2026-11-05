@@ -66,6 +66,20 @@ func kvGet(key string, out any) (found bool, err error) {
 	return true, nil
 }
 
+// kvSet stores a key without expiry (ttl 0) or with a lifetime in seconds.
+func kvSet(key string, value any, ttlSeconds int) error {
+	args := map[string]any{"key": key, "value": value}
+	if ttlSeconds > 0 {
+		args["ttl_seconds"] = ttlSeconds
+	}
+	return callHost("kv.set", args, nil)
+}
+
+// kvDelete removes a key; a missing key is not an error.
+func kvDelete(key string) error {
+	return callHost("kv.delete", map[string]string{"key": key}, nil)
+}
+
 // logf writes one log line. The host rate-limits logs, so its error is ignored.
 func logf(level, format string, a ...any) {
 	_ = callHost("log", map[string]string{"level": level, "message": fmt.Sprintf(format, a...)}, nil)
