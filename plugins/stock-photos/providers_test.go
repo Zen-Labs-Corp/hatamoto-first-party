@@ -311,3 +311,14 @@ func TestOpenverseRewritesLegacyFlickrHosts(t *testing.T) {
 		t.Fatalf("photos=%+v err=%v", photos, err)
 	}
 }
+
+func TestCleanTextKeepsJoiners(t *testing.T) {
+	persian := "می\u200Cخواهم"
+	family := "\U0001F468\u200D\U0001F469\u200D\U0001F467"
+	if got := cleanText(persian+" "+family, 50); got != persian+" "+family {
+		t.Errorf("got %q", got)
+	}
+	if got := cleanText("a\u200Bb\u2060c\uFEFFd\u202Ee\u2067f\u200Cg", 50); got != "abcde"+"f\u200Cg" {
+		t.Errorf("got %q", got)
+	}
+}

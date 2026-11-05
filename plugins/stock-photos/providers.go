@@ -336,12 +336,15 @@ func filenameFor(provider, id, rawURL, filetype string) string {
 }
 
 // cleanText drops control and invisible format characters (bidi overrides,
-// zero-width), collapses whitespace and cuts to max
+// zero-width) but keeps ZWNJ and ZWJ, collapses whitespace and cuts to max
 // runes.
 func cleanText(s string, max int) string {
 	s = strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) {
 			return ' '
+		}
+		if r == '\u200C' || r == '\u200D' { // joiners are meaningful (Persian, emoji)
+			return r
 		}
 		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Co, unicode.Cs) || r == utf8.RuneError {
 			return -1
