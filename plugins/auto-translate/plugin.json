@@ -1,7 +1,7 @@
 {
   "name": "auto-translate",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.18",
   "description": "Machine translation with DeepL or Google Cloud Translation: stages translated copies of your pages and posts for review, linked as translations.",
   "permissions": ["settings"],
   "limits": { "memory_pages": 256, "max_instances": 4 },
