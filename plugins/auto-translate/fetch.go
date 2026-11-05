@@ -179,7 +179,7 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 		if errors.Is(err, errBudget) {
 			// Too little step time is left for the provider: nothing was
 			// stored, so the next step starts this slice again.
-			return resumeAt(cur, fail)
+			return resumeAt(cur, next.L, fail)
 		}
 		if err != nil {
 			return fail(err)
@@ -214,7 +214,7 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 		return fail(fmt.Errorf("the run buffer refused the statistics: %w", hostReason(err)))
 	}
 
-	next.Seq, next.N = cur.Seq+stored, cur.N+1
+	next.Seq, next.N, next.R = cur.Seq+stored, cur.N+1, 0
 	cp, err := json.Marshal(next)
 	if err != nil || len(cp) > maxCheckpoint {
 		return failRun("the run cursor is too large")
@@ -234,8 +234,19 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 	return sdk.RunStepResult{}, nil
 }
 
-// resumeAt ends the step with the checkpoint it started from.
-func resumeAt(cur cursor, fail func(error) (sdk.RunStepResult, error)) (sdk.RunStepResult, error) {
+// maxIdleResumes is how many steps in a row may run out of time before the
+// provider call; the run fails after that instead of spinning until it expires.
+const maxIdleResumes = 3
+
+// resumeAt ends the step with the checkpoint it started from, keeping a list
+// limit shrunk in this step. It counts the step as idle and fails the run when
+// too many in a row made no progress.
+func resumeAt(cur cursor, limit int, fail func(error) (sdk.RunStepResult, error)) (sdk.RunStepResult, error) {
+	cur.R++
+	if cur.R >= maxIdleResumes {
+		return failRun("the site is too slow to read a batch within one step")
+	}
+	cur.L = limit
 	cp, err := json.Marshal(cur)
 	if err != nil {
 		return failRun("the run cursor could not be encoded")

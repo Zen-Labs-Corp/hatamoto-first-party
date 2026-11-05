@@ -437,12 +437,28 @@ func TestFetchResumesWhenTheStepBudgetIsUsedUp(t *testing.T) {
 	if len(w.failReasons) != 0 || w.fetches != 0 || w.finished || len(w.records()) != 0 {
 		t.Fatalf("fails=%v fetches=%d finished=%v", w.failReasons, w.fetches, w.finished)
 	}
-	if w.checkpoint != `{"c":"","i":0,"q":0,"n":0}` {
+	if w.checkpoint != `{"c":"","i":0,"q":0,"n":0,"r":1}` {
 		t.Fatalf("checkpoint %q", w.checkpoint)
 	}
 	slow = false
 	w.run()
 	if len(w.failReasons) != 0 || len(w.records()) != 1 {
 		t.Fatalf("fails=%v records=%d", w.failReasons, len(w.records()))
+	}
+}
+
+func TestFetchFailsAfterThreeStepsOutOfTime(t *testing.T) {
+	w := newRunWorld(t)
+	w.pages[""] = []entity{ent("a", "en", "", `{"content":"<p>x</p>"}`)}
+	w.onList = func() { budgetEnd = time.Now() }
+	for i := 0; i < 2; i++ {
+		w.step()
+		if len(w.failReasons) != 0 {
+			t.Fatalf("step %d failed early: %v", i+1, w.failReasons)
+		}
+	}
+	w.step()
+	if len(w.failReasons) != 1 || !strings.Contains(w.failReasons[0], "too slow") {
+		t.Fatalf("fails=%v", w.failReasons)
 	}
 }

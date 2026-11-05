@@ -51,6 +51,7 @@ type cursor struct {
 	Seq int    `json:"q"`
 	N   int    `json:"n"`           // steps done, names the step's stat record
 	L   int    `json:"l,omitempty"` // list page size, 0 = listLimit; shrinks when a page is too big
+	R   int    `json:"r,omitempty"` // consecutive steps that ran out of time without progress
 }
 
 type entity struct {
