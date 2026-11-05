@@ -1,0 +1,8 @@
+body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: var(--color-shiro); color: var(--color-sumi); }
+main { padding: 16px; max-width: 980px; }
+.muted { color: var(--color-hai); }
+form { display: grid; gap: 12px; max-width: 32rem; }
+label { display: grid; gap: 4px; }
+input[type=text], input[type=number], select { box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--color-nezumi); border-radius: 4px; background: var(--color-paper); color: inherit; }
+fieldset { border: 1px solid var(--color-kinu); display: flex; flex-wrap: wrap; gap: 4px 16px; }
+fieldset label { display: flex; gap: 6px; align-items: center; }

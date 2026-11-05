@@ -1,0 +1,324 @@
+package main
+
+import (
+	"encoding/base64"
+	"errors"
+	"net/url"
+	"strings"
+	"testing"
+	"unicode/utf8"
+
+	"hatamoto.dev/sdk"
+)
+
+const testKey = "k3y-secret-value"
+
+// fakeFetch installs a callHost answering http.fetch with a canned response
+// and returns the recorded request.
+func fakeFetch(t *testing.T, resp fetchResp, hostErr error) *fetchReq {
+	t.Helper()
+	var got fetchReq
+	callHost = func(fn string, args, out any) error {
+		if fn != "http.fetch" {
+			t.Fatalf("unexpected host call %q", fn)
+		}
+		got = args.(fetchReq)
+		if hostErr != nil {
+			return hostErr
+		}
+		*(out.(*fetchResp)) = resp
+		return nil
+	}
+	return &got
+}
+
+const pexelsBody = `{"page":1,"next_page":"https://api.pexels.com/v1/search?page=2","photos":[
+ {"id":123,"url":"https://www.pexels.com/photo/123/","photographer":"Ann Lee","alt":"A red barn","src":{"large2x":"https://images.pexels.com/photos/123/p.jpeg?w=1880","large":"https://images.pexels.com/photos/123/l.jpeg"}},
+ {"id":0,"photographer":"x","src":{}},
+ {"id":124,"url":"https://www.pexels.com/photo/124/","photographer":"Bob","alt":"","src":{"large":"https://images.pexels.com/photos/124/l.png"}}]}`
+
+func TestSearchPexels(t *testing.T) {
+	req := fakeFetch(t, fetchResp{Status: 200, Body: pexelsBody}, nil)
+	photos, more, raw, err := searchPexels(testKey, searchParams{Query: "red barn", Orientation: "landscape", Page: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(req.URL)
+	q := u.Query()
+	if u.Host != "api.pexels.com" || q.Get("query") != "red barn" || q.Get("per_page") != "30" || q.Get("page") != "2" || q.Get("orientation") != "landscape" {
+		t.Fatalf("url = %s", req.URL)
+	}
+	if req.Headers["Authorization"] != testKey {
+		t.Fatalf("headers = %v", req.Headers)
+	}
+	if !more || raw != 3 || len(photos) != 3 {
+		t.Fatalf("more=%v raw=%d len=%d", more, raw, len(photos))
+	}
+	p := photos[0]
+	if p.Skip || p.ID != "123" || p.Filename != "pexels-123.jpeg" || p.Alt != "A red barn" ||
+		p.Credit != "Photo by Ann Lee on Pexels (Pexels License) https://www.pexels.com/photo/123/" ||
+		p.Caption != "Ann Lee / Pexels" || !strings.Contains(p.ImageURL, "p.jpeg") {
+		t.Fatalf("photo = %+v", p)
+	}
+	if !photos[1].Skip {
+		t.Fatalf("incomplete result kept: %+v", photos[1])
+	}
+	if photos[2].Alt != "red barn" || photos[2].Filename != "pexels-124.png" {
+		t.Fatalf("fallback photo = %+v", photos[2])
+	}
+}
+
+func TestSearchPexelsAnyOrientationOmitted(t *testing.T) {
+	req := fakeFetch(t, fetchResp{Status: 200, Body: `{"photos":[]}`}, nil)
+	if _, _, _, err := searchPexels(testKey, searchParams{Query: "x", Orientation: "any", Page: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(req.URL, "orientation") {
+		t.Fatalf("url = %s", req.URL)
+	}
+}
+
+const openverseBody = `{"page":1,"page_count":3,"results":[
+ {"id":"00000000-0000-4000-8000-000000000001","title":"Lake Michigan","creator":"VV Nincic","url":"https://live.staticflickr.com/1/a_b.jpg","foreign_landing_url":"https://www.flickr.com/photos/1/2","license":"by","license_version":"2.0","source":"flickr","filetype":null},
+ {"id":"00000000-0000-4000-8000-000000000002","title":"NC one","creator":"c","url":"https://x.example/a.jpg","license":"by-nc","license_version":"2.0"},
+ {"id":"00000000-0000-4000-8000-000000000003","title":"ND one","creator":"c","url":"https://x.example/a.jpg","license":"by-nd","license_version":"2.0"},
+ {"id":"00000000-0000-4000-8000-000000000004","title":"NC SA","creator":"c","url":"https://x.example/a.jpg","license":"by-nc-sa","license_version":"2.0"},
+ {"id":"00000000-0000-4000-8000-000000000005","title":"","creator":"","url":"https://upload.wikimedia.org/x/y.png","foreign_landing_url":"https://commons.example/5","license":"by-sa","license_version":"4.0","provider":"wikimedia","filetype":"png"},
+ {"id":"00000000-0000-4000-8000-000000000006","title":"Zero","creator":"Z","url":"https://upload.wikimedia.org/x/z.webp","foreign_landing_url":"https://commons.example/6","license":"cc0","license_version":"1.0","source":"wikimedia"},
+ {"id":"00000000-0000-4000-8000-000000000007","title":"Mark","creator":"M","url":"https://upload.wikimedia.org/x/m.gif","foreign_landing_url":"https://commons.example/7","license":"pdm","license_version":"1.0","source":"wikimedia"},
+ {"id":"00000000-0000-4000-8000-000000000008","title":"Audio","creator":"c","url":"https://x.example/a.mp3","license":"by","license_version":"2.0","filetype":"mp3"},
+ {"id":"00000000-0000-4000-8000-000000000009","title":"No ext","creator":"c","url":"https://x.example/blob","license":"by","license_version":"2.0"}]}`
+
+func TestSearchOpenverse(t *testing.T) {
+	req := fakeFetch(t, fetchResp{Status: 200, Body: openverseBody}, nil)
+	photos, more, raw, err := searchOpenverse(searchParams{Query: "lake", Orientation: "portrait", Page: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(req.URL, "license_type=commercial,modification&source=flickr,wikimedia") || !strings.Contains(req.URL, "aspect_ratio=tall") ||
+		!strings.Contains(req.URL, "page_size=20") || !strings.HasPrefix(req.URL, "https://api.openverse.org/v1/images/?q=lake") {
+		t.Fatalf("url = %s", req.URL)
+	}
+	if len(req.Headers) != 0 {
+		t.Fatalf("anonymous request sent headers %v", req.Headers)
+	}
+	if !more || raw != 9 || len(photos) != 9 {
+		t.Fatalf("more=%v raw=%d len=%d", more, raw, len(photos))
+	}
+	// by-nc, by-nd, by-nc-sa, mp3 and extension-less results are dropped.
+	skipped := map[int]bool{1: true, 2: true, 3: true, 7: true, 8: true}
+	for i, p := range photos {
+		if p.Skip != skipped[i] {
+			t.Errorf("photo %d skip=%v (%q)", i, p.Skip, p.SkipReason)
+		}
+	}
+	want := map[int][4]string{ // file, alt, credit, caption
+		0: {"openverse-00000000-0000-4000-8000-000000000001.jpg", "Lake Michigan", "Lake Michigan by VV Nincic, CC BY 2.0, https://www.flickr.com/photos/1/2", "VV Nincic / flickr"},
+		4: {"openverse-00000000-0000-4000-8000-000000000005.png", "lake", "Untitled by unknown author, CC BY-SA 4.0, https://commons.example/5", "unknown author / wikimedia"},
+		5: {"openverse-00000000-0000-4000-8000-000000000006.webp", "Zero", "Zero by Z, CC0 1.0, https://commons.example/6", "Z / wikimedia"},
+		6: {"openverse-00000000-0000-4000-8000-000000000007.gif", "Mark", "Mark by M, Public Domain Mark 1.0, https://commons.example/7", "M / wikimedia"},
+	}
+	for i, w := range want {
+		p := photos[i]
+		if got := [4]string{p.Filename, p.Alt, p.Credit, p.Caption}; got != w {
+			t.Errorf("photo %d = %q, want %q", i, got, w)
+		}
+	}
+}
+
+func TestOpenverseLastPage(t *testing.T) {
+	fakeFetch(t, fetchResp{Status: 200, Body: `{"page":3,"page_count":3,"results":[]}`}, nil)
+	_, more, raw, err := searchOpenverse(searchParams{Query: "x", Page: 3})
+	if err != nil || more || raw != 0 {
+		t.Fatalf("more=%v raw=%d err=%v", more, raw, err)
+	}
+}
+
+func TestProviderFailures(t *testing.T) {
+	cases := []struct {
+		name string
+		resp fetchResp
+		kind string
+	}{
+		{"401", fetchResp{Status: 401}, "auth"},
+		{"403", fetchResp{Status: 403}, "auth"},
+		{"429", fetchResp{Status: 429}, "rate"},
+		{"500", fetchResp{Status: 500}, "status"},
+		{"truncated", fetchResp{Status: 200, Body: `{"photos":[`, Truncated: true}, "truncated"},
+		{"bad json", fetchResp{Status: 200, Body: `not json`}, "decode"},
+		{"bad b64", fetchResp{Status: 200, BodyB64: "!!!"}, "decode"},
+	}
+	for _, c := range cases {
+		fakeFetch(t, c.resp, nil)
+		_, _, _, err := searchPexels(testKey, searchParams{Query: "x", Page: 1})
+		var pe *providerError
+		if !errors.As(err, &pe) || pe.Kind != c.kind {
+			t.Errorf("%s: err = %v", c.name, err)
+			continue
+		}
+		if strings.Contains(err.Error(), testKey) {
+			t.Errorf("%s: key in error %q", c.name, err)
+		}
+	}
+	fakeFetch(t, fetchResp{Status: 403}, nil)
+	if _, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1}); err == nil || strings.Contains(err.Error(), "API key") {
+		t.Errorf("openverse 403 err = %v", err)
+	}
+}
+
+func TestMissingKey(t *testing.T) {
+	callHost = func(fn string, _, _ any) error { t.Fatalf("host call %q", fn); return nil }
+	_, _, _, err := searchPexels("", searchParams{Query: "x", Page: 1})
+	var pe *providerError
+	if !errors.As(err, &pe) || pe.Kind != "key" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestHostErrorPassesThrough(t *testing.T) {
+	fakeFetch(t, fetchResp{}, &sdk.HostError{Code: sdk.ErrBlocked, Message: "host not allowed"})
+	_, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+	if !errors.As(err, new(*sdk.HostError)) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestBodyB64(t *testing.T) {
+	fakeFetch(t, fetchResp{Status: 200, BodyB64: base64.StdEncoding.EncodeToString([]byte(`{"photos":[]}`))}, nil)
+	if _, _, _, err := searchPexels(testKey, searchParams{Query: "x", Page: 1}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFilenameFor(t *testing.T) {
+	cases := []struct{ provider, id, url, ft, want string }{
+		{"pexels", "1", "https://i.example/a.JPG?x=1", "", "pexels-1.jpg"},
+		{"openverse", "AB/c d", "https://i.example/a", "PNG", "openverse-ab-c-d.png"},
+		{"openverse", "1", "https://i.example/a.tiff", "", "openverse-1.jpg"},
+		{"openverse", "1", "https://i.example/a", ".webp", "openverse-1.webp"},
+	}
+	for _, c := range cases {
+		if got := filenameFor(c.provider, c.id, c.url, c.ft); got != c.want {
+			t.Errorf("filenameFor(%v) = %q, want %q", c, got, c.want)
+		}
+	}
+	if got := filenameFor("openverse", strings.Repeat("a", 300), "", "gif"); len(got) != maxName || !strings.HasSuffix(got, ".gif") {
+		t.Errorf("long name len=%d %q", len(got), got)
+	}
+}
+
+func TestCleanText(t *testing.T) {
+	if got := cleanText("  a\x00b\t\n c\u0007 ", 50); got != "ab c" {
+		t.Errorf("got %q", got)
+	}
+	if got := cleanText("héllo wörld", 5); got != "héllo" {
+		t.Errorf("got %q", got)
+	}
+	if got := cleanText(strings.Repeat("é", 600), maxAlt); len([]rune(got)) != maxAlt {
+		t.Errorf("rune len %d", len([]rune(got)))
+	}
+}
+
+func TestOpenverseSkipsKnownHugeOriginal(t *testing.T) {
+	fakeFetch(t, fetchResp{Status: 200, Body: `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"t","url":"https://live.staticflickr.com/a.jpg","license":"by","filesize":20000000}]}`}, nil)
+	photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+	if err != nil || len(photos) != 1 || !photos[0].Skip {
+		t.Fatalf("photos=%+v err=%v", photos, err)
+	}
+}
+
+func TestOpenverseCreditCutsTitleKeepsLicenceAndURL(t *testing.T) {
+	landing := "https://www.flickr.com/photos/someone/12345678901/"
+	body := `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"` + strings.Repeat("山", 190) +
+		`","creator":"` + strings.Repeat("作", 90) + `","url":"https://live.staticflickr.com/a.jpg","foreign_landing_url":"` + landing +
+		`","license":"by-sa","license_version":"2.0"}]}`
+	fakeFetch(t, fetchResp{Status: 200, Body: body}, nil)
+	photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+	if err != nil || len(photos) != 1 {
+		t.Fatalf("photos=%+v err=%v", photos, err)
+	}
+	c := photos[0].Credit
+	if len(c) > 500 || !utf8.ValidString(c) || !strings.HasSuffix(c, ", CC BY-SA 2.0, "+landing) {
+		t.Errorf("credit (%d bytes) = %q", len(c), c)
+	}
+	if len(photos[0].Alt) > 1024 || !utf8.ValidString(photos[0].Alt) {
+		t.Errorf("alt %d bytes", len(photos[0].Alt))
+	}
+}
+
+func TestCreditDropsLongOrCredentialedURL(t *testing.T) {
+	for _, u := range []string{"https://u:p@www.flickr.com/x", "https://www.flickr.com/" + strings.Repeat("a", 300)} {
+		if isCreditURL(u) {
+			t.Errorf("%q accepted", u)
+		}
+	}
+}
+
+func TestCutBytes(t *testing.T) {
+	if got := cutBytes("ééé", 5); got != "éé" {
+		t.Errorf("got %q", got)
+	}
+	if got := cutBytes("abc", 10); got != "abc" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestOpenverseLicenceAllowList(t *testing.T) {
+	for lic, ok := range map[string]bool{"cc0": true, "pdm": true, "by": true, "by-sa": true, "BY": true, "sampling+": false, "by-nc": false, "gpl": false, "": false} {
+		body := `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"t","url":"https://live.staticflickr.com/a.jpg","license":"` + lic + `"}]}`
+		fakeFetch(t, fetchResp{Status: 200, Body: body}, nil)
+		photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+		if err != nil || len(photos) != 1 || photos[0].Skip == ok {
+			t.Errorf("licence %q: skip=%v want %v (err %v)", lic, photos[0].Skip, !ok, err)
+		}
+	}
+}
+
+func TestCleanTextDropsFormatCharacters(t *testing.T) {
+	if got := cleanText("a\u202Eb\u200Bc\u2066d\uFEFFe", 50); got != "abcde" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestOpenverseSkipsIdThatIsNotAUUID(t *testing.T) {
+	for _, id := range []string{"abc", "../x", strings.Repeat("a", 300)} {
+		body := `{"page":1,"page_count":1,"results":[{"id":"` + id + `","title":"t","url":"https://live.staticflickr.com/a.jpg","license":"by"}]}`
+		fakeFetch(t, fetchResp{Status: 200, Body: body}, nil)
+		photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+		if err != nil || len(photos) != 1 || !photos[0].Skip {
+			t.Errorf("id %q: photos=%+v err=%v", id, photos, err)
+		}
+	}
+}
+
+func TestOpenverseRewritesLegacyFlickrHosts(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://farm4.staticflickr.com/3/123_abc_b.jpg?x=1": "https://live.staticflickr.com/3/123_abc_b.jpg?x=1",
+		"https://c2.staticflickr.com/9/8/1_s.jpg":            "https://live.staticflickr.com/9/8/1_s.jpg",
+		"https://live.staticflickr.com/3/1_s.jpg":            "https://live.staticflickr.com/3/1_s.jpg",
+		"http://farm4.staticflickr.com/3/1_s.jpg":            "http://farm4.staticflickr.com/3/1_s.jpg",
+		"https://farm.staticflickr.com/3/1_s.jpg":            "https://farm.staticflickr.com/3/1_s.jpg",
+		"https://evil.example/farm4.staticflickr.com/1.jpg":  "https://evil.example/farm4.staticflickr.com/1.jpg",
+		"https://farm4.staticflickr.com.evil.example/1.jpg":  "https://farm4.staticflickr.com.evil.example/1.jpg",
+	} {
+		if got := liveFlickrURL(in); got != want {
+			t.Errorf("liveFlickrURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	fakeFetch(t, fetchResp{Status: 200, Body: `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"t","url":"https://farm4.staticflickr.com/3/1_s.jpg","license":"by"}]}`}, nil)
+	photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+	if err != nil || len(photos) != 1 || photos[0].Skip || photos[0].ImageURL != "https://live.staticflickr.com/3/1_s.jpg" {
+		t.Fatalf("photos=%+v err=%v", photos, err)
+	}
+}
+
+func TestCleanTextKeepsJoiners(t *testing.T) {
+	persian := "می\u200Cخواهم"
+	family := "\U0001F468\u200D\U0001F469\u200D\U0001F467"
+	if got := cleanText(persian+" "+family, 50); got != persian+" "+family {
+		t.Errorf("got %q", got)
+	}
+	if got := cleanText("a\u200Bb\u2060c\uFEFFd\u202Ee\u2067f\u200Cg", 50); got != "abcde"+"f\u200Cg" {
+		t.Errorf("got %q", got)
+	}
+}
