@@ -17,12 +17,17 @@
     };
   };
   const note = document.querySelector("#runs-note");
+  const content = document.querySelector("#content");
   // The admin refuses the inputs where the page has no run form (the Settings
-  // tab); say where the form is instead of failing silently.
+  // tab); show only a pointer to the Runs tab there, not a dead form.
+  const show = (hasForm) => {
+    note.hidden = hasForm;
+    content.hidden = !hasForm;
+  };
   const push = () =>
     hatamoto.runInputs(read()).then(
-      () => { note.hidden = true; },
-      () => { note.hidden = false; },
+      () => show(true),
+      () => show(false),
     );
 
   form.addEventListener("input", push);

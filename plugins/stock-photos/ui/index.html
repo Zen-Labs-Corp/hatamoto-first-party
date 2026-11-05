@@ -8,8 +8,8 @@
 </head>
 <body>
   <main>
-    <h2>Stock photos</h2>
-    <p id="runs-note" class="muted" hidden>Open the Runs tab to start an import. This form works there.</p>
+    <p id="runs-note" class="muted" hidden>Open the Runs tab to start an import.</p>
+    <div id="content">
     <form id="form">
       <label>Query
         <input id="q" name="query" type="text" placeholder="mountain lake" autocomplete="off">
@@ -33,6 +33,7 @@
     </form>
     <p class="muted">Pexels needs an API key in the plugin Settings tab. Openverse: tick api.openverse.org and the image hosts you want (live.staticflickr.com for Flickr, upload.wikimedia.org for Wikimedia Commons) when you start the import.</p>
     <p class="muted">Photos are staged for review in a changeset. Nothing is published until you publish it.</p>
+    </div>
   </main>
   <script src="/plugin-ui/_sdk/bridge.js"></script>
   <script src="app.js"></script>
