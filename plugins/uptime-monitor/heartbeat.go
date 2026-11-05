@@ -7,7 +7,9 @@ import (
 )
 
 const (
-	heartbeatEvery     = time.Minute
+	// heartbeatEvery is a little under the 1m tick period, so tick jitter
+	// cannot make the ping skip a tick.
+	heartbeatEvery     = 50 * time.Second
 	heartbeatTimeoutMS = 3000
 	heartbeatKey       = "heartbeat_at"
 )

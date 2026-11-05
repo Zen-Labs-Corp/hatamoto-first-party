@@ -18,6 +18,11 @@ const (
 	// that says nothing about the site, so the tick ends instead.
 	minRequestMS = 2000
 
+	// dueSlack: the host's ticker fires every period, but a check ends some
+	// seconds after its tick began and next_check is set from that end. Without
+	// slack a 1m monitor would miss every second tick.
+	dueSlack = 30 * time.Second
+
 	cursorKey = "check_cursor"
 )
 
@@ -33,7 +38,7 @@ func checkTick() {
 	start := now()
 	deadline := start.Add(tickBudget)
 	st := loadSettings()
-	due, err := dueMonitors(start)
+	due, err := dueMonitors(start.Add(dueSlack))
 	if err != nil {
 		logf("warn", "uptime-monitor: monitors unavailable code=%s", hostErrCode(err))
 		return

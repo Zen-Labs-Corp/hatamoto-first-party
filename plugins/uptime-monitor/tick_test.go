@@ -310,3 +310,36 @@ func TestTickDownMonitorQueuesOneMailAtTheThreshold(t *testing.T) {
 		t.Fatalf("queued %d %+v", queued, h.monitors[1])
 	}
 }
+
+func TestTickRunsEveryMinuteMonitorOnEveryTickDespiteCheckTime(t *testing.T) {
+	h := newTickHost(t, 6)
+	for id := int64(1); id <= 5; id++ {
+		h.monitors[id].IntervalS = 60
+	}
+	h.monitors[1].IsSite = true
+	h.takes = 700 * time.Millisecond // monitors finish in different seconds
+	start := h.clock
+	checkTick()
+	h.checks = nil
+	h.takes = 100 * time.Millisecond // so the heartbeat times differ by tick
+	h.clock = start.Add(time.Minute)
+	checkTick()
+	if fmt.Sprint(h.checks) != "[1 2 3 4 5]" {
+		t.Fatalf("second tick checked %v", h.checks)
+	}
+	if h.heartbeats() != 2 {
+		t.Fatalf("%d heartbeats in two ticks", h.heartbeats())
+	}
+	for i := 2; i <= 5; i++ {
+		h.checks = nil
+		h.clock = start.Add(time.Duration(i) * time.Minute)
+		checkTick()
+		want := "[1 2 3 4 5]"
+		if i == 5 {
+			want = "[1 2 3 4 5 6]" // the 5m monitor is due on the fifth minute
+		}
+		if fmt.Sprint(h.checks) != want {
+			t.Fatalf("tick %d checked %v, want %s", i, h.checks, want)
+		}
+	}
+}
