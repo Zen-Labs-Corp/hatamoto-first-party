@@ -24,7 +24,7 @@
         "title": "Scheduling link",
         "description": "Your public https link on cal.com or calendly.com, for example https://cal.com/your-name/30min. Leave empty to show nothing.",
         "maxLength": 500,
-        "pattern": "^$|^https://(cal\\.com|([a-z0-9-]+\\.)+cal\\.com|calendly\\.com)/.+$"
+        "pattern": "^$|^https://(cal\\.com|([a-z0-9-]+\\.)+cal\\.com|calendly\\.com)/\\S+$"
       },
       "button_label": {
         "type": "string",

@@ -304,6 +304,7 @@ func TestSchemaPatternMatchesValidLink(t *testing.T) {
 		"": true, calLink: true, calendlyLink: true, "https://app.cal.com/x": true,
 		"http://cal.com/x": false, "https://evil-cal.com/x": false, "https://cal.com.evil.com/x": false,
 		"javascript:alert(1)": false,
+		"https://cal.com/a b": false, "https://cal.com/a\tb": false, "https://cal.com/x ": false,
 	} {
 		if re.MatchString(link) != want {
 			t.Errorf("pattern on %q = %v, want %v", link, !want, want)

@@ -68,6 +68,10 @@ func TestValidLink(t *testing.T) {
 		"https:cal.com/x":                    false,
 		"https://calendly.com.evil.com/x":    false,
 		"https://www.calendly.com/x":         false,
+		"  https://cal.com/acme/30min \n":    true,
+		"https://cal.com/acme/ 30min":        false,
+		"https://cal.com/acme\t30min":        false,
+		"   ":                                false,
 		long:                                 false,
 		"":                                   false,
 	} {

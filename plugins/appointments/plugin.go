@@ -98,11 +98,12 @@ func arg(args []json.RawMessage, i int) string {
 	return str(args[i])
 }
 
-// validLink accepts only an https link on cal.com, a subdomain of cal.com or
-// calendly.com, with a non-empty path, no userinfo, no port and no control
-// characters. It returns the URL rebuilt from its parsed parts (no fragment)
+// validLink trims surrounding whitespace, then accepts only an https link on
+// cal.com, a subdomain of cal.com or calendly.com, with a non-empty path, no
+// userinfo, no port and no control characters. It returns the URL rebuilt from its parsed parts (no fragment)
 // and the provider, never the raw input.
 func validLink(raw string) (*url.URL, string, bool) {
+	raw = strings.TrimSpace(raw)
 	if raw == "" || len(raw) > maxLink || strings.ContainsAny(raw, `\ `) {
 		return nil, "", false
 	}
