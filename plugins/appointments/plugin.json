@@ -1,0 +1,19 @@
+{
+  "name": "appointments",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Booking from Cal.com or Calendly: an embedded scheduler section and a booking button that use your scheduling link.",
+  "permissions": ["settings"],
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "title": "Greeting",
+        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
+        "maxLength": 64
+      }
+    }
+  }
+}
