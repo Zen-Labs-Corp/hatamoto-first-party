@@ -18,7 +18,7 @@ const (
 // core's slug alphabet keeps. Core drops everything outside [a-z0-9-] when a
 // copy is published, so a letter left as is would vanish from the live URL.
 var latinFold = strings.NewReplacer(
-	"ß", "ss", "æ", "ae", "œ", "oe", "ø", "o", "đ", "d", "ð", "d", "þ", "th", "ł", "l", "ı", "i",
+	"ß", "ss", "æ", "ae", "œ", "oe", "ø", "o", "đ", "d", "ð", "d", "þ", "th", "ł", "l", "ı", "i", "i\u0307", "i",
 	"à", "a", "á", "a", "â", "a", "ã", "a", "ä", "a", "å", "a", "ā", "a", "ă", "a", "ą", "a",
 	"ç", "c", "ć", "c", "ĉ", "c", "ċ", "c", "č", "c", "ď", "d",
 	"è", "e", "é", "e", "ê", "e", "ë", "e", "ē", "e", "ĕ", "e", "ė", "e", "ę", "e", "ě", "e",
@@ -35,7 +35,9 @@ var latinFold = strings.NewReplacer(
 // slugify builds a slug in core's alphabet: it lower-cases s, folds Latin
 // diacritics to ASCII, keeps only a-z, 0-9 and hyphens, and turns every other
 // run of characters into one hyphen. Letters of other scripts are not kept, so
-// the result can be empty. It has no leading or trailing hyphen and is at most
+// the result can be empty. A word with a letter the fold does not know (for
+// example Vietnamese ớ) is not kept in part either: the whole result is empty,
+// so the caller falls back to the source slug. It has no leading or trailing hyphen and is at most
 // 200 bytes.
 func slugify(s string) string {
 	var b strings.Builder
@@ -44,6 +46,10 @@ func slugify(s string) string {
 		if r < unicode.MaxASCII && (unicode.IsLower(r) || unicode.IsDigit(r)) {
 			b.WriteRune(r)
 			dash = false
+		} else if unicode.Is(unicode.Mn, r) {
+			continue // a combining mark of decomposed input
+		} else if unicode.IsLetter(r) {
+			return ""
 		} else if !dash {
 			b.WriteByte('-')
 			dash = true

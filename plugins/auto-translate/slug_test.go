@@ -43,10 +43,22 @@ func TestSlugify(t *testing.T) {
 		"!!!":              "",
 		"Straße 2":         "strasse-2",
 		"ÄÖÜ":              "aou",
+		"Giới thiệu":       "",
+		"İletişim":         "iletisim",
+		"Cafe\u0301":       "cafe",
 	} {
 		if got := slugify(in); got != want {
 			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestSlugBaseFallsBackOnUnmappedLetters(t *testing.T) {
+	if got := slugBase("Giới thiệu", "about-us"); got != "about-us" {
+		t.Fatalf("got %q", got)
+	}
+	if got := slugBase("İletişim", "contact"); got != "iletisim" {
+		t.Fatalf("got %q", got)
 	}
 }
 
