@@ -260,10 +260,10 @@ func monitorViews(at time.Time, monitors []monitor, stats []checkStats, daily []
 		v.Bar = uptimeBar(cells)
 
 		if u, err := url.Parse(m.URL); err == nil && u.Scheme == "https" {
-			if c, ok := certOf[strings.ToLower(u.Hostname())]; ok && c.NotAfter != nil {
+			if c, ok := certOf[strings.ToLower(u.Hostname())]; ok && c.NotAfter != nil && c.LookupError == "" {
 				d := int(math.Floor(c.NotAfter.Sub(at).Hours() / 24))
 				v.CertDaysLeft = &d
-			} else if ok && c.LookupError != "" {
+			} else if ok && c.LookupError != "" { // a failed lookup: any cached date may be old
 				v.CertUnknown = true
 			}
 		}

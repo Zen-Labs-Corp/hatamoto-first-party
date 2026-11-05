@@ -203,9 +203,10 @@ func TestCheckInternalIsOneCause(t *testing.T) {
 }
 
 func TestCheckStaleCertificateRowDoesNotUpgradeInternal(t *testing.T) {
-	// Looked up more than 24 h ago: the certificate may have been renewed since.
+	// The last lookup failed, even if only an hour ago: the certificate may
+	// have been renewed since.
 	checkHost(t, []answer{{err: hostErr(sdk.ErrInternal, "internal error")}},
-		`[{"host":"example.org","not_after":"2026-01-20T08:30:00+00:00","looked_up_at":"2026-01-31T11:00:00+00:00","lookup_error":"unknown"}]`)
+		`[{"host":"example.org","not_after":"2026-01-20T08:30:00+00:00","looked_up_at":"2026-02-01T11:00:00+00:00","lookup_error":"unknown"}]`)
 	m := site
 	m.URL = "https://example.org/"
 	if r := checkMonitor(m, 8000); r.Cause != causeConnect {

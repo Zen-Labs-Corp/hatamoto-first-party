@@ -200,7 +200,7 @@ func TestOverviewShapeAndNoHeartbeatURL(t *testing.T) {
 		{"monitor_id":2,"n24":10,"up24":9,"n30":10,"up30":9,"n_today":0,"up_today":0,"avg_ms":null}]`
 	h.daily = `[{"monitor_id":1,"day":"2026-03-09","pct":99.5},{"monitor_id":1,"day":"2026-01-01","pct":100}]`
 	h.certs = `[{"host":"example.org","not_after":"2026-05-04T00:00:00Z","issuer":"CN=X","looked_up_at":"2026-03-10T00:00:00Z","lookup_error":"","warned":[]},
-		{"host":"shop.example.org","not_after":null,"issuer":"","looked_up_at":"2026-03-10T00:00:00Z","lookup_error":"unknown","warned":[]}]`
+		{"host":"shop.example.org","not_after":"2026-01-01T00:00:00Z","issuer":"","looked_up_at":"2026-03-10T00:00:00Z","lookup_error":"unknown","warned":[]}]`
 	h.incident = `[{"id":7,"monitor_id":2,"name":"Shop","started_at":"2026-03-10T11:48:00Z","ended_at":null,"cause":"HTTP 503"}]`
 	h.f.calls = nil
 
