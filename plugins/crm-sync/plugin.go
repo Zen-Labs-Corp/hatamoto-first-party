@@ -9,6 +9,7 @@ package main
 import (
 	"time"
 
+	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
 
@@ -31,6 +32,7 @@ const (
 )
 
 func init() {
+	guest.OnAction(sdk.FormSubmitted, onFormSubmitted)
 	guest.OnCron("deliver", onDeliver)
 	guest.OnCron("retry", onRetry)
 	guest.OnCron("refresh", onRefresh)
