@@ -67,6 +67,39 @@ function fillChannels(channels) {
   }
 }
 
+// unknownNames returns the configured names that are not in known, trimmed
+// and without blanks or repeats. Names match exactly, as the plugin does.
+function unknownNames(configured, known) {
+  const out = [];
+  for (const raw of configured) {
+    const name = raw.trim();
+    if (name && !known.has(name) && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+// settingWarnings lists the form slugs and field keys in the settings that
+// match no form or field, which would silently send nothing or less. It says
+// nothing when the form list could not be read.
+function settingWarnings(s, forms) {
+  if (!forms.length) return [];
+  const slugs = new Set(forms.map((f) => f.slug));
+  const chosen = forms.filter((f) => !s.forms.length || s.forms.some((n) => n.trim() === f.slug));
+  const keys = new Set(chosen.flatMap((f) => f.fields || []));
+  return [
+    ...unknownNames(s.forms, slugs).map((n) => `Unknown form "${n}": no form has this slug, so it sends no alerts.`),
+    ...unknownNames(s.fields, keys).map((n) => `Unknown field "${n}": no chosen form has this field, so it is left out of messages.`),
+  ];
+}
+
+function fillWarnings(s, forms) {
+  const box = $("#warnings");
+  box.replaceChildren();
+  const list = settingWarnings(s, forms);
+  for (const w of list) box.append(el("li", { textContent: w }));
+  box.hidden = list.length === 0;
+}
+
 function fillSettings(s) {
   const dl = $("#settings");
   dl.replaceChildren();
@@ -121,6 +154,7 @@ async function load() {
   const data = await api("GET", "/log");
   fillChannels(data.channels || {});
   fillSettings(data.settings);
+  fillWarnings(data.settings, data.forms || []);
   fillPreview(data.preview);
   fillLog(data.rows || []);
 }

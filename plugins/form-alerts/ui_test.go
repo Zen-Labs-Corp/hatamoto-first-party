@@ -103,3 +103,9 @@ func TestUICallsTheAdminSuggestionAGuess(t *testing.T) {
 		t.Error("the suggestion must not read as the answer")
 	}
 }
+
+func TestUIWarnsAboutUnknownFormsAndFields(t *testing.T) {
+	if !strings.Contains(readUI(t, "index.html"), `id="warnings"`) || !strings.Contains(readUI(t, "app.js"), "fillWarnings(data.settings, data.forms") {
+		t.Fatal("the page must show the settings warnings")
+	}
+}
