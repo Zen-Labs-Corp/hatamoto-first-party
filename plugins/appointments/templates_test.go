@@ -241,7 +241,7 @@ func TestParsesWithOnlyManifestFuncs(t *testing.T) {
 
 func TestManifest(t *testing.T) {
 	m := readManifest(t)
-	if m.Name != "appointments" || m.Version != "0.1.0" {
+	if m.Name != "appointments" || m.Version != "0.1.1" {
 		t.Errorf("name/version = %q %q", m.Name, m.Version)
 	}
 	gomod := regexp.MustCompile(`hatamoto\.dev/sdk v(\d+)\.(\d+)\.\d+`).FindStringSubmatch(readFile(t, "go.mod"))
