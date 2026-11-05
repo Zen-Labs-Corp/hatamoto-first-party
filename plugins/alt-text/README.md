@@ -44,7 +44,8 @@ From the repository root: `scripts/build-plugin.sh plugins/alt-text`. It builds 
 
 ## Limits
 
-- Only images that a public page uses are reachable (the rule for media reads while a run fetches). Library files no page uses are not checked.
+- Only images that a public page uses are reachable (the rule for media reads while a run fetches). Library files no page uses are never checked, however high you set the limit.
+- The plugin remembers nothing between runs. Images that stay decorative, and images that fail, still have no alt text, so the next run checks them again, newest first, and they count toward **Images to check per run**. Raise that setting (up to 200) to get past them.
 - A provider must be able to open the image link, so images behind a login or on a private network fail. Gemini may refuse some links; those images are counted as errors.
 - One vision call per step and at most 200 images per run.
 - Only JPEG, PNG, GIF and WebP are sent. SVG and other formats are skipped.
