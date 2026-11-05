@@ -12,5 +12,11 @@ import (
 //go:wasmexport on_form_submitted
 func onFormSubmittedExport() int32 { return guest.Run(sdk.FormSubmitted.Export()) }
 
+//go:wasmexport http_handle
+func httpHandle() int32 { return guest.Run(guest.HTTPExport) }
+
+//go:wasmexport on_cron_refresh
+func onCronRefresh() int32 { return guest.Run(guest.CronExport("refresh")) }
+
 // main is never called: a c-shared wasm module is a reactor.
 func main() {}
