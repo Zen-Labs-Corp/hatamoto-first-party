@@ -122,6 +122,7 @@ func upsertFor(r record, locale, siteLocale, slug, parentKey string) (sdk.Entity
 	for k, v := range map[string]string{
 		"content": r.T.Content, "excerpt": r.T.Excerpt, "description": r.T.Description,
 		"meta_title": r.T.MetaTitle, "meta_description": r.T.MetaDescription,
+		"og_title": r.T.OGTitle, "og_description": r.T.OGDescription,
 	} {
 		if v != "" {
 			b, _ := json.Marshal(v)

@@ -251,3 +251,36 @@ func TestFillTreatsExcerptAndDescriptionAsPlainText(t *testing.T) {
 		t.Fatalf("excerpt %q description %q", r.T.Excerpt, r.T.Description)
 	}
 }
+
+// The copy is its own canonical page, and its social texts are translated.
+func TestFillDropsCanonicalAndTranslatesOpenGraphTexts(t *testing.T) {
+	e := entity{ID: "i", Name: "N", Locale: "en", Attributes: map[string]json.RawMessage{
+		"canonical_url":  mustJSON("https://example.com/en/about"),
+		"og_title":       mustJSON("Social <b>title</b>"),
+		"og_description": mustJSON("Social text"),
+		"og_image":       rawJSON(`"img-1"`),
+		"no_index":       rawJSON(`true`),
+	}}
+	texts, slots := unitFor(e, nil)
+	out := append([]string(nil), texts...)
+	out[1] = "Titre &amp; co"
+	r, _ := fill(e, out, slots, nil)
+	if r.T.OGTitle != "Titre & co" || r.T.OGDescription != "Social text" {
+		t.Fatalf("og %q %q", r.T.OGTitle, r.T.OGDescription)
+	}
+	if _, ok := r.Attributes["canonical_url"]; ok {
+		t.Fatal("canonical_url copied")
+	}
+	if string(r.Attributes["og_image"]) != `"img-1"` || string(r.Attributes["no_index"]) != "true" || len(r.Attributes) != 2 {
+		t.Fatalf("attributes %v", r.Attributes)
+	}
+	up, err := upsertFor(r, "de", "de", "s", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attrs map[string]string
+	_ = json.Unmarshal(up.Attributes, &attrs)
+	if attrs["og_title"] != "Titre & co" || attrs["og_description"] != "Social text" || attrs["canonical_url"] != "" {
+		t.Fatalf("attributes %v", attrs)
+	}
+}

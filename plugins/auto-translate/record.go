@@ -25,6 +25,8 @@ type translated struct {
 	Description     string `json:"description,omitempty"`
 	MetaTitle       string `json:"meta_title,omitempty"`
 	MetaDescription string `json:"meta_description,omitempty"`
+	OGTitle         string `json:"og_title,omitempty"`
+	OGDescription   string `json:"og_description,omitempty"`
 }
 
 // record is what the fetch phase stores per entity for the transform phase.
@@ -46,7 +48,7 @@ type record struct {
 
 // slot says what one text sent to the provider is.
 type slot struct {
-	field string // name, slug, content, excerpt, description, meta_title, meta_description
+	field string // name, slug or one of attrFields
 	plain bool   // plain text (sent escaped, tags stripped and unescaped on return)
 	n     int    // glossary terms wrapped in it
 }
@@ -58,8 +60,12 @@ var attrFields = []struct {
 	plain bool
 }{
 	{"content", false}, {"excerpt", true}, {"description", true},
-	{"meta_title", true}, {"meta_description", true},
+	{"meta_title", true}, {"meta_description", true}, {"og_title", true}, {"og_description", true},
 }
+
+// droppedAttrs are not copied: the copy would point at the source page.
+// Without a canonical URL a page is its own canonical.
+var droppedAttrs = map[string]bool{"canonical_url": true}
 
 // jsonString decodes a raw attribute that is a JSON string. Absent values,
 // null and other types are not strings.
@@ -111,7 +117,7 @@ func fill(e entity, out []string, slots []slot, g []glossaryEntry) (record, int)
 		}
 	}
 	for k, v := range e.Attributes {
-		if !translatedKeys[k] {
+		if !translatedKeys[k] && !droppedAttrs[k] {
 			r.Attributes[k] = v
 		}
 	}
@@ -141,6 +147,10 @@ func fill(e entity, out []string, slots []slot, g []glossaryEntry) (record, int)
 			r.T.MetaTitle = strings.TrimSpace(text)
 		case "meta_description":
 			r.T.MetaDescription = strings.TrimSpace(text)
+		case "og_title":
+			r.T.OGTitle = strings.TrimSpace(text)
+		case "og_description":
+			r.T.OGDescription = strings.TrimSpace(text)
 		}
 	}
 	if r.T.Name == "" {
