@@ -170,3 +170,12 @@ func providerHost(s settings, hosts []string) (string, error) {
 type translator interface {
 	translate(texts []string, target, source string) ([]string, error)
 }
+
+// newTranslator returns the client for the configured provider. host is the
+// DeepL API host from providerHost.
+func newTranslator(s settings, host string) translator {
+	if s.Provider == providerGoogle {
+		return google{s.APIKey}
+	}
+	return deepl{s.APIKey, host, s.Formality}
+}
