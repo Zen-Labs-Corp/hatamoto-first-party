@@ -343,3 +343,43 @@ func TestTickRunsEveryMinuteMonitorOnEveryTickDespiteCheckTime(t *testing.T) {
 		}
 	}
 }
+
+func TestTickPingsTheHeartbeatBeforeMailAndSkipsMailWithoutTime(t *testing.T) {
+	h := newTickHost(t, 1)
+	h.monitors[1].IsSite = true
+	var order []string
+	newFakeHost(t, func(c call, out any) error {
+		switch {
+		case c.Fn == "http.fetch" && c.Args["url"] == heartbeatSecret:
+			order = append(order, "heartbeat")
+		case strings.Contains(c.sql(), "DELETE FROM outbox"):
+			order = append(order, "mail")
+		}
+		return h.reply(c, out)
+	})
+	checkTick()
+	if fmt.Sprint(order) != "[heartbeat mail]" {
+		t.Fatalf("order %v", order)
+	}
+
+	// The site's check leaves 1.7 s of the 8 s budget: too little for mail, and
+	// the heartbeat still fits.
+	h = newTickHost(t, 1)
+	h.monitors[1].IsSite = true
+	h.takes = 6300 * time.Millisecond
+	order = nil
+	newFakeHost(t, func(c call, out any) error {
+		switch {
+		case c.Fn == "http.fetch" && c.Args["url"] == heartbeatSecret:
+			order = append(order, "heartbeat")
+		case strings.Contains(c.sql(), "DELETE FROM outbox"), c.Fn == "mail.send":
+			order = append(order, "mail")
+		}
+		return h.reply(c, out)
+	})
+	start := h.clock
+	checkTick()
+	if fmt.Sprint(order) != "[heartbeat]" || h.clock.Sub(start) > tickBudget {
+		t.Fatalf("order %v, tick took %v", order, h.clock.Sub(start))
+	}
+}

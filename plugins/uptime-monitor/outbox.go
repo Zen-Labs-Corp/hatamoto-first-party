@@ -12,6 +12,9 @@ const (
 	mailMaxAge    = 24 * time.Hour
 	mailWindowKey = "mail_window"
 	outboxBatch   = 50
+	// mailMinRemaining is the budget a send needs: mail.send has no timeout of
+	// its own and the hook is killed at 10 s, 2 s after the 8 s budget ends.
+	mailMinRemaining = 2 * time.Second
 	// outboxClaimFor: a run that died while sending frees its mail after this.
 	outboxClaimFor = 2 * time.Minute
 )
@@ -96,7 +99,8 @@ func sendWindowed(to []string, subject, body string) (sendOutcome, error) {
 	return sentOK, nil
 }
 
-// flushOutbox sends queued mail, oldest first, until deadline. Mail older than
+// flushOutbox sends queued mail, oldest first, while at least
+// mailMinRemaining is left before deadline. Mail older than
 // 24 hours is dropped. A row that does not fit the minute's window waits; a
 // rate limit or missing mail service stops the run and keeps every row.
 func flushOutbox(deadline time.Time) error {
@@ -110,7 +114,7 @@ func flushOutbox(deadline time.Time) error {
 		return err
 	}
 	for _, row := range rows {
-		if !now().Before(deadline) {
+		if deadline.Sub(now()) < mailMinRemaining {
 			return nil
 		}
 		// Another run may be sending the same mail: send only what this run claims.

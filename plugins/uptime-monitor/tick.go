@@ -66,11 +66,16 @@ func checkTick() {
 		}
 	}
 
-	if err := flushOutbox(deadline); err != nil {
-		logf("warn", "uptime-monitor: mail queue failed code=%s", hostErrCode(err))
-	}
+	// The heartbeat has a bounded timeout and is the owner's dead-man signal:
+	// it goes first. Mail only starts with time to spare (see flushOutbox).
 	if site != nil {
 		maybeHeartbeat(*site, siteResult, st, deadline.Sub(now()))
+	}
+	if deadline.Sub(now()) < mailMinRemaining {
+		return
+	}
+	if err := flushOutbox(deadline); err != nil {
+		logf("warn", "uptime-monitor: mail queue failed code=%s", hostErrCode(err))
 	}
 }
 

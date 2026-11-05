@@ -305,3 +305,29 @@ func TestFlushReleasesAClaimItDoesNotUseAndTakesOverAStaleOne(t *testing.T) {
 		t.Fatalf("stale claim not taken over: %v rows %v", err, h.rows)
 	}
 }
+
+func TestFlushStartsASendOnlyWithTwoSecondsLeft(t *testing.T) {
+	clock := setNow(t, "2026-02-01T12:00:00Z")
+	h, f := newMailHost(t)
+	h.add(1, 0, 1)
+	if err := flushOutbox(clock.Add(mailMinRemaining - time.Millisecond)); err != nil || f.count("mail.send") != 0 {
+		t.Fatalf("a send started with under 2 s left: %v", err)
+	}
+	if err := flushOutbox(clock.Add(mailMinRemaining)); err != nil || f.count("mail.send") != 1 {
+		t.Fatalf("no send with 2 s left: %v", err)
+	}
+}
+
+func TestFlushStopsStartingSendsAsTheBudgetRunsDown(t *testing.T) {
+	at := setNow(t, "2026-02-01T12:00:00Z")
+	h, f := newMailHost(t)
+	now = func() time.Time { return at }
+	h.onSend = func() { at = at.Add(1200 * time.Millisecond) } // a slow send
+	for i := range 4 {
+		h.rows = append(h.rows, outboxRow{ID: int64(i + 1), CreatedAt: at, Subject: "m", Body: "b", Recipients: []string{"a@example.org"}})
+	}
+	// 4 s left: starts at 4.0 and 2.8 s left, not at 1.6 s.
+	if err := flushOutbox(at.Add(4 * time.Second)); err != nil || f.count("mail.send") != 2 || len(h.rows) != 2 {
+		t.Fatalf("sends %d rows %d", f.count("mail.send"), len(h.rows))
+	}
+}
