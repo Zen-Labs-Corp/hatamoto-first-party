@@ -9,6 +9,10 @@ import (
 // <!here>, <@user> and <url|label> in submitted text.
 var slackEsc = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 
+// raw leaves text as it is, for plain_text fields: Slack reads no markup or
+// entities there, so submitted bold, emoji and mentions stay literal.
+func raw(s string) string { return s }
+
 func slackText(s string) string { return slackEsc.Replace(s) }
 
 // renderSlack builds an incoming-webhook body: Block Kit plus a plain text
@@ -29,8 +33,9 @@ func slackBody(v view) []byte {
 		var fields []any
 		for _, p := range v.Pairs[i:min(i+10, len(v.Pairs))] {
 			fields = append(fields, map[string]any{
-				"type": "mrkdwn",
-				"text": "*" + fit(p.Key, slackText, 200) + "*\n" + fit(p.Val, slackText, 1700),
+				"type":  "plain_text",
+				"text":  fit(p.Key, raw, 200) + "\n" + fit(p.Val, raw, 1700),
+				"emoji": false,
 			})
 		}
 		blocks = append(blocks, map[string]any{"type": "section", "fields": fields})

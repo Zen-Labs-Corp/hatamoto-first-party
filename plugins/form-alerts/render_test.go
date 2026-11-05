@@ -98,9 +98,9 @@ func TestBuildViewNonStringValuesAndOrder(t *testing.T) {
 const slackGolden = `{"text":"New submission on contact (#42)","mrkdwn":false,"blocks":[
  {"type":"header","text":{"type":"plain_text","text":"New submission on contact","emoji":false}},
  {"type":"section","fields":[
-  {"type":"mrkdwn","text":"*name*\nAna"},
-  {"type":"mrkdwn","text":"*email*\nana@example.com"},
-  {"type":"mrkdwn","text":"*message*\nHi, can you call me"}]},
+  {"type":"plain_text","text":"name\nAna","emoji":false},
+  {"type":"plain_text","text":"email\nana@example.com","emoji":false},
+  {"type":"plain_text","text":"message\nHi, can you call me","emoji":false}]},
  {"type":"actions","elements":[{"type":"button","text":{"type":"plain_text","text":"Open in admin"},"url":"https://example.com/admin/settings/submissions/42"}]}]}`
 
 func TestSlackGolden(t *testing.T) {
@@ -111,9 +111,9 @@ func TestSlackNoLinkShowsID(t *testing.T) {
 	sameJSON(t, renderSlack(buildView(sample(), cfg{})), `{"text":"New submission on contact (#42)","mrkdwn":false,"blocks":[
  {"type":"header","text":{"type":"plain_text","text":"New submission on contact","emoji":false}},
  {"type":"section","fields":[
-  {"type":"mrkdwn","text":"*name*\nAna"},
-  {"type":"mrkdwn","text":"*email*\nana@example.com"},
-  {"type":"mrkdwn","text":"*message*\nHi, can you call me"}]},
+  {"type":"plain_text","text":"name\nAna","emoji":false},
+  {"type":"plain_text","text":"email\nana@example.com","emoji":false},
+  {"type":"plain_text","text":"message\nHi, can you call me","emoji":false}]},
  {"type":"section","text":{"type":"mrkdwn","text":"Submission #42"}}]}`)
 }
 
@@ -190,22 +190,21 @@ func TestTeamsEscapesMarkdown(t *testing.T) {
 	}
 }
 
-func TestSlackInjectionsAreEscaped(t *testing.T) {
-	for _, in := range injections {
+func TestSlackFieldsAreLiteralText(t *testing.T) {
+	for _, in := range append([]string{"*URGENT* :rotating_light: ~old~ https://evil.example/x"}, injections...) {
 		s := sample()
 		s.Fields["message"] = in
-		b := renderSlack(buildView(s, cfg{}))
 		var out struct {
 			Blocks []struct {
-				Fields []struct{ Text string } `json:"fields"`
+				Fields []struct{ Type, Text string } `json:"fields"`
 			} `json:"blocks"`
 		}
-		if err := json.Unmarshal(b, &out); err != nil {
+		if err := json.Unmarshal(renderSlack(buildView(s, cfg{})), &out); err != nil {
 			t.Fatal(err)
 		}
-		val := out.Blocks[1].Fields[2].Text
-		if strings.ContainsAny(val, "<>") || strings.Contains(val, "&") && !strings.Contains(val, "&lt;") && !strings.Contains(val, "&gt;") {
-			t.Fatalf("%q renders %q", in, val)
+		f := out.Blocks[1].Fields[2]
+		if f.Type != "plain_text" || f.Text != "message\n"+in {
+			t.Fatalf("%q renders %+v", in, f)
 		}
 	}
 }

@@ -92,7 +92,9 @@ func TestInjectionsStayInertOnEveryPlatform(t *testing.T) {
 			_ = json.Unmarshal(b, &doc)
 			switch name {
 			case "slack":
-				for _, s := range leafStrings(doc) {
+				// Field values are plain_text, which Slack does not parse;
+				// TestSlackFieldsAreLiteralText covers them.
+				for _, s := range leafStrings(slackWithoutFields(doc)) {
 					if strings.ContainsAny(s, "<>") {
 						t.Errorf("slack %q: raw angle bracket in %q", in, s)
 					}
@@ -149,4 +151,16 @@ func TestSpecialCharactersKeepJSONValid(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
+}
+
+// slackWithoutFields drops the plain_text fields from a Slack body.
+func slackWithoutFields(doc any) any {
+	m := doc.(map[string]any)
+	var blocks []any
+	for _, b := range m["blocks"].([]any) {
+		if _, ok := b.(map[string]any)["fields"]; !ok {
+			blocks = append(blocks, b)
+		}
+	}
+	return map[string]any{"text": m["text"], "blocks": blocks}
 }
