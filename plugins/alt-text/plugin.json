@@ -1,19 +1,32 @@
 {
   "name": "alt-text",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.18",
   "description": "Suggests alt text for images in your media library that have none, using a vision model you choose, and stages each one for your review.",
-  "permissions": ["settings"],
+  "permissions": ["settings", "media.read", "http.fetch"],
+  "allowed_hosts": ["api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com"],
+  "runs": [
+    {
+      "name": "suggest",
+      "title": "Suggest alt text",
+      "inputs": [
+        { "name": "limit", "label": "Images to check (1-200)", "type": "number" },
+        { "name": "only_missing", "label": "Only images without alt text", "type": "bool" }
+      ],
+      "stages": ["fetch", "transform"],
+      "proposes": ["media_alt"]
+    }
+  ],
   "limits": { "memory_pages": 256, "max_instances": 4 },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
-      }
+      "provider": { "type": "string", "title": "Vision provider", "enum": ["openai", "anthropic", "gemini"], "default": "openai", "description": "Which service describes your images. It needs an API key of its own." },
+      "api_key": { "type": "string", "title": "API key", "writeOnly": true, "description": "The key of the provider above. Stored here and never shown again." },
+      "model": { "type": "string", "title": "Model", "description": "A model that reads images, for example gpt-4o-mini. Leave empty for the provider's small default." },
+      "language": { "type": "string", "title": "Language of the alt text", "default": "en", "description": "A language name or code, for example en, de or Portuguese." },
+      "max_length": { "type": "integer", "title": "Longest alt text, in characters", "default": 125, "minimum": 20, "maximum": 300 },
+      "site_url": { "type": "string", "title": "Address of this site", "description": "For example https://example.com. Used to turn /media paths into links the provider can open; not needed when your media links are already absolute." }
     }
   }
 }
