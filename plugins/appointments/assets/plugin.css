@@ -1,0 +1,7 @@
+.appointments{margin:1.5rem 0}
+.appointments__inner{box-sizing:border-box;width:100%;max-width:var(--hm-container,75rem);margin:0 auto;padding:0 1.5rem}
+.appointments__title{margin:0 0 1rem}
+.appointments__frame{display:block;width:100%;border:0}
+.appointments__fallback{margin:.75rem 0 0;font-size:.9em}
+.appointments__button{display:inline-block;padding:.7rem 1.4rem;border:2px solid var(--appointments-button-color,currentColor);border-radius:var(--appointments-button-radius,.4rem);background:var(--appointments-button-bg,transparent);color:var(--appointments-button-color,inherit);font:inherit;font-weight:600;line-height:1.2;text-decoration:none}
+.appointments__button:hover,.appointments__button:focus-visible{text-decoration:underline}
