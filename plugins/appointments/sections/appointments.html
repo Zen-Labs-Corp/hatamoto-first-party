@@ -1,0 +1,9 @@
+{{define "section-appointments"}}
+{{- with plugin_appointments_embed_url .Content.link -}}
+<section class="appointments">
+{{- if $.Title -}}<h2 class="appointments__title">{{$.Title}}</h2>{{- end -}}
+<iframe class="appointments__frame" src="{{.}}" title="Booking calendar" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" referrerpolicy="strict-origin-when-cross-origin" height="{{plugin_appointments_height}}"></iframe>
+{{- with plugin_appointments_embed_url $.Content.link "plain" -}}<p class="appointments__fallback"><a href="{{.}}" rel="noopener" target="_blank">Book on {{plugin_appointments_provider_name $.Content.link}}</a></p>{{- end -}}
+</section>
+{{- end -}}
+{{end}}

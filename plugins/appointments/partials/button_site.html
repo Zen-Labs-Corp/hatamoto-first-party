@@ -1,0 +1,3 @@
+{{define "plugin/appointments/button_site"}}
+{{- with plugin_appointments_booking_url .Site.Org.BookingURL -}}<a class="appointments__button" href="{{.}}" rel="noopener">{{plugin_appointments_button_label}}</a>{{- end -}}
+{{end}}
