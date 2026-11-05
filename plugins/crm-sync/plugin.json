@@ -1,19 +1,55 @@
 {
   "name": "crm-sync",
   "version": "0.1.0",
+  "title": "CRM sync for HubSpot, Pipedrive and Salesforce",
   "sdk": "^0.8",
   "description": "Sends people who submit your forms to HubSpot, Pipedrive or Salesforce as contacts or leads, with field mapping, an optional consent field, a note with the message and retries.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["forms.read", "settings", "http.fetch", "db", "kv", "log"],
+  "allowed_hosts": ["api.hubapi.com", "*.pipedrive.com", "*.my.salesforce.com"],
+  "routes": [
+    { "method": "GET", "path": "/log" },
+    { "method": "POST", "path": "/test" },
+    { "method": "GET", "path": "/fields" },
+    { "method": "GET", "path": "/map" },
+    { "method": "PUT", "path": "/map" }
+  ],
+  "cron": [
+    { "name": "deliver", "every": "1m" },
+    { "name": "retry", "every": "5m" },
+    { "name": "refresh", "every": "30m" }
+  ],
+  "ui": { "title": "CRM sync" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": {
+      "form.submitted": 3000,
+      "on_cron_deliver": 10000,
+      "on_cron_retry": 10000,
+      "on_cron_refresh": 10000,
+      "http_handle": 10000
+    }
+  },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
-      }
+      "provider": { "type": "string", "title": "Provider", "enum": ["hubspot", "pipedrive", "salesforce"] },
+      "forms": { "type": "array", "title": "Forms to sync", "description": "Form slugs, one per line. Empty means nothing is sent.", "items": { "type": "string", "maxLength": 100 }, "maxItems": 50, "x-hm-field": "lines" },
+      "email_field": { "type": "string", "title": "Email field", "default": "email", "maxLength": 100 },
+      "consent_field": { "type": "string", "title": "Consent field", "description": "Optional. When set, only submissions where this field is ticked or yes are sent.", "maxLength": 100 },
+      "add_note": { "type": "boolean", "title": "Add a note with the message", "default": true },
+      "lead_source": { "type": "string", "title": "Lead source", "default": "Website", "description": "Salesforce: Lead Source on new records. HubSpot and Pipedrive: written in the note header.", "maxLength": 100 },
+      "owner_id": { "type": "string", "title": "Owner id", "description": "Optional CRM user id that owns NEW records. Digits for HubSpot and Pipedrive, a 15 or 18 character id for Salesforce.", "maxLength": 40 },
+      "access_token": { "type": "string", "title": "HubSpot access token", "description": "HubSpot: private app access token. Stored here and never shown again.", "writeOnly": true, "maxLength": 500 },
+      "lifecycle_stage": { "type": "string", "title": "HubSpot lifecycle stage", "description": "HubSpot: lifecycle stage sent with every contact.", "default": "lead", "maxLength": 50 },
+      "api_token": { "type": "string", "title": "Pipedrive API token", "description": "Pipedrive: personal API token. Stored here and never shown again.", "writeOnly": true, "maxLength": 200 },
+      "company_domain": { "type": "string", "title": "Pipedrive company domain", "description": "Pipedrive: acme or acme.pipedrive.com.", "maxLength": 100 },
+      "create_lead": { "type": "boolean", "title": "Pipedrive: create a lead", "description": "Pipedrive: also create a lead for the person unless one exists.", "default": true },
+      "my_domain": { "type": "string", "title": "Salesforce My Domain", "description": "Salesforce: for example acme.my.salesforce.com.", "maxLength": 120 },
+      "client_id": { "type": "string", "title": "Salesforce client id", "description": "Salesforce: consumer key of the app.", "maxLength": 200 },
+      "client_secret": { "type": "string", "title": "Salesforce client secret", "description": "Salesforce: consumer secret of the app. Stored here and never shown again.", "writeOnly": true, "maxLength": 200 },
+      "object": { "type": "string", "title": "Salesforce object", "description": "Salesforce: create Leads or Contacts.", "enum": ["lead", "contact"], "default": "lead" },
+      "default_company": { "type": "string", "title": "Salesforce default company", "description": "Salesforce: Company used when none is mapped (required on Leads).", "default": "Website visitor", "maxLength": 100 }
     }
   }
 }
