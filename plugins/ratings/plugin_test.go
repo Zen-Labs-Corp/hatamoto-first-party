@@ -2,49 +2,45 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
-
-	"hatamoto.dev/sdk"
-	"hatamoto.dev/sdk/guest"
 )
 
-// head runs the registered render.head filter with a fake settings.get.
-func head(t *testing.T, settings string, hostErr error) []sdk.HeadTag {
+// hostCall is one recorded host call.
+type hostCall struct {
+	fn   string
+	sql  string
+	args []any
+}
+
+// fakeHost replaces callHost. settings is the settings.get answer (a JSON
+// object) unless settingsErr is set; db answers every db.* call.
+type fakeHost struct {
+	settings    string
+	settingsErr error
+	db          func(c hostCall, out any) error
+	calls       []hostCall
+}
+
+func (f *fakeHost) install(t *testing.T) {
 	t.Helper()
-	callHost = func(fn string, _, out any) error {
-		if fn != "settings.get" {
-			t.Fatalf("unexpected host call %q", fn)
+	old := callHost
+	t.Cleanup(func() { callHost = old })
+	callHost = func(fn string, args, out any) error {
+		c := hostCall{fn: fn}
+		if m, ok := args.(map[string]any); ok {
+			c.sql, _ = m["sql"].(string)
+			c.args, _ = m["args"].([]any)
 		}
-		if hostErr != nil {
-			return hostErr
+		f.calls = append(f.calls, c)
+		if fn == "settings.get" {
+			if f.settingsErr != nil {
+				return f.settingsErr
+			}
+			return json.Unmarshal([]byte(f.settings), out)
 		}
-		return json.Unmarshal([]byte(settings), out)
-	}
-	in, _ := json.Marshal(sdk.HeadContext{Path: "/"})
-	out, err := guest.Handle(sdk.RenderHead.Export(), in)
-	if err != nil {
-		t.Fatalf("filter returned an error: %v", err)
-	}
-	var c sdk.HeadContext
-	if err := json.Unmarshal(out, &c); err != nil {
-		t.Fatal(err)
-	}
-	return c.Tags
-}
-
-func TestGreetingEmitsOneMeta(t *testing.T) {
-	tags := head(t, `{"greeting":" hello "}`, nil)
-	if len(tags) != 1 || tags[0].Kind != "meta" || tags[0].Attrs["content"] != "hello" {
-		t.Fatalf("tags = %+v", tags)
-	}
-}
-
-func TestEmptyOrFailingSettingAddsNothing(t *testing.T) {
-	if tags := head(t, `{"greeting":"  "}`, nil); len(tags) != 0 {
-		t.Fatalf("empty greeting: tags = %+v", tags)
-	}
-	if tags := head(t, "", errors.New("host down")); len(tags) != 0 {
-		t.Fatalf("host error: tags = %+v", tags)
+		if f.db != nil {
+			return f.db(c, out)
+		}
+		return nil
 	}
 }

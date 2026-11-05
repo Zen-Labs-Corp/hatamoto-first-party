@@ -1,37 +1,31 @@
 // Command ratings is a Hatamoto plugin. Star ratings for posts and pages: visitors rate with a plain form, the average shows on the page and you see totals per page.
 //
-// Starting point from the first-party template: a render.head filter that
-// reads one setting and adds a meta tag. Replace it with the real hooks; keep
-// the logic in plain Go (this file) and the //go:wasmexport lines in
+// The logic lives in plain Go files; the //go:wasmexport lines are in
 // exports_wasip1.go, so everything but the exports builds and tests on the host.
 package main
 
 import (
-	"strings"
+	"encoding/json"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
 
 func init() {
-	guest.OnFilter(sdk.RenderHead, addMeta)
+	guest.OnHTTP(serve)
+	guest.OnFunc("summary", funcSummary)
+	guest.OnFunc("enabled", funcEnabled)
+	guest.OnAction(sdk.EntityDeleted, onEntityDeleted)
 }
 
-// addMeta never fails the render: an unreadable or empty setting adds nothing.
-func addMeta(c sdk.HeadContext) (sdk.HeadContext, error) {
-	var s struct {
-		Greeting string `json:"greeting"`
-	}
-	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return c, nil
-	}
-	g := strings.TrimSpace(s.Greeting)
-	if g == "" {
-		return c, nil
-	}
-	c.Tags = append(c.Tags, sdk.HeadTag{
-		Kind:  "meta",
-		Attrs: map[string]string{"name": "ratings", "content": g},
-	})
-	return c, nil
+// Placeholders, replaced by the route, func and cleanup files.
+
+func serve(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
+	return sdk.HTTPResponse{Status: 303, Headers: map[string]string{"Location": "/"}}, nil
 }
+
+func funcSummary([]json.RawMessage) (string, error) { return "", nil }
+
+func funcEnabled([]json.RawMessage) (string, error) { return "", nil }
+
+func onEntityDeleted(sdk.EntityEvent) error { return nil }
