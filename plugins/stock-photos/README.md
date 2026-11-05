@@ -13,7 +13,7 @@ It covers what WordPress sites use Instant Images for: find a free photo, bring 
 5. Tick the hosts the run may reach (see below), then press **Start**.
 6. Review the changeset: each photo is listed with its alt text and credit. **Publish** it or **Discard** it. Nothing is live until the changeset is published.
 
-Running the same query again updates the same media instead of adding copies; the photos are downloaded again.
+Running the same query again does not add copies: a photo already in the library is left as it is, with its earlier alt text and credit, and the run summary counts it under "already in the library" instead of "staged". The photos are downloaded again.
 
 ## Permissions
 

@@ -28,6 +28,7 @@ type skipped struct {
 type transformCursor struct {
 	After    string    `json:"after"`
 	Staged   int       `json:"staged"`
+	Existing int       `json:"existing,omitempty"` // already in the library: core attach is create-only
 	Rejected []skipped `json:"rejected,omitempty"`
 	Dropped  int       `json:"dropped,omitempty"` // rejections beyond maxCarriedSkip
 }
@@ -74,7 +75,7 @@ func transformStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 		list = []skipped{}
 	}
 	_ = guest.RunProgress(callHost, cur.Staged, cur.Staged, "Staged "+strconv.Itoa(cur.Staged)+" photos")
-	summary := map[string]any{"staged": cur.Staged, "skipped": list, "skipped_total": total}
+	summary := map[string]any{"staged": cur.Staged, "already_in_library": cur.Existing, "skipped": list, "skipped_total": total}
 	if err := guest.RunFinish(callHost, summary); err != nil {
 		return failFromError(err)
 	}
@@ -103,7 +104,7 @@ func stageItem(bufKey string, cur *transformCursor) error {
 	if json.Unmarshal(val, &it) != nil || it.SourceKey == "" || it.Handle == "" {
 		return nil
 	}
-	_, err = guest.MediaAttach(callHost, sdk.MediaAttach{SourceKey: it.SourceKey, Handle: it.Handle, Alt: it.Alt, Caption: it.Caption, Credit: it.Credit})
+	res, err := guest.MediaAttach(callHost, sdk.MediaAttach{SourceKey: it.SourceKey, Handle: it.Handle, Alt: it.Alt, Caption: it.Caption, Credit: it.Credit})
 	var he *sdk.HostError
 	if errors.As(err, &he) && (he.Code == sdk.ErrInvalidArgument || he.Code == sdk.ErrNotOwned) {
 		if len(cur.Rejected) < maxCarriedSkip {
@@ -116,7 +117,11 @@ func stageItem(bufKey string, cur *transformCursor) error {
 	if err != nil {
 		return err
 	}
-	cur.Staged++
+	if res.Created {
+		cur.Staged++
+	} else {
+		cur.Existing++
+	}
 	return nil
 }
 

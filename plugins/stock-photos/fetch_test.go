@@ -31,6 +31,8 @@ type fakeHost struct {
 	// errs maps a host function (or "media.import_url:<filename>") to an error.
 	errs   map[string]error
 	buffer map[string]string // key -> value, filled by buffer.put
+	// existing lists source keys core already has: attach answers created=false.
+	existing map[string]bool
 }
 
 func newHost(t *testing.T, phase, params string, hosts ...string) *fakeHost {
@@ -79,7 +81,7 @@ func (h *fakeHost) call(fn string, args, out any) error {
 	case "changeset.media.attach":
 		var a sdk.MediaAttach
 		_ = json.Unmarshal(raw, &a)
-		res = sdk.UpsertResult{SourceKey: a.SourceKey, Created: true}
+		res = sdk.UpsertResult{SourceKey: a.SourceKey, Created: !h.existing[a.SourceKey]}
 	case "buffer.get":
 		var a sdk.BufferGetArgs
 		_ = json.Unmarshal(raw, &a)

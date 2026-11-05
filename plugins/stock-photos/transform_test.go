@@ -134,3 +134,23 @@ func TestTransformResumesAfterCursor(t *testing.T) {
 		t.Fatalf("summary = %+v", s)
 	}
 }
+
+func TestTransformCountsOnlyCreatedMedia(t *testing.T) {
+	h := newHost(t, "transform", `{"query":"q"}`)
+	h.existing = map[string]bool{"pexels:1": true}
+	putItem(h, "pexels:1")
+	putItem(h, "pexels:2")
+	if err := h.step(""); err != nil {
+		t.Fatal(err)
+	}
+	var a sdk.RunFinishArgs
+	_ = json.Unmarshal([]byte(h.ends("run.finish").Args), &a)
+	var s struct {
+		Staged  int `json:"staged"`
+		Already int `json:"already_in_library"`
+	}
+	_ = json.Unmarshal(a.Summary, &s)
+	if s.Staged != 1 || s.Already != 1 {
+		t.Fatalf("summary = %+v", s)
+	}
+}
