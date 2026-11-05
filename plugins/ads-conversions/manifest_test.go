@@ -59,7 +59,7 @@ func loadManifest(t *testing.T) manifest {
 
 func TestManifestIdentityPermissionsHosts(t *testing.T) {
 	m := loadManifest(t)
-	if m.Name != "ads-conversions" || m.Version != "0.1.0" || m.SDK != "^0.8" {
+	if m.Name != "ads-conversions" || m.Version != "0.1.1" || m.SDK != "^0.8" {
 		t.Fatalf("name/version/sdk = %q %q %q", m.Name, m.Version, m.SDK)
 	}
 	perms := slices.Clone(m.Permissions)

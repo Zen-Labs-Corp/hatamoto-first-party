@@ -1,4 +1,4 @@
-// Command ads-conversions is a Hatamoto plugin. Sends a server-side conversion to Google Ads, TikTok and LinkedIn for each form submission, with hashed contact details and the ad click ID, to back up the browser tags.
+// Command ads-conversions is a Hatamoto plugin. Sends a server-side conversion to Google Ads, TikTok and LinkedIn for each form submission, with hashed contact details and the ad click ID.
 //
 // The form hook only queues what it finds (hashes and click IDs, never a raw
 // value); cron jobs send the conversions, so a slow platform never holds up a
