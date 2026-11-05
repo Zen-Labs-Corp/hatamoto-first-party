@@ -3,17 +3,39 @@
   "version": "0.1.0",
   "sdk": "^0.8",
   "description": "Posts each form submission to Slack, Microsoft Teams, Google Chat or Telegram the moment it arrives, with the fields you choose and a link to the submission in your admin.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["forms.read", "settings", "http.fetch", "db", "log"],
+  "allowed_hosts": ["hooks.slack.com", "api.telegram.org", "chat.googleapis.com", "*.logic.azure.com", "*.environment.api.powerplatform.com"],
+  "routes": [
+    { "method": "GET", "path": "/log" },
+    { "method": "POST", "path": "/test" }
+  ],
+  "cron": [
+    { "name": "deliver", "every": "1m" },
+    { "name": "retry", "every": "5m" }
+  ],
+  "ui": { "title": "Form alerts" },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "form.submitted": 9000, "on_cron_deliver": 10000, "on_cron_retry": 10000 }
+  },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
-        "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
-      }
+      "forms": { "type": "array", "title": "Forms to alert on", "description": "Form slugs, one per line. Empty means all forms.", "items": { "type": "string", "maxLength": 100 }, "maxItems": 50, "x-hm-field": "lines" },
+      "fields": { "type": "array", "title": "Fields to include", "description": "Field keys, one per line. Empty means all fields except those whose key contains password, token or card.", "items": { "type": "string", "maxLength": 100 }, "maxItems": 50, "x-hm-field": "lines" },
+      "include_values": { "type": "boolean", "title": "Include field values", "description": "On: the chosen fields and their values are sent. Off: only the form name and the admin link are sent, so no submitted value leaves your site.", "default": true },
+      "max_value_length": { "type": "integer", "title": "Longest value", "description": "Values longer than this many characters are cut and end with an ellipsis. Between 20 and 2000.", "default": 500, "minimum": 20, "maximum": 2000 },
+      "admin_url": { "type": "string", "title": "Admin address", "description": "Your admin address, for example https://example.com/admin. Must start with https://. Used for the link to each submission. Leave empty to send the submission id without a link.", "pattern": "^$|^https://[^\\s/?#@]+(/[^\\s?#]*)?$" },
+      "slack_enabled": { "type": "boolean", "title": "Slack", "description": "Send alerts to Slack.", "default": false },
+      "slack_webhook_url": { "type": "string", "title": "Slack webhook URL", "writeOnly": true, "description": "Must start with https://hooks.slack.com/. Stored here and never shown again. Leave empty to keep the stored value.", "pattern": "^$|^https://hooks\\.slack\\.com/\\S+$" },
+      "teams_enabled": { "type": "boolean", "title": "Microsoft Teams", "description": "Send alerts to Microsoft Teams.", "default": false },
+      "teams_workflow_url": { "type": "string", "title": "Teams workflow URL", "writeOnly": true, "description": "The HTTP POST URL of a Workflows webhook. Must start with https:// and be on logic.azure.com or environment.api.powerplatform.com. Stored here and never shown again. Leave empty to keep the stored value.", "pattern": "^$|^https://[a-z0-9.-]+\\.(logic\\.azure\\.com|environment\\.api\\.powerplatform\\.com)(:443)?/\\S+$" },
+      "gchat_enabled": { "type": "boolean", "title": "Google Chat", "description": "Send alerts to Google Chat.", "default": false },
+      "gchat_webhook_url": { "type": "string", "title": "Google Chat webhook URL", "writeOnly": true, "description": "Must start with https://chat.googleapis.com/v1/spaces/ and contain /messages?. Stored here and never shown again. Leave empty to keep the stored value.", "pattern": "^$|^https://chat\\.googleapis\\.com/v1/spaces/\\S+/messages\\?\\S+$" },
+      "telegram_enabled": { "type": "boolean", "title": "Telegram", "description": "Send alerts to Telegram.", "default": false },
+      "telegram_bot_token": { "type": "string", "title": "Telegram bot token", "writeOnly": true, "description": "The token from @BotFather, like 123456:ABC-DEF... Stored here and never shown again. Leave empty to keep the stored value.", "pattern": "^$|^[0-9]{5,}:[A-Za-z0-9_-]{20,}$" },
+      "telegram_chat_id": { "type": "string", "title": "Telegram chat", "description": "The numeric chat id, for example -1001234567890, or @channelname for a public channel. Leave empty to turn Telegram off.", "pattern": "^$|^(-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{3,31})$" }
     }
   }
 }
