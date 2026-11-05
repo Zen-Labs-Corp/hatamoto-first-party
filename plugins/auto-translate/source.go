@@ -49,7 +49,8 @@ type cursor struct {
 	C   string `json:"c"`
 	I   int    `json:"i"`
 	Seq int    `json:"q"`
-	N   int    `json:"n"` // steps done, names the step's stat record
+	N   int    `json:"n"`           // steps done, names the step's stat record
+	L   int    `json:"l,omitempty"` // list page size, 0 = listLimit; shrinks when a page is too big
 }
 
 type entity struct {
@@ -78,22 +79,39 @@ type pageResult struct {
 	Next  string
 }
 
-// listPage reads one page of a schema. There is no status argument (a run
-// only sees published, public entries). Paging goes by the returned cursor,
-// never by the item count, because non-public items are dropped after paging.
-func listPage(schema, cur string) (pageResult, error) {
-	args := map[string]any{"schema_slug": schema, "limit": listLimit}
-	if cur != "" {
-		args["cursor"] = cur
+// listPage reads one page of a schema, at most limit items. There is no
+// status argument (a run only sees published, public entries). Paging goes by
+// the returned cursor, never by the item count, because non-public items are
+// dropped after paging. The host refuses a result over its size cap with
+// invalid_argument; the same cursor is then read again with half the limit.
+// A smaller page changes where the page cursor leads, so that is only done at
+// the start of a page (index 0). The limit used is returned.
+func listPage(schema, cur string, limit, index int) (pageResult, int, error) {
+	for {
+		args := map[string]any{"schema_slug": schema, "limit": limit}
+		if cur != "" {
+			args["cursor"] = cur
+		}
+		var out struct {
+			Items      []entity `json:"items"`
+			NextCursor string   `json:"next_cursor"`
+		}
+		err := callHost(sdk.FnEntitiesList, args, &out)
+		if err == nil {
+			return pageResult{Items: out.Items, Next: out.NextCursor}, limit, nil
+		}
+		var he *sdk.HostError
+		if !errors.As(err, &he) || he.Code != sdk.ErrInvalidArgument {
+			return pageResult{}, limit, fmt.Errorf("the content list could not be read: %w", hostReason(err))
+		}
+		switch {
+		case limit <= 1:
+			return pageResult{}, limit, errors.New("the content list could not be read, even one entry at a time (invalid_argument): an entry may be too large to read")
+		case index > 0:
+			return pageResult{}, limit, errors.New("the content changed while the run was reading it: start the run again")
+		}
+		limit /= 2
 	}
-	var out struct {
-		Items      []entity `json:"items"`
-		NextCursor string   `json:"next_cursor"`
-	}
-	if err := callHost(sdk.FnEntitiesList, args, &out); err != nil {
-		return pageResult{}, fmt.Errorf("the content list could not be read: %w", hostReason(err))
-	}
-	return pageResult{Items: out.Items, Next: out.NextCursor}, nil
 }
 
 // hostReason reduces a host error to its code, so no detail leaks.
@@ -179,9 +197,16 @@ func targetCopy(id, target string) (found bool, slug string, err error) {
 func nextCandidates(p params, cur cursor, max int) (cands []entity, next cursor, done bool, counts map[string]int, err error) {
 	counts = map[string]int{}
 	next = cur
-	page, err := listPage(p.Schema, cur.C)
+	limit := cur.L
+	if limit <= 0 {
+		limit = listLimit
+	}
+	page, limit, err := listPage(p.Schema, cur.C, limit, cur.I)
 	if err != nil {
 		return nil, cur, false, counts, err
+	}
+	if limit != listLimit {
+		next.L = limit
 	}
 	reads := 1
 	for i := max0(cur.I); i < len(page.Items); i++ {

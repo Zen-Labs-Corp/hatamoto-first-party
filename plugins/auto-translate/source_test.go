@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
+
+	"hatamoto.dev/sdk"
 )
 
 // sourceWorld is a fake host with paged entities and translation groups.
@@ -273,5 +276,45 @@ func TestCursorSize(t *testing.T) {
 	var back cursor
 	if err := json.Unmarshal(b, &back); err != nil || back != c {
 		t.Fatalf("round trip %+v %v", back, err)
+	}
+}
+
+// A page over the host's result cap is read again with a smaller limit, which
+// the cursor keeps.
+func TestListPageHalvesTheLimitOnASizeError(t *testing.T) {
+	var limits []int
+	maxOK := 5
+	callHost = func(fn string, args, out any) error {
+		lim := args.(map[string]any)["limit"].(int)
+		limits = append(limits, lim)
+		if lim > maxOK {
+			return &sdk.HostError{Code: sdk.ErrInvalidArgument}
+		}
+		b, _ := json.Marshal(map[string]any{"items": []entity{ent("a", "en", "", "")}})
+		return json.Unmarshal(b, out)
+	}
+	t.Cleanup(func() { callHost = nil })
+	p := params{Locale: "de", Schema: "page"}
+
+	cands, next, _, _, err := nextCandidates(p, cursor{}, 20)
+	if err != nil || len(cands) != 1 || next.L != 5 {
+		t.Fatalf("%v %v %+v", err, ids(cands), next)
+	}
+	if fmt.Sprint(limits) != "[20 10 5]" {
+		t.Fatalf("limits %v", limits)
+	}
+
+	limits = nil
+	if _, next, _, _, err = nextCandidates(p, next, 20); err != nil || fmt.Sprint(limits) != "[5]" || next.L != 5 {
+		t.Fatalf("limits %v next %+v err %v", limits, next, err)
+	}
+
+	maxOK = 0 // not even one entry can be read
+	_, _, _, _, err = nextCandidates(p, cursor{}, 20)
+	if err == nil || !strings.Contains(err.Error(), "even one entry") || limits[len(limits)-1] != 1 {
+		t.Fatalf("%v %v", err, limits)
+	}
+	if _, _, _, _, err = nextCandidates(p, cursor{C: "c", I: 3}, 20); err == nil || !strings.Contains(err.Error(), "changed while") {
+		t.Fatalf("%v", err)
 	}
 }
