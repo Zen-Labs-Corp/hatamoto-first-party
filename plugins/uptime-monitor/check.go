@@ -16,15 +16,14 @@ type result struct {
 	HTTP   int    // final HTTP status, 0 when there was none
 	MS     int    // time the request took
 	Cause  string // why the check failed or could not run; empty for up and slow
-	// Skip: the check did not run (the host's rate limit); try again next tick.
+	// Skip: no verdict (the host's rate limit or another host error); try again next tick.
 	Skip bool
 }
 
 const (
-	causeConnect        = "could not connect (DNS, certificate or refused)"
-	causeKeyword        = "keyword missing"
-	causeKeywordCut     = "keyword missing (page over 1 MB)"
-	causeCheckFailedFmt = "check failed (%s)"
+	causeConnect    = "could not connect (DNS, certificate or refused)"
+	causeKeyword    = "keyword missing"
+	causeKeywordCut = "keyword missing (page over 1 MB)"
 )
 
 // checkMonitor runs one check, spending at most timeoutMS. It classifies the
@@ -81,13 +80,11 @@ func failedFetch(m monitor, err error, ms, timeoutMS int) result {
 		// The monitor cannot run as configured: not an outage.
 		r.Status = statusConfig
 		r.Cause = hostErrMessage(err)
-	case sdk.ErrRateLimited:
-		r.Skip = true
 	default:
-		if code == "" {
-			code = "unknown"
-		}
-		r.Cause = fmt.Sprintf(causeCheckFailedFmt, code)
+		// rate_limited, unavailable, invalid_argument and the like say
+		// something about the host or this plugin, not the site: no verdict,
+		// try again next tick.
+		r.Skip = true
 	}
 	return r
 }

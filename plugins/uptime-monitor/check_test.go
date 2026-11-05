@@ -247,13 +247,36 @@ func TestCheckRateLimitedIsSkipped(t *testing.T) {
 	}
 }
 
-func TestCheckOtherErrorsAreDown(t *testing.T) {
-	checkHost(t, []answer{{err: hostErr(sdk.ErrUnavailable, "x")}}, `[]`)
-	if r := checkMonitor(site, 8000); r.Status != statusDown || r.Cause != "check failed (unavailable)" {
-		t.Fatalf("got %+v", r)
+func TestCheckHostTroubleIsSkippedNotDown(t *testing.T) {
+	for _, err := range []error{
+		hostErr(sdk.ErrUnavailable, "x"), hostErr(sdk.ErrInvalidArgument, "x"), hostErr("reentrant", "x"), fmt.Errorf("plain"),
+	} {
+		checkHost(t, []answer{{err: err}}, `[]`)
+		if r := checkMonitor(site, 8000); !r.Skip || r.Cause != "" {
+			t.Fatalf("%v: got %+v", err, r)
+		}
 	}
-	checkHost(t, []answer{{err: fmt.Errorf("plain")}}, `[]`)
-	if r := checkMonitor(site, 8000); r.Status != statusDown || !strings.HasPrefix(r.Cause, "check failed") {
-		t.Fatalf("got %+v", r)
+}
+
+func TestTickSkippedCheckSendsNoMailAndKeepsState(t *testing.T) {
+	h := newTickHost(t, 1)
+	h.st.AlertEmails = []string{"owner@example.org"}
+	h.st.FailThreshold = 1
+	queued := 0
+	newFakeHost(t, func(c call, out any) error {
+		switch {
+		case c.Fn == "http.fetch":
+			return hostErr(sdk.ErrUnavailable, "fetch service down")
+		case strings.HasPrefix(c.sql(), "INSERT INTO outbox"):
+			queued++
+		}
+		return h.reply(c, out)
+	})
+	for range 3 {
+		checkTick()
+		h.clock = h.clock.Add(time.Minute)
+	}
+	if queued != 0 || len(h.checks) != 0 || h.monitors[1].Status != statusPending || h.monitors[1].FailCount != 0 {
+		t.Fatalf("queued %d checks %v %+v", queued, h.checks, h.monitors[1])
 	}
 }
