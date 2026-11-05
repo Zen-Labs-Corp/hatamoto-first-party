@@ -6,25 +6,11 @@
 // lines in exports_wasip1.go builds and tests on the host.
 package main
 
-import (
-	"net/http"
-
-	"hatamoto.dev/sdk"
-	"hatamoto.dev/sdk/guest"
-)
+import "hatamoto.dev/sdk/guest"
 
 func init() {
 	guest.OnCron("check", runCheckTick)
 	guest.OnCron("certs", runCertsTick)
 	guest.OnCron("rollup", runRollup)
 	guest.OnHTTP(handleRoute)
-}
-
-// Stub, replaced by the real routes.
-func handleRoute(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
-	return sdk.HTTPResponse{
-		Status:  http.StatusNotImplemented,
-		Headers: map[string]string{"Content-Type": "application/json"},
-		Body:    `{"error":"not implemented"}`,
-	}, nil
 }

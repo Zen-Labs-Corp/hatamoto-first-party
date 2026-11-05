@@ -77,9 +77,15 @@ func sendWindowed(to []string, subject, body string) (sendOutcome, error) {
 		case sdk.ErrRateLimited:
 			return hostLimited, err
 		case sdk.ErrUnavailable:
+			if err := kvSet(mailUnavailableKey, true); err != nil {
+				logf("warn", "uptime-monitor: mail state not saved code=%s", hostErrCode(err))
+			}
 			return mailUnavailable, err
 		}
 		return sendFailed, err
+	}
+	if !mailConfigured() {
+		_ = kvDelete(mailUnavailableKey)
 	}
 	w = append(w, windowEntry{T: now().UnixMilli(), N: len(to)})
 	if err := kvSet(mailWindowKey, w); err != nil {
