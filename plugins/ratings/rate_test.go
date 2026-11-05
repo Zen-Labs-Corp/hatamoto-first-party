@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/url"
 	"strings"
@@ -227,6 +228,36 @@ func TestRateStoresPathOnlyWhenClean(t *testing.T) {
 		if n != want {
 			t.Errorf("path %q: %d page writes, want %d", path, n, want)
 		}
+	}
+}
+
+func pageWrites(f *fakeHost) (n int) {
+	for _, c := range f.calls {
+		if strings.Contains(c.sql, "INTO pages") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestRatePathIsFirstWriteWins(t *testing.T) {
+	if !strings.Contains(sqlPage, "DO NOTHING") || strings.Contains(sqlPage, "DO UPDATE") {
+		t.Fatalf("sqlPage must not overwrite: %s", sqlPage)
+	}
+}
+
+func TestRateDuplicateVoteStoresNoPath(t *testing.T) {
+	f := &fakeHost{settings: `{}`, db: func(c hostCall, out any) error {
+		if strings.Contains(c.sql, "INTO votes") {
+			return json.Unmarshal([]byte(`{"rows_affected":0}`), out)
+		}
+		return nil
+	}}
+	f.install(t)
+	r := handleRate(post(okForm("path", "/pay-here"), nil, map[string]string{"voter": testVoter}))
+	assertSeeOther(t, r, "/blog/a")
+	if n := pageWrites(f); n != 0 {
+		t.Fatalf("%d page writes after a duplicate vote", n)
 	}
 }
 

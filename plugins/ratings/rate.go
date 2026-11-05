@@ -21,7 +21,7 @@ ON CONFLICT (entity_id, voter) DO NOTHING`
 	sqlVoteChange = `INSERT INTO votes (entity_id, voter, stars) VALUES ($1::uuid, $2, $3)
 ON CONFLICT (entity_id, voter) DO UPDATE SET stars = EXCLUDED.stars, updated = now()`
 	sqlPage = `INSERT INTO pages (entity_id, path) VALUES ($1::uuid, $2)
-ON CONFLICT (entity_id) DO UPDATE SET path = EXCLUDED.path, updated = now()`
+ON CONFLICT (entity_id) DO NOTHING`
 )
 
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
@@ -93,7 +93,8 @@ func handleRate(r sdk.HTTPRequest) sdk.HTTPResponse {
 	if cfg.AllowChange {
 		query = sqlVoteChange
 	}
-	if err := dbExec(query, id, voter, int(stars[0]-'0')); err != nil {
+	// A vote that changed nothing (an error or a duplicate) stores no path.
+	if n, err := dbExecN(query, id, voter, int(stars[0]-'0')); err != nil || n == 0 {
 		return see(back, cookies...)
 	}
 	if p, ok := cleanPath(form.Get("path")); ok {

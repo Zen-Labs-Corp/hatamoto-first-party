@@ -41,6 +41,9 @@ func (f *fakeHost) install(t *testing.T) {
 		if f.db != nil {
 			return f.db(c, out)
 		}
+		if fn == "db.exec" && out != nil {
+			return json.Unmarshal([]byte(`{"rows_affected":1}`), out)
+		}
 		return nil
 	}
 }
