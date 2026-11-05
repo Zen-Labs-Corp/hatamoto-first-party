@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Stock photos</title>
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h2>Stock photos</h2>
+    <form id="form">
+      <label>Query
+        <input id="q" name="query" type="text" placeholder="mountain lake" autocomplete="off">
+      </label>
+      <fieldset>
+        <legend>Provider</legend>
+        <label><input type="radio" name="provider" value="pexels" checked> Pexels</label>
+        <label><input type="radio" name="provider" value="openverse"> Openverse</label>
+      </fieldset>
+      <label>Count (1-30)
+        <input id="count" name="count" type="number" min="1" max="30" value="12">
+      </label>
+      <label>Orientation
+        <select id="orientation" name="orientation">
+          <option value="any">Any</option>
+          <option value="landscape">Landscape</option>
+          <option value="portrait">Portrait</option>
+          <option value="square">Square</option>
+        </select>
+      </label>
+    </form>
+    <p class="muted">Pexels needs an API key in the plugin Settings tab. Openverse: tick api.openverse.org and the image hosts below (for example live.staticflickr.com, upload.wikimedia.org) when you start the import.</p>
+    <p class="muted">Photos are staged for review in a changeset. Nothing is published until you publish it.</p>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
