@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -60,7 +61,8 @@ func (h *fakeHost) install(t *testing.T) {
 		return nil
 	}
 	now = func() time.Time { return time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC) }
-	t.Cleanup(func() { now = time.Now })
+	budgetEnd = time.Time{}
+	t.Cleanup(func() { now = time.Now; fetchFn = doFetch; budgetEnd = time.Time{} })
 }
 
 func answer(s string, out any) error {
@@ -96,3 +98,9 @@ func TestSettingsDefaultsAndChannels(t *testing.T) {
 		t.Fatal("watched filter")
 	}
 }
+
+func unmarshal(s string, out any) error { return json.Unmarshal([]byte(s), out) }
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
+func quote(s string) string { b, _ := json.Marshal(s); return string(b) }
