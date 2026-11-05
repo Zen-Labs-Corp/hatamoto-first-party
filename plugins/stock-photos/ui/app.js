@@ -16,7 +16,14 @@
       orientation: orientation.value,
     };
   };
-  const push = () => hatamoto.runInputs(read());
+  const note = document.querySelector("#runs-note");
+  // The admin refuses the inputs where the page has no run form (the Settings
+  // tab); say where the form is instead of failing silently.
+  const push = () =>
+    hatamoto.runInputs(read()).then(
+      () => { note.hidden = true; },
+      () => { note.hidden = false; },
+    );
 
   form.addEventListener("input", push);
   push();
