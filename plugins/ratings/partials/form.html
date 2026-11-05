@@ -1,0 +1,15 @@
+{{define "plugin/ratings/form"}}{{if .EntityID}}{{if plugin_ratings_enabled .SchemaSlug}}
+<form class="hm-ratings" method="post" action="/p/ratings/rate">
+  <p>Rate this page</p>
+  <input type="hidden" name="entity_id" value="{{.EntityID}}">
+  <input type="hidden" name="schema" value="{{.SchemaSlug}}">
+  <input type="hidden" name="path" value="{{.Path}}">
+  <input type="hidden" name="return_to" value="{{.Path}}">
+  <button type="submit" name="stars" value="1">1 star</button>
+  <button type="submit" name="stars" value="2">2 stars</button>
+  <button type="submit" name="stars" value="3">3 stars</button>
+  <button type="submit" name="stars" value="4">4 stars</button>
+  <button type="submit" name="stars" value="5">5 stars</button>
+</form>
+{{with plugin_ratings_summary .EntityID}}<p class="hm-ratings-summary">{{.}}</p>{{end}}
+{{end}}{{end}}{{end}}

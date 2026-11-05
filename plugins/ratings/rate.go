@@ -28,6 +28,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	switch r.Method + " " + r.Pattern {
 	case "POST /rate":
 		return handleRate(r), nil
+	case "GET /overview":
+		return handleOverview(), nil
 	}
 	return reply(404, map[string]string{"error": "not found"}), nil
 }

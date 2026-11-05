@@ -5,8 +5,6 @@
 package main
 
 import (
-	"encoding/json"
-
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
 )
@@ -17,9 +15,3 @@ func init() {
 	guest.OnFunc("enabled", funcEnabled)
 	guest.OnAction(sdk.EntityDeleted, onEntityDeleted)
 }
-
-// Placeholders, replaced by the func files.
-
-func funcSummary([]json.RawMessage) (string, error) { return "", nil }
-
-func funcEnabled([]json.RawMessage) (string, error) { return "", nil }
