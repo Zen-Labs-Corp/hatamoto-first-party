@@ -1,0 +1,19 @@
+{
+  "name": "alt-text",
+  "version": "0.1.0",
+  "sdk": "^0.8",
+  "description": "Suggests alt text for images in your media library that have none, using a vision model you choose, and stages each one for your review.",
+  "permissions": ["settings"],
+  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "title": "Greeting",
+        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
+        "maxLength": 64
+      }
+    }
+  }
+}
