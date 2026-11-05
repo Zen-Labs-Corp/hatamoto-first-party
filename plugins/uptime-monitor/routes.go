@@ -14,8 +14,8 @@ const (
 	// cannot be used to hammer a site.
 	checkNowReuse = 10 * time.Second
 	// checkNowTimeoutMS leaves room in the 10 s route timeout for the
-	// database calls around the request.
-	checkNowTimeoutMS = 8000
+	// database and settings calls around the request, which can be slow too.
+	checkNowTimeoutMS = 6000
 )
 
 // handleRoute answers the owner-only admin routes. Database trouble is a 503
@@ -119,9 +119,7 @@ func handleCheckNow(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	if err != nil {
 		return notReady(err)
 	}
-	if err := flushOutbox(now().Add(time.Second)); err != nil {
-		logf("warn", "uptime-monitor: mail queue failed code=%s", hostErrCode(err))
-	}
+	// Queued mail is left for the next tick: a send here could overrun the route.
 	return reply(http.StatusOK, viewOf(updated))
 }
 

@@ -424,8 +424,34 @@ func TestCheckNowRunsTheCheckAndRecordsIt(t *testing.T) {
 			timeout = c.Args["timeout_ms"].(float64)
 		}
 	}
-	if timeout != checkNowTimeoutMS {
+	if timeout != checkNowTimeoutMS || timeout > 6000 {
 		t.Fatalf("timeout %v", timeout)
+	}
+}
+
+func TestCheckNowLeavesMailForTheNextTick(t *testing.T) {
+	h := newRouteHost(t)
+	h.st.FailThreshold = 1
+	last := h.clock.Add(-time.Minute)
+	h.add(monitor{Name: "A", URL: "http://a.example.org/", Status: statusUp, LastCheck: &last})
+	h.status = 503
+	if status, v := h.do("POST", "/check-now", `{"id":1}`); status != 200 || v["status"] != "down" {
+		t.Fatalf("%d %v", status, v)
+	}
+	if len(h.mailed) != 0 || h.f.count("mail.send") != 0 {
+		t.Fatalf("mail sent inside the route: %v", h.mailed)
+	}
+	queued := 0
+	for _, q := range h.f.sqls() {
+		if strings.Contains(q, "FROM outbox") {
+			t.Fatalf("the route read the outbox: %s", q)
+		}
+		if strings.HasPrefix(q, "INSERT INTO outbox") {
+			queued++
+		}
+	}
+	if queued != 1 {
+		t.Fatalf("%d mails queued, want 1", queued)
 	}
 }
 
