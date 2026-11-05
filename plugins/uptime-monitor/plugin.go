@@ -20,9 +20,7 @@ func init() {
 	guest.OnHTTP(handleRoute)
 }
 
-// Stubs, replaced by the real jobs and routes.
-func runRollup(sdk.CronEvent) error { return nil }
-
+// Stub, replaced by the real routes.
 func handleRoute(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	return sdk.HTTPResponse{
 		Status:  http.StatusNotImplemented,
