@@ -8,7 +8,7 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-func TestFetchStepFinishes(t *testing.T) {
+func TestFetchStepWithoutQueryFails(t *testing.T) {
 	var calls []string
 	callHost = func(fn string, _, _ any) error {
 		calls = append(calls, fn)
@@ -18,7 +18,7 @@ func TestFetchStepFinishes(t *testing.T) {
 	if _, err := guest.Handle(sdk.RunStepExport, in); err != nil {
 		t.Fatalf("step returned an error: %v", err)
 	}
-	if len(calls) != 1 || calls[0] != "run.finish" {
+	if len(calls) != 2 || calls[0] != "run.info" || calls[1] != "run.fail" {
 		t.Fatalf("host calls = %v", calls)
 	}
 }
