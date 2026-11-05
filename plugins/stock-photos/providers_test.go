@@ -273,3 +273,9 @@ func TestOpenverseLicenceAllowList(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanTextDropsFormatCharacters(t *testing.T) {
+	if got := cleanText("a\u202Eb\u200Bc\u2066d\uFEFFe", 50); got != "abcde" {
+		t.Errorf("got %q", got)
+	}
+}

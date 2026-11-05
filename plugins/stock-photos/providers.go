@@ -315,14 +315,15 @@ func filenameFor(provider, id, rawURL, filetype string) string {
 	return base + "." + ext
 }
 
-// cleanText drops control characters, collapses whitespace and cuts to max
+// cleanText drops control and invisible format characters (bidi overrides,
+// zero-width), collapses whitespace and cuts to max
 // runes.
 func cleanText(s string, max int) string {
 	s = strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) {
 			return ' '
 		}
-		if unicode.IsControl(r) || r == utf8.RuneError {
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Co, unicode.Cs) || r == utf8.RuneError {
 			return -1
 		}
 		return r
