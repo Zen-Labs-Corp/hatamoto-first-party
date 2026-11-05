@@ -346,3 +346,61 @@ func TestFetchBlockedCallFailsTheRun(t *testing.T) {
 	}
 	f.noKeyLeak()
 }
+
+func TestFetchRunWideProviderErrorsFailTheRun(t *testing.T) {
+	cases := []struct {
+		status int
+		want   string
+	}{
+		{401, "The provider refused the API key."},
+		{403, "The provider refused the API key."},
+		{404, "The provider does not know the model my-model."},
+	}
+	for _, c := range cases {
+		f := newFake(t)
+		f.settings["model"] = "my-model"
+		f.addImages("i", 5, "")
+		f.vision = func(visionReq) (fetched, error) { return fetched{Status: c.status, Body: "bad " + testKey}, nil }
+		fetchPhase(t, f)
+		if f.failed != c.want || len(f.requests) != 1 {
+			t.Errorf("HTTP %d: failed=%q requests=%d", c.status, f.failed, len(f.requests))
+		}
+		f.noKeyLeak()
+	}
+}
+
+func TestFetchPerImageStatusesStayFailOpen(t *testing.T) {
+	for _, status := range []int{400, 408, 422, 429, 500, 503} {
+		f := newFake(t)
+		f.addImages("i", 2, "")
+		f.vision = func(visionReq) (fetched, error) { return fetched{Status: status}, nil }
+		fetchPhase(t, f)
+		if f.failed != "" || f.lastMeta().Errors != 2 {
+			t.Errorf("HTTP %d: failed=%q meta=%+v", status, f.failed, f.lastMeta())
+		}
+	}
+}
+
+func TestFetchBadSiteURLFailsTheRun(t *testing.T) {
+	for _, bad := range []string{
+		"example.com", "www.example.com/x", "http://example.com", "https://", "ftp://example.com",
+		"https://user:pw@example.com", "https://example.com?a=1", "https://example.com/?", "https://example.com#top",
+	} {
+		f := newFake(t)
+		f.settings["site_url"] = bad
+		f.addImages("i", 2, "")
+		fetchPhase(t, f)
+		if f.failed != msgBadSiteURL || len(f.requests) != 0 {
+			t.Errorf("site_url %q: failed=%q requests=%d", bad, f.failed, len(f.requests))
+		}
+	}
+	for _, ok := range []string{"https://example.com", "https://example.com/", "https://example.com/blog", "https://example.com:8443"} {
+		f := newFake(t)
+		f.settings["site_url"] = ok
+		f.addImages("i", 1, "")
+		fetchPhase(t, f)
+		if f.failed != "" {
+			t.Errorf("site_url %q: failed=%q", ok, f.failed)
+		}
+	}
+}

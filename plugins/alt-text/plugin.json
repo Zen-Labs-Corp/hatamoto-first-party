@@ -24,7 +24,7 @@
       "max_length": { "type": "integer", "title": "Longest alt text, in characters", "default": 125, "minimum": 20, "maximum": 300 },
       "limit": { "type": "integer", "title": "Images to check per run", "default": 50, "minimum": 1, "maximum": 200, "description": "How many images one run looks at, from 1 to 200. Raise it to get past images that stay without a suggestion." },
       "only_missing": { "type": "boolean", "title": "Only images without alt text", "default": true, "description": "Turn off to also suggest new text for images that already have alt text." },
-      "site_url": { "type": "string", "title": "Address of this site", "description": "For example https://example.com. Used to turn /media paths into links the provider can open; not needed when your media links are already absolute." }
+      "site_url": { "type": "string", "title": "Address of this site", "description": "A full https address, for example https://example.com. Used to turn /media paths into links the provider can open; not needed when your media links are already absolute." }
     }
   }
 }

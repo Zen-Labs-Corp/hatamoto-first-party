@@ -22,6 +22,8 @@ It does the job of the "auto image attributes" and AI alt-text plugins for WordP
 
 Images the model judges purely decorative (a divider, a background pattern) are not given alt text. Their file names are kept in the summary stored with the run, not on the run page.
 
+A problem that affects every image stops the run with a plain reason: no API key, a site address that is not a full https address, a provider that refuses the key or does not know the model, or a host that was not ticked.
+
 An image the provider cannot describe (an error, an answer that was cut off, an unreachable link) is skipped and counted as an error; the run goes on with the next one.
 
 ## Permissions

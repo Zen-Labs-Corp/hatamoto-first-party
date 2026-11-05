@@ -230,5 +230,11 @@ func describe(s settings, imageURL, mime string) (string, error) {
 	if res.Truncated {
 		return "", fmt.Errorf("%s answer was cut off", s.Provider)
 	}
+	switch res.Status {
+	case 401, 403:
+		return "", &runError{"The provider refused the API key."}
+	case 404:
+		return "", &runError{"The provider does not know the model " + s.model() + "."}
+	}
 	return parseAnswer(s.Provider, res.Status, []byte(res.Body))
 }

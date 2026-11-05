@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -15,6 +16,7 @@ const (
 	pageSize      = 20 // media.list page size; offsets advance by it
 	maxListCalls  = 20 // media.list calls per step
 	msgNoSiteURL  = "Set the site address in the plugin settings so providers can reach your images."
+	msgBadSiteURL = "Set the site address to a full https address such as https://example.com, without a query or login."
 	msgListFailed = "Could not list the images in the media library."
 	msgNoSettings = "Could not read the plugin settings."
 	msgBadCursor  = "The run lost its place; start it again."
@@ -45,6 +47,17 @@ type mediaPage struct {
 	Total int         `json:"total"`
 }
 
+// validSiteURL accepts an empty address (media links may be absolute) or an
+// absolute https URL with a host and no userinfo, query or fragment.
+func validSiteURL(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil &&
+		u.RawQuery == "" && !u.ForceQuery && u.Fragment == "" && !strings.Contains(raw, "#")
+}
+
 // msgTick names the host the owner has to tick when starting the run.
 func msgTick(host string) string { return "Tick " + host + " when you start the run." }
 
@@ -65,6 +78,9 @@ func fetchStep(st sdk.RunStep) error {
 		return guest.RunFail(callHost, msgNoKey)
 	}
 	limit := int(s.Limit)
+	if !validSiteURL(s.SiteURL) {
+		return guest.RunFail(callHost, msgBadSiteURL)
+	}
 	if st.Cursor == "" {
 		info, err := guest.RunInfo(callHost)
 		if err != nil {
