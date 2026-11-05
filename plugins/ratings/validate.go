@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/url"
 	"strings"
 )
@@ -30,14 +31,17 @@ func isUUID(s string) bool {
 }
 
 // cleanPath accepts a same-site path the host will take as a Location: it
-// starts with one "/", has no backslash, control, space or non-ASCII byte, no
-// scheme or host, and fits maxPath. It is stricter than the host on purpose.
+// starts with one "/", has no backslash, control or space byte, no scheme or
+// host, and fits maxPath. Bytes >= 0x80 are percent-encoded first, because
+// core hands templates the decoded request path (a slug such as /blog/café).
+// It is stricter than the host on purpose.
 func cleanPath(p string) (string, bool) {
+	p = escapeHigh(p)
 	if p == "" || len(p) > maxPath || p[0] != '/' || strings.HasPrefix(p, "//") || strings.Contains(p, "\\") {
 		return "", false
 	}
 	for i := 0; i < len(p); i++ {
-		if p[i] <= 0x20 || p[i] >= 0x7f {
+		if p[i] <= 0x20 || p[i] == 0x7f {
 			return "", false
 		}
 	}
@@ -46,6 +50,19 @@ func cleanPath(p string) (string, bool) {
 		return "", false
 	}
 	return p, true
+}
+
+// escapeHigh percent-encodes every byte >= 0x80, leaving ASCII untouched.
+func escapeHigh(p string) string {
+	var b strings.Builder
+	for i := 0; i < len(p); i++ {
+		if c := p[i]; c >= 0x80 {
+			fmt.Fprintf(&b, "%%%02X", c)
+		} else {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // newVoter returns 128 random bits as 32 lowercase hex characters.

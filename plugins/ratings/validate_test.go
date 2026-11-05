@@ -45,13 +45,33 @@ func TestCleanPath(t *testing.T) {
 		{"/a\nb", false},
 		{"/a\tb", false},
 		{"/\x7f", false},
-		{"/é", false},
 		{"/%zz", false},
 	} {
 		got, ok := cleanPath(tc.in)
 		if ok != tc.ok || (ok && got != tc.in) || (!ok && got != "") {
 			t.Errorf("cleanPath(%q) = %q, %v", tc.in, got, ok)
 		}
+	}
+}
+
+func TestCleanPathEncodesNonASCII(t *testing.T) {
+	for in, want := range map[string]string{
+		"/blog/café":      "/blog/caf%C3%A9",
+		"/blog/caf%C3%A9": "/blog/caf%C3%A9",
+		"/é":              "/%C3%A9",
+	} {
+		got, ok := cleanPath(in)
+		if !ok || got != want {
+			t.Errorf("cleanPath(%q) = %q, %v; want %q", in, got, ok, want)
+		}
+	}
+	// A destination the host would refuse must still fall back.
+	if _, ok := cleanPath("/\\é"); ok {
+		t.Error("backslash accepted")
+	}
+	// Invalid UTF-8 bytes are encoded too, never passed raw.
+	if got, ok := cleanPath("/a\xff"); !ok || got != "/a%FF" {
+		t.Errorf("cleanPath(raw 0xff) = %q, %v", got, ok)
 	}
 }
 

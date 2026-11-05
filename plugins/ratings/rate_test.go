@@ -120,7 +120,7 @@ func TestRateReturnToIsAlwaysAHostSafeLocation(t *testing.T) {
 		"javascript:": "/",
 		"/ok?a=1":     "/ok?a=1",
 		"/a b":        "/",
-		"/é":          "/",
+		"/é":          "/%C3%A9",
 	} {
 		(&fakeHost{settings: `{}`}).install(t)
 		r := handleRate(post(okForm("return_to", in), nil, nil))
