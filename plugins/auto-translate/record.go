@@ -51,13 +51,13 @@ type slot struct {
 	n     int    // glossary terms wrapped in it
 }
 
-// attrFields are the translated attributes: the first three are HTML, the
-// others plain text.
+// attrFields are the translated attributes: content is HTML, the others are
+// plain text that core renders escaped.
 var attrFields = []struct {
 	key   string
 	plain bool
 }{
-	{"content", false}, {"excerpt", false}, {"description", false},
+	{"content", false}, {"excerpt", true}, {"description", true},
 	{"meta_title", true}, {"meta_description", true},
 }
 

@@ -228,3 +228,23 @@ func TestPutRecord(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+// Excerpt and description are plain text: they go out escaped and come back
+// without the entities a provider adds.
+func TestFillTreatsExcerptAndDescriptionAsPlainText(t *testing.T) {
+	e := entity{ID: "i", Name: "N", Locale: "en", Attributes: map[string]json.RawMessage{
+		"excerpt":     mustJSON("Q&A <beta>"),
+		"description": mustJSON("plain"),
+	}}
+	texts, slots := unitFor(e, nil)
+	if texts[1] != "Q&amp;A &lt;beta&gt;" {
+		t.Fatalf("sent %q", texts[1])
+	}
+	out := append([]string(nil), texts...)
+	out[1] = "l&#39;&eacute;t&eacute; &amp; <b>Q</b>"
+	out[2] = "d&#39;un &quot;site&quot;"
+	r, _ := fill(e, out, slots, nil)
+	if r.T.Excerpt != "l'été & Q" || r.T.Description != `d'un "site"` {
+		t.Fatalf("excerpt %q description %q", r.T.Excerpt, r.T.Description)
+	}
+}
