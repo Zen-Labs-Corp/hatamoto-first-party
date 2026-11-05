@@ -153,16 +153,17 @@ func drain(s settings, jobs []job, start time.Time) {
 
 // deliverRow makes one attempt for one row. A platform that is off, not
 // configured or needs reconnecting is left alone (the row waits, then
-// expires after 24 h); each row is independent of the others.
+// expires after 24 h) but still keeps the posted click IDs, which are purged
+// after an hour; each row is independent of the others.
 func deliverRow(s settings, j job) {
 	p := j.Platform
-	if !s.enabled(p) || !s.configured(p) || isBroken(s, p) {
-		pause(j)
-		return
-	}
 	if err := joinClicks(&j); err != nil {
 		logf("warn", "ads-conversions: could not read the click IDs")
 		release(j)
+		return
+	}
+	if !s.enabled(p) || !s.configured(p) || isBroken(s, p) {
+		pause(j)
 		return
 	}
 	if !hasIdentifier(j) {

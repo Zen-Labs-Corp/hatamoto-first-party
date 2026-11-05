@@ -436,3 +436,15 @@ func TestTikTokTestClearsBrokenAndCardShowsIt(t *testing.T) {
 		t.Fatal("a passing Test must clear the broken state")
 	}
 }
+
+func TestDeliverPausedRowKeepsPostedClickIDs(t *testing.T) {
+	h := deliveryHost(t, rowJSON(1, "tiktok", 0, ""))
+	h.configure(`"tiktok_enabled":false`)
+	h.query["FROM clicks WHERE submission_id"] = `{"ttclid":"CLICK-1"}`
+	platformHTTP(t, map[string]fetched{})
+	runDeliver(t)
+	join := h.execs("UPDATE queue SET gclid")
+	if len(join) != 1 || argsOf(join[0])[4] != "CLICK-1" || len(h.execs("UPDATE queue SET next_attempt_at")) != 1 {
+		t.Fatalf("a paused row must keep the posted click IDs: %+v", join)
+	}
+}
