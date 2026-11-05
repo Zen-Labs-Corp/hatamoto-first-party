@@ -18,14 +18,8 @@ func init() {
 	guest.OnAction(sdk.EntityDeleted, onEntityDeleted)
 }
 
-// Placeholders, replaced by the route, func and cleanup files.
-
-func serve(sdk.HTTPRequest) (sdk.HTTPResponse, error) {
-	return sdk.HTTPResponse{Status: 303, Headers: map[string]string{"Location": "/"}}, nil
-}
+// Placeholders, replaced by the func files.
 
 func funcSummary([]json.RawMessage) (string, error) { return "", nil }
 
 func funcEnabled([]json.RawMessage) (string, error) { return "", nil }
-
-func onEntityDeleted(sdk.EntityEvent) error { return nil }
