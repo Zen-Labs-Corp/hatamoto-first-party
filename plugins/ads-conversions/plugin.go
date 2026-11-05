@@ -1,9 +1,10 @@
 // Command ads-conversions is a Hatamoto plugin. Sends a server-side conversion to Google Ads, TikTok and LinkedIn for each form submission, with hashed contact details and the ad click ID, to back up the browser tags.
 //
-// Starting point from the first-party template: a render.head filter that
-// reads one setting and adds a meta tag. Replace it with the real hooks; keep
-// the logic in plain Go (this file) and the //go:wasmexport lines in
-// exports_wasip1.go, so everything but the exports builds and tests on the host.
+// The form hook only queues what it finds (hashes and click IDs, never a raw
+// value); cron jobs send the conversions, so a slow platform never holds up a
+// form. The logic is plain Go in these files; the //go:wasmexport lines live
+// in exports_wasip1.go, so everything but the exports builds and tests on the
+// host.
 package main
 
 import (
@@ -14,24 +15,85 @@ import (
 )
 
 func init() {
-	guest.OnFilter(sdk.RenderHead, addMeta)
+	guest.OnAction(sdk.FormSubmitted, onFormSubmitted)
 }
 
-// addMeta never fails the render: an unreadable or empty setting adds nothing.
-func addMeta(c sdk.HeadContext) (sdk.HeadContext, error) {
-	var s struct {
-		Greeting string `json:"greeting"`
+// truthy reads a consent value: true, a non-zero number, or one of 1, true,
+// yes, on, y, checked in any case. A non-empty list (checkbox options store
+// the chosen values) counts as consent.
+func truthy(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case float64:
+		return x != 0
+	case []any:
+		return len(x) > 0
+	case string:
+		switch strings.ToLower(strings.TrimSpace(x)) {
+		case "1", "true", "yes", "on", "y", "checked":
+			return true
+		}
 	}
-	if err := callHost("settings.get", struct{}{}, &s); err != nil {
-		return c, nil
+	return false
+}
+
+// isBroken reports whether the platform's connection needs reconnecting. A
+// host error counts as not broken, so the hook fails open.
+func isBroken(platform string) bool {
+	var v string
+	found, err := kvGet("status:"+platform, &v)
+	return err == nil && found && v == "reconnect"
+}
+
+// onFormSubmitted queues one conversion per active platform. It returns nil on
+// every path so a problem here never trips the host's circuit breaker.
+func onFormSubmitted(ev sdk.FormSubmittedEvent) error {
+	defer func() {
+		if recover() != nil {
+			logf("error", "ads-conversions: queueing stopped by an internal error")
+		}
+	}()
+	queueSubmission(ev)
+	return nil
+}
+
+func queueSubmission(ev sdk.FormSubmittedEvent) {
+	s, err := loadSettings()
+	if err != nil {
+		logf("warn", "ads-conversions: settings unreadable")
+		return
 	}
-	g := strings.TrimSpace(s.Greeting)
-	if g == "" {
-		return c, nil
+	if !s.allowsForm(ev.FormSlug) {
+		return
 	}
-	c.Tags = append(c.Tags, sdk.HeadTag{
-		Kind:  "meta",
-		Attrs: map[string]string{"name": "ads-conversions", "content": g},
-	})
-	return c, nil
+	var active []string
+	for _, p := range platforms {
+		if s.enabled(p) && s.configured(p) && !isBroken(p) {
+			active = append(active, p)
+		}
+	}
+	if len(active) == 0 {
+		return
+	}
+	if s.ConsentField != "" && !truthy(ev.Fields[s.ConsentField]) {
+		recordOnce(ev.SubmissionID, ev.FormSlug, "-", "skipped", "consent")
+		return
+	}
+	id := buildIdentity(ev.Fields, s.EmailField, s.PhoneField, s.DefaultCountryCode)
+	ids := idsFromSourcePath(ev.SourcePath)
+	if id == (identity{}) && len(ids) == 0 {
+		recordOnce(ev.SubmissionID, ev.FormSlug, "-", "skipped", "no_contact")
+		return
+	}
+	for _, p := range active {
+		_, err := enqueue(job{
+			SubmissionID: ev.SubmissionID, Form: ev.FormSlug, Platform: p,
+			EmHash: id.Em, EmGoogleHash: id.EmGoogle, PhHash: id.Ph, IDs: ids,
+			PagePath: cleanPath(ev.SourcePath), Consent: s.ConsentField != "", SubmittedAt: ev.SubmittedAt,
+		})
+		if err != nil {
+			logf("warn", "ads-conversions: could not queue a conversion")
+		}
+	}
 }
