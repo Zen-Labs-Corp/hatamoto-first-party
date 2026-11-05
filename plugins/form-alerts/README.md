@@ -41,6 +41,7 @@ From the repository root: `scripts/build-plugin.sh plugins/form-alerts`.
 ## Limits
 
 - Privacy: the field values you choose leave your site for Slack, Microsoft, Google or Telegram. Turn **Include field values** off to send only the form name and the admin link.
+- Privacy: the link shows your admin address to the platform and to everyone in the channel. Leave **Admin address** empty to send only the submission id.
 - Delivery takes about a minute, because a background job sends queued messages every minute.
 - A 4xx answer from the platform is not retried and is logged as failed. A 429, 408 or 5xx answer, a timeout or a network error is retried with a growing wait, honouring Retry-After, for up to 6 hours, then logged as expired.
 - Platforms limit how fast they accept messages (about one per second per channel); a burst is spread over retries.

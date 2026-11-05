@@ -109,3 +109,13 @@ func TestUIWarnsAboutUnknownFormsAndFields(t *testing.T) {
 		t.Fatal("the page must show the settings warnings")
 	}
 }
+
+func TestREADMEWarnsThatTheLinkRevealsTheAdminAddress(t *testing.T) {
+	b, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "shows your admin address to the platform") {
+		t.Fatal("the privacy note must mention the admin address")
+	}
+}
