@@ -182,6 +182,12 @@ func insertIncident(monitorID int64, started time.Time, cause string, alerted bo
 		VALUES ($1::bigint, $2::timestamptz, $3::text, $4::boolean)`, monitorID, ts(started), cause, alerted)
 }
 
+// markIncidentAlerted records that the down mail of the ongoing incident is queued.
+func markIncidentAlerted(monitorID int64) error {
+	return dbExec(`UPDATE incidents SET alerted_down = true
+		WHERE monitor_id = $1::bigint AND ended_at IS NULL`, monitorID)
+}
+
 // closeIncidents ends the monitor's ongoing incidents. alertedUp records
 // whether a recovery mail was queued.
 func closeIncidents(monitorID int64, ended time.Time, alertedUp bool) error {

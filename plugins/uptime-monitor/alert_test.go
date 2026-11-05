@@ -19,6 +19,7 @@ type alertDB struct {
 	incidents []incident
 	mails     []sentMail
 	checks    []call
+	flagged   int // incidents marked as alerted after the fact
 	states    []call
 }
 
@@ -40,6 +41,8 @@ func newAlertDB(t *testing.T) (*alertDB, *fakeHost) {
 			}
 			b, _ := json.Marshal(open)
 			return cell(out, string(b))
+		case strings.HasPrefix(sql, "UPDATE incidents SET alerted_down"):
+			d.flagged++
 		case strings.HasPrefix(sql, "UPDATE incidents"):
 			at, _ := time.Parse(time.RFC3339, c.params()[1].(string))
 			for i := range d.incidents {
@@ -217,12 +220,31 @@ func TestAlertNoEmailsQueuesNothingAndStaysUnalerted(t *testing.T) {
 	// An address appears while the outage lasts: the down mail is queued once,
 	// on the incident that is already open.
 	m = run(t, m, alertSettings, t0.Add(10*time.Minute), downResult, downResult)
-	if len(d.mails) != 1 || len(d.incidents) != 1 || !m.AlertedDown {
-		t.Fatalf("mails %d incidents %d %+v", len(d.mails), len(d.incidents), m)
+	if len(d.mails) != 1 || len(d.incidents) != 1 || !m.AlertedDown || d.flagged != 1 {
+		t.Fatalf("mails %d incidents %d flagged %d %+v", len(d.mails), len(d.incidents), d.flagged, m)
 	}
 	run(t, m, alertSettings, t0.Add(time.Hour), upResult)
 	if len(d.mails) != 2 || d.incidents[0].EndedAt == nil {
 		t.Fatalf("mails %d", len(d.mails))
+	}
+}
+
+func TestAlertRecoveryWaitsForRealSettings(t *testing.T) {
+	d, _ := newAlertDB(t)
+	m := run(t, alertMonitor(), alertSettings, t0, downResult, downResult, downResult)
+	if len(d.mails) != 1 || !m.AlertedDown {
+		t.Fatalf("setup: mails %d %+v", len(d.mails), m)
+	}
+	// The settings store fails on the recovery tick: the incident stays open.
+	fallback := defaultSettings()
+	fallback.Fallback = true
+	m = run(t, m, fallback, t0.Add(time.Hour), upResult)
+	if len(d.mails) != 1 || d.incidents[0].EndedAt != nil || !m.AlertedDown {
+		t.Fatalf("mails %d incident %+v %+v", len(d.mails), d.incidents[0], m)
+	}
+	run(t, m, alertSettings, t0.Add(2*time.Hour), upResult)
+	if len(d.mails) != 2 || d.incidents[0].EndedAt == nil {
+		t.Fatalf("mails %d incident %+v", len(d.mails), d.incidents[0])
 	}
 }
 

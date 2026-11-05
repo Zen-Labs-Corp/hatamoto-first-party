@@ -14,6 +14,11 @@ func applyResult(m monitor, r result, st settings) (monitor, error) {
 	if r.Skip {
 		return m, nil
 	}
+	// Without the real settings a recovery would close an alerted incident
+	// without its mail: wait for a tick that has them.
+	if st.Fallback && m.AlertedDown && (r.Status == statusUp || r.Status == statusSlow) {
+		return m, nil
+	}
 	at := now()
 	m.LastCheck = &at
 	m.NextCheck = at.Add(time.Duration(m.IntervalS) * time.Second)
@@ -88,9 +93,11 @@ func failed(m monitor, r result, at time.Time, st settings) (monitor, error) {
 	if m.AlertedDown || (m.FailCount < st.FailThreshold && !expired) {
 		return m, nil
 	}
-	if _, found, err := openIncident(m.ID); err != nil {
+	_, existed, err := openIncident(m.ID)
+	if err != nil {
 		return m, err
-	} else if !found {
+	}
+	if !existed {
 		if err := insertIncident(m.ID, *m.DownSince, r.Cause, len(st.AlertEmails) > 0); err != nil {
 			return m, err
 		}
@@ -102,6 +109,12 @@ func failed(m monitor, r result, at time.Time, st settings) (monitor, error) {
 		return m, err
 	}
 	m.AlertedDown = true
+	if existed { // opened earlier without a mail
+		if err := markIncidentAlerted(m.ID); err != nil {
+			// The mail is queued: a retry would send it twice. The flag is only data.
+			logf("warn", "uptime-monitor: incident flag not saved code=%s", hostErrCode(err))
+		}
+	}
 	return m, nil
 }
 

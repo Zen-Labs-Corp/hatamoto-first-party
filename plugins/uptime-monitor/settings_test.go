@@ -33,6 +33,9 @@ func TestLoadSettingsDefaultsAndFailsOpen(t *testing.T) {
 	if s.FailThreshold != 2 || !slices.Equal(s.SSLWarnDays, []int{21, 7, 1}) {
 		t.Fatalf("host error must give defaults: %+v", s)
 	}
+	if !s.Fallback {
+		t.Fatal("defaults after a host error must be marked as a fallback")
+	}
 	if logs := f.logs(); len(logs) != 1 || !strings.Contains(logs[0], "settings unavailable") {
 		t.Fatalf("logs %v", logs)
 	}

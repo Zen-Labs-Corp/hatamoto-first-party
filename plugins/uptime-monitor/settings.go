@@ -15,6 +15,9 @@ type settings struct {
 	// InvalidEmails are the alert_emails entries dropped for not being plain
 	// addresses; never part of the stored settings.
 	InvalidEmails []string `json:"-"`
+	// Fallback: the settings could not be read and these are the defaults, not
+	// the owner's choices.
+	Fallback bool `json:"-"`
 }
 
 const defaultFailThreshold = 2
@@ -31,7 +34,9 @@ func loadSettings() settings {
 	var s settings
 	if err := callHost("settings.get", struct{}{}, &s); err != nil {
 		logf("warn", "uptime-monitor: settings unavailable, using defaults code=%s", hostErrCode(err))
-		return defaultSettings()
+		s = defaultSettings()
+		s.Fallback = true
+		return s
 	}
 	s.AlertEmails, s.InvalidEmails = splitEmails(s.AlertEmails)
 	if s.FailThreshold < 1 || s.FailThreshold > 10 {
