@@ -3,12 +3,25 @@ package main
 import (
 	"errors"
 	"strconv"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
 
 // fetchTimeoutMS stays under the 10 s the host allows a cron run.
 const fetchTimeoutMS = 8000
+
+// budgetEnd is when the running cron job must stop; zero outside a job. Calls
+// shrink their timeout to what is left, so a job stays inside the host's limit.
+var budgetEnd time.Time
+
+// callTimeout is the timeout of the next call in milliseconds.
+func callTimeout() int {
+	if budgetEnd.IsZero() {
+		return fetchTimeoutMS
+	}
+	return int(max(min(budgetEnd.Sub(now()).Milliseconds(), fetchTimeoutMS), 1000))
+}
 
 // Outcome kinds.
 const (
@@ -87,7 +100,7 @@ func hostReason(err error) string {
 // such as a missing grant heals once the owner fixes it); a truncated answer
 // counts as a server error. The returned fetched has Status 0 on an error.
 func send(req request) (fetched, outcome) {
-	f, err := httpDo(req, fetchTimeoutMS)
+	f, err := httpDo(req, callTimeout())
 	if err != nil {
 		return fetched{}, outcome{Kind: kindRetry, Reason: "network", Code: hostReason(err)}
 	}

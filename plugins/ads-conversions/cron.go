@@ -4,6 +4,19 @@ import (
 	"time"
 
 	"hatamoto.dev/sdk"
+	"hatamoto.dev/sdk/guest"
+)
+
+const (
+	// batchSize is how many rows one run claims.
+	batchSize = 25
+	// cronBudget is how long one run keeps starting deliveries; the hook's own
+	// limit is 10 s (plugin.json).
+	cronBudget = 8 * time.Second
+	// minCall is the least time worth starting another call for.
+	minCall = 1500 * time.Millisecond
+	// pauseTime is how long rows of a stopped platform are left alone.
+	pauseTime = 10 * time.Minute
 )
 
 // expiryWarning is how long before a LinkedIn token runs out it is refreshed,
@@ -67,4 +80,161 @@ func refreshPlatform(s settings, platform string) {
 	notifyOnce(s, linkedInExpiryKey, "LinkedIn connection expires soon",
 		"The LinkedIn connection of the server-side conversions plugin expires on "+t.Expires.UTC().Format("2006-01-02")+
 			". Open the plugin page in the admin area and choose Reconnect before then, or conversions stop.\n")
+}
+
+func init() {
+	guest.OnCron("deliver", onDeliver)
+	guest.OnCron("retry", onRetry)
+}
+
+// onDeliver sends the first attempt of queued conversions. It never returns
+// an error.
+func onDeliver(sdk.CronEvent) error {
+	defer func() {
+		if recover() != nil {
+			logf("error", "ads-conversions: delivery stopped by an internal error")
+		}
+	}()
+	start := now()
+	s, err := loadSettings()
+	if err != nil {
+		logf("warn", "ads-conversions: settings unreadable")
+		return nil
+	}
+	jobs, err := claimFirst(start, batchSize)
+	if err != nil {
+		logf("warn", "ads-conversions: could not read the queue")
+		return nil
+	}
+	drain(s, jobs, start)
+	return nil
+}
+
+// onRetry expires old rows, purges old logs and clicks, then retries rows that
+// are due again. It never returns an error.
+func onRetry(sdk.CronEvent) error {
+	defer func() {
+		if recover() != nil {
+			logf("error", "ads-conversions: retry stopped by an internal error")
+		}
+	}()
+	start := now()
+	expireOld(start)
+	purge(start)
+	s, err := loadSettings()
+	if err != nil {
+		logf("warn", "ads-conversions: settings unreadable")
+		return nil
+	}
+	jobs, err := claimRetry(start, batchSize)
+	if err != nil {
+		logf("warn", "ads-conversions: could not read the queue")
+		return nil
+	}
+	drain(s, jobs, start)
+	return nil
+}
+
+// drain delivers the claimed rows until the time budget is spent and releases
+// the rest for the next run.
+func drain(s settings, jobs []job, start time.Time) {
+	budgetEnd = start.Add(cronBudget)
+	defer func() { budgetEnd = time.Time{} }()
+	for i, j := range jobs {
+		if budgetEnd.Sub(now()) < minCall {
+			for _, rest := range jobs[i:] {
+				release(rest)
+			}
+			return
+		}
+		deliverRow(s, j)
+	}
+}
+
+// deliverRow makes one attempt for one row. A platform that is off, not
+// configured or needs reconnecting is left alone (the row waits, then
+// expires after 24 h); each row is independent of the others.
+func deliverRow(s settings, j job) {
+	p := j.Platform
+	if !s.enabled(p) || !s.configured(p) || isBroken(p) {
+		pause(j)
+		return
+	}
+	if err := joinClicks(&j); err != nil {
+		logf("warn", "ads-conversions: could not read the click IDs")
+		release(j)
+		return
+	}
+	if !hasIdentifier(j) {
+		deleteJob(j)
+		record(j.SubmissionID, j.Form, p, "skipped", "no_identifier", "", "")
+		return
+	}
+	o := attempt(s, j, false)
+	if o.Kind == kindAuth && o.Reason != "token" && p != platTikTok {
+		// The platform refused the access token: refresh once and try again.
+		o = attempt(s, j, true)
+	}
+	switch o.Kind {
+	case kindSent:
+		settleSent(j, o.Code, "")
+	case kindFailed:
+		settleFailed(j, o.Reason, o.Code, o.Message)
+	case kindRetry:
+		settleRetry(j, o.Code, o.Message)
+	case kindAuth:
+		markBroken(s, p)
+		release(j)
+	}
+}
+
+// pause pushes a row back so a stopped platform's rows do not crowd out the
+// others when the next run claims.
+func pause(j job) {
+	err := dbExec(`UPDATE queue SET next_attempt_at = $2::timestamptz, lease_until = NULL WHERE id = $1`, j.ID, ts(now().Add(pauseTime)))
+	if err != nil {
+		logf("warn", "ads-conversions: could not pause a conversion")
+	}
+}
+
+func hasIdentifier(j job) bool {
+	switch j.Platform {
+	case platGoogle:
+		return hasIdentifierGoogle(j)
+	case platTikTok:
+		return hasIdentifierTikTok(j)
+	}
+	return hasIdentifierLinkedIn(j)
+}
+
+// tokenOutcome turns a token error into an outcome: a connection that needs
+// reconnecting is an auth outcome (marked "token" so it is not retried with a
+// forced refresh), anything else is a retry.
+func tokenOutcome(err error) outcome {
+	switch err {
+	case errReconnect:
+		return outcome{Kind: kindAuth, Reason: "token", Code: "reconnect"}
+	case errNotConnected:
+		return outcome{Kind: kindRetry, Reason: "token", Code: "not_connected"}
+	}
+	return outcome{Kind: kindRetry, Reason: "token", Code: "token"}
+}
+
+// attempt builds and sends the request for the row's platform.
+func attempt(s settings, j job, forceRefresh bool) outcome {
+	switch j.Platform {
+	case platTikTok:
+		return execute(buildTikTok(s, j, false), classifyTikTok)
+	case platGoogle:
+		tok, err := accessToken(s, platGoogle, forceRefresh)
+		if err != nil {
+			return tokenOutcome(err)
+		}
+		return execute(buildGoogle(s, j, tok, false), classifyGoogle)
+	}
+	tok, err := accessToken(s, platLinkedIn, forceRefresh)
+	if err != nil {
+		return tokenOutcome(err)
+	}
+	return execute(buildLinkedIn(s, j, tok), classifyLinkedIn)
 }

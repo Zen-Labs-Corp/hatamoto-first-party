@@ -136,7 +136,7 @@ func tokenRequest(s settings, platform string, form url.Values) (tokenAnswer, er
 		endpoint = linkedInTokenURL
 	}
 	f, err := httpDo(request{Method: "POST", URL: endpoint, Body: []byte(form.Encode()),
-		Headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}}, fetchTimeoutMS)
+		Headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}}, callTimeout())
 	if err != nil {
 		return tokenAnswer{}, errors.New("token endpoint unreachable: " + hostReason(err))
 	}
@@ -271,5 +271,5 @@ func clearBroken(platform string) {
 // revokeGoogle asks Google to forget the grant. It is best effort.
 func revokeGoogle(token string) {
 	_, _ = httpDo(request{Method: "POST", URL: googleRevokeURL, Body: []byte(url.Values{"token": {token}}.Encode()),
-		Headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded"}}, fetchTimeoutMS)
+		Headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded"}}, callTimeout())
 }
