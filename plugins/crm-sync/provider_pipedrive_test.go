@@ -268,6 +268,40 @@ func TestPipedriveNoteFailureIsNotRetried(t *testing.T) {
 	}
 }
 
+func TestPipedriveLeadFailureKeepsThePersonResult(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		lead []fetchResp
+		want string
+	}{
+		{"forbidden", []fetchResp{{Status: 403}}, "lead failed 403"},
+		{"server error on create", []fetchResp{pdResp(pdNoLead), {Status: 503}}, "lead failed 503"},
+		{"host error", []fetchResp{{Code: "timeout"}}, "lead failed timeout"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &fakeHost{}
+			h.install(t)
+			resps := append([]fetchResp{pdResp(pdPerson), pdResp(pdNoHit), pdResp(`{"data":{"id":7}}`), pdResp(pdSaved)}, tc.lead...)
+			resps = append(resps, fetchResp{Status: 201})
+			f := newFake(t, resps...)
+			r := pipedrive{}.upsert(pdJob(), pdCfg(), pdMap, f.fetch)
+			if r.kind != kindUpdated || r.recordID != "42" || r.recordURL != pdBaseURL+"/person/42" || r.message != tc.want {
+				t.Fatalf("%+v", r)
+			}
+			n := f.reqs[len(f.reqs)-1]
+			b := jsonOf(t, n.Body)
+			if n.URL != pdBaseURL+"/api/v1/notes" || b["person_id"] != float64(42) || b["lead_id"] != nil {
+				t.Fatalf("note %+v", n)
+			}
+			for _, q := range f.reqs {
+				if q.Method == "POST" && strings.HasSuffix(q.URL, "/api/v2/persons") {
+					t.Fatal("person written twice")
+				}
+			}
+		})
+	}
+}
+
 func TestPipedriveFailureClassification(t *testing.T) {
 	for _, tc := range failureCases {
 		t.Run(tc.name, func(t *testing.T) {

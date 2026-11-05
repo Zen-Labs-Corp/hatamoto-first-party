@@ -59,6 +59,7 @@ From the repository root: `scripts/build-plugin.sh plugins/crm-sync`.
 - No deals, pipelines or opportunities, and no attachments.
 - HTTP 408, 429 and 5xx answers, timeouts and network errors are retried for up to 24 hours: after 5, 10, 20, 40 and 80 minutes, then every 2 hours. Any other 4xx answer is not retried and is logged as failed.
 - A note that fails after the record was saved is logged on that row and not retried, so no record is duplicated.
+- Pipedrive: when the person was saved but the lead step fails (for example the API user has no access to Leads), the delivery counts as created or updated, the note is still added to the person, the log message says `lead failed <code>`, and the lead is not retried.
 - The lifecycle stage in HubSpot cannot move backwards; HubSpot refuses it and it is reported as a rejected field.
 - The owner id applies to new records only; an existing record keeps its owner.
 - HubSpot contacts are found and updated by email through HubSpot's upsert, as HubSpot documents it.

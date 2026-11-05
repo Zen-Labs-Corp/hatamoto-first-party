@@ -218,18 +218,19 @@ func (pipedrive) upsert(j job, c cfg, m []mapRow, f fetcher) result {
 	}
 	personNum, _ := strconv.ParseInt(personID, 10, 64)
 
+	// The person is already written: a lead problem is reported in the message
+	// and never retried, so no second person is created.
+	var notes []string
 	leadID := ""
 	if c.createLead() {
 		var r result
 		if leadID, r = pdLead(j, c, base, personNum, orgID, pdDisplayName(props, j.Email), f); r.kind != "" {
-			return r
-		}
-		if leadID != "" {
+			notes = append(notes, "lead failed "+resultCode(r))
+		} else if leadID != "" {
 			out.recordURL = base + "/leads/inbox/" + url.PathEscape(leadID)
 		}
 	}
 
-	var notes []string
 	if c.addNote() {
 		body := map[string]any{"content": noteHTML(noteText(j, c.leadSource())), "person_id": personNum}
 		if leadID != "" {
@@ -244,6 +245,14 @@ func (pipedrive) upsert(j job, c cfg, m []mapRow, f fetcher) result {
 	}
 	out.message = strings.Join(notes, "; ")
 	return out
+}
+
+// resultCode is the status or reason word of a failed step.
+func resultCode(r result) string {
+	if r.status != 0 && r.reason != "bad answer" {
+		return strconv.Itoa(r.status)
+	}
+	return r.reason
 }
 
 // pdLead reuses the person's first lead or creates one; it returns the id.
