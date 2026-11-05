@@ -145,7 +145,7 @@ func hsNote(j job, c cfg, id string, f fetcher) string {
 	body := map[string]any{
 		"properties": map[string]string{
 			"hs_timestamp": j.SubmittedAt.UTC().Format(time.RFC3339),
-			"hs_note_body": noteText(j, c.leadSource()),
+			"hs_note_body": noteHTML(noteText(j, c.leadSource())),
 		},
 		"associations": []any{map[string]any{
 			"to":    map[string]any{"id": num},

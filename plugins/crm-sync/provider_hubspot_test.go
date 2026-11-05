@@ -138,6 +138,9 @@ func TestHubSpotNoteBodyAndAssociation(t *testing.T) {
 	if pr["hs_timestamp"] != "2026-11-05T09:00:00Z" || !strings.HasPrefix(pr["hs_note_body"].(string), "Form: contact") || len(pr["hs_note_body"].(string)) > maxNoteBytes {
 		t.Fatalf("properties %+v", pr)
 	}
+	if body := pr["hs_note_body"].(string); strings.Contains(body, "\n") || !strings.Contains(body, "Form: contact<br>Page: /contact<br>") {
+		t.Fatalf("note body not HTML: %q", body)
+	}
 	a := b["associations"].([]any)[0].(map[string]any)
 	if a["to"].(map[string]any)["id"] != float64(501) {
 		t.Fatalf("to %+v", a["to"])
@@ -243,5 +246,18 @@ func TestHubSpotRecordURL(t *testing.T) {
 		if u := hsRecordURL("5"); u != want {
 			t.Errorf("%q: %q", ui, u)
 		}
+	}
+}
+
+func TestHubSpotNoteEscapesSubmitterMarkup(t *testing.T) {
+	h := &fakeHost{}
+	h.install(t)
+	j := hsJob()
+	j.Fields["message"] = `<a href="https://x.example">pay</a>`
+	f := newFake(t, fetchResp{Status: 200, Body: `{"results":[{"id":"501","new":false}]}`}, fetchResp{Status: 201})
+	hubspot{}.upsert(j, hsCfg(), hsMap, f.fetch)
+	body := jsonOf(t, f.reqs[1].Body)["properties"].(map[string]any)["hs_note_body"].(string)
+	if strings.Contains(body, "<a ") || !strings.Contains(body, "&lt;a href=") {
+		t.Fatalf("markup not escaped: %q", body)
 	}
 }
