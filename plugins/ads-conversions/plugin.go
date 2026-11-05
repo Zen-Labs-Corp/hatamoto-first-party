@@ -82,10 +82,8 @@ func queueSubmission(ev sdk.FormSubmittedEvent) {
 	}
 	id := buildIdentity(ev.Fields, s.EmailField, s.PhoneField, s.DefaultCountryCode)
 	ids := idsFromSourcePath(ev.SourcePath)
-	if id == (identity{}) && len(ids) == 0 {
-		recordOnce(ev.SubmissionID, ev.FormSlug, "-", "skipped", "no_contact")
-		return
-	}
+	// A submission with nothing to match on is still queued: the page script
+	// may post a click ID within a minute, and the send step decides.
 	for _, p := range active {
 		_, err := enqueue(job{
 			SubmissionID: ev.SubmissionID, Form: ev.FormSlug, Platform: p,

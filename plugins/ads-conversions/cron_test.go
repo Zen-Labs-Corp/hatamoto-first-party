@@ -448,3 +448,13 @@ func TestDeliverPausedRowKeepsPostedClickIDs(t *testing.T) {
 		t.Fatalf("a paused row must keep the posted click IDs: %+v", join)
 	}
 }
+
+func TestDeliverClickOnlySubmissionIsSentWithPostedClickID(t *testing.T) {
+	h := deliveryHost(t, `{"id":1,"submission_id":"s","form_slug":"contact","platform":"google","page_path":"","attempts":0}`)
+	h.query["FROM clicks WHERE submission_id"] = `{"gclid":"CLICK-1"}`
+	seen := platformHTTP(t, map[string]fetched{"datamanager.googleapis.com": {Status: 200, Body: `{}`}})
+	runDeliver(t)
+	if len(*seen) != 1 || !strings.Contains(string((*seen)[0].Body), `"gclid":"CLICK-1"`) || len(logRows(h, "skipped")) != 0 {
+		t.Fatalf("a click-only submission must be sent: %v", *seen)
+	}
+}

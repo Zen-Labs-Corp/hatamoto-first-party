@@ -257,9 +257,10 @@ func TestHookNoContact(t *testing.T) {
 	if err := run(t, event("contact", map[string]any{"email": "nope", "phone": "12", "message": "hi"})); err != nil {
 		t.Fatal(err)
 	}
-	logs := h.execs("INSERT INTO log")
-	if len(queuedPlatforms(h)) != 0 || len(logs) != 1 || !strings.Contains(logs[0].args, "no_contact") {
-		t.Fatalf("queued %v, logs %+v", queuedPlatforms(h), logs)
+	// Nothing usable is still queued (a posted click ID may arrive later); the
+	// send step skips it when it has no identifier.
+	if len(queuedPlatforms(h)) != 3 || len(h.execs("INSERT INTO log")) != 0 {
+		t.Fatalf("queued %v", queuedPlatforms(h))
 	}
 	// A click ID in the page address alone is enough to queue.
 	h.calls = nil
