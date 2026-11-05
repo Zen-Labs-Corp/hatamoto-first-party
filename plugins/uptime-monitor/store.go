@@ -218,8 +218,23 @@ func deleteOutbox(id int64) error {
 	return dbExec(`DELETE FROM outbox WHERE id = $1::bigint`, id)
 }
 
+// claimOutbox takes the mail for sending and reports whether this run got it:
+// false when another run holds a claim younger than outboxClaimFor.
+func claimOutbox(id int64, at time.Time) (bool, error) {
+	n, err := dbExecN(`UPDATE outbox SET claimed_at = $2::timestamptz
+		WHERE id = $1::bigint AND (claimed_at IS NULL OR claimed_at < $3::timestamptz)`,
+		id, ts(at), ts(at.Add(-outboxClaimFor)))
+	return n == 1, err
+}
+
+// releaseOutbox gives a claimed mail back without counting an attempt.
+func releaseOutbox(id int64) error {
+	return dbExec(`UPDATE outbox SET claimed_at = NULL WHERE id = $1::bigint`, id)
+}
+
+// bumpOutboxAttempts counts a failed attempt and releases the claim.
 func bumpOutboxAttempts(id int64) error {
-	return dbExec(`UPDATE outbox SET attempts = attempts + 1 WHERE id = $1::bigint`, id)
+	return dbExec(`UPDATE outbox SET attempts = attempts + 1, claimed_at = NULL WHERE id = $1::bigint`, id)
 }
 
 // dropOldOutbox deletes mail queued before cutoff and returns how many.

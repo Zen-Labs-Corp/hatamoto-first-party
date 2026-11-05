@@ -77,5 +77,7 @@ CREATE TABLE outbox (
     subject    text NOT NULL,
     body       text NOT NULL,
     recipients text[] NOT NULL,
-    attempts   integer NOT NULL DEFAULT 0
+    attempts   integer NOT NULL DEFAULT 0,
+    -- set while a run is sending the mail, so two runs never send it twice
+    claimed_at timestamptz
 );

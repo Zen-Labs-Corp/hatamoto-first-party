@@ -20,11 +20,13 @@ type mailHost struct {
 	dropped int
 	deleted []int64
 	bumped  []int64
+	claims  map[int64]time.Time // id -> claimed_at
+	onSend  func()              // runs inside mail.send, before it answers
 }
 
 func newMailHost(t *testing.T) (*mailHost, *fakeHost) {
 	t.Helper()
-	h := &mailHost{kv: map[string]json.RawMessage{}}
+	h := &mailHost{kv: map[string]json.RawMessage{}, claims: map[int64]time.Time{}}
 	f := newFakeHost(t, func(c call, out any) error {
 		sql := c.sql()
 		switch {
@@ -38,6 +40,9 @@ func newMailHost(t *testing.T) (*mailHost, *fakeHost) {
 			b, _ := json.Marshal(map[string]any{"found": true, "value": v})
 			return json.Unmarshal(b, out)
 		case c.Fn == "mail.send":
+			if h.onSend != nil {
+				h.onSend()
+			}
 			if h.sendErr != nil {
 				return h.sendErr
 			}
@@ -71,7 +76,19 @@ func newMailHost(t *testing.T) (*mailHost, *fakeHost) {
 					break
 				}
 			}
+		case strings.Contains(sql, "SET claimed_at = $2"):
+			id := int64(c.params()[0].(float64))
+			at, _ := time.Parse(time.RFC3339, c.params()[1].(string))
+			lease, _ := time.Parse(time.RFC3339, c.params()[2].(string))
+			if old, held := h.claims[id]; held && !old.Before(lease) {
+				return json.Unmarshal([]byte(`{"rows_affected":0}`), out)
+			}
+			h.claims[id] = at
+			return json.Unmarshal([]byte(`{"rows_affected":1}`), out)
+		case strings.Contains(sql, "SET claimed_at = NULL"):
+			delete(h.claims, int64(c.params()[0].(float64)))
 		case strings.HasPrefix(sql, "UPDATE outbox"):
+			delete(h.claims, int64(c.params()[0].(float64)))
 			h.bumped = append(h.bumped, int64(c.params()[0].(float64)))
 		}
 		return nil
@@ -246,5 +263,45 @@ func TestSendTestAlert(t *testing.T) {
 	h.sendErr = hostErr(sdk.ErrRateLimited, "x")
 	if n, reason := sendTestAlert(to); n != 0 || !strings.Contains(reason, "limit") {
 		t.Fatalf("host limit: %d %q", n, reason)
+	}
+}
+
+func TestFlushOverlappingRunsSendAMailOnce(t *testing.T) {
+	setNow(t, "2026-02-01T12:00:00Z")
+	h, f := newMailHost(t)
+	h.add(1, time.Second, 1)
+	inner := 0
+	h.onSend = func() { // a second run starts while the first is sending
+		h.onSend = nil
+		inner++
+		if err := flushOutbox(now().Add(5 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := flushOutbox(now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if inner != 1 || f.count("mail.send") != 1 || len(h.rows) != 0 {
+		t.Fatalf("sends %d rows %v", f.count("mail.send"), h.rows)
+	}
+}
+
+func TestFlushReleasesAClaimItDoesNotUseAndTakesOverAStaleOne(t *testing.T) {
+	setNow(t, "2026-02-01T12:00:00Z")
+	h, f := newMailHost(t)
+	h.add(1, time.Second, 6)
+	h.add(2, time.Second, 1)
+	h.kv[mailWindowKey] = json.RawMessage(`[{"t":` + fmt.Sprint(now().Add(-time.Second).UnixMilli()) + `,"n":1}]`)
+	if err := flushOutbox(now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, held := h.claims[1]; held || f.count("mail.send") != 1 {
+		t.Fatalf("a mail that did not fit keeps its claim: %v sends %d", h.claims, f.count("mail.send"))
+	}
+	h.claims[1] = now().Add(-outboxClaimFor - time.Second) // a run that died
+	h.kv[mailWindowKey] = nil
+	delete(h.kv, mailWindowKey)
+	if err := flushOutbox(now().Add(5 * time.Second)); err != nil || len(h.rows) != 0 {
+		t.Fatalf("stale claim not taken over: %v rows %v", err, h.rows)
 	}
 }

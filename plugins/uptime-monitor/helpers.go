@@ -14,7 +14,17 @@ var now = time.Now
 
 // dbExec runs one statement that changes rows.
 func dbExec(sql string, args ...any) error {
-	return callHost("db.exec", map[string]any{"sql": sql, "args": args}, nil)
+	_, err := dbExecN(sql, args...)
+	return err
+}
+
+// dbExecN runs one statement that changes rows and returns how many it changed.
+func dbExecN(sql string, args ...any) (int, error) {
+	var res struct {
+		RowsAffected int `json:"rows_affected"`
+	}
+	err := callHost("db.exec", map[string]any{"sql": sql, "args": args}, &res)
+	return res.RowsAffected, err
 }
 
 // dbJSON runs a query that returns a single jsonb (or json) cell and decodes

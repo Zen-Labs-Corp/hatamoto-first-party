@@ -12,6 +12,8 @@ const (
 	mailMaxAge    = 24 * time.Hour
 	mailWindowKey = "mail_window"
 	outboxBatch   = 50
+	// outboxClaimFor: a run that died while sending frees its mail after this.
+	outboxClaimFor = 2 * time.Minute
 )
 
 // enqueueMail queues one mail for all recipients. Nothing is queued without
@@ -111,6 +113,12 @@ func flushOutbox(deadline time.Time) error {
 		if !now().Before(deadline) {
 			return nil
 		}
+		// Another run may be sending the same mail: send only what this run claims.
+		if claimed, err := claimOutbox(row.ID, now()); err != nil {
+			return err
+		} else if !claimed {
+			continue
+		}
 		outcome, sendErr := sendWindowed(row.Recipients, row.Subject, row.Body)
 		switch outcome {
 		case sentOK:
@@ -119,10 +127,15 @@ func flushOutbox(deadline time.Time) error {
 			}
 		case windowFull:
 			// Later, smaller mail may still fit.
+			if err := releaseOutbox(row.ID); err != nil {
+				return err
+			}
 		case hostLimited, mailUnavailable:
 			logf("warn", "uptime-monitor: alert mail kept code=%s", hostErrCode(sendErr))
 			if outcome == hostLimited {
 				_ = bumpOutboxAttempts(row.ID)
+			} else {
+				_ = releaseOutbox(row.ID)
 			}
 			return nil
 		default:
