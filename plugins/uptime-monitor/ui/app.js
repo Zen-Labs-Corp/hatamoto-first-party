@@ -98,7 +98,7 @@ function causeLine(m) {
 
 function nameCell(m) {
   const td = cell("Monitor", "name", el("span", { className: "nm", textContent: m.name }));
-  if (m.is_site) td.append(el("span", { className: "site", textContent: "This site" }));
+  if (m.is_site && m.name !== "This site") td.append(el("span", { className: "site", textContent: "This site" }));
   td.append(el("span", { className: "url", textContent: m.url }));
   const bar = barImage(m.bar);
   if (bar) td.append(bar);
@@ -164,6 +164,8 @@ function render() {
     ? "Heartbeat: set (pinged after each good check of This site)"
     : "Heartbeat: not set";
   $("#test-alert").disabled = d.settings.alert_emails === 0;
+  if (d.settings.alert_emails === 0) $("#test-result").textContent = "Add an alert email in Settings above";
+  else if (!state.testing && $("#test-result").textContent.startsWith("Add an alert")) $("#test-result").textContent = "";
   $("#add").disabled = !d.db_ready;
 }
 
@@ -261,6 +263,7 @@ async function testAlert() {
   const button = $("#test-alert");
   const out = $("#test-result");
   button.disabled = true;
+  state.testing = true;
   out.textContent = "Sending...";
   try {
     const r = await api("POST", "/test-alert");
@@ -268,6 +271,7 @@ async function testAlert() {
   } catch (e) {
     out.textContent = e.message;
   }
+  state.testing = false;
   button.disabled = !state.data || state.data.settings.alert_emails === 0;
 }
 
