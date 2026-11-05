@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -206,7 +207,7 @@ func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, e
 		lic := strings.ToLower(strings.TrimSpace(r.License))
 		ext := extOf(r.Filetype, r.URL)
 		switch {
-		case r.ID == "" || !isHTTP(r.URL):
+		case !openverseID.MatchString(r.ID) || !isHTTP(r.URL):
 			photos = append(photos, photo{Skip: true, SkipReason: "incomplete result"})
 			continue
 		case !allowedLicences[lic]:
@@ -260,6 +261,10 @@ func isCreditURL(s string) bool {
 	u, err := url.Parse(s)
 	return err == nil && isHTTP(s) && u.User == nil && len(s) <= maxCreditURL
 }
+
+// openverseID is the shape of an Openverse id (a UUID); anything else is
+// skipped, as the id ends up in buffer keys and file names.
+var openverseID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // allowedLicences are the Openverse licence codes that may be staged: they
 // allow commercial use and modification.

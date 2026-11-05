@@ -234,7 +234,7 @@ func TestFetchResumeRequestsPageForIndex(t *testing.T) {
 func TestFetchShortPageContinuesAtNextPage(t *testing.T) {
 	h := newHost(t, "fetch", `{"query":"barn","provider":"openverse","count":30}`, "api.openverse.org", "live.staticflickr.com")
 	h.search = func(string) (fetchResp, error) {
-		return fetchResp{Status: 200, Body: `{"page":1,"page_count":4,"results":[{"id":"z1","title":"t","creator":"c","url":"https://live.staticflickr.com/a.jpg","license":"by","license_version":"2.0"}]}`}, nil
+		return fetchResp{Status: 200, Body: `{"page":1,"page_count":4,"results":[{"id":"00000000-0000-4000-8000-0000000000a1","title":"t","creator":"c","url":"https://live.staticflickr.com/a.jpg","license":"by","license_version":"2.0"}]}`}, nil
 	}
 	if err := h.step(""); err != nil {
 		t.Fatal(err)
@@ -359,13 +359,13 @@ func TestFetchOpenverseNeedsNoKey(t *testing.T) {
 	h := newHost(t, "fetch", `{"query":"lake","provider":"openverse","count":1}`, "api.openverse.org", "live.staticflickr.com")
 	h.settings = nil
 	h.search = func(string) (fetchResp, error) {
-		return fetchResp{Status: 200, Body: `{"page":1,"page_count":1,"results":[{"id":"u1","title":"Lake","creator":"C","url":"https://live.staticflickr.com/a.jpg","foreign_landing_url":"https://www.flickr.com/p/1","license":"by","license_version":"2.0","source":"flickr"}]}`}, nil
+		return fetchResp{Status: 200, Body: `{"page":1,"page_count":1,"results":[{"id":"00000000-0000-4000-8000-0000000000a2","title":"Lake","creator":"C","url":"https://live.staticflickr.com/a.jpg","foreign_landing_url":"https://www.flickr.com/p/1","license":"by","license_version":"2.0","source":"flickr"}]}`}, nil
 	}
 	if err := h.step(""); err != nil {
 		t.Fatal(err)
 	}
 	h.ends("run.finish")
-	if len(h.names("settings.get")) != 0 || !strings.Contains(h.buffer["item/openverse:u1"], `"source_key":"openverse:u1"`) {
+	if len(h.names("settings.get")) != 0 || !strings.Contains(h.buffer["item/openverse:00000000-0000-4000-8000-0000000000a2"], `"source_key":"openverse:00000000-0000-4000-8000-0000000000a2"`) {
 		t.Fatalf("calls = %v buffer = %v", h.calls, h.buffer)
 	}
 }

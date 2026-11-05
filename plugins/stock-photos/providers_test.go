@@ -79,15 +79,15 @@ func TestSearchPexelsAnyOrientationOmitted(t *testing.T) {
 }
 
 const openverseBody = `{"page":1,"page_count":3,"results":[
- {"id":"a1","title":"Lake Michigan","creator":"VV Nincic","url":"https://live.staticflickr.com/1/a_b.jpg","foreign_landing_url":"https://www.flickr.com/photos/1/2","license":"by","license_version":"2.0","source":"flickr","filetype":null},
- {"id":"a2","title":"NC one","creator":"c","url":"https://x.example/a.jpg","license":"by-nc","license_version":"2.0"},
- {"id":"a3","title":"ND one","creator":"c","url":"https://x.example/a.jpg","license":"by-nd","license_version":"2.0"},
- {"id":"a4","title":"NC SA","creator":"c","url":"https://x.example/a.jpg","license":"by-nc-sa","license_version":"2.0"},
- {"id":"a5","title":"","creator":"","url":"https://upload.wikimedia.org/x/y.png","foreign_landing_url":"https://commons.example/5","license":"by-sa","license_version":"4.0","provider":"wikimedia","filetype":"png"},
- {"id":"a6","title":"Zero","creator":"Z","url":"https://upload.wikimedia.org/x/z.webp","foreign_landing_url":"https://commons.example/6","license":"cc0","license_version":"1.0","source":"wikimedia"},
- {"id":"a7","title":"Mark","creator":"M","url":"https://upload.wikimedia.org/x/m.gif","foreign_landing_url":"https://commons.example/7","license":"pdm","license_version":"1.0","source":"wikimedia"},
- {"id":"a8","title":"Audio","creator":"c","url":"https://x.example/a.mp3","license":"by","license_version":"2.0","filetype":"mp3"},
- {"id":"a9","title":"No ext","creator":"c","url":"https://x.example/blob","license":"by","license_version":"2.0"}]}`
+ {"id":"00000000-0000-4000-8000-000000000001","title":"Lake Michigan","creator":"VV Nincic","url":"https://live.staticflickr.com/1/a_b.jpg","foreign_landing_url":"https://www.flickr.com/photos/1/2","license":"by","license_version":"2.0","source":"flickr","filetype":null},
+ {"id":"00000000-0000-4000-8000-000000000002","title":"NC one","creator":"c","url":"https://x.example/a.jpg","license":"by-nc","license_version":"2.0"},
+ {"id":"00000000-0000-4000-8000-000000000003","title":"ND one","creator":"c","url":"https://x.example/a.jpg","license":"by-nd","license_version":"2.0"},
+ {"id":"00000000-0000-4000-8000-000000000004","title":"NC SA","creator":"c","url":"https://x.example/a.jpg","license":"by-nc-sa","license_version":"2.0"},
+ {"id":"00000000-0000-4000-8000-000000000005","title":"","creator":"","url":"https://upload.wikimedia.org/x/y.png","foreign_landing_url":"https://commons.example/5","license":"by-sa","license_version":"4.0","provider":"wikimedia","filetype":"png"},
+ {"id":"00000000-0000-4000-8000-000000000006","title":"Zero","creator":"Z","url":"https://upload.wikimedia.org/x/z.webp","foreign_landing_url":"https://commons.example/6","license":"cc0","license_version":"1.0","source":"wikimedia"},
+ {"id":"00000000-0000-4000-8000-000000000007","title":"Mark","creator":"M","url":"https://upload.wikimedia.org/x/m.gif","foreign_landing_url":"https://commons.example/7","license":"pdm","license_version":"1.0","source":"wikimedia"},
+ {"id":"00000000-0000-4000-8000-000000000008","title":"Audio","creator":"c","url":"https://x.example/a.mp3","license":"by","license_version":"2.0","filetype":"mp3"},
+ {"id":"00000000-0000-4000-8000-000000000009","title":"No ext","creator":"c","url":"https://x.example/blob","license":"by","license_version":"2.0"}]}`
 
 func TestSearchOpenverse(t *testing.T) {
 	req := fakeFetch(t, fetchResp{Status: 200, Body: openverseBody}, nil)
@@ -113,10 +113,10 @@ func TestSearchOpenverse(t *testing.T) {
 		}
 	}
 	want := map[int][4]string{ // file, alt, credit, caption
-		0: {"openverse-a1.jpg", "Lake Michigan", "Lake Michigan by VV Nincic, CC BY 2.0, https://www.flickr.com/photos/1/2", "VV Nincic / flickr"},
-		4: {"openverse-a5.png", "lake", "Untitled by unknown author, CC BY-SA 4.0, https://commons.example/5", "unknown author / wikimedia"},
-		5: {"openverse-a6.webp", "Zero", "Zero by Z, CC0 1.0, https://commons.example/6", "Z / wikimedia"},
-		6: {"openverse-a7.gif", "Mark", "Mark by M, Public Domain Mark 1.0, https://commons.example/7", "M / wikimedia"},
+		0: {"openverse-00000000-0000-4000-8000-000000000001.jpg", "Lake Michigan", "Lake Michigan by VV Nincic, CC BY 2.0, https://www.flickr.com/photos/1/2", "VV Nincic / flickr"},
+		4: {"openverse-00000000-0000-4000-8000-000000000005.png", "lake", "Untitled by unknown author, CC BY-SA 4.0, https://commons.example/5", "unknown author / wikimedia"},
+		5: {"openverse-00000000-0000-4000-8000-000000000006.webp", "Zero", "Zero by Z, CC0 1.0, https://commons.example/6", "Z / wikimedia"},
+		6: {"openverse-00000000-0000-4000-8000-000000000007.gif", "Mark", "Mark by M, Public Domain Mark 1.0, https://commons.example/7", "M / wikimedia"},
 	}
 	for i, w := range want {
 		p := photos[i]
@@ -277,5 +277,16 @@ func TestOpenverseLicenceAllowList(t *testing.T) {
 func TestCleanTextDropsFormatCharacters(t *testing.T) {
 	if got := cleanText("a\u202Eb\u200Bc\u2066d\uFEFFe", 50); got != "abcde" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestOpenverseSkipsIdThatIsNotAUUID(t *testing.T) {
+	for _, id := range []string{"abc", "../x", strings.Repeat("a", 300)} {
+		body := `{"page":1,"page_count":1,"results":[{"id":"` + id + `","title":"t","url":"https://live.staticflickr.com/a.jpg","license":"by"}]}`
+		fakeFetch(t, fetchResp{Status: 200, Body: body}, nil)
+		photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+		if err != nil || len(photos) != 1 || !photos[0].Skip {
+			t.Errorf("id %q: photos=%+v err=%v", id, photos, err)
+		}
 	}
 }
