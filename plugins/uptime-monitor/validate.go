@@ -57,6 +57,9 @@ func validateMonitor(in monitorInput) (monitor, error) {
 	if n := utf8.RuneCountInString(name); n < 1 || n > maxNameLen {
 		return monitor{}, errors.New("name must be 1 to 60 characters")
 	}
+	if strings.ContainsRune(in.Name+in.URL+in.Keyword, 0) {
+		return monitor{}, errors.New("name, url and keyword must not contain a NUL character")
+	}
 	if err := validateURL(strings.TrimSpace(in.URL)); err != nil {
 		return monitor{}, err
 	}

@@ -71,7 +71,7 @@ func (h *rollupHost) db(c call, sql string, out any) error {
 	case strings.HasPrefix(sql, "INSERT INTO daily"):
 		from, _ := time.Parse(time.RFC3339, p[1].(string))
 		to, _ := time.Parse(time.RFC3339, p[2].(string))
-		type agg struct{ n, up, ms int }
+		type agg struct{ n, up, ms, good int }
 		per := map[int64]*agg{}
 		for _, r := range h.checks {
 			if r.ok == nil || r.at.Before(from) || !r.at.Before(to) {
@@ -83,14 +83,15 @@ func (h *rollupHost) db(c call, sql string, out any) error {
 				per[r.monitor] = a
 			}
 			a.n++
-			a.ms += r.ms
 			if *r.ok {
 				a.up++
+				a.ms += r.ms // the average counts good checks only
+				a.good++
 			}
 		}
 		for id, a := range per {
 			key := strings.Join([]string{string(rune('0' + id)), p[0].(string)}, "|")
-			h.daily[key] = dailyRow{a.n, a.up, float64(a.up) * 100 / float64(a.n), (a.ms + a.n/2) / a.n}
+			h.daily[key] = dailyRow{a.n, a.up, float64(a.up) * 100 / float64(a.n), (a.ms + a.good/2) / max(a.good, 1)}
 		}
 	case strings.HasPrefix(sql, "DELETE FROM"):
 		h.deletes[strings.Join(strings.Fields(sql)[:3], " ")] = p
@@ -128,7 +129,7 @@ func TestRollupUTCDayBoundary(t *testing.T) {
 	runRollup(sdk.CronEvent{})
 	want := map[string]dailyRow{
 		"1|2026-03-08": {1, 1, 100, 100},
-		"1|2026-03-09": {2, 1, 50, 200},
+		"1|2026-03-09": {2, 1, 50, 100}, // the failed 300 ms check is not averaged
 		"1|2026-03-10": {1, 1, 100, 50},
 	}
 	if len(h.daily) != 3 {
@@ -183,6 +184,12 @@ func TestRollupTwiceGivesTheSameStatementsAndRows(t *testing.T) {
 	}
 	if !strings.Contains(rollupDay, "ON CONFLICT (monitor_id, day) DO UPDATE") {
 		t.Fatal("not an upsert")
+	}
+}
+
+func TestRollupAverageCountsGoodChecksOnly(t *testing.T) {
+	if !strings.Contains(rollupDay, "avg(ms) FILTER (WHERE ok)") {
+		t.Fatal("avg_ms must average good checks, as the overview does")
 	}
 }
 

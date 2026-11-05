@@ -90,17 +90,23 @@ func failedFetch(m monitor, err error, ms, timeoutMS int) result {
 }
 
 // expiredOn reports the day the cached certificate of an https monitor's host
-// ran out, when that day has passed.
+// ran out, when that day has passed. A host that crt.sh has not answered for
+// over a day (certStaleAfter) may have renewed since: its date is not trusted.
 func expiredOn(m monitor) (string, bool) {
 	u, err := url.Parse(m.URL)
 	if err != nil || u.Scheme != "https" {
 		return "", false
 	}
 	c, ok, err := getCert(strings.ToLower(u.Hostname()))
-	if err != nil || !ok || c.NotAfter == nil || !c.NotAfter.Before(now()) {
+	if err != nil || !ok || c.NotAfter == nil || !c.NotAfter.Before(now()) ||
+		c.LookedUpAt == nil || now().Sub(*c.LookedUpAt) > certStaleAfter {
 		return "", false
 	}
 	return c.NotAfter.UTC().Format("2006-01-02"), true
 }
+
+// certStaleAfter is how old a certificate row may be to still turn a connect
+// failure into "certificate expired".
+const certStaleAfter = 24 * time.Hour
 
 func elapsedMS(start time.Time) int { return int(now().Sub(start) / time.Millisecond) }

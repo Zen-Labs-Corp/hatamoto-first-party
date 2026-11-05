@@ -72,8 +72,8 @@ function cell(label, className, ...kids) {
   return td;
 }
 
-function sslCell(days) {
-  if (days === null || days === undefined) return cell("SSL", "ssl", "-");
+function sslCell(days, unknown) {
+  if (days === null || days === undefined) return cell("SSL", "ssl", unknown ? "unknown" : "-");
   const text = days < 0 ? "expired" : days + (days === 1 ? " day" : " days");
   const cls = days <= SSL_CRIT_DAYS ? "ssl ssl-crit" : days <= SSL_WARN_DAYS ? "ssl ssl-warn" : "ssl";
   return cell("SSL", cls, text);
@@ -120,7 +120,7 @@ function row(m) {
     cell("30d", "", pct(m.uptime_30d)),
     cell("Avg", "", avg(m.avg_ms)),
     cell("Last check", "", m.last_check ? ago(m.last_check) : "-"),
-    sslCell(m.cert_days_left),
+    sslCell(m.cert_days_left, m.cert_unknown),
     el("td", { className: "actions" }, check, edit),
   );
 }

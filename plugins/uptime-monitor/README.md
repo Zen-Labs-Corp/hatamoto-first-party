@@ -52,7 +52,7 @@ How a check is judged:
   12 hours per host. For each warning day you set, one mail is sent when the days
   left reach it, once per certificate; a renewed certificate starts the warnings
   again. The SSL column shows the days left, amber from 21 and red from 7, or
-  "-" when the date is unknown.
+  "unknown" when the lookup failed and "-" when there is nothing to look up yet.
 
 The page lists each monitor with its status, uptime over 24 hours and 30 days,
 average response time, last check, SSL days and a 90-day bar (green from 99.9 %,
@@ -75,7 +75,7 @@ next minute.
 | `db` | Keep the monitors, checks, incidents, daily rollups, certificate state and mail queue. |
 | `kv` | Keep where the check batch stopped, the mail send window, the heartbeat time and the rollup day. |
 | `mail.send` | Send down, recovery, certificate and test mails. |
-| `log` | One warning line when a step fails, never an address or the heartbeat URL. |
+| `log` | One warning line when a step fails, never a full address or the heartbeat URL (a certificate warning names the host). |
 
 No request sends cookies or credentials. The plugin adds nothing to public pages
 and has no public route.

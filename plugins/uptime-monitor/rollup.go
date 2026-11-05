@@ -25,7 +25,7 @@ const (
 // so a day can be aggregated while it is still going on.
 const rollupDay = `INSERT INTO daily (monitor_id, day, checks, up_checks, uptime_pct, avg_ms)
 	SELECT monitor_id, $1::date, count(*), count(*) FILTER (WHERE ok),
-	  round(100.0 * count(*) FILTER (WHERE ok) / count(*), 3), round(avg(ms))::integer
+	  round(100.0 * count(*) FILTER (WHERE ok) / count(*), 3), round(avg(ms) FILTER (WHERE ok))::integer
 	FROM checks WHERE at >= $2::timestamptz AND at < $3::timestamptz AND ok IS NOT NULL
 	GROUP BY monitor_id
 	ON CONFLICT (monitor_id, day) DO UPDATE SET checks = EXCLUDED.checks, up_checks = EXCLUDED.up_checks,

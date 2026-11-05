@@ -229,6 +229,9 @@ func TestOverviewShapeAndNoHeartbeatURL(t *testing.T) {
 	if shop["id"].(float64) != float64(m2.ID) || shop["status"] != "down" || shop["cause"] != "HTTP 503" || shop["since"] == nil {
 		t.Fatalf("%v", shop)
 	}
+	if shop["cert_unknown"] != true || site["cert_unknown"] != false {
+		t.Fatalf("cert_unknown: shop %v site %v", shop["cert_unknown"], site["cert_unknown"])
+	}
 	if shop["cert_days_left"] != nil || shop["avg_ms"] != nil || shop["uptime_24h"].(float64) != 90 {
 		t.Fatalf("%v", shop)
 	}

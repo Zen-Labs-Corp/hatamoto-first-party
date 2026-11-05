@@ -32,6 +32,7 @@ type monitorView struct {
 	AvgMS        *int       `json:"avg_ms"`
 	LastCheck    *time.Time `json:"last_check"`
 	CertDaysLeft *int       `json:"cert_days_left"`
+	CertUnknown  bool       `json:"cert_unknown"` // the lookup failed and no date is known
 	Bar          string     `json:"bar"`
 	Cause        string     `json:"cause"`
 	Since        *time.Time `json:"since"`
@@ -262,6 +263,8 @@ func monitorViews(at time.Time, monitors []monitor, stats []checkStats, daily []
 			if c, ok := certOf[strings.ToLower(u.Hostname())]; ok && c.NotAfter != nil {
 				d := int(math.Floor(c.NotAfter.Sub(at).Hours() / 24))
 				v.CertDaysLeft = &d
+			} else if ok && c.LookupError != "" {
+				v.CertUnknown = true
 			}
 		}
 		out = append(out, v)

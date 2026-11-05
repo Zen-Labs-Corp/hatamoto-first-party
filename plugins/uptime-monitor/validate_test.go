@@ -67,6 +67,18 @@ func TestValidateMonitorRejects(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsNUL(t *testing.T) {
+	for name, in := range map[string]monitorInput{
+		"name":    {Name: "a\x00b", URL: "https://example.org/"},
+		"url":     {Name: "a", URL: "https://example.org/\x00"},
+		"keyword": {Name: "a", URL: "https://example.org/", Keyword: "k\x00"},
+	} {
+		if _, err := validateMonitor(in); err == nil {
+			t.Errorf("%s: NUL accepted", name)
+		}
+	}
+}
+
 func TestDecodeStrict(t *testing.T) {
 	var in monitorInput
 	if err := decodeStrict(`{"name":"a","url":"https://example.org"}`, &in); err != nil || in.Name != "a" {
