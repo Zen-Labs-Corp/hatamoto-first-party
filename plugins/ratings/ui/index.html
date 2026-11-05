@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Star ratings</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main>
+    <p id="notice" class="notice" hidden></p>
+    <table id="table" hidden>
+      <thead>
+        <tr>
+          <th scope="col">Page</th>
+          <th scope="col" class="num">Average</th>
+          <th scope="col" class="num">Ratings</th>
+          <th scope="col" class="num">5</th>
+          <th scope="col" class="num">4</th>
+          <th scope="col" class="num">3</th>
+          <th scope="col" class="num">2</th>
+          <th scope="col" class="num">1</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="empty" class="muted" hidden>No ratings yet. Add the form partial to your theme to collect them.</p>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
