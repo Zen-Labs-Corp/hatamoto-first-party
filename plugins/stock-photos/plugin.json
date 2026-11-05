@@ -1,7 +1,7 @@
 {
   "name": "stock-photos",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.18",
   "description": "Search Pexels and Openverse from the admin and stage the photos you pick into your media library with alt text and credit.",
   "permissions": ["settings"],
   "limits": { "memory_pages": 256, "max_instances": 4 },
