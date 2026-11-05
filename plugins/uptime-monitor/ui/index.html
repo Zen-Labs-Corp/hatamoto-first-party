@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Uptime monitor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p id="setup" class="notice" hidden></p>
+    <p id="notice" class="notice warn" hidden></p>
+
+    <table id="table" hidden>
+      <thead>
+        <tr>
+          <th>Monitor</th><th>Status</th><th>24h</th><th>30d</th><th>Avg</th><th>Last check</th><th>SSL</th>
+          <th><span class="sr">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <p><button id="add" type="button">+ Add monitor</button></p>
+
+    <form id="form" class="form" hidden>
+      <h2 id="form-title">Add monitor</h2>
+      <label>Name <input id="f-name" type="text" maxlength="60" required></label>
+      <label>URL <input id="f-url" type="text" maxlength="500" required placeholder="https://example.com/"></label>
+      <label>Interval
+        <select id="f-interval">
+          <option value="1m">1 minute</option>
+          <option value="5m" selected>5 minutes</option>
+          <option value="15m">15 minutes</option>
+        </select>
+      </label>
+      <label>Keyword <input id="f-keyword" type="text" maxlength="200" placeholder="optional: text the page must contain"></label>
+      <label>Slow above (ms) <input id="f-max" type="number" min="100" max="30000" step="1" placeholder="optional"></label>
+      <label class="check"><input id="f-site" type="checkbox"> This site</label>
+      <p id="form-error" class="notice warn" hidden></p>
+      <p class="buttons">
+        <button id="f-save" type="submit">Save</button>
+        <button id="f-cancel" type="button">Cancel</button>
+        <button id="f-delete" type="button" hidden>Delete</button>
+      </p>
+    </form>
+
+    <h2>Incidents</h2>
+    <p id="no-incidents" class="muted">No incidents recorded.</p>
+    <ul id="incidents" class="incidents"></ul>
+
+    <h2>Alerts</h2>
+    <p id="alerts"></p>
+    <p><button id="test-alert" type="button">Send test alert</button> <span id="test-result" class="muted" role="status"></span></p>
+    <p id="heartbeat"></p>
+
+    <p class="muted foot">
+      Limits: checks run inside this site, so if the whole server is down nothing can send the alert;
+      set a heartbeat URL with an outside service for that. Certificate dates come from public
+      certificate transparency logs (crt.sh) and can show a newer certificate than the one served;
+      a failed check still catches an expired one.
+    </p>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
