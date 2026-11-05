@@ -123,16 +123,6 @@ func hostReason(err error) error {
 	return errors.New("host call failed")
 }
 
-// attrString returns the attribute as a string, "" when it is absent or not
-// a string.
-func attrString(e entity, key string) string {
-	var s string
-	if raw, ok := e.Attributes[key]; ok && json.Unmarshal(raw, &s) == nil {
-		return s
-	}
-	return ""
-}
-
 // nonEmptyJSON reports whether a raw attribute holds something.
 func nonEmptyJSON(raw json.RawMessage) bool {
 	t := bytes.TrimSpace(raw)
@@ -144,10 +134,10 @@ func nonEmptyJSON(raw json.RawMessage) bool {
 }
 
 // isBuilderOnly reports an entity whose body lives in the page builder
-// fields and that has no plain content to translate.
+// fields. A leftover content attribute does not matter: the renderer prefers
+// the builder body, which would stay untranslated.
 func isBuilderOnly(e entity) bool {
-	builder := nonEmptyJSON(e.Attributes["page_doc"]) || nonEmptyJSON(e.Attributes["page_sections"])
-	return builder && strings.TrimSpace(attrString(e, "content")) == ""
+	return nonEmptyJSON(e.Attributes["page_doc"]) || nonEmptyJSON(e.Attributes["page_sections"])
 }
 
 // translatable reports whether the entity is a candidate, and otherwise the

@@ -109,7 +109,7 @@ func TestIsBuilderOnlyAndTranslatable(t *testing.T) {
 		{`{"content":"<p>x</p>"}`, false},
 		{`{"page_doc":{"a":1}}`, true},
 		{`{"page_sections":[{"t":"hero"}],"content":"  "}`, true},
-		{`{"page_doc":{"a":1},"content":"<p>x</p>"}`, false},
+		{`{"page_doc":{"a":1},"content":"<p>x</p>"}`, true}, // a leftover body does not count
 		{`{"page_doc":null,"page_sections":[]}`, false},
 	}
 	for _, c := range cases {
