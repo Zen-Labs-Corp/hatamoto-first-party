@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
@@ -391,4 +392,42 @@ func TestFetchBadCursorFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.ends("run.fail")
+}
+
+func TestFetchStopsImportingWhenBudgetSpent(t *testing.T) {
+	h := newHost(t, "fetch", `{"query":"barn","provider":"pexels","count":12}`, pexelsHosts...)
+	clock := time.Unix(0, 0)
+	now = func() time.Time { return clock }
+	defer func() { now = time.Now }()
+	h.search = func(string) (fetchResp, error) {
+		clock = clock.Add(2500 * time.Millisecond) // slow search
+		return fetchResp{Status: 200, Body: pexelsPage(1, 30, true)}, nil
+	}
+	orig := callHost
+	callHost = func(fn string, args, out any) error {
+		if fn == "media.import_url" {
+			clock = clock.Add(1500 * time.Millisecond)
+		}
+		return orig(fn, args, out)
+	}
+	if err := h.step(""); err != nil {
+		t.Fatal(err)
+	}
+	// imports start at 2.5 s and 4.0 s: only the first one is within the limit
+	if n := len(h.names("media.import_url")); n != 1 {
+		t.Fatalf("imports = %d, want 1", n)
+	}
+	if got := h.checkpoint(); got.I != 1 || got.N != 1 {
+		t.Fatalf("cursor = %+v", got)
+	}
+}
+
+func TestSearchTimeoutLeavesRoomForImports(t *testing.T) {
+	req := fakeFetch(t, fetchResp{Status: 200, Body: `{"photos":[]}`}, nil)
+	if _, _, _, err := searchPexels(testKey, searchParams{Query: "x", Page: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if req.TimeoutMS != searchTimeoutMS || searchTimeoutMS > 3000 {
+		t.Fatalf("timeout = %d", req.TimeoutMS)
+	}
 }

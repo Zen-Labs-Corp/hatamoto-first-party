@@ -17,8 +17,11 @@ const (
 	defaultCount   = 12
 	maxCount       = 30
 	importsPerStep = 3
-	stepBudget     = 6 * time.Second // stop importing early; a step is cut at 10 s
-	maxPages       = 5
+	stepBudget     = 6 * time.Second // transform: stop early; a step is cut at 10 s
+	// importStartLimit: fetch starts no import later than this after step entry
+	// (search included), leaving the rest of the 10 s cut for one import.
+	importStartLimit = 4 * time.Second
+	maxPages         = 5
 )
 
 // cursor is the run checkpoint: I counts raw search results walked so far, N
@@ -89,6 +92,7 @@ func pexelsKey() (string, error) {
 // fetchStep searches one page, imports up to importsPerStep photos and always
 // ends with a checkpoint, a finish or a failure.
 func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
+	start := now()
 	info, err := guest.RunInfo(callHost)
 	if err != nil {
 		return failFromError(err)
@@ -130,9 +134,8 @@ func fetchStep(s sdk.RunStep) (sdk.RunStepResult, error) {
 		return failFromError(err)
 	}
 
-	start := time.Now()
 	i, imports := cur.I%pageSize, 0
-	for ; i < raw && i < len(photos) && imports < importsPerStep && cur.N < p.Count && time.Since(start) < stepBudget; i++ {
+	for ; i < raw && i < len(photos) && imports < importsPerStep && cur.N < p.Count && now().Sub(start) < importStartLimit; i++ {
 		cur.I++
 		ph := photos[i]
 		if ph.Skip {

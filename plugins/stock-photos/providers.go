@@ -18,6 +18,13 @@ const (
 	openversePageSize = 20
 )
 
+// searchTimeoutMS keeps the search well inside the 10 s step cut, so that a
+// slow search still leaves room for imports (see importStartLimit).
+const (
+	searchTimeoutMS = 3000
+	maxImportBytes  = 8 << 20 // a larger known original would not download in time
+)
+
 const (
 	maxAlt     = 500
 	maxCredit  = 500
@@ -68,7 +75,7 @@ const (
 // message for a 401/403 (empty: a generic refusal).
 func getJSON(rawURL string, headers map[string]string, authMsg string, out any) error {
 	var resp fetchResp
-	req := fetchReq{Method: "GET", URL: rawURL, Headers: headers, TimeoutMS: 8000}
+	req := fetchReq{Method: "GET", URL: rawURL, Headers: headers, TimeoutMS: searchTimeoutMS}
 	if err := callHost("http.fetch", req, &resp); err != nil {
 		return err
 	}
@@ -184,6 +191,7 @@ func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, e
 			Source            string `json:"source"`
 			Provider          string `json:"provider"`
 			Filetype          string `json:"filetype"`
+			Filesize          int64  `json:"filesize"`
 		} `json:"results"`
 	}
 	if err := getJSON("https://api.openverse.org/v1/images/?"+q, nil, "", &out); err != nil {
@@ -198,6 +206,9 @@ func searchOpenverse(p searchParams) (photos []photo, more bool, rawCount int, e
 			continue
 		case lic == "" || hasToken(lic, "nc") || hasToken(lic, "nd"):
 			photos = append(photos, photo{Skip: true, SkipReason: "licence not allowed: " + lic})
+			continue
+		case r.Filesize > maxImportBytes:
+			photos = append(photos, photo{Skip: true, SkipReason: "image too large"})
 			continue
 		case !imageExts[ext]:
 			photos = append(photos, photo{Skip: true, SkipReason: "not a supported image type"})

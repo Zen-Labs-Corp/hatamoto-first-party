@@ -217,3 +217,11 @@ func TestCleanText(t *testing.T) {
 		t.Errorf("rune len %d", len([]rune(got)))
 	}
 }
+
+func TestOpenverseSkipsKnownHugeOriginal(t *testing.T) {
+	fakeFetch(t, fetchResp{Status: 200, Body: `{"page":1,"page_count":1,"results":[{"id":"ea170550-53f4-4162-8cef-390668730821","title":"t","url":"https://live.staticflickr.com/a.jpg","license":"by","filesize":20000000}]}`}, nil)
+	photos, _, _, err := searchOpenverse(searchParams{Query: "x", Page: 1})
+	if err != nil || len(photos) != 1 || !photos[0].Skip {
+		t.Fatalf("photos=%+v err=%v", photos, err)
+	}
+}
