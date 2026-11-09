@@ -20,3 +20,7 @@ footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid var(--color-k
 .chart .axis { stroke: var(--color-hai, #6b6b6b); stroke-width: 1; }
 .chart .line { fill: none; stroke: var(--color-accent, #3b6ea5); stroke-width: 2; stroke-linejoin: round; }
 .chart .point { fill: var(--color-accent, #3b6ea5); stroke: none; }
+table { border-collapse: collapse; width: 100%; max-width: 760px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--color-kinu, #e2e0da); }
+th { font-weight: 600; color: var(--color-hai, #6b6b6b); }
+td.jump { color: var(--color-danger, #b3261e); font-weight: 600; }

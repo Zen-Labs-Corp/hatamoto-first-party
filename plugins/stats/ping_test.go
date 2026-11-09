@@ -165,3 +165,172 @@ func TestUnknownRouteIs404(t *testing.T) {
 		t.Fatalf("got %d", res.Status)
 	}
 }
+
+const detailedBody = `{"install":"` + goodID + `","version":"v1.1.0","channel":"stable","level":"detailed","os":"linux","arch":"amd64","postgres":16,"age_months":6,"worker":true,"theme":{"name":"hatamoto-dev","version":"1.6.0"},"plugins":[{"name":"gtm","version":"1.0.0","enabled":false},{"name":"searchconsole","version":"1.0.0","enabled":true}],"other_plugins":2,"health":{"since_hours":24,"panics":0,"http_5xx":3,"render_errors":0,"plugin_errors":{"searchconsole":1,"other":4},"update_failed":0,"update_rolled_back":0,"migration_failed":0}}`
+
+// mutate replaces one fragment of the valid Detailed body.
+func mutate(t *testing.T, from, to string) string {
+	t.Helper()
+	if !strings.Contains(detailedBody, from) {
+		t.Fatalf("fragment %q not in body", from)
+	}
+	return strings.Replace(detailedBody, from, to, 1)
+}
+
+func TestValidDetailedPing(t *testing.T) {
+	p, code := parseDetailed(detailedBody)
+	if code != 0 || p.Postgres != 16 || len(p.Plugins) != 2 || p.Plugins[1].Errors != 1 || p.Health.OtherErrors != 4 || p.Health.HTTP5xx != 3 || p.ThemeName != "hatamoto-dev" {
+		t.Fatalf("code %d, %+v", code, p)
+	}
+	if res := send(t, jsonReq(detailedBody)); res.Status != 204 {
+		t.Fatalf("got %d", res.Status)
+	}
+	empty := mutate(t, `[{"name":"gtm","version":"1.0.0","enabled":false},{"name":"searchconsole","version":"1.0.0","enabled":true}]`, `[]`)
+	empty = strings.Replace(empty, `{"searchconsole":1,"other":4}`, `{}`, 1)
+	if _, code := parseDetailed(empty); code != 0 {
+		t.Fatalf("empty plugins: %d", code)
+	}
+}
+
+func TestRejectedDetailedPings(t *testing.T) {
+	p101 := func() string {
+		var ps []string
+		for i := 0; i < 101; i++ {
+			ps = append(ps, `{"name":"plug`+string(rune('a'+i/26))+string(rune('a'+i%26))+`","version":"1.0.0","enabled":true}`)
+		}
+		return "[" + strings.Join(ps, ",") + "]"
+	}()
+	plugins := `[{"name":"gtm","version":"1.0.0","enabled":false},{"name":"searchconsole","version":"1.0.0","enabled":true}]`
+	errs := `{"searchconsole":1,"other":4}`
+	cases := []struct {
+		name, body string
+		want       int
+	}{
+		{"level basic", mutate(t, `"level":"detailed"`, `"level":"basic"`), 422},
+		{"level case", mutate(t, `"detailed"`, `"Detailed"`), 422},
+		{"level number", mutate(t, `"level":"detailed"`, `"level":1`), 422},
+		{"basic body with level", `{"install":"` + goodID + `","version":"v1.1.0","channel":"stable","level":"basic"}`, 422},
+		{"missing key", mutate(t, `"os":"linux",`, ``), 422},
+		{"extra key", mutate(t, `"worker":true`, `"worker":true,"ip":"x"`), 422},
+		{"case-variant key", mutate(t, `"os":`, `"OS":`), 422},
+		{"duplicate top key", mutate(t, `"worker":true`, `"worker":true,"worker":true`), 422},
+		{"duplicate theme key", mutate(t, `"name":"hatamoto-dev"`, `"name":"hatamoto-dev","name":"x"`), 422},
+		{"duplicate plugin key", mutate(t, `"enabled":false`, `"enabled":false,"enabled":false`), 422},
+		{"duplicate health key", mutate(t, `"panics":0`, `"panics":0,"panics":0`), 422},
+		{"duplicate plugin_errors key", mutate(t, `"other":4`, `"other":4,"other":4`), 422},
+		{"extra theme key", mutate(t, `"version":"1.6.0"`, `"version":"1.6.0","x":1`), 422},
+		{"extra plugin key", mutate(t, `"enabled":false`, `"enabled":false,"x":1`), 422},
+		{"extra health key", mutate(t, `"panics":0`, `"panics":0,"x":1`), 422},
+		{"null value", mutate(t, `"os":"linux"`, `"os":null`), 422},
+		{"null theme", mutate(t, `{"name":"hatamoto-dev","version":"1.6.0"}`, `null`), 422},
+		{"null plugins", mutate(t, plugins, `null`), 422},
+		{"postgres string", mutate(t, `"postgres":16`, `"postgres":"16"`), 422},
+		{"postgres fraction", mutate(t, `"postgres":16`, `"postgres":16.0`), 422},
+		{"postgres 8", mutate(t, `"postgres":16`, `"postgres":8`), 422},
+		{"postgres 100", mutate(t, `"postgres":16`, `"postgres":100`), 422},
+		{"worker string", mutate(t, `"worker":true`, `"worker":"true"`), 422},
+		{"age 5", mutate(t, `"age_months":6`, `"age_months":5`), 422},
+		{"age 37", mutate(t, `"age_months":6`, `"age_months":37`), 422},
+		{"age negative", mutate(t, `"age_months":6`, `"age_months":-1`), 422},
+		{"os upper", mutate(t, `"linux"`, `"Linux"`), 422},
+		{"os empty", mutate(t, `"linux"`, `""`), 422},
+		{"os 17 chars", mutate(t, `"linux"`, `"`+strings.Repeat("a", 17)+`"`), 422},
+		{"arch dash", mutate(t, `"amd64"`, `"amd-64"`), 422},
+		{"channel beta", mutate(t, `"stable"`, `"beta"`), 422},
+		{"core version no v", mutate(t, `"v1.1.0"`, `"1.1.0"`), 422},
+		{"bad install", mutate(t, goodID, goodID[:31]), 422},
+		{"theme name upper", mutate(t, `"hatamoto-dev"`, `"Hatamoto"`), 422},
+		{"theme name dash first", mutate(t, `"hatamoto-dev"`, `"-x"`), 422},
+		{"theme name 65", mutate(t, `"hatamoto-dev"`, `"`+strings.Repeat("a", 65)+`"`), 422},
+		{"theme version v prefix", mutate(t, `"1.6.0"`, `"v1.6.0"`), 422},
+		{"theme version build", mutate(t, `"1.6.0"`, `"1.6.0+b"`), 422},
+		{"theme version 65", mutate(t, `"1.6.0"`, `"1.0.0-`+strings.Repeat("a", 59)+`"`), 422},
+		{"plugin version build", mutate(t, `"version":"1.0.0","enabled":false`, `"version":"1.0.0+x","enabled":false`), 422},
+		{"plugin name upper", mutate(t, `"name":"gtm"`, `"name":"GTM"`), 422},
+		{"plugins unsorted", mutate(t, plugins, `[{"name":"searchconsole","version":"1.0.0","enabled":true},{"name":"gtm","version":"1.0.0","enabled":false}]`), 422},
+		{"plugins duplicate", mutate(t, plugins, `[{"name":"gtm","version":"1.0.0","enabled":true},{"name":"gtm","version":"1.0.0","enabled":true}]`), 422},
+		{"plugins 101", mutate(t, plugins, p101), 422},
+		{"plugin enabled string", mutate(t, `"enabled":false`, `"enabled":"no"`), 422},
+		{"other_plugins negative", mutate(t, `"other_plugins":2`, `"other_plugins":-1`), 422},
+		{"other_plugins 1001", mutate(t, `"other_plugins":2`, `"other_plugins":1001`), 422},
+		{"since_hours 10001", mutate(t, `"since_hours":24`, `"since_hours":10001`), 422},
+		{"panics negative", mutate(t, `"panics":0`, `"panics":-1`), 422},
+		{"http_5xx over", mutate(t, `"http_5xx":3`, `"http_5xx":1000001`), 422},
+		{"render_errors string", mutate(t, `"render_errors":0`, `"render_errors":"0"`), 422},
+		{"update_failed over", mutate(t, `"update_failed":0`, `"update_failed":1000001`), 422},
+		{"update_rolled_back negative", mutate(t, `"update_rolled_back":0`, `"update_rolled_back":-5`), 422},
+		{"migration_failed over", mutate(t, `"migration_failed":0`, `"migration_failed":2000000`), 422},
+		{"plugin_errors unlisted", mutate(t, `"searchconsole":1,`, `"gtmx":1,`), 422},
+		{"plugin_errors bad name", mutate(t, `"searchconsole":1,`, `"Bad":1,`), 422},
+		{"plugin_errors over", mutate(t, `"searchconsole":1`, `"searchconsole":1000001`), 422},
+		{"plugin_errors string", mutate(t, `"searchconsole":1`, `"searchconsole":"1"`), 422},
+		{"plugin_errors array", mutate(t, errs, `[]`), 422},
+		{"not json", `{"level":"detailed"`, 400},
+		{"trailing data", detailedBody + ` {}`, 400},
+		{"trailing garbage", detailedBody + ` x`, 400},
+		{"over 16384", mutate(t, `"os":"linux"`, `"os":"`+strings.Repeat("a", 17000)+`"`), 413},
+	}
+	for _, c := range cases {
+		calls := recordHost(t)
+		if res := send(t, jsonReq(c.body)); res.Status != c.want || res.Body != "" {
+			t.Errorf("%s: got %d %q, want %d", c.name, res.Status, res.Body, c.want)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("%s: %d host calls", c.name, len(*calls))
+		}
+	}
+}
+
+func TestDetailedLimits(t *testing.T) {
+	var ps, es []string
+	for i := 0; i < 101; i++ {
+		name := "plug" + string(rune('a'+i/26)) + string(rune('a'+i%26))
+		ps = append(ps, `{"name":"`+name+`","version":"1.0.0","enabled":true}`)
+		es = append(es, `"`+name+`":1`)
+	}
+	withN := func(n int) string {
+		b := mutate(t, `[{"name":"gtm","version":"1.0.0","enabled":false},{"name":"searchconsole","version":"1.0.0","enabled":true}]`, "["+strings.Join(ps[:n], ",")+"]")
+		return strings.Replace(b, `{"searchconsole":1,"other":4}`, "{"+strings.Join(es[:n], ",")+"}", 1)
+	}
+	if _, code := parseDetailed(withN(100)); code != 0 {
+		t.Errorf("100 plugins: %d", code)
+	}
+	if _, code := parseDetailed(withN(101)); code != 422 {
+		t.Errorf("101 plugins: %d", code)
+	}
+	// plugin_errors with 101 keys while every key is listed is still too many.
+	b := strings.Replace(withN(100), `"plugaa":1`, `"plugaa":1,"other":1`, 1)
+	if _, code := parseDetailed(b); code != 422 {
+		t.Errorf("101 plugin_errors keys: %d", code)
+	}
+
+	// Sizes: Basic above 1 KiB is 413; Detailed between 1 KiB and 16 KiB is accepted.
+	pad := func(n int) string { return mutate(t, `"os":"linux"`, `"os":"linux"`) + strings.Repeat(" ", n) }
+	if len(detailedBody) >= 1024 {
+		t.Fatal("fixture should be small")
+	}
+	big := withN(100)
+	if len(big) <= 1024 || len(big) > 16384 {
+		t.Fatalf("fixture size %d", len(big))
+	}
+	if res := send(t, jsonReq(big)); res.Status != 204 {
+		t.Errorf("1 KiB < Detailed <= 16384: %d", res.Status)
+	}
+	exact := pad(16384 - len(detailedBody))
+	if len(exact) != 16384 {
+		t.Fatalf("len %d", len(exact))
+	}
+	if res := send(t, jsonReq(exact)); res.Status != 204 {
+		t.Errorf("exactly 16384: %d", res.Status)
+	}
+	if res := send(t, jsonReq(exact+" ")); res.Status != 413 {
+		t.Errorf("16385: %d", res.Status)
+	}
+	basic := body(goodID, "v1.2.3", "stable")
+	if res := send(t, jsonReq(basic+strings.Repeat(" ", 1024-len(basic)))); res.Status != 204 {
+		t.Errorf("Basic exactly 1024: %d", res.Status)
+	}
+	if res := send(t, jsonReq(basic+strings.Repeat(" ", 1025-len(basic)))); res.Status != 413 {
+		t.Errorf("Basic 1025: %d", res.Status)
+	}
+}
