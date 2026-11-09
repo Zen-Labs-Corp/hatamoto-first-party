@@ -1,23 +1,36 @@
 # stats: install stats receiver as a plugin
 
 Receives the opt-in install stats ping that Hatamoto sends once a day
-(`POST /p/stats/v1/ping` with exactly `install`, `version` and `channel`) and shows
-the totals to the site owner on the plugin's admin page. It is only useful on the
+(`POST /p/stats/v1/ping`, a Basic body of exactly `install`, `version` and `channel`,
+or a Detailed body with plugin, theme and health data) and shows the totals to the
+site owner on the plugin's admin page. It is only useful on the
 site that receives the pings (hatamoto.dev).
 
 ## Privacy: what hatamoto.dev keeps
 
-- **Stored**: the install ID (a random 32-character hex string the install made
-  for itself), the Hatamoto version, the update channel (`stable`, `edge` or
-  `canary`) and the UTC day the ping arrived. Nothing else.
+- **Stored, Basic ping**: the install ID (a random 32-character hex string the
+  install made for itself), the Hatamoto version, the update channel (`stable`,
+  `edge` or `canary`) and the UTC day the ping arrived.
+- **Stored, Detailed ping** (installs that opted in to detailed reports), in
+  addition: the operating system and CPU architecture, the PostgreSQL major
+  version, the install's age as a bucket (0, 1, 3, 6, 12, 24 or 36 months), whether
+  the background worker runs, the active theme's name and version, the name,
+  version and enabled flag of every installed plugin signed by a first-party key,
+  the number of other (self-built or unsigned) plugins, and health counts since the
+  last report: panics, 5xx responses, render errors, errors per listed plugin,
+  failed and rolled-back updates, failed migrations.
 - **Never stored**: an IP address (the plugin host never passes one to a plugin),
   request headers (including the User-Agent), cookies, or the request body. The
-  plugin reads no header except `Content-Type`, and logs nothing.
+  plugin reads no header except `Content-Type`, and logs nothing. The names of
+  self-built plugins are never sent, only their count.
 - **Retention**: one row per install and day for the current month and the 13
-  full months before it (up to about 14 months). After that the daily
-  rows of a month are folded into one row per install and month holding the last
-  version and channel seen that month, and the daily rows are deleted. The install
-  IDs are kept in those monthly rows with no end date.
+  full months before it (up to about 14 months), for Basic data and for each
+  detailed table (environment, theme and health in one row, plus one row per plugin).
+  After that the daily rows of a month are folded into one row per install and
+  month, and the daily rows are deleted. The monthly row holds the version, channel,
+  environment, theme and plugin versions last seen that month; health and error
+  counts are summed over the month. The install IDs are kept in those monthly rows
+  with no end date.
 - **Who sees it**: only the site owner, as totals on the plugin's admin page. There
   is no public stats page, no per-install page, no export.
 - **Request log**: Hatamoto itself logs every request, including these. That log
@@ -38,18 +51,35 @@ stats documentation on https://hatamoto.dev/docs.
 
 ## How it works
 
-- **Ping**: `POST /p/stats/v1/ping` is a public route. It accepts a JSON body (at
-  most 1 KiB, `Content-Type: application/json`) that is an object with exactly the
-  three keys `install` (32 lowercase hex), `version` (a release version such as
-  `v1.8.2` or `v1.8.2-rc.1`, up to 64 characters, no build metadata) and `channel`
-  (`stable`, `edge`, `canary`). Extra, missing, repeated or differently-cased keys,
-  non-string values and trailing data are rejected (`400`, `413`, `415` or `422`)
-  without touching the database. A valid ping answers `204` with an empty body.
-  A second ping the same UTC day replaces that day's version and channel.
+- **Ping**: `POST /p/stats/v1/ping` is a public route. It accepts a JSON body
+  (`Content-Type: application/json`) in one of two shapes, told apart by the `level` key.
+  - Basic (at most 1 KiB): an object with exactly the three keys `install` (32
+    lowercase hex), `version` (a release version such as `v1.8.2` or `v1.8.2-rc.1`,
+    up to 64 characters, no build metadata) and `channel` (`stable`, `edge`,
+    `canary`). Extra, missing, repeated or differently-cased keys, non-string
+    values and trailing data answer `400` (a bad value in a known key answers `422`).
+  - Detailed (at most 16 KiB): the three keys plus `"level":"detailed"`, `os`,
+    `arch`, `postgres`, `age_months`, `worker`, `theme`, `plugins` (at most 100,
+    unique, sorted by name), `other_plugins` and `health` (with `plugin_errors`
+    keyed by listed plugin name, or `other`). Every nested object is checked the
+    same strict way: exact keys, once each, exact case, right types, counts in
+    range. Any violation answers `422`; invalid JSON or trailing data answers `400`.
+  A body over its cap answers `413`, another content type `415`. Rejected bodies
+  never touch the database. A valid ping answers `204` with an empty body. A
+  second ping the same UTC day replaces that day's rows for the install, including
+  its plugin list (a plugin that is gone vanishes). A Detailed ping also counts as
+  a Basic one, so the existing totals do not change.
 - **Admin page**: `GET /api/v1/p/stats/overview?days=7|30|90` (owner only, default
   30): active installs (seen in the window), installs seen today, new installs,
   split by version (top 3, then minor groups, then other) and by channel, and a
-  13-month trend.
+  13-month trend. With detailed reports it also returns the number of reporting
+  installs, plugin and theme adoption (from each install's latest report in the
+  window), the count of installs with self-built plugins, health per install-day,
+  and errors per install-day by plugin and core version. A plugin's error rate on a
+  core version is its error count divided by the install-days that listed it. The
+  jump flag marks a plugin on a core version when at least 3 installs report it
+  there, its rate is above zero and at least twice the rate on the next lower
+  core version with data in the window.
 - **Rollup**: the `rollup` cron job (hourly) folds months older than the
   retention window, oldest first, up to 3 months per run. It is a cron job, so it
   only runs while Hatamoto's background worker is running; the clock restarts
@@ -58,7 +88,8 @@ stats documentation on https://hatamoto.dev/docs.
   Reads are correct before the rollup has run.
 - **Permissions**: `db` only.
 - **Tables**: `installs_daily` (install, day, version, channel) and
-  `installs_monthly` (install, month, version, channel).
+  `installs_monthly` (install, month, version, channel); for detailed reports
+  `detail_daily`, `plugins_daily`, `detail_monthly` and `plugins_monthly`.
 
 ## Build, test, install
 
@@ -91,9 +122,12 @@ stable channel. It is not listed in the public plugin registry.
 
 ## Limits
 
-- The overview is four queries (headline, channels, versions, trend) and builds
-  the splits in the plugin. Measured on a local PostgreSQL with 10,000 installs
-  that pinged every day for 13 months (about 4 million daily rows, the worst
+- The overview is nine queries (headline, channels, versions, trend, and five for
+  detailed reports) and builds the splits and the jump flag in the plugin. The
+  detailed queries return at most 1,000 rows each and have not been measured at
+  scale.
+- The first four queries (headline, channels, versions, trend) were measured on a
+  local PostgreSQL with 10,000 installs that pinged every day for 13 months (about 4 million daily rows, the worst
   case), the four queries together take under 1 second, for a 7, 30 or 90 day
   window. More installs scale it about linearly; it has not been measured
   beyond 10,000.
