@@ -142,7 +142,7 @@ func TestUIDetailedPanels(t *testing.T) {
 			t.Errorf("index.html lacks #%s", id)
 		}
 	}
-	for _, want := range []string{"No detailed reports yet.", "! jump (", "(names not sent)", "function renderTable"} {
+	for _, want := range []string{"No detailed reports yet.", "Detailed reports could not be loaded.", "if (o.detailed_unavailable)", "! jump (", "(names not sent)", "function renderTable"} {
 		if !strings.Contains(js, want) {
 			t.Errorf("ui/app.js lacks %q", want)
 		}

@@ -156,6 +156,11 @@ function jumpCell(cell) {
 // detailed renders the panels fed by detailed reports.
 function detailed(o) {
   const d = o.detailed;
+  if (o.detailed_unavailable) {
+    $("#detailed-line").textContent = "Detailed reports could not be loaded.";
+    $("#detailed-body").hidden = true;
+    return;
+  }
   $("#detailed-line").textContent = d.reports === 0
     ? "No detailed reports yet."
     : `Detailed reports: ${d.reports} of ${d.active} active installs`;
