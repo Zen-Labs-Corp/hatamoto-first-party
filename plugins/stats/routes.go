@@ -16,7 +16,10 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-const maxPingBody = 1024
+const (
+	maxBasicBody    = 1024
+	maxDetailedBody = 16384
+)
 
 func init() {
 	guest.OnHTTP(serve)
@@ -49,7 +52,13 @@ func handlePing(r sdk.HTTPRequest) sdk.HTTPResponse {
 	switch {
 	case len(r.Body) == 0:
 		return status(http.StatusBadRequest)
-	case len(r.Body) > maxPingBody:
+	case len(r.Body) > maxDetailedBody:
+		return status(http.StatusRequestEntityTooLarge)
+	}
+	if hasLevel(r.Body) {
+		return handleDetailed(r.Body)
+	}
+	if len(r.Body) > maxBasicBody {
 		return status(http.StatusRequestEntityTooLarge)
 	}
 	p, code := parsePing(r.Body)
@@ -57,6 +66,17 @@ func handlePing(r sdk.HTTPRequest) sdk.HTTPResponse {
 		return status(code)
 	}
 	if err := recordPing(p, utcDay()); err != nil {
+		return status(http.StatusServiceUnavailable)
+	}
+	return status(http.StatusNoContent)
+}
+
+func handleDetailed(body string) sdk.HTTPResponse {
+	p, code := parseDetailed(body)
+	if code != 0 {
+		return status(code)
+	}
+	if err := recordDetailed(p, utcDay()); err != nil {
 		return status(http.StatusServiceUnavailable)
 	}
 	return status(http.StatusNoContent)
