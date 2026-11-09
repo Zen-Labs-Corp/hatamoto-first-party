@@ -54,7 +54,7 @@ func TestIndexLoadsOnlyBridgeAndApp(t *testing.T) {
 	if len(srcs) != 2 || srcs[0] != "/plugin-ui/_sdk/bridge.js" || srcs[1] != "app.js" {
 		t.Fatalf("scripts %v", srcs)
 	}
-	if !strings.Contains(html, "Stored: install ID, version, channel, day. No IP addresses.") {
+	if !strings.Contains(html, "Stored: install ID, version, channel, day; with detailed reports also OS, architecture, plugin and theme names and versions, health counts. No IP addresses.") {
 		t.Fatal("storage footer missing")
 	}
 	if !strings.Contains(html, `<option value="30" selected>`) {
@@ -131,5 +131,20 @@ func TestUIHasNoDuplicateTitle(t *testing.T) {
 	}
 	if !strings.Contains(readUI(t, "app.css"), ".head { display: flex; justify-content: flex-end;") {
 		t.Error("the window selector is not aligned right")
+	}
+}
+
+// The detailed panels exist, show the empty state, and are built with textContent only.
+func TestUIDetailedPanels(t *testing.T) {
+	html, js := readUI(t, "index.html"), readUI(t, "app.js")
+	for _, id := range []string{"detailed-line", "plugins", "themes", "errors", "health", "self-built"} {
+		if !strings.Contains(html, `id="`+id+`"`) {
+			t.Errorf("index.html lacks #%s", id)
+		}
+	}
+	for _, want := range []string{"No detailed reports yet.", "! jump (", "(names not sent)", "function renderTable"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("ui/app.js lacks %q", want)
+		}
 	}
 }

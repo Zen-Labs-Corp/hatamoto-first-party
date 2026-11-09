@@ -38,7 +38,29 @@
       <div id="trend"></div>
     </section>
 
-    <footer class="muted">Stored: install ID, version, channel, day. No IP addresses.</footer>
+    <section id="detailed">
+      <h2>Detailed reports</h2>
+      <p id="detailed-line"></p>
+      <div id="detailed-body" hidden>
+        <h2>Plugins</h2>
+        <p class="muted">Installs and versions in each install's latest report in the window; errors per install-day that listed the plugin.</p>
+        <div id="plugins"></div>
+        <p id="self-built" class="muted"></p>
+
+        <h2>Themes</h2>
+        <div id="themes"></div>
+
+        <h2>Errors by plugin and core version</h2>
+        <p class="muted">Errors per install-day. A jump means at least 3 installs and at least twice the rate of the next lower core version with data.</p>
+        <div id="errors"></div>
+
+        <h2>Health</h2>
+        <p class="muted">Panics, 5xx and render errors per install-day over the window; update and migration problems are totals.</p>
+        <div id="health"></div>
+      </div>
+    </section>
+
+    <footer class="muted">Stored: install ID, version, channel, day; with detailed reports also OS, architecture, plugin and theme names and versions, health counts. No IP addresses.</footer>
   </main>
   <script src="/plugin-ui/_sdk/bridge.js"></script>
   <script src="app.js"></script>

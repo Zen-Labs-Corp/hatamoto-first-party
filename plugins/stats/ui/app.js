@@ -131,6 +131,58 @@ function trend(container, points) {
   container.append(chart);
 }
 
+// renderTable fills container with a table: head is a list of column titles,
+// rows a list of lists of strings. An empty list shows the empty text instead.
+function renderTable(container, head, rows, empty) {
+  container.replaceChildren();
+  if (!rows.length) {
+    container.append(el("p", { className: "muted", textContent: empty }));
+    return;
+  }
+  const row = (cells, tag) => el("tr", {}, ...cells.map((c) => el(tag, { textContent: c.text ?? c, className: c.cls ?? "" })));
+  container.append(el("table", {}, el("thead", {}, row(head, "th")), el("tbody", {}, ...rows.map((r) => row(r, "td")))));
+}
+
+const rate = (n) => n.toFixed(2);
+const versionList = (versions) => versions.map((v) => `${v.label} x${v.count}`).join(", ");
+
+function jumpCell(cell) {
+  const text = rate(cell.rate);
+  if (!cell.jump) return text;
+  const ratio = cell.ratio > 0 ? `${cell.ratio.toFixed(1)}x, ` : "from zero, ";
+  return { text: `${text}  ! jump (${ratio}${cell.installs} installs)`, cls: "jump" };
+}
+
+// detailed renders the panels fed by detailed reports.
+function detailed(o) {
+  const d = o.detailed;
+  $("#detailed-line").textContent = d.reports === 0
+    ? "No detailed reports yet."
+    : `Detailed reports: ${d.reports} of ${d.active} active installs`;
+  $("#detailed-body").hidden = d.reports === 0;
+  if (d.reports === 0) return;
+  renderTable($("#plugins"), ["Plugin", "Installs", "Versions", "Errors/install-day"],
+    o.plugins.map((p) => [p.name, String(p.installs), versionList(p.versions), rate(p.errors_per_day)]),
+    "No plugins reported.");
+  $("#self-built").textContent = o.self_built_installs > 0
+    ? `+ self-built plugins on ${o.self_built_installs} installs (names not sent)`
+    : "";
+  renderTable($("#themes"), ["Theme", "Installs", "Versions"],
+    o.themes.map((t) => [t.name, String(t.installs), versionList(t.versions)]),
+    "No themes reported.");
+  const cores = o.errors.cores;
+  renderTable($("#errors"), ["Plugin", ...cores],
+    o.errors.plugins.map((p) => [p.name, ...cores.map((c) => {
+      const cell = p.cells.find((x) => x.core === c);
+      return cell ? jumpCell(cell) : "-";
+    })]),
+    "No plugin errors data.");
+  const h = o.health;
+  renderTable($("#health"), ["Panics", "5xx", "Render errors", "Updates failed", "Updates rolled back", "Migrations failed"],
+    [[rate(h.panics), rate(h.http_5xx), rate(h.render_errors), String(h.update_failed), String(h.update_rolled_back), String(h.migration_failed)]],
+    "");
+}
+
 async function load() {
   const days = $("#days").value;
   const o = await api("GET", "/overview", null, { days });
@@ -141,6 +193,7 @@ async function load() {
   barRows($("#versions"), o.versions);
   barRows($("#channels"), o.active === 0 ? [] : o.channels);
   trend($("#trend"), o.trend);
+  detailed(o);
 }
 
 async function main() {
