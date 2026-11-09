@@ -24,7 +24,9 @@ func (r *rollupDB) install(t *testing.T) {
 		c := hostCall{fn, m["sql"].(string), m["args"].([]any)}
 		if fn == "db.exec" {
 			r.execs = append(r.execs, c)
-			r.months = r.months[1:]
+			if c.sql == foldPlugins {
+				r.months = r.months[1:]
+			}
 			return nil
 		}
 		r.reads = append(r.reads, c)
@@ -56,12 +58,14 @@ func TestRollupFoldsOldestFirstAndIsBounded(t *testing.T) {
 	db := &rollupDB{months: []string{"2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01"}}
 	db.install(t)
 	n, err := rollupOnce(date(2026, 10, 28))
-	if n != 3 || err != nil || len(db.execs) != 3 {
+	if n != 3 || err != nil || len(db.execs) != 9 {
 		t.Fatalf("n=%d err=%v execs=%d", n, err, len(db.execs))
 	}
 	for i, want := range []string{"2024-01-01", "2024-02-01", "2024-03-01"} {
-		if db.execs[i].args[0] != want || db.execs[i].sql != foldMonth {
-			t.Fatalf("exec %d: %+v", i, db.execs[i])
+		for j, step := range foldSteps {
+			if e := db.execs[i*3+j]; e.args[0] != want || e.sql != step {
+				t.Fatalf("exec %d/%d: %+v", i, j, e)
+			}
 		}
 	}
 	if len(db.months) != 1 {
@@ -82,22 +86,47 @@ func TestRollupStopsOnError(t *testing.T) {
 	}
 }
 
-func TestFoldMonthStatement(t *testing.T) {
-	if !sqlGuardOK(foldMonth) || !strings.HasPrefix(foldMonth, "WITH ") {
-		t.Fatal("not a single guarded WITH statement")
+func TestFoldStatements(t *testing.T) {
+	want := map[string][]string{
+		foldInstalls: {"DELETE FROM installs_daily", "INSERT INTO installs_monthly", "ON CONFLICT (install, month) DO UPDATE", "DISTINCT ON (install)", "ORDER BY install, day DESC"},
+		foldDetail:   {"DELETE FROM detail_daily", "INSERT INTO detail_monthly", "ON CONFLICT (install, month) DO UPDATE", "DISTINCT ON (install)", "ORDER BY install, day DESC"},
+		foldPlugins:  {"DELETE FROM plugins_daily", "INSERT INTO plugins_monthly", "ON CONFLICT (install, month, name) DO UPDATE", "sum(errors) OVER (PARTITION BY install, name)"},
 	}
-	for _, part := range []string{
-		"DELETE FROM installs_daily", "DELETE FROM detail_daily", "DELETE FROM plugins_daily", "RETURNING",
-		"INSERT INTO installs_monthly", "INSERT INTO detail_monthly", "INSERT INTO plugins_monthly",
-		"ON CONFLICT (install, month) DO UPDATE", "ON CONFLICT (install, month, name) DO UPDATE",
-		"DISTINCT ON (install)", "ORDER BY install, day DESC", "sum(errors) OVER (PARTITION BY install, name)",
-	} {
-		if !strings.Contains(foldMonth, part) {
-			t.Errorf("missing %q", part)
+	if len(foldSteps) != 3 || foldSteps[0] != foldInstalls {
+		t.Fatal("Basic fold must be the first of three separate steps")
+	}
+	for stmt, parts := range want {
+		if !sqlGuardOK(stmt) || !strings.HasPrefix(stmt, "WITH ") {
+			t.Fatal("not a single guarded WITH statement")
+		}
+		for _, part := range append(parts, "RETURNING") {
+			if !strings.Contains(stmt, part) {
+				t.Errorf("missing %q", part)
+			}
+		}
+		low := strings.ToLower(stmt)
+		if strings.Count(low, "delete") != 1 || strings.Contains(low, "current_date") || strings.Contains(low, "now()") {
+			t.Fatal("unexpected clock or delete count")
 		}
 	}
-	if strings.Count(strings.ToUpper(foldMonth), "DELETE") != 3 || strings.Contains(strings.ToLower(foldMonth), "current_date") || strings.Contains(strings.ToLower(foldMonth), "now()") {
-		t.Fatal("unexpected clock or delete count")
+}
+
+// A failure in a Detailed fold must not stop the Basic fold of the same month.
+func TestRollupBasicFoldRunsBeforeDetailedFailure(t *testing.T) {
+	var ran []string
+	callHost = func(fn string, a, out any) error {
+		if fn == "db.exec" {
+			sql := a.(map[string]any)["sql"].(string)
+			ran = append(ran, sql)
+			if sql != foldInstalls {
+				return errors.New("statement timeout")
+			}
+			return nil
+		}
+		return json.Unmarshal([]byte(`{"rows":[[{"month":"2024-01-01"}]]}`), out)
+	}
+	if _, err := rollupOnce(date(2026, 10, 28)); err == nil || len(ran) < 2 || ran[0] != foldInstalls {
+		t.Fatalf("err=%v ran=%d", err, len(ran))
 	}
 }
 
@@ -111,7 +140,7 @@ func TestCronRegisteredAndReturnsError(t *testing.T) {
 	if _, err := guest.Handle(guest.CronExport("rollup"), in); err != nil {
 		t.Fatal(err)
 	}
-	if len(db.execs) != 1 {
+	if len(db.execs) != len(foldSteps) {
 		t.Fatalf("%d execs", len(db.execs))
 	}
 }

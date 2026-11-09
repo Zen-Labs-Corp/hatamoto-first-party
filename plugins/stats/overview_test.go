@@ -61,7 +61,7 @@ func stubNow(t *testing.T) {
 }
 
 func TestOverviewQueriesPassGuard(t *testing.T) {
-	for _, q := range []string{qHeadline, qChannels, qVersions, qWeekly, qDetailed, qPlugins, qThemes, qHealth, qErrors, qOldestMonth, foldMonth} {
+	for _, q := range []string{qHeadline, qChannels, qVersions, qWeekly, qDetailed, qPlugins, qThemes, qHealth, qErrors, qOldestMonth, foldInstalls, foldDetail, foldPlugins} {
 		if !sqlGuardOK(q) {
 			t.Errorf("guard rejects %q", q)
 		}
