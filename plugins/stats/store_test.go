@@ -27,6 +27,7 @@ func sqlGuardOK(sql string) bool {
 func TestSQLGuard(t *testing.T) {
 	for sql, want := range map[string]bool{
 		upsertDaily:                          true,
+		upsertDetailed:                       true,
 		"DROP TABLE x":                       false,
 		"SELECT 1; DELETE FROM x":            false,
 		"SELECT * FROM public.x":             false,
@@ -106,5 +107,51 @@ func TestUTCDayBoundary(t *testing.T) {
 		if got := utcDay(); got != want {
 			t.Errorf("%v: %s, want %s", at, got, want)
 		}
+	}
+}
+
+func TestDetailedPingIsOneStatement(t *testing.T) {
+	defer func(f func() time.Time) { now = f }(now)
+	now = func() time.Time { return time.Date(2026, 11, 9, 23, 59, 0, 0, time.UTC) }
+	calls := recordHost(t)
+	if res := send(t, jsonReq(detailedBody)); res.Status != 204 {
+		t.Fatalf("got %d", res.Status)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("%d host calls", len(*calls))
+	}
+	c := (*calls)[0]
+	if c.fn != "db.exec" || c.sql != upsertDetailed || !sqlGuardOK(c.sql) {
+		t.Fatalf("call %+v", c)
+	}
+	if len(c.args) != 21 || c.args[0] != goodID || c.args[1] != "2026-11-09" || c.args[2] != "v1.1.0" || c.args[3] != "stable" {
+		t.Fatalf("args %v", c.args)
+	}
+	list, _ := c.args[20].(string)
+	if !strings.Contains(list, `{"name":"searchconsole","version":"1.0.0","enabled":true,"errors":1}`) {
+		t.Fatalf("plugin list %s", list)
+	}
+}
+
+func TestDetailedWithoutPluginsSendsEmptyList(t *testing.T) {
+	calls := recordHost(t)
+	if err := recordDetailed(detailedPing{}, "2026-11-09"); err != nil {
+		t.Fatal(err)
+	}
+	if got := (*calls)[0].args[20]; got != "[]" {
+		t.Fatalf("plugin list %v", got)
+	}
+}
+
+func TestDetailedSQLShape(t *testing.T) {
+	// A same-day report replaces that day's plugin rows, and no database clock
+	// is involved: the day is an argument.
+	for _, want := range []string{"NOT IN (SELECT name FROM jsonb_to_recordset($21::jsonb)", "ON CONFLICT (install, day, name) DO UPDATE"} {
+		if !strings.Contains(upsertDetailed, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if low := strings.ToLower(upsertDetailed); strings.Contains(low, "now()") || strings.Contains(low, "current_date") {
+		t.Error("database clock in upsertDetailed")
 	}
 }

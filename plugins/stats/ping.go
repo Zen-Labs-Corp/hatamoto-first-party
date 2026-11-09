@@ -336,6 +336,3 @@ func readPluginErrors(dec *json.Decoder, out map[string]int) error {
 	}
 	return nil
 }
-
-// recordDetailed stores a Detailed report (implemented with the write statement).
-func recordDetailed(detailedPing, string) error { return nil }
