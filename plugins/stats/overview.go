@@ -147,7 +147,7 @@ const qHealth = `SELECT jsonb_build_object('days', count(*), 'panics', coalesce(
 // that listed it. The 1,000-row cap keeps the cells covering the most installs,
 // so junk plugin names cannot push real ones out. Errors stay bigint: summed
 // anonymous counts can pass the int range.
-const qErrors = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.name, t.core), '[]'::jsonb) FROM (SELECT p.name, d.core_version AS core, sum(p.errors) AS errors, count(*)::int AS days, count(DISTINCT p.install)::int AS installs FROM plugins_daily p JOIN detail_daily d ON d.install = p.install AND d.day = p.day WHERE p.day > $1::date AND p.day <= $2::date GROUP BY p.name, d.core_version ORDER BY p.name, d.core_version LIMIT 1000) t`
+const qErrors = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.name, t.core), '[]'::jsonb) FROM (SELECT p.name, d.core_version AS core, sum(p.errors) AS errors, count(*)::int AS days, count(DISTINCT p.install)::int AS installs FROM plugins_daily p JOIN detail_daily d ON d.install = p.install AND d.day = p.day WHERE p.day > $1::date AND p.day <= $2::date GROUP BY p.name, d.core_version ORDER BY count(DISTINCT p.install) DESC, p.name, d.core_version LIMIT 1000) t`
 
 // nameVersion is one qPlugins / qThemes row.
 type nameVersion struct {

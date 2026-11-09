@@ -182,6 +182,9 @@ func TestErrorsQueryOverflowAndCap(t *testing.T) {
 	if strings.Contains(qErrors, "sum(p.errors)::int") {
 		t.Error("errors sum cast to int")
 	}
+	if !strings.Contains(qErrors, "ORDER BY count(DISTINCT p.install) DESC, p.name, d.core_version LIMIT 1000") {
+		t.Error("cap does not order by installs first")
+	}
 	var rows []errRow
 	if err := json.Unmarshal([]byte(`[{"name":"a","core":"1.0.0","errors":5000000000,"days":1,"installs":1}]`), &rows); err != nil || rows[0].Errors != 5000000000 {
 		t.Fatalf("%v %+v", err, rows)
