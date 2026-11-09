@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -39,12 +40,18 @@ func TestSQLGuard(t *testing.T) {
 }
 
 func TestMigrationHasNoFunctionsTriggersOrGrants(t *testing.T) {
-	raw, err := os.ReadFile("migrations/001_init.sql")
-	if err != nil {
-		t.Fatal(err)
+	files, err := filepath.Glob("migrations/*.sql")
+	if err != nil || len(files) < 2 {
+		t.Fatalf("migrations: %v, %v", files, err)
 	}
-	if bad := regexp.MustCompile(`(?i)\b(function|trigger|grant|schema)\b`).FindString(string(raw)); bad != "" {
-		t.Fatalf("migration contains %q", bad)
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bad := regexp.MustCompile(`(?i)\b(function|trigger|grant|schema)\b`).FindString(string(raw)); bad != "" {
+			t.Fatalf("%s contains %q", f, bad)
+		}
 	}
 }
 
