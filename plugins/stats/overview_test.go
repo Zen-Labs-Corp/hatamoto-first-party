@@ -159,6 +159,35 @@ func TestOverviewDatabaseFailureIs503(t *testing.T) {
 	}
 }
 
+func TestOverviewDetailedFailureServesBasic(t *testing.T) {
+	stubNow(t)
+	fakeDBWith(t, map[string]string{qHeadline: `[{"active":5,"today":2,"new":1}]`})
+	inner := callHost
+	callHost = func(fn string, a, out any) error {
+		if sql := a.(map[string]any)["sql"].(string); sql == qErrors {
+			return errors.New("statement timeout")
+		}
+		return inner(fn, a, out)
+	}
+	res, o := overviewGet(t, nil)
+	if res.Status != 200 || o.Active != 5 || !o.DetailedUnavailable || len(o.Plugins) != 0 {
+		t.Fatalf("%d %+v", res.Status, o)
+	}
+}
+
+// Summed anonymous error counts can pass the int range, so qErrors must not
+// cast the sum, and its row cap must keep the busiest plugins, not the first
+// names alphabetically.
+func TestErrorsQueryOverflowAndCap(t *testing.T) {
+	if strings.Contains(qErrors, "sum(p.errors)::int") {
+		t.Error("errors sum cast to int")
+	}
+	var rows []errRow
+	if err := json.Unmarshal([]byte(`[{"name":"a","core":"1.0.0","errors":5000000000,"days":1,"installs":1}]`), &rows); err != nil || rows[0].Errors != 5000000000 {
+		t.Fatalf("%v %+v", err, rows)
+	}
+}
+
 // New is probed once per distinct install in the window, not once per daily
 // row: the per-row form took about a second for 10k installs pinging daily.
 func TestHeadlineProbesDistinctInstalls(t *testing.T) {

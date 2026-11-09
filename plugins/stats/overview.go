@@ -30,6 +30,10 @@ type overview struct {
 	Themes            []themeUse   `json:"themes"`
 	Health            healthSums   `json:"health"`
 	Errors            errorsTable  `json:"errors"`
+
+	// DetailedUnavailable is set when the Detailed queries failed; the Basic
+	// fields are still valid.
+	DetailedUnavailable bool `json:"detailed_unavailable"`
 }
 
 // detailedInfo: installs with a Detailed report in the window, of the active ones.
@@ -140,8 +144,10 @@ const qThemes = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.installs DESC,
 const qHealth = `SELECT jsonb_build_object('days', count(*), 'panics', coalesce(sum(panics), 0), 'http_5xx', coalesce(sum(http_5xx), 0), 'render_errors', coalesce(sum(render_errors), 0), 'update_failed', coalesce(sum(update_failed), 0), 'update_rolled_back', coalesce(sum(update_rolled_back), 0), 'migration_failed', coalesce(sum(migration_failed), 0)) FROM detail_daily WHERE day > $1::date AND day <= $2::date`
 
 // qErrors: per plugin and core version, its error count over the install-days
-// that listed it, capped at 1,000 rows.
-const qErrors = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.name, t.core), '[]'::jsonb) FROM (SELECT p.name, d.core_version AS core, sum(p.errors)::int AS errors, count(*)::int AS days, count(DISTINCT p.install)::int AS installs FROM plugins_daily p JOIN detail_daily d ON d.install = p.install AND d.day = p.day WHERE p.day > $1::date AND p.day <= $2::date GROUP BY p.name, d.core_version ORDER BY p.name, d.core_version LIMIT 1000) t`
+// that listed it. The 1,000-row cap keeps the cells covering the most installs,
+// so junk plugin names cannot push real ones out. Errors stay bigint: summed
+// anonymous counts can pass the int range.
+const qErrors = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.name, t.core), '[]'::jsonb) FROM (SELECT p.name, d.core_version AS core, sum(p.errors) AS errors, count(*)::int AS days, count(DISTINCT p.install)::int AS installs FROM plugins_daily p JOIN detail_daily d ON d.install = p.install AND d.day = p.day WHERE p.day > $1::date AND p.day <= $2::date GROUP BY p.name, d.core_version ORDER BY p.name, d.core_version LIMIT 1000) t`
 
 // nameVersion is one qPlugins / qThemes row.
 type nameVersion struct {
@@ -325,7 +331,7 @@ func buildOverview(days int) (overview, error) {
 		o.Active, o.Today, o.New = head[0].Active, head[0].Today, head[0].New
 	}
 	if err := buildDetailed(&o, start, end); err != nil {
-		return overview{}, err
+		o.DetailedUnavailable = true
 	}
 	return o, nil
 }
