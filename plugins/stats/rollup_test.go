@@ -87,15 +87,17 @@ func TestFoldMonthStatement(t *testing.T) {
 		t.Fatal("not a single guarded WITH statement")
 	}
 	for _, part := range []string{
-		"DELETE FROM installs_daily", "RETURNING", "ON CONFLICT (install, month) DO UPDATE",
-		"DISTINCT ON (install)", "ORDER BY install, day DESC",
+		"DELETE FROM installs_daily", "DELETE FROM detail_daily", "DELETE FROM plugins_daily", "RETURNING",
+		"INSERT INTO installs_monthly", "INSERT INTO detail_monthly", "INSERT INTO plugins_monthly",
+		"ON CONFLICT (install, month) DO UPDATE", "ON CONFLICT (install, month, name) DO UPDATE",
+		"DISTINCT ON (install)", "ORDER BY install, day DESC", "sum(errors) OVER (PARTITION BY install, name)",
 	} {
 		if !strings.Contains(foldMonth, part) {
 			t.Errorf("missing %q", part)
 		}
 	}
-	if strings.Count(strings.ToUpper(foldMonth), "DELETE") != 1 || strings.Contains(strings.ToLower(foldMonth), "now()") {
-		t.Fatal("unexpected clock or second delete")
+	if strings.Count(strings.ToUpper(foldMonth), "DELETE") != 3 || strings.Contains(strings.ToLower(foldMonth), "current_date") || strings.Contains(strings.ToLower(foldMonth), "now()") {
+		t.Fatal("unexpected clock or delete count")
 	}
 }
 
@@ -111,5 +113,16 @@ func TestCronRegisteredAndReturnsError(t *testing.T) {
 	}
 	if len(db.execs) != 1 {
 		t.Fatalf("%d execs", len(db.execs))
+	}
+}
+
+func TestOldestMonthLooksAtEveryDailyTable(t *testing.T) {
+	if !sqlGuardOK(qOldestMonth) {
+		t.Fatal("guard rejects qOldestMonth")
+	}
+	for _, tbl := range []string{"installs_daily", "detail_daily", "plugins_daily"} {
+		if !strings.Contains(qOldestMonth, "FROM "+tbl+" WHERE day < $1::date") {
+			t.Errorf("qOldestMonth ignores %s", tbl)
+		}
 	}
 }
