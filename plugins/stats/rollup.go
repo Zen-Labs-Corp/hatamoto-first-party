@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"time"
 
 	"hatamoto.dev/sdk"
@@ -19,16 +20,17 @@ func cutoffMonth(today time.Time) string {
 	return time.Date(t.Year(), t.Month()-retentionMonths, 1, 0, 0, 0, 0, time.UTC).Format(dateFmt)
 }
 
-// qOldestMonth returns the month (first day) of the oldest daily row below the
-// cutoff in any of the daily tables, or null when there is none.
-const qOldestMonth = `SELECT jsonb_build_object('month', (SELECT to_char(date_trunc('month', min(d)), 'YYYY-MM-DD') FROM (SELECT min(day) AS d FROM installs_daily WHERE day < $1::date UNION ALL SELECT min(day) FROM detail_daily WHERE day < $1::date UNION ALL SELECT min(day) FROM plugins_daily WHERE day < $1::date) t))`
+// oldestMonthQuery returns the month (first day) of the oldest row of a daily
+// table below the cutoff, or null when there is none.
+func oldestMonthQuery(table string) string {
+	return `SELECT jsonb_build_object('month', (SELECT to_char(date_trunc('month', min(day)), 'YYYY-MM-DD') FROM ` + table + ` WHERE day < $1::date))`
+}
 
-// The fold of one month is three statements, one per daily table, so a month
-// too big for one statement in the cron timeout in detail_daily or plugins_daily
-// cannot keep installs_daily from folding. Each statement deletes and inserts
-// together, so a failed one loses nothing and a rerun finds nothing to move;
-// after a partial run qOldestMonth still reports the month until all three are
-// done. A monthly row keeps what was last seen that month (version, channel,
+// Each daily table is folded by its own statement and tracks its own oldest
+// month, so a month too big for one statement in the cron timeout in
+// detail_daily or plugins_daily cannot keep installs_daily from folding, that
+// month or any later one. Each statement deletes and inserts together, so a
+// failed one loses nothing and the next run retries the same month. A monthly row keeps what was last seen that month (version, channel,
 // environment, theme, plugin versions); health counts are summed and
 // report_days counts the days reported.
 const foldInstalls = `WITH moved AS (DELETE FROM installs_daily WHERE day >= $1::date AND day < ($1::date + interval '1 month') RETURNING install, day, version, channel) ` +
@@ -48,25 +50,41 @@ const foldPlugins = `WITH mp AS (DELETE FROM plugins_daily WHERE day >= $1::date
 	`SELECT DISTINCT ON (install, name) install, $1::date, name, version, enabled, sum(errors) OVER (PARTITION BY install, name) FROM mp ORDER BY install, name, day DESC ` +
 	`ON CONFLICT (install, month, name) DO UPDATE SET version = EXCLUDED.version, enabled = EXCLUDED.enabled, errors = EXCLUDED.errors`
 
-// foldSteps run in this order: the Basic table first.
-var foldSteps = []string{foldInstalls, foldDetail, foldPlugins}
+// foldSteps run in this order, the Basic table first; a failing step does not
+// stop the ones after it.
+var foldSteps = []struct{ table, fold string }{
+	{"installs_daily", foldInstalls},
+	{"detail_daily", foldDetail},
+	{"plugins_daily", foldPlugins},
+}
 
-// rollupOnce folds up to monthsPerRun months, oldest first, and returns how
-// many it folded.
+// rollupOnce folds up to monthsPerRun months per table, oldest first, and
+// returns the most months any table folded. Errors of the steps are joined.
 func rollupOnce(today time.Time) (int, error) {
 	cutoff := cutoffMonth(today)
+	most := 0
+	var errs []error
+	for _, step := range foldSteps {
+		n, err := foldTable(step.table, step.fold, cutoff)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		most = max(most, n)
+	}
+	return most, errors.Join(errs...)
+}
+
+func foldTable(table, fold, cutoff string) (int, error) {
 	for n := 0; n < monthsPerRun; n++ {
 		var oldest struct{ Month *string }
-		if err := dbJSON(qOldestMonth, &oldest, cutoff); err != nil {
+		if err := dbJSON(oldestMonthQuery(table), &oldest, cutoff); err != nil {
 			return n, err
 		}
 		if oldest.Month == nil {
 			return n, nil
 		}
-		for _, step := range foldSteps {
-			if err := dbExec(step, *oldest.Month); err != nil {
-				return n, err
-			}
+		if err := dbExec(fold, *oldest.Month); err != nil {
+			return n, err
 		}
 	}
 	return monthsPerRun, nil

@@ -11,11 +11,21 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-// rollupDB answers the oldest-month query from a list and records the rest.
+// rollupDB answers the oldest-month queries from a per-table list and records
+// the rest. A fold of a table in failing returns an error and moves nothing.
 type rollupDB struct {
-	months []string // months still to fold, oldest first
-	execs  []hostCall
-	reads  []hostCall
+	months  map[string][]string // table -> months still to fold, oldest first
+	failing map[string]bool     // table -> its fold fails
+	execs   []hostCall
+	reads   []hostCall
+}
+
+func newRollupDB(months ...string) *rollupDB {
+	r := &rollupDB{months: map[string][]string{}, failing: map[string]bool{}}
+	for _, step := range foldSteps {
+		r.months[step.table] = append([]string(nil), months...)
+	}
+	return r
 }
 
 func (r *rollupDB) install(t *testing.T) {
@@ -24,25 +34,32 @@ func (r *rollupDB) install(t *testing.T) {
 		c := hostCall{fn, m["sql"].(string), m["args"].([]any)}
 		if fn == "db.exec" {
 			r.execs = append(r.execs, c)
-			if c.sql == foldPlugins {
-				r.months = r.months[1:]
+			for _, step := range foldSteps {
+				if c.sql == step.fold {
+					if r.failing[step.table] {
+						return errors.New("statement timeout")
+					}
+					r.months[step.table] = r.months[step.table][1:]
+				}
 			}
 			return nil
 		}
 		r.reads = append(r.reads, c)
 		cell := `{"month":null}`
-		if len(r.months) > 0 {
-			cell = `{"month":"` + r.months[0] + `"}`
+		for _, step := range foldSteps {
+			if c.sql == oldestMonthQuery(step.table) && len(r.months[step.table]) > 0 {
+				cell = `{"month":"` + r.months[step.table][0] + `"}`
+			}
 		}
 		return json.Unmarshal([]byte(`{"rows":[[`+cell+`]]}`), out)
 	}
 }
 
 func TestRollupStopsWhenNothingOld(t *testing.T) {
-	db := &rollupDB{}
+	db := newRollupDB()
 	db.install(t)
 	n, err := rollupOnce(date(2026, 10, 28))
-	if n != 0 || err != nil || len(db.execs) != 0 || len(db.reads) != 1 {
+	if n != 0 || err != nil || len(db.execs) != 0 || len(db.reads) != 3 {
 		t.Fatalf("n=%d err=%v execs=%d reads=%d", n, err, len(db.execs), len(db.reads))
 	}
 	if db.reads[0].args[0] != "2025-09-01" {
@@ -55,21 +72,21 @@ func TestRollupStopsWhenNothingOld(t *testing.T) {
 }
 
 func TestRollupFoldsOldestFirstAndIsBounded(t *testing.T) {
-	db := &rollupDB{months: []string{"2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01"}}
+	db := newRollupDB("2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01")
 	db.install(t)
 	n, err := rollupOnce(date(2026, 10, 28))
 	if n != 3 || err != nil || len(db.execs) != 9 {
 		t.Fatalf("n=%d err=%v execs=%d", n, err, len(db.execs))
 	}
-	for i, want := range []string{"2024-01-01", "2024-02-01", "2024-03-01"} {
-		for j, step := range foldSteps {
-			if e := db.execs[i*3+j]; e.args[0] != want || e.sql != step {
+	for i, step := range foldSteps {
+		for j, want := range []string{"2024-01-01", "2024-02-01", "2024-03-01"} {
+			if e := db.execs[i*3+j]; e.args[0] != want || e.sql != step.fold {
 				t.Fatalf("exec %d/%d: %+v", i, j, e)
 			}
 		}
-	}
-	if len(db.months) != 1 {
-		t.Fatalf("remaining %v", db.months)
+		if len(db.months[step.table]) != 1 {
+			t.Fatalf("%s remaining %v", step.table, db.months[step.table])
+		}
 	}
 }
 
@@ -92,7 +109,7 @@ func TestFoldStatements(t *testing.T) {
 		foldDetail:   {"DELETE FROM detail_daily", "INSERT INTO detail_monthly", "ON CONFLICT (install, month) DO UPDATE", "DISTINCT ON (install)", "ORDER BY install, day DESC"},
 		foldPlugins:  {"DELETE FROM plugins_daily", "INSERT INTO plugins_monthly", "ON CONFLICT (install, month, name) DO UPDATE", "sum(errors) OVER (PARTITION BY install, name)"},
 	}
-	if len(foldSteps) != 3 || foldSteps[0] != foldInstalls {
+	if len(foldSteps) != 3 || foldSteps[0].fold != foldInstalls {
 		t.Fatal("Basic fold must be the first of three separate steps")
 	}
 	for stmt, parts := range want {
@@ -111,22 +128,21 @@ func TestFoldStatements(t *testing.T) {
 	}
 }
 
-// A failure in a Detailed fold must not stop the Basic fold of the same month.
-func TestRollupBasicFoldRunsBeforeDetailedFailure(t *testing.T) {
-	var ran []string
-	callHost = func(fn string, a, out any) error {
-		if fn == "db.exec" {
-			sql := a.(map[string]any)["sql"].(string)
-			ran = append(ran, sql)
-			if sql != foldInstalls {
-				return errors.New("statement timeout")
-			}
-			return nil
-		}
-		return json.Unmarshal([]byte(`{"rows":[[{"month":"2024-01-01"}]]}`), out)
+// A Detailed fold stuck on one month must not stop the Basic fold of that
+// month or of later ones, and the cron run still reports the error.
+func TestRollupStuckDetailedFoldDoesNotBlockBasic(t *testing.T) {
+	db := newRollupDB("2024-01-01", "2024-02-01", "2024-03-01")
+	db.failing["detail_daily"] = true
+	db.install(t)
+	n, err := rollupOnce(date(2026, 10, 28))
+	if err == nil || n != 3 {
+		t.Fatalf("n=%d err=%v", n, err)
 	}
-	if _, err := rollupOnce(date(2026, 10, 28)); err == nil || len(ran) < 2 || ran[0] != foldInstalls {
-		t.Fatalf("err=%v ran=%d", err, len(ran))
+	if len(db.months["installs_daily"]) != 0 || len(db.months["plugins_daily"]) != 0 {
+		t.Fatalf("Basic %v plugins %v", db.months["installs_daily"], db.months["plugins_daily"])
+	}
+	if len(db.months["detail_daily"]) != 3 {
+		t.Fatalf("detail %v", db.months["detail_daily"])
 	}
 }
 
@@ -134,7 +150,7 @@ func TestCronRegisteredAndReturnsError(t *testing.T) {
 	old := now
 	defer func() { now = old }()
 	now = func() time.Time { return date(2026, 10, 28) }
-	db := &rollupDB{months: []string{"2024-01-01"}}
+	db := newRollupDB("2024-01-01")
 	db.install(t)
 	in, _ := json.Marshal(sdk.CronEvent{})
 	if _, err := guest.Handle(guest.CronExport("rollup"), in); err != nil {
@@ -145,13 +161,11 @@ func TestCronRegisteredAndReturnsError(t *testing.T) {
 	}
 }
 
-func TestOldestMonthLooksAtEveryDailyTable(t *testing.T) {
-	if !sqlGuardOK(qOldestMonth) {
-		t.Fatal("guard rejects qOldestMonth")
-	}
-	for _, tbl := range []string{"installs_daily", "detail_daily", "plugins_daily"} {
-		if !strings.Contains(qOldestMonth, "FROM "+tbl+" WHERE day < $1::date") {
-			t.Errorf("qOldestMonth ignores %s", tbl)
+func TestOldestMonthLooksAtOwnTable(t *testing.T) {
+	for _, step := range foldSteps {
+		q := oldestMonthQuery(step.table)
+		if !sqlGuardOK(q) || !strings.Contains(q, "FROM "+step.table+" WHERE day < $1::date") {
+			t.Errorf("bad oldest-month query for %s", step.table)
 		}
 	}
 }
