@@ -140,9 +140,9 @@ func publishResult(out map[string]any) {
 	out["published"] = false
 	switch {
 	case errors.Is(err, errNoListingKey), errors.Is(err, errBadListing), errors.Is(err, errWrongListing), errors.Is(err, errIndexTooBig):
-		out["warning"] = "The index was not published: " + err.Error() + "."
+		out["warning"] = "Saved, but the developer index could not be published: " + err.Error() + ". Check the listing key setting."
 	default:
-		out["warning"] = "The index could not be published. It is published again at the next daily run."
+		out["warning"] = "Saved, but the developer index could not be published. It is published again at the next scheduled run."
 		logf("warn", "publish failed")
 	}
 }

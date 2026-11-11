@@ -66,6 +66,15 @@ func TestUIUsesTheAdminRoutesAndEscapesText(t *testing.T) {
 	}
 }
 
+func TestUIShowsThePublishWarning(t *testing.T) {
+	js := readUI(t, "app.js")
+	for _, want := range []string{"out.published === false", "out.warning", "scrollIntoView"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("ui/app.js lacks %q", want)
+		}
+	}
+}
+
 func TestUIColoursHaveFallbacks(t *testing.T) {
 	if bare := regexp.MustCompile(`var\(--[a-z-]+\)`).FindString(readUI(t, "app.css")); bare != "" {
 		t.Errorf("ui/app.css uses %q without a fallback", bare)

@@ -340,3 +340,24 @@ func TestReviewListAlwaysReturnsThreeLists(t *testing.T) {
 		t.Errorf("%+v", r)
 	}
 }
+
+// A decision that commits while publish fails must say so in the admin page.
+func TestReviewActionsWarnWhenPublishFails(t *testing.T) {
+	for name, call := range map[string]func() sdk.HTTPResponse{
+		"approve": func() sdk.HTTPResponse { return handleApprove(reviewReq("/admin/submissions/{id}/approve", "5", "")) },
+		"revoke version": func() sdk.HTTPResponse {
+			return handleRevokeVersion(reviewReq("/admin/listings/{id}/revoke", "3", `{"reason":"x"}`))
+		},
+		"revoke key": func() sdk.HTTPResponse {
+			return handleRevokeKey(reviewReq("/admin/accounts/{id}/revoke-key", "7", `{"reason":"x"}`))
+		},
+	} {
+		e := newReviewEnv(t, "") // no listing key: publish fails
+		e.listing = `[{"id":3,"account":7,"name":"acme-seo","version":"1.3.0","submission":5,"status":"active","email":"dev@example.org"}]`
+		m := decode(t, call())
+		w, _ := m["warning"].(string)
+		if m["published"] != false || !strings.HasPrefix(w, "Saved, but the developer index could not be published: ") || !strings.HasSuffix(w, "Check the listing key setting.") {
+			t.Errorf("%s: %v", name, m)
+		}
+	}
+}

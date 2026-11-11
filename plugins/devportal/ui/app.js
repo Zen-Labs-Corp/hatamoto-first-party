@@ -100,8 +100,12 @@ function action(label, path, ask) {
   const send = (reason) => run(async () => {
     const out = await api("POST", path, undefined, ask ? { reason } : {});
     await loadReview();
-    const note = out.warning ? ` ${out.warning}` : "";
-    say(`${label}: done.${note}`, Boolean(out.warning));
+    if (out.published === false) {
+      say(out.warning || "Saved, but the developer index could not be published.", true);
+      $("#notice").scrollIntoView({ block: "nearest" });
+      return;
+    }
+    say(`${label}: done.`);
   });
   button.addEventListener("click", () => {
     if (!ask) { send(); return; }
