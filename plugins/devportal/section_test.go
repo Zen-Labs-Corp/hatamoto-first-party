@@ -39,7 +39,7 @@ func TestSectionAvoidsBannedMarkup(t *testing.T) {
 		t.Fatalf("%d forms", len(forms))
 	}
 	for _, f := range forms {
-		if !regexp.MustCompile(`method="post" action="/p/devportal/(account|key|logout)"`).MatchString(f) || !strings.Contains(f, `name="csrf" value="{{$c.csrf}}"`) {
+		if !regexp.MustCompile(`method="post" action="/p/devportal/(account|key|logout|submit)"`).MatchString(f) || !strings.Contains(f, `name="csrf" value="{{$c.csrf}}"`) {
 			t.Errorf("form without a POST route or CSRF field: %.80s", f)
 		}
 	}
