@@ -40,9 +40,29 @@
 <p><small>Make one with: <code>hatamoto keys generate --name acme</code></small></p>
 </form>
 {{end}}<h3>Packages</h3>
-<p>(none yet)</p>
-<p><button type="button" disabled>Submit a package</button> <small>Available once a key is added.</small></p>
-{{else if eq $c.state "suspended"}}<h2>Account suspended</h2>
+{{if $c.packages}}<ul class="dp-pkgs">{{range $c.packages}}<li><strong>{{.name}}</strong> <small>{{.kind}}</small>{{if .listed}} · {{.listed}}{{end}}{{if .latest}} · {{.latest}}{{end}}{{if .reason}}: "{{.reason}}"{{end}}
+{{if .can_resubmit}}<form method="post" action="/p/devportal/submit"><input type="hidden" name="csrf" value="{{$c.csrf}}">
+<input type="hidden" name="kind" value="{{.form_kind}}"><input type="hidden" name="url" value="{{.form_url}}"><input type="hidden" name="source" value="{{.form_source}}">
+<input type="hidden" name="title" value="{{.form_title}}"><input type="hidden" name="about" value="{{.form_about}}"><input type="hidden" name="category" value="{{.form_category}}">
+<input type="hidden" name="site_type" value="{{.form_site_type}}"><input type="hidden" name="screenshot" value="{{.form_screenshot}}"><button type="submit">Resubmit</button></form>{{end}}</li>{{end}}</ul>
+{{else}}<p>(none yet)</p>
+{{end}}{{if $c.result}}<div class="dp-result" role="status"><p><strong>{{$c.result.title}}</strong></p>
+<ul>{{range $c.result.checks}}<li>{{if .ok}}✓{{else}}✗{{end}} {{.text}}</li>{{end}}</ul></div>
+{{end}}{{if $c.can_submit}}<h3>Submit a package</h3>
+<form method="post" action="/p/devportal/submit">
+<input type="hidden" name="csrf" value="{{$c.csrf}}">
+<p>Kind: <label><input type="radio" name="kind" value="plugin" checked> Plugin</label> <label><input type="radio" name="kind" value="theme"> Theme</label></p>
+<label>Release file (a .hmp file on a GitHub release)<input type="text" name="url" maxlength="2048" placeholder="https://github.com/acme/acme-seo/releases/download/v1.2.0/acme-seo-1.2.0.hmp" required></label>
+<label>Source repository (optional)<input type="text" name="source" maxlength="2048" placeholder="https://github.com/acme/acme-seo"></label>
+<label>Title (optional)<input type="text" name="title" maxlength="80"></label>
+<label>What it does (up to 600 characters)<input type="text" name="about" maxlength="600" required></label>
+<label>Category (plugins)<select name="category">{{range $c.categories}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+<label>Site type (themes)<select name="site_type">{{range $c.site_types}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+<label>Screenshot link (themes, optional)<input type="text" name="screenshot" maxlength="2048"></label>
+<p><button type="submit">Check and submit</button> <small>We check the file and the owner approves it. This can take a few seconds.</small></p>
+</form>
+{{else}}<p><button type="button" disabled>Submit a package</button> <small>Available once a key is added.</small></p>
+{{end}}{{else if eq $c.state "suspended"}}<h2>Account suspended</h2>
 <p>The developer account of @{{$c.login}} is suspended. You cannot add keys or submit packages.</p>
 {{else}}<h2>Developers</h2>
 <p>Developer sign-in is not available right now.</p>

@@ -23,12 +23,13 @@ type portal struct {
 	keyTaken int
 	insertN  int // rows_affected of INSERT INTO keys
 	account  string
+	packages string // answer of the dashboard packages query
 	calls    []hostCall
 }
 
 func newPortal(t *testing.T) *portal {
 	t.Helper()
-	p := &portal{t: t, settings: portalSettings, sessions: map[string]string{}, insertN: 1, account: `[]`}
+	p := &portal{t: t, settings: portalSettings, sessions: map[string]string{}, insertN: 1, account: `[]`, packages: `{"packages":[],"result":null}`}
 	oldConfig, oldHost := config, callHost
 	t.Cleanup(func() { config, callHost = oldConfig, oldHost })
 	config = func(k string) (string, bool) {
@@ -57,6 +58,8 @@ func (p *portal) host(fn string, args, out any) error {
 			return cell(out, "["+row+"]")
 		}
 		return cell(out, `[]`)
+	case fn == "db.query" && strings.Contains(c.sql, "'packages'"):
+		return cell(out, p.packages)
 	case fn == "db.query" && strings.Contains(c.sql, "SELECT (SELECT count(*) FROM keys"):
 		return cell(out, `[{"mine":`+string(rune('0'+p.keyMine))+`,"taken":`+string(rune('0'+p.keyTaken))+`}]`)
 	case fn == "db.query" && strings.Contains(c.sql, "FROM accounts WHERE github_id"):

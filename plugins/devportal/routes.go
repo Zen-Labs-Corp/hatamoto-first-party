@@ -22,6 +22,9 @@ func init() {
 	guest.OnHTTP(serve)
 	guest.OnFilter(sdk.RenderPage, pageFilter)
 	guest.OnCron("gc", gcCron)
+	guest.OnCron("mail", mailCron)
+	guest.OnCron("recheck", recheckCron)
+	guest.OnCron("resign", resignCron)
 }
 
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
@@ -34,14 +37,28 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		return handleKey(r), nil
 	case "POST /logout":
 		return handleLogout(r), nil
+	case "POST /submit":
+		return handleSubmit(r), nil
 	case "GET /terms":
 		return handleTerms(), nil
+	case "GET /registry.json":
+		return handleRegistry(), nil
 	case "GET /admin/accounts":
 		return handleAdminList(r), nil
 	case "POST /admin/accounts/{id}/suspend":
 		return handleAdminStatus(r, true), nil
 	case "POST /admin/accounts/{id}/unsuspend":
 		return handleAdminStatus(r, false), nil
+	case "GET /admin/submissions":
+		return handleReviewList(r), nil
+	case "POST /admin/submissions/{id}/approve":
+		return handleApprove(r), nil
+	case "POST /admin/submissions/{id}/reject":
+		return handleReject(r), nil
+	case "POST /admin/listings/{id}/revoke":
+		return handleRevokeVersion(r), nil
+	case "POST /admin/accounts/{id}/revoke-key":
+		return handleRevokeKey(r), nil
 	}
 	return reply(http.StatusNotFound, map[string]string{"error": "not found"}), nil
 }

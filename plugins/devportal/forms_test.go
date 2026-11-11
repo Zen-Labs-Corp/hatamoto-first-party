@@ -50,7 +50,7 @@ func wantRedirect(t *testing.T, r sdk.HTTPResponse, flashCode string) {
 }
 
 func TestEveryPostRefusesBadOriginTokenTypeAndSize(t *testing.T) {
-	for _, path := range []string{"/account", "/key", "/logout"} {
+	for _, path := range []string{"/account", "/key", "/logout", "/submit"} {
 		h := newPortal(t)
 		h.login("tok", signupRow("csrf-1"))
 		ck := map[string]string{"sid": "tok"}
@@ -105,7 +105,7 @@ func TestPostStatusCodes(t *testing.T) {
 
 func TestPostWithoutASessionGoesBackToThePage(t *testing.T) {
 	h := newPortal(t)
-	for _, path := range []string{"/account", "/key", "/logout"} {
+	for _, path := range []string{"/account", "/key", "/logout", "/submit"} {
 		wantRedirect(t, send(t, post(path, "https://hatamoto.dev", urlenc, form("csrf", "x"), nil)), "")
 		wantRedirect(t, send(t, post(path, "https://hatamoto.dev", urlenc, form("csrf", "x"), map[string]string{"sid": "stale"})), "")
 	}
