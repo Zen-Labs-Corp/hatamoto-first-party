@@ -14,3 +14,12 @@ th { font-weight: 600; color: var(--color-hai, #6b6b6b); }
 td.suspended { color: var(--color-danger, #b3261e); font-weight: 600; }
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid var(--color-kinu, #e2e0da); }
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tabs button[aria-selected="true"] { background: var(--color-accent-soft, #e8eef6); font-weight: 600; }
+h3 { font-size: 14px; margin: 20px 0 0; }
+code { font: 12px ui-monospace, monospace; word-break: break-all; }
+.item { padding: 8px 0; border-bottom: 1px solid var(--color-kinu, #e2e0da); }
+.item .line { margin: 2px 0; }
+.item .bad { color: var(--color-danger, #b3261e); }
+.item .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+.item input[type="text"] { min-width: 260px; }

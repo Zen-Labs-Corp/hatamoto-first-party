@@ -57,7 +57,7 @@ func TestIndexLoadsOnlyBridgeAndApp(t *testing.T) {
 func TestUIUsesTheAdminRoutesAndEscapesText(t *testing.T) {
 	js := readUI(t, "app.js")
 	for _, want := range []string{
-		"await hatamoto.ready", `"/admin/accounts"`, "/admin/accounts/${row.id}/${action}",
+		"await hatamoto.ready", `"/admin/accounts"`, `"/admin/submissions"`, "/admin/listings/${l.id}/revoke", "/admin/accounts/${l.account}/revoke-key", "/admin/submissions/${s.id}/approve", "/admin/submissions/${s.id}/reject", "/admin/accounts/${row.id}/${action}",
 		`"unsuspend"`, `"suspend"`, `setAttribute("title", keyId)`, "keyId.slice(0, 4)", "Developers (${data.total})", "textContent",
 	} {
 		if !strings.Contains(js, want) {
