@@ -15,17 +15,18 @@ const (
 
 // flashMessages are the texts behind the one-shot flash codes.
 var flashMessages = map[string]string{
-	"state":     "That sign-in link expired or did not start here. Please try again.",
-	"denied":    "GitHub sign-in was cancelled.",
-	"noemail":   "Your GitHub account has no verified email address. Verify one on GitHub and try again.",
-	"suspended": "This developer account is suspended.",
-	"failed":    "Something went wrong. Please try again in a moment.",
-	"name":      "Enter a display name of up to 80 characters.",
-	"email":     "Pick one of your verified GitHub emails.",
-	"terms":     "Accept the Developer terms to create your account.",
-	"key":       "That is not a valid public key. Paste the base64 public key, not the private one.",
-	"keytaken":  "That key is already registered to another account.",
-	"haskey":    "This account already has a key.",
+	"state":      "That sign-in link expired or did not start here. Please try again.",
+	"denied":     "GitHub sign-in was cancelled.",
+	"noemail":    "Your GitHub account has no verified email address. Verify one on GitHub and try again.",
+	"suspended":  "This developer account is suspended.",
+	"failed":     "Something went wrong. Please try again in a moment.",
+	"name":       "Enter a display name of up to 80 characters.",
+	"email":      "Pick one of your verified GitHub emails.",
+	"terms":      "Accept the Developer terms to create your account.",
+	"key":        "That is not a valid public key. Paste the base64 public key, not the private one.",
+	"privatekey": "That is a private key. Do not share it: treat it as exposed, generate a new key pair and register the public key (the .pub file).",
+	"keytaken":   "That key is already registered to another account.",
+	"haskey":     "This account already has a key.",
 }
 
 // pageFilter fills the portal section of the /developers page. Every other

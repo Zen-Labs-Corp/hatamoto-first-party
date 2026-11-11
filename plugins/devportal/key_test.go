@@ -32,15 +32,17 @@ func TestParseKey(t *testing.T) {
 	}
 
 	bad := map[string]string{
-		"unpadded":    strings.TrimRight(std, "="),
-		"private key": priv,
-		"31 bytes":    base64.StdEncoding.EncodeToString(raw[:31]),
-		"33 bytes":    base64.StdEncoding.EncodeToString(append(raw, 0)),
-		"garbage":     "not a key!",
-		"empty":       "",
-		"bad json":    `{"public":`,
-		"json no key": `{"key_id":"x"}`,
-		"oversized":   strings.Repeat("A", maxKeyInput+1),
+		"unpadded":       strings.TrimRight(std, "="),
+		"private key":    priv,
+		"31 bytes":       base64.StdEncoding.EncodeToString(raw[:31]),
+		"33 bytes":       base64.StdEncoding.EncodeToString(append(raw, 0)),
+		"garbage":        "not a key!",
+		"empty":          "",
+		"bad json":       `{"public":`,
+		"json no key":    `{"key_id":"x"}`,
+		"private member": `{"public":"` + std + `","private":"` + priv + `"}`,
+		"all zero":       base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"oversized":      strings.Repeat("A", maxKeyInput+1),
 	}
 	for name, in := range bad {
 		if _, _, err := parseKey(in); err == nil {

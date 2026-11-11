@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"net/http"
 	"strings"
 	"testing"
@@ -184,12 +185,14 @@ func TestKeyRouteRefusals(t *testing.T) {
 		mine, taken, ins int
 		status, code     string
 	}{
-		"private key":  {priv, 0, 0, 1, "active", "key"},
-		"garbage":      {"nope", 0, 0, 1, "active", "key"},
-		"second key":   {goodKey, 1, 0, 1, "active", "haskey"},
-		"taken":        {goodKey, 0, 1, 1, "active", "keytaken"},
-		"suspended":    {goodKey, 0, 0, 1, "suspended", "suspended"},
-		"lost to race": {goodKey, 0, 0, 0, "active", "suspended"},
+		"private key":                {priv, 0, 0, 1, "active", "privatekey"},
+		"key file with private part": {`{"key_id":"x","public":"` + goodKey + `","private":"` + priv + `"}`, 0, 0, 1, "active", "privatekey"},
+		"all zero key":               {base64.StdEncoding.EncodeToString(make([]byte, 32)), 0, 0, 1, "active", "key"},
+		"garbage":                    {"nope", 0, 0, 1, "active", "key"},
+		"second key":                 {goodKey, 1, 0, 1, "active", "haskey"},
+		"taken":                      {goodKey, 0, 1, 1, "active", "keytaken"},
+		"suspended":                  {goodKey, 0, 0, 1, "suspended", "suspended"},
+		"lost to race":               {goodKey, 0, 0, 0, "active", "suspended"},
 	} {
 		h := newPortal(t)
 		h.login("tok", accountRow("csrf-1", tc.status, ""))

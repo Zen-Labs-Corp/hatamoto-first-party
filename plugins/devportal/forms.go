@@ -138,6 +138,9 @@ func handleKey(r sdk.HTTPRequest) sdk.HTTPResponse {
 			return back("suspended")
 		}
 		b64, keyID, err := parseKey(pf.form.Get("key"))
+		if errors.Is(err, errPrivateKey) {
+			return back("privatekey")
+		}
 		if err != nil {
 			return back("key")
 		}
