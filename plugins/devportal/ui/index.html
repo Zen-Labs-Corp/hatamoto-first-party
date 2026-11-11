@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Developers</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main>
+    <header class="head">
+      <h2 id="heading">Developers</h2>
+      <input id="search" type="search" placeholder="Search" aria-label="Search developers" maxlength="64">
+    </header>
+    <p id="notice" class="notice" hidden></p>
+    <div id="list"></div>
+    <nav class="pager">
+      <button id="prev" type="button">Previous</button>
+      <span id="page" class="muted"></span>
+      <button id="next" type="button">Next</button>
+    </nav>
+    <footer class="muted">Suspending an account ends its sessions and blocks sign-in, new keys and submissions until you unsuspend it.</footer>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

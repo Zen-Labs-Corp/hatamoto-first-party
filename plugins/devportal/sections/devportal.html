@@ -1,0 +1,49 @@
+{{define "section-devportal"}}{{$c := .Content}}<div class="dp">
+<style>
+.dp{max-width:40rem;margin:0 auto;padding:2rem 1rem;line-height:1.5}
+.dp h2{margin:0 0 .5rem}
+.dp h3{margin:1.5rem 0 .5rem;font-size:1.1rem}
+.dp label{display:block;margin:.5rem 0}
+.dp input[type=text],.dp select{display:block;width:100%;max-width:28rem;padding:.5rem;margin-top:.25rem;font:inherit}
+.dp-btn,.dp button{display:inline-block;padding:.55rem 1.1rem;border:1px solid currentColor;border-radius:.4rem;background:transparent;color:inherit;font:inherit;text-decoration:none;cursor:pointer}
+.dp button[disabled]{opacity:.5;cursor:not-allowed}
+.dp-flash{padding:.6rem .8rem;border:1px solid currentColor;border-radius:.4rem}
+.dp-head{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;justify-content:space-between}
+.dp-head form{margin:0}
+.dp small{opacity:.75}
+.dp code{word-break:break-all}
+</style>
+{{if $c.flash}}<p class="dp-flash" role="status">{{$c.flash}}</p>{{end}}
+{{if eq $c.state "signed_out"}}<h2>Publish plugins and themes for Hatamoto</h2>
+<p>Developer accounts are free while we grow. You need one to submit.</p>
+<ol id="dp-how"><li>Sign in with GitHub</li><li>Add your signing key</li><li>Submit a release</li></ol>
+<p><a class="dp-btn" href="{{$c.authorize_url}}">Sign in with GitHub</a></p>
+<p><small><a href="#dp-how">How it works</a> · <a href="{{$c.terms_url}}">Developer terms</a> · <a href="/docs">Docs</a></small></p>
+{{else if eq $c.state "signup"}}<h2>Create your developer account</h2>
+<p>Signed in as @{{$c.login}} (GitHub)</p>
+<form method="post" action="/p/devportal/account">
+<input type="hidden" name="csrf" value="{{$c.csrf}}">
+<label>Display name<input type="text" name="display_name" maxlength="80" required></label>
+<label>Contact email (your verified GitHub emails)<select name="email">{{range $c.emails}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+<label><input type="checkbox" name="terms" value="1" required> I accept the <a href="{{$c.terms_url}}">Developer terms</a></label>
+<p><button type="submit">Create account</button> <small>Free during early access. No card needed.</small></p>
+</form>
+<form method="post" action="/p/devportal/logout"><input type="hidden" name="csrf" value="{{$c.csrf}}"><p><small>Not you?</small> <button type="submit">Sign out</button></p></form>
+{{else if eq $c.state "dashboard"}}<div class="dp-head"><h2>Developer dashboard · @{{$c.login}} · Plan: {{$c.plan}}</h2>
+<form method="post" action="/p/devportal/logout"><input type="hidden" name="csrf" value="{{$c.csrf}}"><button type="submit">Sign out</button></form></div>
+<h3>Signing key</h3>
+{{if $c.has_key}}<p><code>{{$c.key_id}}</code> added {{$c.key_added}} <small>(one key per account)</small></p>
+{{else}}<form method="post" action="/p/devportal/key">
+<input type="hidden" name="csrf" value="{{$c.csrf}}">
+<label>Paste your public key<input type="text" name="key" maxlength="4096" required></label>
+<p><button type="submit">Add key</button></p>
+<p><small>Make one with: <code>hatamoto keys generate --name acme</code></small></p>
+</form>
+{{end}}<h3>Packages</h3>
+<p>(none yet)</p>
+<p><button type="button" disabled>Submit a package</button> <small>Available once a key is added.</small></p>
+{{else if eq $c.state "suspended"}}<h2>Account suspended</h2>
+<p>The developer account of @{{$c.login}} is suspended. You cannot add keys or submit packages.</p>
+{{else}}<h2>Developers</h2>
+<p>Developer sign-in is not available right now.</p>
+{{end}}</div>{{end}}
