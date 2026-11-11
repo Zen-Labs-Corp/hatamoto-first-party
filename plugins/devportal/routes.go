@@ -36,6 +36,12 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		return handleLogout(r), nil
 	case "GET /terms":
 		return handleTerms(), nil
+	case "GET /admin/accounts":
+		return handleAdminList(r), nil
+	case "POST /admin/accounts/{id}/suspend":
+		return handleAdminStatus(r, true), nil
+	case "POST /admin/accounts/{id}/unsuspend":
+		return handleAdminStatus(r, false), nil
 	}
 	return reply(http.StatusNotFound, map[string]string{"error": "not found"}), nil
 }
