@@ -1,0 +1,67 @@
+{
+  "name": "devportal",
+  "version": "0.1.0",
+  "sdk": "^0.21",
+  "description": "Developer accounts for hatamoto.dev: sign in with GitHub, accept the terms, register one signing key.",
+  "permissions": ["db", "kv", "http.fetch", "settings", "log"],
+  "allowed_hosts": ["github.com", "api.github.com"],
+  "cookies": ["sid", "st", "fl"],
+  "routes": [
+    { "method": "GET", "path": "/auth/callback", "public": true },
+    { "method": "POST", "path": "/account", "public": true },
+    { "method": "POST", "path": "/key", "public": true },
+    { "method": "POST", "path": "/logout", "public": true },
+    { "method": "GET", "path": "/terms", "public": true },
+    { "method": "GET", "path": "/admin/accounts" },
+    { "method": "POST", "path": "/admin/accounts/{id}/suspend" },
+    { "method": "POST", "path": "/admin/accounts/{id}/unsuspend" }
+  ],
+  "cron": [ { "name": "gc", "every": "1h" } ],
+  "ui": { "title": "Developers", "entry": "index.html", "roles": ["owner"] },
+  "config": {
+    "github_authorize_url": "https://github.com/login/oauth/authorize",
+    "github_token_url": "https://github.com/login/oauth/access_token",
+    "github_api_url": "https://api.github.com"
+  },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "render.page": 100, "http_handle": 10000, "on_cron_gc": 10000 }
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "github_client_id": {
+        "type": "string",
+        "title": "GitHub OAuth client ID",
+        "maxLength": 100
+      },
+      "github_client_secret": {
+        "type": "string",
+        "title": "GitHub OAuth client secret",
+        "writeOnly": true,
+        "maxLength": 200
+      },
+      "review_email": {
+        "type": "string",
+        "title": "Review contact",
+        "description": "Shown on the terms page. Leave empty to show nothing.",
+        "maxLength": 200
+      },
+      "public_url": {
+        "type": "string",
+        "title": "Public site URL",
+        "description": "The site origin without a trailing slash. Forms must come from it and GitHub returns to it.",
+        "default": "https://hatamoto.dev",
+        "maxLength": 200
+      },
+      "terms_markdown": {
+        "type": "string",
+        "title": "Developer terms",
+        "description": "Paragraphs separated by blank lines; a line starting with # is a heading. Shown as plain text.",
+        "default": "# Developer terms\n\nDeveloper accounts are free while we grow. We may introduce a fee later and will tell you in advance before it applies to you.\n\n# Listings\n\nWe may refuse, hide or remove any listing at our discretion, for example when it is unsafe, misleading or abandoned.\n\n# Your code\n\nYou are responsible for the code you publish and for having the right to publish it. Keep your signing key private.\n\n# No legal claims\n\nThese terms are a plain draft and do not create any legal claim against the site owner. Questions can go to the review contact shown on this page.",
+        "maxLength": 20000
+      }
+    }
+  }
+}
