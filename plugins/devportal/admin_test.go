@@ -126,7 +126,7 @@ func TestAdminRoutesAreNotPublic(t *testing.T) {
 			}
 		}
 	}
-	if n != 3 {
+	if n != 8 {
 		t.Errorf("%d admin routes", n)
 	}
 }
