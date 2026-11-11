@@ -107,7 +107,7 @@ func TestManifestLimitsCronAndConfig(t *testing.T) {
 	for _, c := range m.Cron {
 		every[c.Name] = c.Every
 	}
-	if len(m.Cron) != 4 || every["gc"] != "1h" || every["mail"] != "1m" || every["recheck"] != "1h" || every["resign"] != "24h" {
+	if len(m.Cron) != 4 || every["gc"] != "1h" || every["mail"] != "1m" || every["recheck"] != "1h" || every["resign"] != "1h" {
 		t.Errorf("cron %+v", m.Cron)
 	}
 	if m.UI == nil || !slices.Equal(m.UI.Roles, []string{"owner"}) {

@@ -58,8 +58,9 @@ setting and a hidden CSRF token that matches the session, and answers
   index and the developer is told. Only a file that was downloaded and read can
   delist a package. A failed download, a problem report or an error from the
   inspection only counts, so a passing network error never delists anything.
-- **Re-sign.** The `resign` cron signs the index again every 24 hours so it
-  never expires. The `mail` cron sends queued notices every minute.
+- **Re-sign.** The `resign` cron checks the index every hour and signs it
+  again once it is older than 20 hours, so it never expires, even on a host
+  that restarts often (core restarts cron timers on every load). The `mail` cron sends queued notices every minute.
 
 ## The `/developers` page
 
@@ -180,8 +181,8 @@ once it is set. A revoked developer key stays on the revocation list for good.
 2. Update the plugin. The new permissions (`packages.inspect`, `mail.send`) and
    the two new allowed hosts need a fresh grant by the owner after the update.
 3. Migration `002` is new and runs on update; ship it as a manual step.
-4. The first `resign` runs one period (24 hours) after the plugin loads, so
-   approve a submission once after setting the key (approving publishes). Then check that `GET /p/devportal/registry.json` answers `200` and
+4. The first `resign` runs an hour after the plugin loads and publishes the
+   first index. Then check that `GET /p/devportal/registry.json` answers `200` and
    that a core started with `HATAMOTO_DEVELOPER_REGISTRY_URL` pointing at it
    verifies the index.
 5. Remove test accounts and test listings afterwards.

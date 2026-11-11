@@ -27,7 +27,7 @@
     { "name": "gc", "every": "1h" },
     { "name": "mail", "every": "1m" },
     { "name": "recheck", "every": "1h" },
-    { "name": "resign", "every": "24h" }
+    { "name": "resign", "every": "1h" }
   ],
   "ui": { "title": "Developers", "entry": "index.html", "roles": ["owner"] },
   "config": {

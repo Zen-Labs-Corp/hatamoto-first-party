@@ -74,6 +74,7 @@ func TestEntryFrom(t *testing.T) {
 type indexHost struct {
 	*fakeHost
 	entries, revs string
+	fresh         bool // the stored index is younger than resignAfter
 	published     []any
 }
 
@@ -86,6 +87,11 @@ func newIndexHost(t *testing.T, key string) *indexHost {
 			return cell(out, h.entries)
 		case c.fn == "db.query" && strings.Contains(c.sql, "FROM revocations"):
 			return cell(out, h.revs)
+		case c.fn == "db.query" && strings.Contains(c.sql, "issued_at >"):
+			if h.fresh {
+				return cell(out, `[{"id":1}]`)
+			}
+			return cell(out, `[]`)
 		case c.fn == "db.query" && strings.Contains(c.sql, "FROM published"):
 			return cell(out, h.entries)
 		case c.fn == "db.exec" && strings.HasPrefix(c.sql, "INSERT INTO published"):
@@ -231,6 +237,15 @@ func TestResignCronPublishes(t *testing.T) {
 	_, file, _ := listingKey(t)
 	h := newIndexHost(t, file)
 	if err := resignCron(sdk.CronEvent{}); err != nil || h.published == nil {
+		t.Fatalf("%v %v", err, h.published)
+	}
+}
+
+func TestResignCronLeavesAFreshIndexAlone(t *testing.T) {
+	_, file, _ := listingKey(t)
+	h := newIndexHost(t, file)
+	h.fresh = true
+	if err := resignCron(sdk.CronEvent{}); err != nil || h.published != nil {
 		t.Fatalf("%v %v", err, h.published)
 	}
 }

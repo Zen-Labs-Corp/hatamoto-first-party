@@ -176,8 +176,24 @@ func handleRegistry() sdk.HTTPResponse {
 	}
 }
 
-// resignCron signs the index again so it never expires.
+// resignAfter is how old the stored index may get before the cron signs it
+// again. The index lives 30 days; the cron runs hourly because core restarts
+// every cron timer when it loads the plugin, so a long period could never fire.
+const resignAfter = 20 * time.Hour
+
+// resignCron signs the index again so it never expires. It does nothing while
+// the stored index is younger than resignAfter.
 func resignCron(sdk.CronEvent) error {
+	var fresh []struct {
+		ID int `json:"id"`
+	}
+	if err := dbJSON(`SELECT coalesce(jsonb_agg(jsonb_build_object('id', id)), '[]'::jsonb) FROM published WHERE id = 1 AND issued_at > $1::timestamptz`,
+		&fresh, now().Add(-resignAfter).UTC().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	if len(fresh) > 0 {
+		return nil
+	}
 	err := publish()
 	if err != nil {
 		switch {
