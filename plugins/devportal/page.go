@@ -118,6 +118,8 @@ func pageFilter(p sdk.PageContext) (sdk.PageContext, error) {
 	return p, nil
 }
 
+var downloadFlashStatus = regexp.MustCompile(`^sub-download-([0-9]{3})$`)
+
 var submissionFlash = regexp.MustCompile(`^s([0-9]{1,18})$`)
 
 // flashText is the message behind a flash code: the portal codes and the
@@ -125,6 +127,9 @@ var submissionFlash = regexp.MustCompile(`^s([0-9]{1,18})$`)
 func flashText(code string) string {
 	if m, ok := flashMessages[code]; ok {
 		return m
+	}
+	if m := downloadFlashStatus.FindStringSubmatch(code); m != nil {
+		return "We could not download that file: download answered " + m[1] + ". Check the release URL."
 	}
 	return submitFlash[code]
 }

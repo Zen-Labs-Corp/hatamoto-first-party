@@ -21,6 +21,7 @@ const (
 	maxURL              = 2048
 	submitsPerHour      = 10
 	inspectBusyFlash    = "sub-busy"
+	downloadFlash       = "sub-download"
 	signCommand         = "hatamoto plugin pack . --key acme.key"
 	submissionFlashPref = "s"
 )
@@ -37,6 +38,7 @@ var submitFlash = map[string]string{
 	"sub-screenshot": "A screenshot link must be an https link and is for themes only.",
 	"sub-nokey":      "Add your public key before you submit.",
 	"sub-limit":      "You sent 10 submissions in the last hour. Try again later.",
+	downloadFlash:    "We could not download that file. Check the release URL.",
 	inspectBusyFlash: "Could not check the package right now. Try again in a minute.",
 }
 
@@ -218,6 +220,25 @@ func readForm(v url.Values) (f submitForm, code string) {
 // blocked, rate limited, unavailable, denied).
 var errBusy = errors.New("could not check")
 
+// errDownload means the file could not be read at all (no hash): there is
+// nothing to review, so no submission is stored. code is the flash code.
+type errDownload struct{ code string }
+
+func (e errDownload) Error() string { return "could not download the file" }
+
+var downloadStatus = regexp.MustCompile(`^download answered ([0-9]{3})$`)
+
+// downloadFlashCode is the flash code for a failed download: it names the
+// HTTP status when the problems carry one.
+func downloadFlashCode(problems []string) string {
+	for _, p := range problems {
+		if m := downloadStatus.FindStringSubmatch(p); m != nil {
+			return downloadFlash + "-" + m[1]
+		}
+	}
+	return downloadFlash
+}
+
 // runChecks inspects the package and builds the submission row with its
 // checks. errBusy means the inspection itself did not complete.
 func runChecks(acct int64, pub, keyID string, f submitForm) (submission, error) {
@@ -228,6 +249,9 @@ func runChecks(acct int64, pub, keyID string, f submitForm) (submission, error) 
 			return submission{}, errBusy
 		}
 		return submission{}, err
+	}
+	if res.SHA256 == "" {
+		return submission{}, errDownload{code: downloadFlashCode(res.Problems)}
 	}
 	s := submission{Account: acct, Kind: f.Kind, Name: res.Name, Version: res.Version, URL: f.URL, Source: f.Source, Title: f.Title,
 		About: f.About, Category: f.Category, SiteType: f.SiteType, Screenshot: f.Screenshot, SHA256: res.SHA256, Size: res.Size,
@@ -334,6 +358,12 @@ func handleSubmit(r sdk.HTTPRequest) sdk.HTTPResponse {
 			return back(inspectBusyFlash)
 		}
 		sub, err := runChecks(*s.AccountID, pub, keyID, f)
+		var dl errDownload
+		if errors.As(err, &dl) {
+			// Not stored, so it does not count toward submitsPerHour, which
+			// counts stored rows.
+			return back(dl.code)
+		}
 		if err != nil {
 			if !errors.Is(err, errBusy) {
 				logf("warn", "submit check failed")

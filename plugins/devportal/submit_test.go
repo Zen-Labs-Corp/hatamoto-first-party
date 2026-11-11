@@ -211,6 +211,24 @@ func TestSubmitInspectErrorsAreFriendly(t *testing.T) {
 	wantRedirect(t, e.send(submitBody()), "sub-busy")
 }
 
+func TestSubmitUnreadableFileStoresNothingAndNamesTheDownloadProblem(t *testing.T) {
+	e := newSubEnv(t, "active")
+	e.x.inspect = sdk.InspectResult{Problems: []string{"download answered 404"}}
+	wantRedirect(t, e.send(submitBody()), "sub-download-404")
+	if len(e.inserts) != 0 {
+		t.Fatalf("stored a row: %+v", e.inserts)
+	}
+	if got := flashText("sub-download-404"); got != "We could not download that file: download answered 404. Check the release URL." {
+		t.Errorf("text %q", got)
+	}
+	e = newSubEnv(t, "active")
+	e.x.inspect = sdk.InspectResult{}
+	wantRedirect(t, e.send(submitBody()), "sub-download")
+	if len(e.inserts) != 0 || flashText("sub-download") == "" {
+		t.Errorf("inserts %d", len(e.inserts))
+	}
+}
+
 func TestSubmitBadInputNeverInspects(t *testing.T) {
 	for name, c := range map[string]struct {
 		body string
