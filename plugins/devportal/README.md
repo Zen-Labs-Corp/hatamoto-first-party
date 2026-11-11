@@ -103,9 +103,12 @@ scripts/build-plugin.sh plugins/devportal
 
 To try it in a local core, put the built plugin in a directory
 `<dir>/devportal/` and start core with `HATAMOTO_PLUGIN_DIR=<dir>` (see the core
-plugin API, "Development"). Point the manifest `config` keys
-`github_authorize_url`, `github_token_url` and `github_api_url` at a fake GitHub
-for tests.
+plugin API, "Development"). The manifest `config` keys
+`github_authorize_url`, `github_token_url` and `github_api_url` exist so unit
+tests can substitute the endpoints. A local core cannot use them: `http.fetch`
+only reaches `allowed_hosts` (`github.com`, `api.github.com`) and refuses
+loopback and private addresses, and editing the manifest invalidates the
+signed package. An end-to-end sign-in needs the real GitHub.
 
 ## License
 
