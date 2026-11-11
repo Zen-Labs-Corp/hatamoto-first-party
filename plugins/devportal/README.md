@@ -15,7 +15,8 @@ is installed from a signed `.hmp` on the site that runs the developer portal.
 2. "Sign in with GitHub" is a plain link to GitHub's authorize URL. Its `state`
    equals the cookie `st` set by the filter.
 3. GitHub returns to the public route `GET /p/devportal/auth/callback`. The
-   plugin checks `state` against the cookie, marks it used (single use), trades
+   plugin checks `state` against the cookie and against the marker the page filter
+   stored when it minted it, spends the marker (single use), trades
    the code for a token, reads the profile and the verified emails, drops the
    token and answers `303` to `/developers`.
 4. A first sign-in lands on the signup form. The account row is created only
@@ -60,7 +61,7 @@ plugin asks for the scopes `read:user user:email`.
 | Permission | Why |
 |---|---|
 | `db` | accounts, keys and sessions |
-| `kv` | single-use marker for the OAuth `state` (10 minutes) |
+| `kv` | issued-state marker for the OAuth `state` (10 minutes, one per `st` cookie) |
 | `http.fetch` | GitHub token exchange, `/user`, `/user/emails` (hosts `github.com`, `api.github.com`) |
 | `settings` | reads the settings above |
 | `log` | failure stages only, never tokens, codes or secrets |

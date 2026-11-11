@@ -57,11 +57,15 @@ func TestSignedOutSetsTheStateCookieOnce(t *testing.T) {
 	if len(out.SetCookies) != 0 || u.Query().Get("state") != "kept" {
 		t.Fatalf("%+v %v", out.SetCookies, u)
 	}
-	// No kv write on a page view.
+	// The minted state is recorded once; the returning visitor added nothing.
+	sets := 0
 	for _, call := range h.calls {
 		if call.fn == "kv.set" {
-			t.Error("page view wrote to kv")
+			sets++
 		}
+	}
+	if sets != 1 {
+		t.Errorf("kv.set calls = %d, want 1 (only the first view mints)", sets)
 	}
 }
 

@@ -17,12 +17,15 @@ const (
 	portalPath      = "/developers"
 	callbackPath    = "/p/devportal/auth/callback"
 	githubScopes    = "read:user user:email"
-	stateTTL        = 600 // seconds: kv single-use marker and the st cookie
+	stateTTL        = 600 // seconds: issued-state marker and the st cookie
 	flashTTL        = 60
 	fetchTimeoutMS  = 4000
 	maxStateLen     = 64
 	maxGitHubEmails = 10
 )
+
+// issuedKey is the kv key that proves the page filter minted a state.
+func issuedKey(state string) string { return "issued:" + state }
 
 // authorizeURL is where the "Sign in with GitHub" link points.
 func authorizeURL(s settings, state string) string {
@@ -69,14 +72,17 @@ func handleCallback(r sdk.HTTPRequest) sdk.HTTPResponse {
 	if state == "" || cookie == "" || len(state) > maxStateLen || !ctEq(state, cookie) {
 		return callbackFail("state", "", 0)
 	}
-	var used struct {
+	// The state must be one this plugin issued, and it is spent here: a cookie
+	// and query pair a client made up has no marker. The host has no atomic
+	// if-absent write, so two simultaneous callbacks can both pass; GitHub's
+	// code is single use and stops the second.
+	var issued struct {
 		Found bool `json:"found"`
 	}
-	if err := callHost("kv.get", map[string]string{"key": "used:" + state}, &used); err != nil || used.Found {
+	if err := callHost("kv.get", map[string]string{"key": issuedKey(state)}, &issued); err != nil || !issued.Found {
 		return callbackFail("state", "", 0)
 	}
-	// Mark the state used before talking to GitHub so a replay finds it spent.
-	if err := callHost("kv.set", map[string]any{"key": "used:" + state, "value": true, "ttl_seconds": stateTTL}, nil); err != nil {
+	if err := callHost("kv.delete", map[string]string{"key": issuedKey(state)}, nil); err != nil {
 		return callbackFail("failed", "state-store", 0)
 	}
 	code := first(r.Query["code"])
