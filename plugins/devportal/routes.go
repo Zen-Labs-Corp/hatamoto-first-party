@@ -46,9 +46,6 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	return reply(http.StatusNotFound, map[string]string{"error": "not found"}), nil
 }
 
-// gcCron has nothing to clean up until sessions exist.
-func gcCron(sdk.CronEvent) error { return nil }
-
 // reply answers with a JSON body.
 func reply(code int, v any) sdk.HTTPResponse {
 	b, err := json.Marshal(v)
