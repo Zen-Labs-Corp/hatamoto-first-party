@@ -43,6 +43,23 @@ Cost: while a plugin handles `render.page`, the host serves every public page
 `private, no-store` and does not page-cache it. The hook timeout is 100 ms and
 the filter fails open: on any error the placeholder block stays.
 
+Ship checks:
+
+- The portal forms need public pages that are not sandboxed. When any community
+  plugin's script, island or script section is live on the site (or a QA build
+  sets `HATAMOTO_QA_SANDBOX_ALL=1`), core answers public pages with
+  `Content-Security-Policy: sandbox allow-scripts allow-forms` and no
+  `allow-same-origin`. Forms then post with `Origin: null` and without the
+  `sid` cookie, so every portal POST is refused with a plain `403`. Sign-in
+  still works, account creation, key and sign-out do not.
+- `curl` `/developers` and expect the "Publish plugins and themes" heading, not
+  only a `200`: a page that only exists in the page builder (no section model)
+  never runs the filter, and a page without an `anchor: devportal` block loses
+  its first block.
+- The signup and key forms use `required` fields. A click on the button with
+  the fields empty is stopped by the browser and sends no request; test with a
+  filled form (a real click on the button then posts to `/p/devportal/...`).
+
 ## Settings
 
 | Key | Type | Default | What |
