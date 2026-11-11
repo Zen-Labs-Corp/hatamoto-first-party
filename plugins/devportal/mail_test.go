@@ -91,14 +91,17 @@ func TestOtherMailErrorCountsAnAttempt(t *testing.T) {
 	}
 }
 
-func TestNotifyIgnoresMailFailure(t *testing.T) {
+func TestNotifyOnlyQueues(t *testing.T) {
 	f := mailDB(1)
 	f.install(t)
-	x := &hostX{mailErr: hostErr(sdk.ErrUnavailable)}
+	x := &hostX{}
 	x.install(t)
 	notify("dev@example.org", "s", "b")
 	if countSQL(f, "INSERT INTO mail_queue") != 1 {
-		t.Error("notify must queue first")
+		t.Error("notify must queue")
+	}
+	if len(x.mailTo) != 0 {
+		t.Errorf("notify sent mail inline to %v", x.mailTo)
 	}
 }
 

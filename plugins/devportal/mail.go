@@ -85,9 +85,8 @@ func mailCron(sdk.CronEvent) error {
 	return err
 }
 
-// notify queues a mail and tries to send a few right away, ignoring every
-// failure.
+// notify queues a mail for the mail cron. It never sends: mail.send waits on
+// the mail provider, and a slow one would push a click past its deadline.
 func notify(to, subject, body string) {
 	queueMail(to, subject, body)
-	drainMail(3)
 }
