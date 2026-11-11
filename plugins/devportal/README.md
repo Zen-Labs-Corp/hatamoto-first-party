@@ -111,6 +111,13 @@ Public routes are limited by the host to 10 requests per second per address.
 The GitHub access token is used for the two reads and discarded. Only verified
 emails are stored or accepted.
 
+## Security notes
+
+The OAuth `state` is bound to a host-only, `HttpOnly`, `SameSite=Lax` cookie. An
+attacker who can plant that cookie in a victim's browser (a sibling subdomain,
+or a man-in-the-middle on plain HTTP) can force a login into the attacker's
+account. Serve the site with HSTS to close that gap.
+
 ## Development
 
 ```
