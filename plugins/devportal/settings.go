@@ -9,6 +9,7 @@ type settings struct {
 	ReviewEmail   string `json:"review_email"`
 	PublicURL     string `json:"public_url"`
 	TermsMarkdown string `json:"terms_markdown"`
+	ListingKey    string `json:"listing_key"`
 }
 
 func loadSettings() (settings, error) {
