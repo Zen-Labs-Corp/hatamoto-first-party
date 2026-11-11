@@ -54,10 +54,12 @@ setting and a hidden CSRF token that matches the session, and answers
   `HATAMOTO_DEVELOPER_REGISTRY_URL` set to
   `<public_url>/p/devportal/registry.json`.
 - **Recheck.** Every hour the `recheck` cron inspects the listed packages
-  again, two per run. A file whose hash or signer changed is dropped from the
-  index and the developer is told. Only a file that was downloaded and read can
-  delist a package. A failed download, a problem report or an error from the
-  inspection only counts, so a passing network error never delists anything.
+  again, two per run. A file whose hash or signer changed (including one that
+  is now unsigned or signed by another key) is dropped from the index and the
+  developer is told. Only a file that was downloaded and read can delist a
+  package. A failed download, an error from the inspection, or a problem
+  report on the unchanged file only counts, so a passing network error never
+  delists anything.
 - **Re-sign.** The `resign` cron checks the index every hour and signs it
   again once it is older than 20 hours, so it never expires, even on a host
   that restarts often (core restarts cron timers on every load). The `mail` cron sends queued notices every minute.

@@ -317,13 +317,30 @@ func TestRecheckDropsAChangedFileAndMailsTheDeveloper(t *testing.T) {
 
 func TestRecheckDropsAChangedSigner(t *testing.T) {
 	pub, _, _ := parseKey(goodKey)
-	x := &hostX{inspect: sdk.InspectResult{SHA256: "same", SignerKeyID: "0123456789abcdef"}}
+	x := &hostX{inspect: sdk.InspectResult{SHA256: "same", SignerKeyID: "0123456789abcdef", Problems: []string{"signed by another key"}}}
 	h := recheckEnv(t, `[`+listingRow(1, "acme-seo", "same", pub)+`]`, x)
 	if err := recheckCron(sdk.CronEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	if up := h.execs("UPDATE listings SET status = 'dropped'"); len(up) != 1 || up[0].args[1] != "the signer changed" {
 		t.Fatalf("%+v", up)
+	}
+}
+
+func TestRecheckDropsASwappedFileWhateverItsProblems(t *testing.T) {
+	pub, _, _ := parseKey(goodKey)
+	for name, res := range map[string]sdk.InspectResult{
+		"unsigned":            {SHA256: "new", Problems: []string{"package is unsigned"}},
+		"unsigned, same hash": {SHA256: "same", Problems: []string{"package is unsigned"}},
+	} {
+		x := &hostX{inspect: res}
+		h := recheckEnv(t, `[`+listingRow(1, "acme-seo", "same", pub)+`]`, x)
+		if err := recheckCron(sdk.CronEvent{}); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.execs("UPDATE listings SET status = 'dropped'")) != 1 || len(h.execs("INSERT INTO mail_queue")) != 1 || h.published == nil {
+			t.Errorf("%s: %+v", name, h.calls)
+		}
 	}
 }
 

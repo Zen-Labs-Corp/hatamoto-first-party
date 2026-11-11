@@ -55,7 +55,7 @@ func recheckCron(sdk.CronEvent) error {
 func recheckOne(r recheckRow) bool {
 	var res sdk.InspectResult
 	err := callHost("packages.inspect", sdk.InspectRequest{URL: r.Entry.URL, SignerKey: r.Entry.SignerKey}, &res)
-	if err != nil || res.SHA256 == "" || len(res.Problems) > 0 {
+	if err != nil || res.SHA256 == "" {
 		// Core answers a failed download with problems and an empty hash,
 		// not an error. Only a file that was read may change the listing.
 		recheckFailed(r.ID)
@@ -70,6 +70,11 @@ func recheckOne(r recheckRow) bool {
 			fmt.Sprintf("We checked the release file of %s %s and it is no longer the file that was approved (%s). "+
 				"It was removed from the listing. Publish a new version and submit it again.\n", r.Name, r.Entry.Version, reason))
 		return true
+	}
+	if len(res.Problems) > 0 {
+		// The approved file, still signed by the listed key, but unreadable now.
+		recheckFailed(r.ID)
+		return false
 	}
 	if err := dbExec(`UPDATE listings SET checked_at = now(), check_failures = 0 WHERE id = $1`, r.ID); err != nil {
 		logf("warn", "recheck update failed")
