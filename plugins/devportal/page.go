@@ -3,6 +3,7 @@ package main
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -61,6 +62,11 @@ func pageFilter(p sdk.PageContext) (sdk.PageContext, error) {
 	}
 	if p.Cookies["sid"] != "" && sess == nil {
 		cookies = append(cookies, clearCookie("sid"))
+	}
+
+	if sess != nil && sess.Slid {
+		// The browser drops the cookie after its own Max-Age: renew it with the row.
+		cookies = append(cookies, sdk.SetCookie{Name: "sid", Value: p.Cookies["sid"], MaxAge: int(sessionTTL / time.Second)})
 	}
 
 	switch {

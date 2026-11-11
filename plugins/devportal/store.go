@@ -41,6 +41,7 @@ type session struct {
 	Plan        string
 	KeyID       string
 	KeyAdded    time.Time
+	Slid        bool // the stored expiry was just extended: the cookie must follow
 }
 
 // accountRef is the minimum the sign-in needs about an existing account.
@@ -111,7 +112,8 @@ func lookupSession(token string) (*session, error) {
 	}
 	if exp, err := time.Parse(time.RFC3339Nano, r.ExpiresAt); err == nil && exp.Sub(now()) < sessionTTL-slideAfter {
 		// Sliding expiry is best effort: a failed write must not sign the user out.
-		_ = dbExec(`UPDATE sessions SET expires_at = $2::timestamptz WHERE id = $1`, s.ID, timeArg(now().Add(sessionTTL)))
+		err := dbExec(`UPDATE sessions SET expires_at = $2::timestamptz WHERE id = $1`, s.ID, timeArg(now().Add(sessionTTL)))
+		s.Slid = err == nil
 	}
 	return s, nil
 }

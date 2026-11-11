@@ -3,6 +3,8 @@ package main
 import (
 	"net/url"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"hatamoto.dev/sdk"
@@ -161,5 +163,22 @@ func TestPicksTheAnchoredBlockAndToleratesNone(t *testing.T) {
 	in.Blocks = nil
 	if out := mustFilter(t, in); len(out.Blocks) != 0 {
 		t.Fatal("blocks invented")
+	}
+}
+
+func TestSlidingSessionRenewsTheSidCookie(t *testing.T) {
+	fixedNow(t, t0)
+	h := newPortal(t)
+	h.login("tok", strings.Replace(accountRow("c", "active", ""), farFuture, `"expires_at":"2026-11-12T09:00:00+00:00"`, 1))
+	out := mustFilter(t, devPage(map[string]string{"sid": "tok"}))
+	want := sdk.SetCookie{Name: "sid", Value: "tok", MaxAge: 2592000}
+	if !slices.Contains(out.SetCookies, want) {
+		t.Fatalf("sid not re-sent when the row slid: %+v", out.SetCookies)
+	}
+	// A fresh row did not slide: no cookie.
+	h.login("tok", accountRow("c", "active", ""))
+	out = mustFilter(t, devPage(map[string]string{"sid": "tok"}))
+	if len(out.SetCookies) != 0 {
+		t.Fatalf("cookie sent without a slide: %+v", out.SetCookies)
 	}
 }
