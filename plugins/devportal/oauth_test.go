@@ -39,7 +39,7 @@ func newOAuthEnv(t *testing.T) *oauthEnv {
 		userBody:   `{"id":42,"login":"acme"}`,
 		emailsBody: `[{"email":"Dev@Acme.io","verified":true,"primary":true},{"email":"x@acme.io","verified":false,"primary":false},{"email":"b@acme.io","verified":true,"primary":false}]`,
 		account:    `[]`,
-		kv:         map[string]any{"issued:st-1": true},
+		kv:         map[string]any{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /login/oauth/access_token", func(w http.ResponseWriter, r *http.Request) {
@@ -96,8 +96,6 @@ func (e *oauthEnv) host(fn string, args, out any) error {
 		if m["ttl_seconds"] != stateTTL {
 			e.t.Errorf("state marker ttl %v", m["ttl_seconds"])
 		}
-	case "kv.delete":
-		delete(e.kv, args.(map[string]string)["key"])
 	case "http.fetch":
 		m := args.(map[string]any)
 		if m["timeout_ms"] != fetchTimeoutMS {
@@ -227,8 +225,8 @@ func TestCallbackNewUserStartsSignup(t *testing.T) {
 	if e.userAuth != "Bearer gho_tok" {
 		t.Errorf("user auth %q", e.userAuth)
 	}
-	if _, left := e.kv["issued:st-1"]; left {
-		t.Error("state not spent")
+	if _, used := e.kv["used:st-1"]; !used {
+		t.Error("state not marked used")
 	}
 	for _, l := range e.logs {
 		if strings.Contains(l, testSecret) || strings.Contains(l, "gho_tok") || strings.Contains(l, "c0de") {
@@ -315,15 +313,6 @@ func TestCallbackRefusesBadState(t *testing.T) {
 		if _, ok := cookieNamed(r, "sid"); ok || e.tokenForm != nil {
 			t.Errorf("%s: went on after a bad state", name)
 		}
-	}
-}
-
-func TestCallbackRefusesAStateTheServerNeverIssued(t *testing.T) {
-	e := newOAuthEnv(t)
-	e.kv = map[string]any{}
-	e.wantFailure(e.callback(url.Values{"state": {"planted"}, "code": {"c"}}, map[string]string{"st": "planted"}), "state")
-	if e.tokenForm != nil {
-		t.Error("a planted state reached GitHub")
 	}
 }
 

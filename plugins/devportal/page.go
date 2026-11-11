@@ -80,12 +80,6 @@ func pageFilter(p sdk.PageContext) (sdk.PageContext, error) {
 		state := p.Cookies["st"]
 		if state == "" {
 			state = newToken()
-			// Once per st cookie lifetime: a browser that keeps the cookie
-			// reuses this state, so views do not add markers. A failed write
-			// leaves the notice instead of a link that cannot work.
-			if err := callHost("kv.set", map[string]any{"key": issuedKey(state), "value": true, "ttl_seconds": stateTTL}, nil); err != nil {
-				return p, nil
-			}
 			cookies = append(cookies, sdk.SetCookie{Name: "st", Value: state, MaxAge: stateTTL})
 		}
 		c["state"] = "signed_out"
