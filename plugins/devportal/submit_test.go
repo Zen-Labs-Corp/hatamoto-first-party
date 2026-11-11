@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -76,6 +77,7 @@ type subEnv struct {
 	owner      string // jsonb rows of the names query
 	listed     string // jsonb rows of the listings query
 	recent     int
+	kv         map[string]any
 	revoked    int
 	insertID   string // jsonb rows answering the insert; "" = account inactive
 	inserts    []hostCall
@@ -89,7 +91,7 @@ func newSubEnv(t *testing.T, status string) *subEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &subEnv{portal: p, pub: pub, keyID: keyID, owner: `[]`, listed: `[]`, insertID: `[{"id":9}]`}
+	e := &subEnv{portal: p, pub: pub, keyID: keyID, kv: map[string]any{}, owner: `[]`, listed: `[]`, insertID: `[{"id":9}]`}
 	e.keyRows = `[{"pubkey":"` + pub + `","key_id":"` + keyID + `"}]`
 	p.login("tok", accountRow("csrf-1", status, keyID))
 	inner := callHost
@@ -97,6 +99,13 @@ func newSubEnv(t *testing.T, status string) *subEnv {
 		m, _ := args.(map[string]any)
 		sql, _ := m["sql"].(string)
 		switch {
+		case fn == "kv.get":
+			v, ok := e.kv[args.(map[string]string)["key"]]
+			b, _ := json.Marshal(map[string]any{"found": ok, "value": v})
+			return json.Unmarshal(b, out)
+		case fn == "kv.set":
+			e.kv[m["key"].(string)] = m["value"]
+			return nil
 		case fn == "db.query" && strings.Contains(sql, "FROM keys WHERE account"):
 			return cell(out, e.keyRows)
 		case fn == "db.query" && strings.Contains(sql, "FROM names"):
@@ -226,6 +235,30 @@ func TestSubmitUnreadableFileStoresNothingAndNamesTheDownloadProblem(t *testing.
 	wantRedirect(t, e.send(submitBody()), "sub-download")
 	if len(e.inserts) != 0 || flashText("sub-download") == "" {
 		t.Errorf("inserts %d", len(e.inserts))
+	}
+}
+
+func TestSubmitTooLargeFileKeepsTheSizeReason(t *testing.T) {
+	e := newSubEnv(t, "active")
+	e.x.inspect = sdk.InspectResult{Problems: []string{"too large: over 5242880 bytes"}}
+	wantRedirect(t, e.send(submitBody()), "sub-toolarge-5242880")
+	if len(e.inserts) != 0 {
+		t.Fatalf("stored a row: %+v", e.inserts)
+	}
+	if got := flashText("sub-toolarge-5242880"); got != "That file is too large: over 5242880 bytes." {
+		t.Errorf("text %q", got)
+	}
+}
+
+func TestSubmitAttemptsCountEvenWhenNothingIsStored(t *testing.T) {
+	e := newSubEnv(t, "active")
+	e.x.inspect = sdk.InspectResult{Problems: []string{"download answered 404"}}
+	for i := 0; i < submitsPerHour; i++ {
+		wantRedirect(t, e.send(submitBody()), "sub-download-404")
+	}
+	wantRedirect(t, e.send(submitBody()), "sub-limit")
+	if len(e.x.inspected) != submitsPerHour {
+		t.Errorf("inspected %d times", len(e.x.inspected))
 	}
 }
 

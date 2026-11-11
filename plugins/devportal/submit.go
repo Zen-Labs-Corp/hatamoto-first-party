@@ -22,6 +22,7 @@ const (
 	submitsPerHour      = 10
 	inspectBusyFlash    = "sub-busy"
 	downloadFlash       = "sub-download"
+	tooLargeFlash       = "sub-toolarge"
 	signCommand         = "hatamoto plugin pack . --key acme.key"
 	submissionFlashPref = "s"
 )
@@ -226,12 +227,18 @@ type errDownload struct{ code string }
 
 func (e errDownload) Error() string { return "could not download the file" }
 
-var downloadStatus = regexp.MustCompile(`^download answered ([0-9]{3})$`)
+var (
+	downloadStatus = regexp.MustCompile(`^download answered ([0-9]{3})$`)
+	tooLargeReason = regexp.MustCompile(`^too large: over ([0-9]{1,15}) bytes$`)
+)
 
 // downloadFlashCode is the flash code for a failed download: it names the
 // HTTP status when the problems carry one.
 func downloadFlashCode(problems []string) string {
 	for _, p := range problems {
+		if m := tooLargeReason.FindStringSubmatch(p); m != nil {
+			return tooLargeFlash + "-" + m[1]
+		}
 		if m := downloadStatus.FindStringSubmatch(p); m != nil {
 			return downloadFlash + "-" + m[1]
 		}
@@ -328,6 +335,27 @@ func allOK(c []check) bool {
 	return true
 }
 
+// countAttempt counts one submit attempt of the account in the current hour
+// and reports whether it is within submitsPerHour. Every attempt that reaches
+// packages.inspect counts, stored or not, because each one makes core fetch
+// the file. On a kv error it allows the attempt: the stored-row count, checked
+// by the caller, still holds the limit.
+func countAttempt(account int64) bool {
+	key := "att:" + strconv.FormatInt(account, 10) + ":" + strconv.FormatInt(now().Unix()/3600, 10)
+	var got struct {
+		Found bool `json:"found"`
+		Value int  `json:"value"`
+	}
+	if err := callHost("kv.get", map[string]string{"key": key}, &got); err != nil {
+		return true
+	}
+	if got.Found && got.Value >= submitsPerHour {
+		return false
+	}
+	_ = callHost("kv.set", map[string]any{"key": key, "value": got.Value + 1, "ttl_seconds": 2 * 3600}, nil)
+	return true
+}
+
 // handleSubmit checks a release and stores the result as a submission. A
 // package that fails a check is stored as refused so the developer sees why.
 func handleSubmit(r sdk.HTTPRequest) sdk.HTTPResponse {
@@ -350,7 +378,7 @@ func handleSubmit(r sdk.HTTPRequest) sdk.HTTPResponse {
 		if err != nil {
 			return back(inspectBusyFlash)
 		}
-		if n >= submitsPerHour {
+		if n >= submitsPerHour || !countAttempt(*s.AccountID) {
 			return back("sub-limit")
 		}
 		pub, keyID, err := accountPubkey(*s.AccountID)
@@ -360,8 +388,7 @@ func handleSubmit(r sdk.HTTPRequest) sdk.HTTPResponse {
 		sub, err := runChecks(*s.AccountID, pub, keyID, f)
 		var dl errDownload
 		if errors.As(err, &dl) {
-			// Not stored, so it does not count toward submitsPerHour, which
-			// counts stored rows.
+			// Not stored; countAttempt already counted it.
 			return back(dl.code)
 		}
 		if err != nil {

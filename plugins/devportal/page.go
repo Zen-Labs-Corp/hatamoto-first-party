@@ -120,6 +120,8 @@ func pageFilter(p sdk.PageContext) (sdk.PageContext, error) {
 
 var downloadFlashStatus = regexp.MustCompile(`^sub-download-([0-9]{3})$`)
 
+var tooLargeFlashBytes = regexp.MustCompile(`^sub-toolarge-([0-9]{1,15})$`)
+
 var submissionFlash = regexp.MustCompile(`^s([0-9]{1,18})$`)
 
 // flashText is the message behind a flash code: the portal codes and the
@@ -130,6 +132,9 @@ func flashText(code string) string {
 	}
 	if m := downloadFlashStatus.FindStringSubmatch(code); m != nil {
 		return "We could not download that file: download answered " + m[1] + ". Check the release URL."
+	}
+	if m := tooLargeFlashBytes.FindStringSubmatch(code); m != nil {
+		return "That file is too large: over " + m[1] + " bytes."
 	}
 	return submitFlash[code]
 }
