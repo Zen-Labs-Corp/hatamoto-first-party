@@ -18,5 +18,14 @@ func filterRenderPage() int32 { return guest.Run(sdk.RenderPage.Export()) }
 //go:wasmexport on_cron_gc
 func onCronGC() int32 { return guest.Run(guest.CronExport("gc")) }
 
+//go:wasmexport on_cron_mail
+func onCronMail() int32 { return guest.Run(guest.CronExport("mail")) }
+
+//go:wasmexport on_cron_recheck
+func onCronRecheck() int32 { return guest.Run(guest.CronExport("recheck")) }
+
+//go:wasmexport on_cron_resign
+func onCronResign() int32 { return guest.Run(guest.CronExport("resign")) }
+
 // main is never called: a c-shared wasm module is a reactor.
 func main() {}

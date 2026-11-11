@@ -33,7 +33,7 @@ func TestManifestIsValidForTheSDK(t *testing.T) {
 	if ok, err := m.Compatible(); !ok || err != nil {
 		t.Fatalf("Compatible() = %v, %v", ok, err)
 	}
-	if m.Name != "devportal" || m.SDK != "^0.21" || m.Version != "0.1.0" {
+	if m.Name != "devportal" || m.SDK != "^0.21" || m.Version != "0.2.0" {
 		t.Fatalf("name %q sdk %q version %q", m.Name, m.SDK, m.Version)
 	}
 }
@@ -42,17 +42,17 @@ func TestManifestPermissionsCookiesAndHosts(t *testing.T) {
 	m := loadManifest(t)
 	got := slices.Clone(m.Permissions)
 	slices.Sort(got)
-	if want := []string{"db", "http.fetch", "kv", "log", "settings"}; !slices.Equal(got, want) {
+	if want := []string{"db", "http.fetch", "kv", "log", "mail.send", "packages.inspect", "settings"}; !slices.Equal(got, want) {
 		t.Fatalf("permissions %v", got)
 	}
 	if !slices.Equal(m.Cookies, []string{"sid", "st", "fl"}) {
 		t.Fatalf("cookies %v", m.Cookies)
 	}
-	if !slices.Equal(m.AllowedHosts, []string{"github.com", "api.github.com"}) {
+	if !slices.Equal(m.AllowedHosts, []string{"github.com", "api.github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}) {
 		t.Fatalf("allowed hosts %v", m.AllowedHosts)
 	}
 	raw, _ := os.ReadFile("plugin.json")
-	for _, bad := range []string{"site.scripts", "mail.send", `"site"`} {
+	for _, bad := range []string{"site.scripts", `"site"`} {
 		if strings.Contains(string(raw), bad) {
 			t.Errorf("plugin.json contains %q", bad)
 		}
@@ -63,9 +63,11 @@ func TestManifestRoutes(t *testing.T) {
 	m := loadManifest(t)
 	public := map[string]bool{
 		"GET /auth/callback": true, "POST /account": true, "POST /key": true,
-		"POST /logout": true, "GET /terms": true,
+		"POST /logout": true, "GET /terms": true, "POST /submit": true, "GET /registry.json": true,
 		"GET /admin/accounts": false, "POST /admin/accounts/{id}/suspend": false,
-		"POST /admin/accounts/{id}/unsuspend": false,
+		"POST /admin/accounts/{id}/unsuspend": false, "GET /admin/submissions": false,
+		"POST /admin/submissions/{id}/approve": false, "POST /admin/submissions/{id}/reject": false,
+		"POST /admin/listings/{id}/revoke": false, "POST /admin/accounts/{id}/revoke-key": false,
 	}
 	if len(m.Routes) != len(public) {
 		t.Fatalf("%d routes", len(m.Routes))
@@ -96,7 +98,16 @@ func TestManifestLimitsCronAndConfig(t *testing.T) {
 	if got := m.Limits.HookTimeoutsMS["http_handle"]; got != 10000 {
 		t.Errorf("http_handle timeout %d", got)
 	}
-	if len(m.Cron) != 1 || m.Cron[0].Name != "gc" || m.Cron[0].Every != "1h" {
+	for _, k := range []string{"on_cron_gc", "on_cron_mail", "on_cron_recheck", "on_cron_resign"} {
+		if got := m.Limits.HookTimeoutsMS[k]; got != 10000 {
+			t.Errorf("%s timeout %d", k, got)
+		}
+	}
+	every := map[string]string{}
+	for _, c := range m.Cron {
+		every[c.Name] = c.Every
+	}
+	if len(m.Cron) != 4 || every["gc"] != "1h" || every["mail"] != "1m" || every["recheck"] != "1h" || every["resign"] != "24h" {
 		t.Errorf("cron %+v", m.Cron)
 	}
 	if m.UI == nil || !slices.Equal(m.UI.Roles, []string{"owner"}) {
@@ -120,6 +131,7 @@ func TestManifestSettingsSchema(t *testing.T) {
 				Type      string `json:"type"`
 				WriteOnly bool   `json:"writeOnly"`
 				Default   string `json:"default"`
+				MaxLength int    `json:"maxLength"`
 			} `json:"properties"`
 		} `json:"settings_schema"`
 	}
@@ -127,15 +139,18 @@ func TestManifestSettingsSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := doc.Schema.Properties
-	for _, k := range []string{"github_client_id", "github_client_secret", "review_email", "public_url", "terms_markdown"} {
+	for _, k := range []string{"github_client_id", "github_client_secret", "listing_key", "review_email", "public_url", "terms_markdown"} {
 		if p[k].Type != "string" {
 			t.Errorf("setting %s missing or not a string", k)
 		}
 	}
 	for k, v := range p {
-		if v.WriteOnly != (k == "github_client_secret") {
+		if v.WriteOnly != (k == "github_client_secret" || k == "listing_key") {
 			t.Errorf("setting %s writeOnly = %v", k, v.WriteOnly)
 		}
+	}
+	if p["listing_key"].MaxLength < 600 {
+		t.Errorf("listing_key maxLength %d", p["listing_key"].MaxLength)
 	}
 	if p["public_url"].Default != "https://hatamoto.dev" {
 		t.Errorf("public_url default %q", p["public_url"].Default)
