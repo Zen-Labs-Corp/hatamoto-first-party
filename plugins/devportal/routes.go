@@ -28,12 +28,17 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	switch r.Method + " " + r.Pattern {
 	case "GET /auth/callback":
 		return handleCallback(r), nil
+	case "POST /account":
+		return handleAccount(r), nil
+	case "POST /key":
+		return handleKey(r), nil
+	case "POST /logout":
+		return handleLogout(r), nil
+	case "GET /terms":
+		return handleTerms(), nil
 	}
 	return reply(http.StatusNotFound, map[string]string{"error": "not found"}), nil
 }
-
-// pageFilter leaves the page unchanged until the portal section exists.
-func pageFilter(p sdk.PageContext) (sdk.PageContext, error) { return p, nil }
 
 // gcCron has nothing to clean up until sessions exist.
 func gcCron(sdk.CronEvent) error { return nil }
