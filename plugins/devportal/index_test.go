@@ -317,6 +317,8 @@ func TestRecheckKeepsAListingWhenInspectFailsOrProblemsAppear(t *testing.T) {
 	for name, x := range map[string]*hostX{
 		"error":    {inspectErr: hostErr("timeout")},
 		"problems": {inspect: sdk.InspectResult{SHA256: "same", SignerKeyID: keyID, Problems: []string{"download answered 503"}}},
+		"download": {inspect: sdk.InspectResult{Problems: []string{"download answered 503"}}},
+		"empty":    {inspect: sdk.InspectResult{}},
 	} {
 		h := recheckEnv(t, `[`+listingRow(1, "acme-seo", "same", pub)+`]`, x)
 		if err := recheckCron(sdk.CronEvent{}); err != nil {

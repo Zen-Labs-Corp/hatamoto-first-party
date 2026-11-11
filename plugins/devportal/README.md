@@ -55,8 +55,9 @@ setting and a hidden CSRF token that matches the session, and answers
   `<public_url>/p/devportal/registry.json`.
 - **Recheck.** Every hour the `recheck` cron inspects the listed packages
   again, two per run. A file whose hash or signer changed is dropped from the
-  index and the developer is told. A failed inspection only counts, so a
-  passing network error never delists anything.
+  index and the developer is told. Only a file that was downloaded and read can
+  delist a package. A failed download, a problem report or an error from the
+  inspection only counts, so a passing network error never delists anything.
 - **Re-sign.** The `resign` cron signs the index again every 24 hours so it
   never expires. The `mail` cron sends queued notices every minute.
 
