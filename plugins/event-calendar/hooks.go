@@ -66,9 +66,10 @@ func onReconcile(sdk.CronEvent) error {
 
 // reconcileOnce lists the published events of every accepted type, writes
 // each to the index and, when the whole listing was read, removes index rows
-// of events that are gone. It stops at the first failure or when until has
-// passed and then deletes nothing. It returns the addresses a map still needs
-// looked up. Running it again repeats the same writes.
+// of events that are gone. A row that fails to write is skipped; after that,
+// or when the listing fails or until has passed, it deletes nothing. It
+// returns the addresses a map still needs looked up. Running it again repeats
+// the same writes.
 func reconcileOnce(s settings, until time.Time) (addrs []string, err error) {
 	started := clock()
 	seen := map[string]bool{}
@@ -108,7 +109,10 @@ listing:
 				}
 				_, addr, werr := reindexDTO(raw, s, &started)
 				if werr != nil {
-					return addrs, errors.Join(err, werr)
+					// one bad row must not stop the rest; delete nothing after it
+					err = errors.Join(err, werr)
+					complete = false
+					continue
 				}
 				if addr != "" {
 					addrs = append(addrs, addr)

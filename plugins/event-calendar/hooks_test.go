@@ -22,6 +22,7 @@ type hookHost struct {
 	types    []string // when set, entities.list of any other type is not_found, as in core
 	getErr   error
 	dbErr    error
+	failID   string            // db.exec fails for the statements of this entity id
 	indexed  map[string]string // what db.query answers for indexedIDs
 	calls    []string          // every host function called
 	execs    []dbCall
@@ -66,6 +67,9 @@ func (h *hookHost) install(t *testing.T) {
 			return json.Unmarshal([]byte(doc), out)
 		case "db.exec":
 			h.execs = append(h.execs, dbCall{fn, a["sql"].(string), a["args"].([]any)})
+			if h.failID != "" && a["args"].([]any)[0] == h.failID {
+				return errors.New("check constraint")
+			}
 			return h.dbErr
 		case "db.query":
 			if h.dbErr != nil {
@@ -315,5 +319,31 @@ func TestReconcileMarksIndexAndGuardsAgainstDeletes(t *testing.T) {
 	fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
 	if marks() != 0 {
 		t.Errorf("marker written by an incomplete run")
+	}
+}
+
+func TestReconcileSkipsARowThatFailsToWrite(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs: map[string]string{
+			"bad":  hookDoc("bad", "calendar-event", "published"),
+			"good": hookDoc("good", "calendar-event", "published"),
+		},
+		order:   []string{"bad", "good"},
+		failID:  "bad",
+		indexed: map[string]string{"stale": "x"},
+	}
+	h.install(t)
+	fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
+	if got := strings.Join(h.upserts(), ","); got != "bad,good" {
+		t.Errorf("upserts tried = %s, the rows after the failing one must still be written", got)
+	}
+	if len(h.deletes()) != 0 {
+		t.Errorf("deleted after a failed write: %v", h.deletes())
+	}
+	for _, c := range h.execs {
+		if strings.Contains(c.sql, "INTO index_state") {
+			t.Error("marker written by a run with a failed row")
+		}
 	}
 }

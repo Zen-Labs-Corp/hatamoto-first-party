@@ -374,3 +374,19 @@ func TestAllDayEventWithOwnZoneKeepsItsDay(t *testing.T) {
 		t.Errorf("endsAt = %v", e.endsAt(loc))
 	}
 }
+
+// The events table has CHECKs on both fields: a value outside them must never
+// reach it, or the row cannot be written.
+func TestEventStatusAndAttendanceModeAreNormalised(t *testing.T) {
+	for _, c := range []struct{ in, status, mode string }{
+		{`"event_status":"Cancelled","attendance_mode":"HYBRID"`, "cancelled", "hybrid"},
+		{`"event_status":"rescheduled","attendance_mode":"mixed"`, "scheduled", "offline"},
+		{`"event_status":" postponed "`, "postponed", "offline"},
+	} {
+		raw := entityDTO{ID: "e", Status: "published", Attributes: []byte(`{"start_at":"2026-07-01",` + c.in + `}`)}
+		e, ok := eventFromEntity(raw, settings{})
+		if !ok || e.EventStatus != c.status || e.AttendanceMode != c.mode {
+			t.Errorf("%s -> %q, %q", c.in, e.EventStatus, e.AttendanceMode)
+		}
+	}
+}

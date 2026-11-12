@@ -119,6 +119,17 @@ func attrFloat(m map[string]any, key string) *float64 {
 	return nil
 }
 
+// oneOf lowercases v and returns it when it is one of values, else the first.
+func oneOf(v string, values ...string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, ok := range values {
+		if v == ok {
+			return v
+		}
+	}
+	return values[0]
+}
+
 // startOfDay is midnight of t's day in loc.
 func startOfDay(t time.Time, loc *time.Location) time.Time {
 	y, m, d := t.In(loc).Date()
@@ -179,12 +190,8 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 	if ids := attrIDs(attrs, "series"); len(ids) > 0 {
 		e.SeriesID = ids[0]
 	}
-	if e.EventStatus == "" {
-		e.EventStatus = "scheduled"
-	}
-	if e.AttendanceMode == "" {
-		e.AttendanceMode = "offline"
-	}
+	e.EventStatus = oneOf(e.EventStatus, "scheduled", "cancelled", "postponed")
+	e.AttendanceMode = oneOf(e.AttendanceMode, "offline", "online", "hybrid")
 	if e.Image == "" {
 		e.Image = attrString(attrs, "featured_image")
 	}
