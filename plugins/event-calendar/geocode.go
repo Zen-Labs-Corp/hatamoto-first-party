@@ -126,7 +126,7 @@ func needsLookup(addr string) bool {
 
 // geocodeAddresses looks up the addresses that are not cached, at most
 // geocodePerTick of them, one per geocodeGap, and stops once budgetEnd is
-// near. It returns how many it looked up. It does nothing unless ShowMap is on.
+// near or a request slot stays taken after one wait. It returns how many it looked up. It does nothing unless ShowMap is on.
 func geocodeAddresses(s settings, addrs []string, budgetEnd time.Time) (done int) {
 	if !s.ShowMap {
 		return 0
@@ -148,11 +148,12 @@ func geocodeAddresses(s settings, addrs []string, budgetEnd time.Time) (done int
 			continue
 		}
 		if done > 0 || !claimSlot() {
+			// the previous request, or another instance's, was less than a second
+			// ago: wait once, and give up for this run if the slot is still taken
 			sleep(geocodeGap)
-			if left = budgetEnd.Sub(clock()); left < minCall {
+			if left = budgetEnd.Sub(clock()); left < minCall || !claimSlot() {
 				break
 			}
-			claimSlot()
 		}
 		done++
 		lookup(s, addr, left)

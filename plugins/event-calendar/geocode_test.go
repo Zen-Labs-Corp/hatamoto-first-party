@@ -260,10 +260,16 @@ func TestGeocodeOneStaysWithinPolicy(t *testing.T) {
 	if len(h.fetches) != 0 || h.cache["a"] != nil {
 		t.Errorf("fetches = %d, cache = %+v", len(h.fetches), h.cache["a"])
 	}
-	// the hourly loop waits for the slot instead of skipping
+	// the hourly loop waits once for the slot and does not fetch when it stays taken
 	slept := 0
 	sleep = func(time.Duration) { slept++ }
-	if n := geocodeAddresses(mapOn(), []string{"a"}, far()); n != 1 || slept != 1 {
-		t.Errorf("done = %d, sleeps = %d", n, slept)
+	if n := geocodeAddresses(mapOn(), []string{"a"}, far()); n != 0 || slept != 1 || len(h.fetches) != 0 {
+		t.Errorf("busy: done = %d, sleeps = %d, fetches = %d", n, slept, len(h.fetches))
+	}
+	// a slot that frees up during the wait is claimed, then one request is made
+	h.busy = true
+	sleep = func(time.Duration) { h.busy = false }
+	if n := geocodeAddresses(mapOn(), []string{"a"}, far()); n != 1 || len(h.fetches) != 1 {
+		t.Errorf("freed: done = %d, fetches = %d", n, len(h.fetches))
 	}
 }
