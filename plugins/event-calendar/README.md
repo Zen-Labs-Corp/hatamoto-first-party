@@ -63,7 +63,7 @@ The map is off by default. With **Show map** on, the card shows a small map of t
 - `builder.data`: answers the three page-builder data sources.
 - `settings`: reads the settings above.
 - `db`: the plugin's own event index (used by the lists and the feed, and kept up to date when events change, are imported or are removed, plus an hourly check) and the cache of address lookups. Both live in the plugin's own schema.
-- `http.fetch`, to `nominatim.openstreetmap.org` only: looks up the position of venue addresses that have no coordinates. It runs only while **Show map** is on, results are cached, a failed lookup is retried after a day, and it makes at most one request per second (at most 20 lookups per hourly run).
+- `http.fetch`, to `nominatim.openstreetmap.org` only: looks up the position of venue addresses that have no coordinates. It runs only while **Show map** is on, a venue address is looked up when its event is saved or published (or, at the latest, by the hourly check), results are cached, a failed lookup is retried after a day, and it makes at most one request per second (at most 20 lookups per hourly run).
 - `builder.island`: runs a small script on pages that use the Event details widget, which draws the map. Without this grant the widget still shows everything except the map picture.
 
 Nothing else: no mail, no scripts added to every page, no other hosts.

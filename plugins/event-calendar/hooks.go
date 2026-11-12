@@ -12,7 +12,8 @@ const (
 	reconcileBudget    = 8 * time.Second // the cron call may run 10 s
 	reconcileMapBudget = 6 * time.Second // leaves room for geocoding
 	geocodeDeadline    = 9 * time.Second
-	reconcilePages     = 10 // 2000 events per run
+	hookGeocodeBudget  = 3 * time.Second // the entity hooks may run 5 s
+	reconcilePages     = 10              // 2000 events per run
 )
 
 func init() {
@@ -35,7 +36,9 @@ func onEntity(ev sdk.EntityEvent) error {
 	if !s.accepts(ev.SchemaSlug) || ev.ID == "" {
 		return nil
 	}
-	_, _ = reindexEntity(ev.ID, s)
+	if _, addr, _ := reindexEntityAddr(ev.ID, s); addr != "" {
+		geocodeOne(s, addr, clock().Add(hookGeocodeBudget))
+	}
 	return nil
 }
 

@@ -23,6 +23,8 @@ type geoHost struct {
 	body     string
 	status   int
 	fetchErr error
+	busy     bool // another request was made less than a second ago
+	claims   int
 }
 
 func newGeoHost(t *testing.T) *geoHost {
@@ -40,6 +42,13 @@ func newGeoHost(t *testing.T) *geoHost {
 			return json.Unmarshal([]byte(`{"rows":[[`+string(cell)+`]]}`), out)
 		case "db.exec":
 			p := a["args"].([]any)
+			if p[0] == throttleKey {
+				h.claims++
+				if h.busy {
+					return json.Unmarshal([]byte(`{"rows_affected":0}`), out)
+				}
+				return json.Unmarshal([]byte(`{"rows_affected":1}`), out)
+			}
 			row := &cacheRow{status: p[3].(string), fetchedAt: now().UTC().Format(time.RFC3339)}
 			if f, ok := p[1].(float64); ok {
 				row.lat = &f
@@ -222,5 +231,39 @@ func TestGeocodeAddressOf(t *testing.T) {
 	}
 	if got := addressOf(Venue{}, Event{}); got != "" {
 		t.Errorf("addressOf = %q", got)
+	}
+}
+
+func TestGeocodeOneLooksUpOnSave(t *testing.T) {
+	h := newGeoHost(t)
+	geocodeOne(mapOn(), "1 High St, London", far())
+	if len(h.fetches) != 1 || h.cache["1 High St, London"] == nil || h.cache["1 High St, London"].status != "ok" {
+		t.Fatalf("fetches = %d, cache = %+v", len(h.fetches), h.cache)
+	}
+	// cached now: no second request
+	geocodeOne(mapOn(), "1 High St, London", far())
+	if len(h.fetches) != 1 {
+		t.Errorf("fetches = %d", len(h.fetches))
+	}
+}
+
+func TestGeocodeOneStaysWithinPolicy(t *testing.T) {
+	h := newGeoHost(t)
+	geocodeOne(settings{}, "a", far()) // Show map off
+	geocodeOne(mapOn(), "", far())
+	geocodeOne(mapOn(), "a", time.Now()) // no time left
+	if len(h.fetches) != 0 || h.claims != 0 {
+		t.Fatalf("fetches = %d, claims = %d", len(h.fetches), h.claims)
+	}
+	h.busy = true // a request was made less than a second ago: leave it to the hourly check
+	geocodeOne(mapOn(), "a", far())
+	if len(h.fetches) != 0 || h.cache["a"] != nil {
+		t.Errorf("fetches = %d, cache = %+v", len(h.fetches), h.cache["a"])
+	}
+	// the hourly loop waits for the slot instead of skipping
+	slept := 0
+	sleep = func(time.Duration) { slept++ }
+	if n := geocodeAddresses(mapOn(), []string{"a"}, far()); n != 1 || slept != 1 {
+		t.Errorf("done = %d, sleeps = %d", n, slept)
 	}
 }

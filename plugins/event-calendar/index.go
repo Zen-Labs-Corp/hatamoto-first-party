@@ -194,16 +194,22 @@ func zoneOr(name string, fallback *time.Location) *time.Location {
 // written when it is a published event of an accepted type, removed otherwise
 // (also when the entity is gone). It reports whether the event is indexed.
 func reindexEntity(id string, s settings) (bool, error) {
+	indexed, _, err := reindexEntityAddr(id, s)
+	return indexed, err
+}
+
+// reindexEntityAddr is reindexEntity that also returns the address a map would
+// need looked up, as reindexDTO does.
+func reindexEntityAddr(id string, s settings) (indexed bool, addr string, err error) {
 	var raw entityDTO
 	if err := callHost(sdk.FnEntitiesGet, map[string]any{"id": id}, &raw); err != nil {
 		var he *sdk.HostError
 		if errors.As(err, &he) && he.Code == sdk.ErrNotFound {
-			return false, deleteEvent(id)
+			return false, "", deleteEvent(id)
 		}
-		return false, err
+		return false, "", err
 	}
-	indexed, _, err := reindexDTO(raw, s, nil)
-	return indexed, err
+	return reindexDTO(raw, s, nil)
 }
 
 // reindexDTO is reindexEntity for an entity already read. addr is the

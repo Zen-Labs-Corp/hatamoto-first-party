@@ -147,24 +147,58 @@ func geocodeAddresses(s settings, addrs []string, budgetEnd time.Time) (done int
 		if !needsLookup(addr) {
 			continue
 		}
-		if done > 0 {
+		if done > 0 || !claimSlot() {
 			sleep(geocodeGap)
 			if left = budgetEnd.Sub(clock()); left < minCall {
 				break
 			}
+			claimSlot()
 		}
 		done++
-		var res fetched
-		err := callHost(sdk.FnHTTPFetch, map[string]any{
-			"method": "GET", "url": geocodeURL(addr), "timeout_ms": int(min(fetchTimeout, left) / time.Millisecond),
-			"headers": map[string]string{"User-Agent": userAgent(s), "Accept": "application/json"},
-		}, &res)
-		lat, lon, ok := parseNominatim(res.Body)
-		if err != nil || res.Status != 200 || res.Truncated || !ok {
-			_ = storeCache(addr, "failed", nil, nil)
-			continue
-		}
-		_ = storeCache(addr, "ok", lat, lon)
+		lookup(s, addr, left)
 	}
 	return done
+}
+
+// throttleKey is the geocode_cache row that holds the time of the last request,
+// shared by every instance of the plugin (hooks and cron run in parallel).
+const throttleKey = "!last-request"
+
+// claimSlot reserves the right to make one Nominatim request now: true when
+// the last one is at least geocodeGap old. It is atomic in the database.
+func claimSlot() bool {
+	var res struct {
+		RowsAffected int `json:"rows_affected"`
+	}
+	err := callHost(sdk.FnDBExec, map[string]any{"sql": `INSERT INTO geocode_cache (address, status, fetched_at)
+VALUES ($1, 'failed', now())
+ON CONFLICT (address) DO UPDATE SET fetched_at = now()
+ WHERE geocode_cache.fetched_at <= now() - interval '1 second'`, "args": []any{throttleKey}}, &res)
+	return err == nil && res.RowsAffected > 0
+}
+
+// geocodeOne looks up one address right after an event was saved, so the map
+// does not wait for the hourly check. It skips when Show map is off, the
+// address is cached or tried recently, another request was made less than a
+// second ago (the hourly check picks it up) or there is no time left.
+func geocodeOne(s settings, addr string, budgetEnd time.Time) {
+	if !s.ShowMap || addr == "" || budgetEnd.Sub(clock()) < minCall || !needsLookup(addr) || !claimSlot() {
+		return
+	}
+	lookup(s, addr, budgetEnd.Sub(clock()))
+}
+
+// lookup asks Nominatim for one address and caches the answer, or the failure.
+func lookup(s settings, addr string, left time.Duration) {
+	var res fetched
+	err := callHost(sdk.FnHTTPFetch, map[string]any{
+		"method": "GET", "url": geocodeURL(addr), "timeout_ms": int(min(fetchTimeout, left) / time.Millisecond),
+		"headers": map[string]string{"User-Agent": userAgent(s), "Accept": "application/json"},
+	}, &res)
+	lat, lon, ok := parseNominatim(res.Body)
+	if err != nil || res.Status != 200 || res.Truncated || !ok {
+		_ = storeCache(addr, "failed", nil, nil)
+		return
+	}
+	_ = storeCache(addr, "ok", lat, lon)
 }
