@@ -91,6 +91,9 @@ listing:
 				NextCursor string      `json:"next_cursor"`
 			}
 			if lerr := callHost(sdk.FnEntitiesList, args, &out); lerr != nil {
+				if isNotFound(lerr) {
+					break // the type does not exist: it has no events
+				}
 				return addrs, errors.Join(err, lerr)
 			}
 			for _, raw := range out.Items {

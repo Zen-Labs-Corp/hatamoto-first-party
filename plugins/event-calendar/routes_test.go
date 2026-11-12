@@ -19,6 +19,7 @@ type fakeHost struct {
 	getCalls        []map[string]any
 	dbRows          string // jsonb cell the index answers with; empty: no db
 	listCalls       int
+	missingType     string // entities.list of this type is not_found, as in core
 }
 
 func (h *fakeHost) install(t *testing.T) {
@@ -36,6 +37,9 @@ func (h *fakeHost) install(t *testing.T) {
 			h.listCalls++
 			if h.listErr != nil {
 				return h.listErr
+			}
+			if h.missingType != "" && args.(map[string]any)["schema_slug"] == h.missingType {
+				return &sdk.HostError{Code: sdk.ErrNotFound}
 			}
 			var items []string
 			for _, e := range h.entities {
@@ -90,6 +94,14 @@ func call(t *testing.T, method, pattern, file string) sdk.HTTPResponse {
 		t.Fatal(err)
 	}
 	return r
+}
+
+func TestFeedWithoutNewTypeStillServesLegacyEvents(t *testing.T) {
+	(&fakeHost{entities: []string{evFuture}, missingType: "calendar-event"}).install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") {
+		t.Errorf("status = %d, body = %q", r.Status, r.Body)
+	}
 }
 
 func TestFeedRoute(t *testing.T) {

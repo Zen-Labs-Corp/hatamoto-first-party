@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -18,6 +19,7 @@ type hookHost struct {
 	order    []string          // listing order
 	more     bool              // the listing never ends (next_cursor always set)
 	listErr  error
+	types    []string // when set, entities.list of any other type is not_found, as in core
 	getErr   error
 	dbErr    error
 	indexed  map[string]string // what db.query answers for indexedIDs
@@ -36,6 +38,9 @@ func (h *hookHost) install(t *testing.T) {
 		case "entities.list":
 			if h.listErr != nil {
 				return h.listErr
+			}
+			if h.types != nil && !slices.Contains(h.types, a["schema_slug"].(string)) {
+				return &sdk.HostError{Code: sdk.ErrNotFound}
 			}
 			var items []string
 			for _, id := range h.order {
@@ -188,6 +193,21 @@ func TestReconcileCron(t *testing.T) {
 	cron()
 	if got := strings.Join(h.upserts(), ","); got != "new,old" || len(h.deletes()) != 0 {
 		t.Errorf("second run: upserts = %s, deletes = %v", got, h.deletes())
+	}
+}
+
+func TestReconcileMissingTypeStillPurges(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"new": hookDoc("new", "calendar-event", "published")},
+		order:    []string{"new"},
+		types:    []string{"calendar-event"}, // no "event" type on this site
+		indexed:  map[string]string{"new": "x", "stale": "x"},
+	}
+	h.install(t)
+	fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
+	if got := h.deletes(); len(got) != 1 || got[0] != "stale" {
+		t.Errorf("deletes = %v", got)
 	}
 }
 

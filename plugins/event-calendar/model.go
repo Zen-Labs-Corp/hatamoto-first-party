@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -267,6 +268,12 @@ func loadEventsUntil(s settings, until time.Time) ([]Event, error) {
 	return evs, err
 }
 
+// isNotFound reports a host not_found error.
+func isNotFound(err error) bool {
+	var he *sdk.HostError
+	return errors.As(err, &he) && he.Code == sdk.ErrNotFound
+}
+
 // eachEvent pages the published events of every accepted content type and
 // passes each one to visit until it returns true, so a caller that has what it
 // needs reads no further page. At most maxListPages pages are read in all, and
@@ -297,6 +304,9 @@ func eachEvent(s settings, until time.Time, visit func(Event) bool) error {
 			err := callHost(sdk.FnEntitiesList, args, &out)
 			pages++
 			if err != nil {
+				if isNotFound(err) {
+					break // the type does not exist: it has no events
+				}
 				if si == 0 && pages == 1 {
 					return err
 				}
