@@ -171,23 +171,33 @@ func reindexEntity(id string, s settings) (bool, error) {
 		}
 		return false, err
 	}
-	return reindexDTO(raw, s)
+	indexed, _, err := reindexDTO(raw, s)
+	return indexed, err
 }
 
-// reindexDTO is reindexEntity for an entity already read.
-func reindexDTO(raw entityDTO, s settings) (bool, error) {
+// reindexDTO is reindexEntity for an entity already read. addr is the
+// address a map would need looked up (empty when the venue has coordinates or
+// the event has no address).
+func reindexDTO(raw entityDTO, s settings) (indexed bool, addr string, err error) {
 	if !s.accepts(raw.SchemaSlug) {
-		return false, deleteEvent(raw.ID)
+		return false, "", deleteEvent(raw.ID)
 	}
 	e, ok := eventFromEntity(raw, s)
 	if !ok {
-		return false, deleteEvent(raw.ID)
+		return false, "", deleteEvent(raw.ID)
 	}
 	_, _, _, v := venueOrText(e)
 	if err := upsertEvent(rowFromEvent(e, v, categoryNames(e.CategoryIDs), eventLocation(e, s))); err != nil {
-		return false, err
+		return false, "", err
 	}
-	return true, nil
+	venue := Venue{}
+	if v != nil {
+		venue = *v
+	}
+	if venue.Lat == nil || venue.Lon == nil {
+		addr = addressOf(venue, e)
+	}
+	return true, addr, nil
 }
 
 // indexQuery selects events from the index. Loc is the zone all-day events
