@@ -4,7 +4,15 @@
   "description": "A place where events happen.",
   "properties": {
     "page_sections": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      }
     },
     "address": {
       "type": "string",

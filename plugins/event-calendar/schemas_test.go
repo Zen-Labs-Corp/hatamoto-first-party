@@ -79,6 +79,61 @@ var wantSchemas = map[string]map[string]fieldSpec{
 	"calendar-category": {"description": str(""), "color": str("")},
 }
 
+// shapeErrors mirrors core's entity.ValidateSchemaShape, which refuses a content
+// type at install time (the plugin is then enabled without it): every node has a
+// supported type, objects have properties and no additionalProperties or
+// patternProperties, property names match nameRe, required names exist, every
+// array has items and no array holds an array.
+func shapeErrors(node map[string]any, path string, nameRe *regexp.Regexp) []string {
+	var errs []string
+	typ, _ := node["type"].(string)
+	switch typ {
+	case "":
+		return []string{path + " missing 'type'"}
+	case "string", "number", "integer", "boolean":
+	case "object":
+		for _, k := range []string{"additionalProperties", "patternProperties"} {
+			if _, ok := node[k]; ok {
+				errs = append(errs, path+" has "+k)
+			}
+		}
+		props, ok := node["properties"].(map[string]any)
+		if !ok {
+			return append(errs, path+" of type 'object' missing 'properties'")
+		}
+		for name, c := range props {
+			if !nameRe.MatchString(name) {
+				errs = append(errs, "property name "+name+" is invalid")
+			}
+			cm, ok := c.(map[string]any)
+			if !ok {
+				errs = append(errs, path+".properties."+name+" is not an object")
+				continue
+			}
+			errs = append(errs, shapeErrors(cm, path+".properties."+name, nameRe)...)
+		}
+		if req, ok := node["required"].([]any); ok {
+			for _, r := range req {
+				if name, _ := r.(string); props[name] == nil {
+					errs = append(errs, path+" requires unknown property "+name)
+				}
+			}
+		}
+	case "array":
+		items, ok := node["items"].(map[string]any)
+		if !ok {
+			return []string{path + " of type 'array' missing 'items'"}
+		}
+		if items["type"] == "array" {
+			errs = append(errs, path+".items is a nested array")
+		}
+		errs = append(errs, shapeErrors(items, path+".items", nameRe)...)
+	default:
+		errs = append(errs, path+" has unsupported type "+typ)
+	}
+	return errs
+}
+
 func TestShippedSchemas(t *testing.T) {
 	slugRe := regexp.MustCompile(`^[a-z]([a-z0-9]|-[a-z0-9]){0,63}$`)
 	nameRe := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -102,6 +157,13 @@ func TestShippedSchemas(t *testing.T) {
 		}
 		if len(raw) >= 64<<10 {
 			t.Errorf("%s is %d bytes, limit is 64 KiB", slug, len(raw))
+		}
+		var generic map[string]any
+		if err := json.Unmarshal(raw, &generic); err != nil {
+			t.Fatalf("%s: %v", slug, err)
+		}
+		for _, e := range shapeErrors(generic, "root", nameRe) {
+			t.Errorf("%s: core would refuse this schema: %s", slug, e)
 		}
 		var n schemaNode
 		if err := json.Unmarshal(raw, &n); err != nil {

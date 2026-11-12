@@ -4,7 +4,15 @@
   "description": "An event with a date, place and optional repeat.",
   "properties": {
     "page_sections": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      }
     },
     "start_at": {
       "type": "string",

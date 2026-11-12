@@ -4,7 +4,15 @@
   "description": "A person or group that runs events.",
   "properties": {
     "page_sections": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      }
     },
     "email": {
       "type": "string",
