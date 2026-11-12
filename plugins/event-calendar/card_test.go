@@ -153,3 +153,18 @@ func TestEventSourceTimeBudget(t *testing.T) {
 }
 
 func jsonInto(raw string, out any) error { return json.Unmarshal([]byte(raw), out) }
+
+const cardEventZone = `{"id":"z1","schema_slug":"calendar-event","slug":"summer","name":"Summer night","status":"published",
+ "attributes":{"start_at":"2027-07-10T18:00:00Z","time_zone":"Europe/London"}}`
+
+// The card shows the time in the event's own zone and names the zone.
+func TestEventCardNamesTheTimeZone(t *testing.T) {
+	cardHost(t, `{}`, cardEventZone, strings.Replace(cardEvent, `"c1"`, `"c2"`, 1))
+	if got := runCard(t, "z1").Items[0].Attrs["when"]; got != "Sat 10 Jul 2027, 7:00 pm (Europe/London)" {
+		t.Errorf("when = %q", got)
+	}
+	// no zone on the event: the site zone is named
+	if got := runCard(t, "c2").Items[0].Attrs["when"]; !strings.HasSuffix(got, " (UTC)") {
+		t.Errorf("when = %q", got)
+	}
+}

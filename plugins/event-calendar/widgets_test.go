@@ -248,6 +248,9 @@ func TestEventDetailsSeed(t *testing.T) {
 		}
 	}
 	html := readWidget(t, "event-card", "widget.html")
+	if !strings.Contains(html, `<span class="badge">{{.P.status}}</span>`) || !strings.Contains(html, `<p class="tickets">`) {
+		t.Error("the card needs the status badge beside the title and the tickets block")
+	}
 	if !strings.Contains(html, `data-tiles="tile.openstreetmap.org"`) || strings.Contains(html, "https://") {
 		t.Error("the map block needs the literal tile host and no absolute URL")
 	}

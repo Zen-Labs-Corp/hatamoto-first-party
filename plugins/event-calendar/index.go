@@ -170,14 +170,11 @@ func categoryNames(ids []string) []string {
 // eventLocation is the zone an event's local times are read in.
 func eventLocation(e Event, s settings) *time.Location { return zoneOr(e.TimeZone, s.location()) }
 
-// dateLocation is the zone an event's dates are read in: an all-day event is
-// fixed to calendar days in its own zone, so its days are read there (else
-// they shift when the site zone is behind); a timed event is shown in loc.
+// dateLocation is the zone an event's dates are read and shown in: its own
+// zone when it has one (an all-day event is fixed to calendar days there, and
+// a timed event's naive start is read there), else loc, the site zone.
 func dateLocation(e Event, loc *time.Location) *time.Location {
-	if e.AllDay {
-		return zoneOr(e.TimeZone, loc)
-	}
-	return loc
+	return zoneOr(e.TimeZone, loc)
 }
 
 // zoneOr loads the named zone, else returns fallback.

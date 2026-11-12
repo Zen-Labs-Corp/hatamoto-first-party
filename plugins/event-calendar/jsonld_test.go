@@ -214,3 +214,14 @@ func TestEnrichGate(t *testing.T) {
 		}
 	}
 }
+
+// A timed event with its own zone carries that zone's offset (BST here), not Z.
+func TestEnrichUsesTheEventZoneOffset(t *testing.T) {
+	doc := `{"id":"3f2a","schema_slug":"event","slug":"summer","name":"Summer","status":"published",
+ "attributes":{"start_at":"2027-07-10T18:00:00Z","end_at":"2027-07-10T20:30:00Z","time_zone":"Europe/London"}}`
+	(&fakeHost{entities: []string{doc}}).install(t)
+	got := enrich(t, baseDoc())
+	if got.Doc["startDate"] != "2027-07-10T19:00:00+01:00" || got.Doc["endDate"] != "2027-07-10T21:30:00+01:00" {
+		t.Errorf("dates = %v, %v", got.Doc["startDate"], got.Doc["endDate"])
+	}
+}

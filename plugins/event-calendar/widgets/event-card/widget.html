@@ -1,6 +1,6 @@
 <section {{.Attrs}}>
 <h2>Event details</h2>
-{{if .P.title}}<p class="name">{{.P.title}}</p>{{end}}
+{{if .P.title}}<p class="name">{{.P.title}}{{if .P.status}} <span class="badge">{{.P.status}}</span>{{end}}</p>{{end}}
 <dl>
 <dt>When</dt><dd>{{.P.when}}</dd>
 {{if .P.status}}<dt>Status</dt><dd>{{.P.status}}</dd>{{end}}
@@ -11,6 +11,6 @@
 {{if .P.online_url}}<dt>Online</dt><dd><a href="{{.P.online_url}}">Join link</a></dd>{{end}}
 {{if .P.series}}<dt>Part of</dt><dd>{{if .P.series_url}}<a href="{{.P.series_url}}">{{.P.series}}</a>{{else}}{{.P.series}}{{end}}</dd>{{end}}
 </dl>
-{{if .P.ticket_url}}<p><a class="btn" href="{{.P.ticket_url}}">Get tickets</a></p>{{end}}
+{{if .P.ticket_url}}<p class="tickets"><a class="btn" href="{{.P.ticket_url}}">Get tickets</a></p>{{end}}
 <p class="cal">Add to calendar: {{if .P.google_url}}<a href="{{.P.google_url}}">Google</a>{{end}} {{if .P.outlook_url}}<a href="{{.P.outlook_url}}">Outlook</a>{{end}} {{if .P.ics_url}}<a href="{{.P.ics_url}}">Apple/iCal</a>{{end}} {{if .P.yahoo_url}}<a href="{{.P.yahoo_url}}">Yahoo</a>{{end}}</p>
 </section>

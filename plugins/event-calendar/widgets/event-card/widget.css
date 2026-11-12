@@ -1,6 +1,8 @@
 .hm-event-calendar_event-card{display:block;margin:var(--hm-space-4,1rem) 0;padding:var(--hm-space-4,1rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
 .hm-event-calendar_event-card h2{margin:0 0 var(--hm-space-3,.75rem);font-size:1.25rem}
 .hm-event-calendar_event-card .name{margin:0 0 var(--hm-space-3,.75rem);font-weight:600}
+.hm-event-calendar_event-card .badge{display:inline-block;margin-inline-start:var(--hm-space-2,.5rem);padding:0 var(--hm-space-2,.5rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:999px;font-size:.75rem;font-weight:600;vertical-align:middle}
+.hm-event-calendar_event-card .tickets{margin:var(--hm-space-4,1rem) 0 var(--hm-space-3,.75rem)}
 .hm-event-calendar_event-card dl{display:grid;grid-template-columns:max-content 1fr;gap:var(--hm-space-2,.5rem) var(--hm-space-4,1rem);margin:0}
 .hm-event-calendar_event-card dt{font-weight:600}
 .hm-event-calendar_event-card dd{margin:0}

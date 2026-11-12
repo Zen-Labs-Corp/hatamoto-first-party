@@ -45,7 +45,11 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 			attrs[k] = v
 		}
 	}
-	set("when", formatWhen(ev.Start, ev.End, ev.HasEnd, ev.AllDay, s.DateFormat, loc, now()))
+	when := formatWhen(ev.Start, ev.End, ev.HasEnd, ev.AllDay, s.DateFormat, loc, now())
+	if !ev.AllDay {
+		when += " (" + loc.String() + ")"
+	}
+	set("when", when)
 	set("status", statusLabel(ev.EventStatus))
 	set("venue", where)
 	if venue != nil {
