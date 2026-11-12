@@ -16,7 +16,7 @@ It covers what The Events Calendar, Events Manager and Google Calendar Events do
 
 4. Add to calendar: the card links to Google Calendar, Outlook, Yahoo and an Apple/iCal file (`/p/event-calendar/event/<slug>.ics`). In a theme template, `{{ plugin_event_calendar_addlink "google" .Entity.ID }}` returns one of these links (`google`, `outlook`, `yahoo` or `ics`), empty when the event cannot be found.
 
-5. In the page builder, bind a list widget to the data source **Event calendar: Upcoming events** or **Event calendar: Past events** (`ext.event-calendar.upcoming`, `ext.event-calendar.past`). Upcoming lists events that are not over yet, soonest first (an event in progress counts as upcoming); past lists the rest, most recent first. No event is in both. Each item has the title, URL, excerpt, image and these attributes: `when`, `start_at`, `end_at`, `all_day`, `venue_name`, `venue_address`, `ticket_url` and `ics_url`. When the page has a language, events of that language and events without one are kept.
+5. In the page builder, bind a list widget to the data source **Event calendar: Upcoming events** or **Event calendar: Past events** (`ext.event-calendar.upcoming`, `ext.event-calendar.past`). Upcoming lists events that are not over yet, soonest first (an event in progress counts as upcoming); past lists the rest, most recent first. No event is in both. Each item has the title, URL, excerpt, image and these attributes: `when`, `start_at`, `end_at`, `all_day`, `time_zone` (when the event has its own), `venue_name`, `venue_address`, `ticket_url` and `ics_url`. When the page has a language, events of that language and events without one are kept.
 
 6. Calendar feeds, for visitors to subscribe to or download:
    - `/p/event-calendar/events.ics`: all upcoming events.
@@ -27,10 +27,10 @@ It covers what The Events Calendar, Events Manager and Google Calendar Events do
 7. In a theme template, `when` renders the date and time as plain text, for example `Sat 14 Feb, 7:00 to 9:30 pm`:
 
    ```
-   {{ plugin_event_calendar_when .Attributes.start_at .Attributes.end_at .Attributes.all_day }}
+   {{ plugin_event_calendar_when .Attributes.start_at .Attributes.end_at .Attributes.all_day .Attributes.time_zone }}
    ```
 
-   Same-meridiem times are compacted (`7:00 to 9:30 pm`), all-day events read `Sat 7 Mar (all day)`, and the year is added only when it differs from the current year. Bad input renders nothing.
+   Same-meridiem times are compacted (`7:00 to 9:30 pm`), all-day events read `Sat 7 Mar (all day)`, and the year is added only when it differs from the current year. The optional fourth argument is the event's own time zone, so the text matches the card and the lists; without it the site time zone is used. Bad input renders nothing.
 
 8. Event pages get Event structured data: the plugin sets `@type` to `Event` and adds `startDate`, `endDate`, `eventStatus` (scheduled, cancelled or postponed), `eventAttendanceMode`, `location` (the venue with its address and coordinates, and a virtual location for online events), `organizer`, `offers` (from the ticket link, with the price and currency when set) and `image`, only where the page does not already carry that key.
 

@@ -10,14 +10,19 @@ import (
 
 func init() { guest.OnFunc("when", whenFunc) }
 
-// whenFunc is the template func `when start_at end_at all_day`. Bad input
-// renders nothing, never an error.
+// whenFunc is the template func `when start_at end_at all_day time_zone`. The
+// optional time_zone is the event's own zone, as on the card and in the lists;
+// without it, or with an unknown one, the site zone is used. Bad input renders
+// nothing, never an error.
 func whenFunc(args []json.RawMessage) (string, error) {
 	if len(args) == 0 {
 		return "", nil
 	}
 	s := loadSettings()
 	loc := s.location()
+	if len(args) > 3 {
+		loc = zoneOr(jsonString(args[3]), loc)
+	}
 	start, ok := parseTime(jsonString(args[0]), loc)
 	if !ok {
 		return "", nil

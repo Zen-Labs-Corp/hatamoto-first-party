@@ -88,3 +88,25 @@ func TestWhenFuncBadSettingsStillRenders(t *testing.T) {
 		t.Fatalf("out=%q err=%v", out, err)
 	}
 }
+
+// The template func must read an event the way the lists do: in its own zone.
+func TestWhenFuncMatchesTheListItemInTheEventZone(t *testing.T) {
+	now = func() time.Time { return time.Date(2027, 1, 10, 0, 0, 0, 0, time.UTC) }
+	defer func() { now = time.Now }()
+	e := Event{
+		Start: time.Date(2027, 7, 10, 17, 0, 0, 0, time.UTC), End: time.Date(2027, 7, 10, 19, 0, 0, 0, time.UTC),
+		HasEnd: true, TimeZone: "Europe/Berlin",
+	}
+	item := toItem(e, settings{}, now()).Attrs
+	if item["time_zone"] != "Europe/Berlin" {
+		t.Fatalf("item time_zone = %q", item["time_zone"])
+	}
+	args, _ := json.Marshal([]any{item["start_at"], item["end_at"], false, item["time_zone"]})
+	if got := whenCall(t, `{}`, string(args)); got != item["when"] || got != "Sat 10 Jul, 7:00 to 9:00 pm" {
+		t.Errorf("when = %q, item when = %q", got, item["when"])
+	}
+	// a stored value with an offset, read with the event zone
+	if got := whenCall(t, `{}`, `["2027-07-10T17:00:00Z",null,false,"Europe/Berlin"]`); got != "Sat 10 Jul, 7:00 pm" {
+		t.Errorf("stored value: %q", got)
+	}
+}

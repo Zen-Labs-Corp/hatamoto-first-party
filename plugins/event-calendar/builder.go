@@ -132,6 +132,7 @@ func toItem(e Event, s settings, at time.Time) sdk.BuilderDataItem {
 	if e.AllDay {
 		attrs["all_day"] = "true"
 	}
+	set("time_zone", e.TimeZone)
 	set("venue_name", e.Venue)
 	set("venue_address", e.Address)
 	set("ticket_url", e.TicketURL)
