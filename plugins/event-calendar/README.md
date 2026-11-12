@@ -52,6 +52,11 @@ Set the time zone to your site's zone. The editor stores times without a zone, s
 
 The map is off by default. With **Show map** on, the card shows a small map of the venue: its latitude and longitude when the venue has them, otherwise the position found for its address. The tiles are loaded by the visitor's browser from OpenStreetMap (an image request per tile, so OpenStreetMap sees the visitor's request), with the attribution shown under the map and a plain **View on OpenStreetMap** link. Without JavaScript only the link shows.
 
+### Upgrading from 0.1
+
+- Updating from 0.1.0 needs the site owner to confirm it: the new version asks for another host (`nominatim.openstreetmap.org`) and for the `builder.island` permission. Until the update is confirmed and `db` is granted, the plugin keeps reading the events themselves, as 0.1 did.
+- If you saved **Event content type** as `event` in 0.1, that value is still stored and pins the plugin to that one type, so the new **Calendar event** type is ignored. Clear the setting (leave it empty) to use both types.
+
 ## Permissions
 
 - `entities.read`: reads the events and the venues, organizers, series and categories they point to.
@@ -65,7 +70,7 @@ Nothing else: no mail, no scripts added to every page, no other hosts.
 
 ## Data kept
 
-The plugin keeps two things in its own database schema: the event index (one row per event with its time, name, venue, categories and status) and the address lookup cache (address text, position, when it was looked up). Events themselves stay in your content. Both tables are removed with the plugin's data; the index is rebuilt from your events if it is lost.
+The plugin keeps three things in its own database schema: the event index (one row per event with its time, name, venue, categories and status, plus a marker for when it was last checked in full and a short list of recently removed event ids), and the address lookup cache (address text, position, when it was looked up). Events themselves stay in your content. Both tables are removed with the plugin's data; the index is rebuilt from your events if it is lost.
 
 ## Build
 
@@ -73,27 +78,10 @@ From the repository root: `scripts/build-plugin.sh plugins/event-calendar`.
 
 ## Limits
 
-- Lists and the feed read the plugin's index, so they do not depend on how many events the site has; the feed holds at most 500 upcoming events. Until the index has been filled (or if the plugin has no database access), the plugin reads the events themselves, at most 1000 per request.
+- Lists and the feed read the plugin's index, so they do not depend on how many events the site has; the feed holds at most 500 upcoming events. Until the first complete hourly check of the index has run (or if the plugin has no database access), the plugin reads the events themselves, at most 1000 per request.
 - At most 48 items per builder source.
 - Core gives the page builder 500 ms in total for external data. The plugin stops looking up venues, organizers and series after 300 ms; the card then shows what the event itself holds.
 - No recurring events yet: the content type has the repeat fields, but events are not expanded into dates until a later release. No ticketing or payments: only a ticket link. The map is off by default.
-- The calendar feeds are cached for 15 minutes.
-- The feed holds upcoming events only; past events are available one by one.
-- The feed is not filtered by language.
-
-## License
-
-Apache-2.0.
-## Build
-
-From the repository root: `scripts/build-plugin.sh plugins/event-calendar`.
-
-## Limits
-
-- At most 1000 events are read per request (5 pages of 200); beyond that the rest is ignored.
-- At most 48 items per builder source.
-- Core gives the page builder 500 ms in total for external data. The plugin stops reading further pages after 300 ms and lists what it has read, so on a very large site a list can be incomplete.
-- No recurring events, no maps, no ticketing or payments: only a ticket link.
 - The calendar feeds are cached for 15 minutes.
 - The feed holds upcoming events only; past events are available one by one.
 - The feed is not filtered by language.
