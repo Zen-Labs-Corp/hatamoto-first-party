@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Event details",
+    "hint": "Details card and add-to-calendar links for this event page",
+    "children": true,
+    "seed": [
+      {
+        "t": "loop",
+        "p": {
+          "from": "source",
+          "source": "ext.event-calendar.event",
+          "limit": 1
+        },
+        "c": [
+          {
+            "t": "event-calendar_event-card",
+            "b": {
+              "title": "loop.item.title",
+              "when": "loop.item.attributes.when",
+              "status": "loop.item.attributes.status",
+              "venue": "loop.item.attributes.venue",
+              "venue_url": "loop.item.attributes.venue_url",
+              "organizer": "loop.item.author",
+              "organizer_url": "loop.item.author_url",
+              "organizer_email": "loop.item.attributes.organizer_email",
+              "price": "loop.item.attributes.price",
+              "online_url": "loop.item.attributes.online_url",
+              "series": "loop.item.attributes.series",
+              "series_url": "loop.item.attributes.series_url",
+              "ticket_url": "loop.item.attributes.ticket_url",
+              "ics_url": "loop.item.attributes.ics_url",
+              "google_url": "loop.item.attributes.google_url",
+              "outlook_url": "loop.item.attributes.outlook_url",
+              "yahoo_url": "loop.item.attributes.yahoo_url",
+              "map_url": "loop.item.attributes.map_url"
+            }
+          },
+          {
+            "t": "loopempty"
+          }
+        ]
+      }
+    ]
+  },
+  "properties": {}
+}
