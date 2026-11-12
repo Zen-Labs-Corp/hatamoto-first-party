@@ -30,6 +30,7 @@ type Event struct {
 	Start, End                  time.Time
 	AllDay, HasEnd              bool
 	Updated                     time.Time
+	indexed                     bool // read from the index, which keeps no URL or description
 
 	SchemaSlug, TimeZone             string
 	EventStatus, AttendanceMode      string

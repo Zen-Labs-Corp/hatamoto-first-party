@@ -123,6 +123,46 @@ func TestBuilderHostErrorIsEmptyResult(t *testing.T) {
 	}
 }
 
+func TestBuilderListsFromIndex(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}, {ID: "p", Source: sourcePast}}})
+	if h.listCalls != 0 || len(got.Results) != 2 {
+		t.Fatalf("list calls = %d, results = %+v", h.listCalls, got.Results)
+	}
+	if g := strings.Join(titles(got.Results[0]), "|"); g != "Future, show|Indexed only" {
+		t.Errorf("upcoming = %s", g)
+	}
+	// the index has no URL: it comes from the entity, for the events the host knows
+	if it := got.Results[0].Items[0]; it.URL != "https://example.com/e/future" {
+		t.Errorf("item = %+v", it)
+	}
+	if got.Results[0].Items[1].URL != "" {
+		t.Errorf("event unknown to the host got a URL: %+v", got.Results[0].Items[1])
+	}
+}
+
+func TestBuilderFillStopsWhenBudgetIsUsed(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	at := time.Now()
+	clock = func() time.Time { at = at.Add(builderBudget); return at } // every look at the clock burns the budget
+	t.Cleanup(func() { clock = time.Now })
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if len(got.Results[0].Items) == 0 || len(h.getCalls) != 0 {
+		t.Fatalf("items = %d, gets = %d", len(got.Results[0].Items), len(h.getCalls))
+	}
+}
+
+func TestIndexErrorFallsBackToEntities(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}} // db.query fails
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if g := strings.Join(titles(got.Results[0]), "|"); g != "Future, show" || h.listCalls == 0 {
+		t.Fatalf("upcoming = %s, list calls = %d", g, h.listCalls)
+	}
+}
+
 func TestBuilderLoadsOncePerRequest(t *testing.T) {
 	calls := 0
 	(&fakeHost{entities: []string{evFuture}}).install(t)

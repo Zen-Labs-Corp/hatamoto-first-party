@@ -17,6 +17,8 @@ type fakeHost struct {
 	entities        []string
 	getErr, listErr error
 	getCalls        []map[string]any
+	dbRows          string // jsonb cell the index answers with; empty: no db
+	listCalls       int
 }
 
 func (h *fakeHost) install(t *testing.T) {
@@ -25,7 +27,13 @@ func (h *fakeHost) install(t *testing.T) {
 		switch fn {
 		case "settings.get":
 			return json.Unmarshal([]byte(`{}`), out)
+		case "db.query":
+			if h.dbRows == "" {
+				return errors.New("no db")
+			}
+			return json.Unmarshal([]byte(`{"rows":[[`+h.dbRows+`]]}`), out)
 		case "entities.list":
+			h.listCalls++
 			if h.listErr != nil {
 				return h.listErr
 			}
@@ -100,6 +108,47 @@ func TestFeedRoute(t *testing.T) {
 		if strings.Contains(r.Body, "SUMMARY:"+no) {
 			t.Errorf("feed contains %s", no)
 		}
+	}
+}
+
+const idxRows = `[{"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","starts_at":"2026-07-01T17:00:00+00:00","ends_at":"2026-07-01T19:00:00+00:00"},
+ {"id":"x9","schema_slug":"event","slug":"indexed","name":"Indexed only","starts_at":"2026-08-01T10:00:00+00:00","ends_at":"2026-08-01T10:00:00+00:00"},
+ {"id":"z0","schema_slug":"post","slug":"stale","name":"Stale type","starts_at":"2026-08-02T10:00:00+00:00","ends_at":"2026-08-02T10:00:00+00:00"}]`
+
+func TestFeedReadsIndex(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Indexed only\r\n") || !strings.Contains(r.Body, "SUMMARY:Future\\, show\r\n") {
+		t.Fatalf("response = %+v", r)
+	}
+	if strings.Contains(r.Body, "Stale type") {
+		t.Error("an event of a type that is no longer accepted is listed")
+	}
+	if h.listCalls != 0 {
+		t.Errorf("entities.list calls = %d", h.listCalls)
+	}
+	// the index keeps no URL: it is read from the entity
+	if !strings.Contains(r.Body, "URL:https://example.com/e/future\r\n") {
+		t.Errorf("feed has no URL from the entity: %q", r.Body)
+	}
+}
+
+func TestIndexMissFallsBack(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: `[]`}
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") || h.listCalls == 0 {
+		t.Fatalf("status = %d, list calls = %d", r.Status, h.listCalls)
+	}
+}
+
+func TestFindEventFromIndex(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	r := call(t, "GET", "/event/{file}", "future.ics")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") || h.listCalls != 0 || len(h.getCalls) != 1 || h.getCalls[0]["id"] != "f1" {
+		t.Fatalf("response = %+v, lists = %d, gets = %v", r, h.listCalls, h.getCalls)
 	}
 }
 

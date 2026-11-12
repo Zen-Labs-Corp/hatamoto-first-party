@@ -263,7 +263,8 @@ func eventFromIndex(m map[string]any, loc *time.Location) (Event, bool) {
 	e := Event{
 		ID: attrString(m, "id"), SchemaSlug: attrString(m, "schema_slug"), Slug: attrString(m, "slug"),
 		Locale: attrString(m, "locale"), Name: attrString(m, "name"),
-		Start: start, AllDay: attrBool(m, "all_day"), TimeZone: attrString(m, "time_zone"),
+		indexed: true,
+		Start:   start, AllDay: attrBool(m, "all_day"), TimeZone: attrString(m, "time_zone"),
 		EventStatus: attrString(m, "event_status"), AttendanceMode: attrString(m, "attendance_mode"),
 		VenueID: attrString(m, "venue_id"), Venue: attrString(m, "venue_name"), VenueCity: attrString(m, "venue_city"),
 		CategoryIDs: attrIDs(m, "category_ids"), SeriesID: attrString(m, "series_id"),

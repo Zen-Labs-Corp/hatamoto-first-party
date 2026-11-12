@@ -12,7 +12,9 @@ import (
 const (
 	sourceUpcoming = "ext.event-calendar.upcoming"
 	sourcePast     = "ext.event-calendar.past"
-	icsPathPrefix  = "/p/event-calendar/event/"
+	// sourceEvent is declared in the manifest; the card source answers it later.
+	sourceEvent   = "ext.event-calendar.event"
+	icsPathPrefix = "/p/event-calendar/event/"
 
 	// builderBudget is how long a builder call may keep paging. Core cancels
 	// the whole external-data round trip at 500 ms, so the plugin returns what
@@ -28,7 +30,8 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	var upcoming, past []Event
 	loaded := false
 	var s settings
-	var at time.Time
+	var at, deadline time.Time
+	filled := map[string]Event{}
 	for _, q := range r.Requests {
 		if q.Source != sourceUpcoming && q.Source != sourcePast {
 			continue
@@ -37,9 +40,13 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 			loaded = true
 			s = loadSettings()
 			at = now()
-			if evs, err := loadEventsUntil(s, clock().Add(builderBudget)); err == nil {
-				upcoming, past = split(filterLanguage(evs, r.Language), at, s.location())
+			deadline = clock().Add(builderBudget)
+			var wantUp, wantPast bool
+			for _, w := range r.Requests {
+				wantUp = wantUp || w.Source == sourceUpcoming
+				wantPast = wantPast || w.Source == sourcePast
 			}
+			upcoming, past, _ = eventsFor(s, r.Language, at, wantUp, wantPast, sdk.MaxBuilderDataItems, deadline)
 		}
 		list := upcoming
 		if q.Source == sourcePast {
@@ -54,6 +61,12 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 		}
 		res := sdk.BuilderDataResult{ID: q.ID}
 		for _, e := range list {
+			if f, ok := filled[e.ID]; ok {
+				e = f
+			} else {
+				e = fillDetails(e, s, deadline)
+				filled[e.ID] = e
+			}
 			res.Items = append(res.Items, toItem(e, s, at))
 		}
 		r.Results = append(r.Results, res)
@@ -122,4 +135,79 @@ func toItem(e Event, s settings, at time.Time) sdk.BuilderDataItem {
 		PublishedAt: e.Start.UTC().Format(time.RFC3339),
 		Attrs:       attrs,
 	}
+}
+
+// eventsFor reads the wanted lists, each of at most limit events: upcoming
+// (not over at the given moment, soonest first) and past (latest first). The
+// index answers first; a list it cannot answer (no db, or nothing indexed yet,
+// as on a site that has not been reconciled) comes from the entities, which
+// are listed once for both. The error is that listing's, set only when it was
+// needed and failed; lists the index answered are still returned.
+func eventsFor(s settings, lang string, at time.Time, wantUp, wantPast bool, limit int, until time.Time) (upcoming, past []Event, err error) {
+	fromIndex := func(up bool) ([]Event, bool) {
+		evs, qerr := queryEvents(indexQuery{Upcoming: up, At: at, Language: lang, Limit: limit, Loc: s.location()})
+		var out []Event
+		for _, e := range evs {
+			if s.accepts(e.SchemaSlug) {
+				out = append(out, e)
+			}
+		}
+		return out, qerr == nil && len(out) > 0
+	}
+	okUp, okPast := !wantUp, !wantPast
+	if wantUp {
+		upcoming, okUp = fromIndex(true)
+	}
+	if wantPast {
+		past, okPast = fromIndex(false)
+	}
+	if okUp && okPast {
+		return upcoming, past, nil
+	}
+	evs, err := loadEventsUntil(s, until)
+	if err != nil {
+		return upcoming, past, err
+	}
+	up, pa := split(filterLanguage(evs, lang), at, s.location())
+	if !okUp {
+		upcoming = firstN(up, limit)
+	}
+	if !okPast {
+		past = firstN(pa, limit)
+	}
+	return upcoming, past, nil
+}
+
+func firstN(evs []Event, n int) []Event {
+	if len(evs) > n {
+		return evs[:n]
+	}
+	return evs
+}
+
+// fillDetails completes an event that came from the index, which keeps no
+// URL, description, address or ticket link: they are read from the entity,
+// while the time budget lasts. Without a budget or when the host fails the
+// event stays as the index had it. Events of the entities path are complete
+// and returned unchanged.
+func fillDetails(e Event, s settings, deadline time.Time) Event {
+	if !e.indexed || e.ID == "" || !clock().Before(deadline) {
+		return e
+	}
+	var raw entityDTO
+	if err := callHost(sdk.FnEntitiesGet, map[string]any{"id": e.ID}, &raw); err != nil || raw.Status != "published" {
+		return e
+	}
+	full, ok := eventFromEntity(raw, s)
+	if !ok {
+		return e
+	}
+	e.URL, e.Description, e.TicketURL, e.Website = full.URL, full.Description, full.TicketURL, full.Website
+	if e.Address == "" {
+		e.Address = full.Address
+	}
+	if e.Image == "" {
+		e.Image = full.Image
+	}
+	return e
 }
