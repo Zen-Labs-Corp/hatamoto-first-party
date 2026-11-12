@@ -2,8 +2,8 @@
 // around the pin, loaded by the visitor's browser, and the attribution the tile
 // policy asks for. The server output works without it (a link to the map).
 //
-// The tile host comes from the data-tiles attribute and the scheme from the
-// page, so this file holds no absolute URL.
+// The tile host comes from the data-tiles attribute. Tiles are always fetched
+// over https, whatever the page uses, so no page policy blocks them as mixed content.
 
 const ZOOM = 15;
 const MAX_LAT = 85;
@@ -62,6 +62,11 @@ function gridTiles(lat, lon, z) {
   return { tiles, px: (f.x - x0) / 2, py: (f.y - y0) / 2 };
 }
 
+// tileUrl is the https address of one tile on the validated host.
+function tileUrl(host, z, t) {
+  return "https:" + SLASHES + host + "/" + z + "/" + t.x + "/" + t.y + ".png";
+}
+
 // pinPosition places the pin inside the (position: relative) tiles box. It must
 // be left and top: a percentage margin is relative to the container width and
 // would grow the grid row instead of moving the pin.
@@ -79,7 +84,7 @@ function draw(el) {
   tiles.className = "tiles";
   for (const t of grid.tiles) {
     const img = document.createElement("img");
-    img.src = location.protocol + SLASHES + host + "/" + ZOOM + "/" + t.x + "/" + t.y + ".png";
+    img.src = tileUrl(host, ZOOM, t);
     img.alt = "";
     img.loading = "lazy";
     img.width = TILE;
@@ -104,4 +109,4 @@ if (typeof document !== "undefined") {
   for (const el of document.querySelectorAll("[data-map][data-tiles]")) draw(el);
 }
 
-if (typeof module !== "undefined") module.exports = { tileXY, parsePin, gridTiles, validHost, pinPosition };
+if (typeof module !== "undefined") module.exports = { tileXY, parsePin, gridTiles, validHost, pinPosition, tileUrl };

@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { tileXY, parsePin, gridTiles, validHost, pinPosition } = require("./island.js");
+const { tileXY, parsePin, gridTiles, validHost, pinPosition, tileUrl } = require("./island.js");
 
 assert.deepEqual(tileXY(0, 0, 1), { x: 1, y: 1 });
 
@@ -38,6 +38,9 @@ for (const [lat, lon] of [[53.8, -1.55], [0, 0], [51.5, -0.12], [-33.9, 151.2], 
   assert.ok(g.px >= 0.25 && g.px <= 0.75 && g.py >= 0 && g.py <= 1, `${lat},${lon}: ${g.px},${g.py}`);
   for (const t of g.tiles) assert.ok(t.x >= 0 && t.x < 2 ** 15 && t.y >= 0 && t.y < 2 ** 15);
 }
+
+// tiles are always requested over https
+assert.equal(tileUrl("tile.openstreetmap.org", 15, { x: 1, y: 2 }), "https://tile.openstreetmap.org/15/1/2.png");
 
 // the pin is placed with left/top inside a positioned tiles box, never with margins
 // (a percentage margin inflates the grid row and the pin floats outside the map)
