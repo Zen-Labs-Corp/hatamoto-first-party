@@ -12,6 +12,10 @@ const (
 	icsMaxOctets = 75
 	icsDateTime  = "20060102T150405Z"
 	icsDate      = "20060102"
+
+	// maxFeedVenues bounds the venue lookups of one feed; later venues fall
+	// back to the text fields of their event.
+	maxFeedVenues = 25
 )
 
 // escapeText escapes an iCalendar TEXT value: backslash, semicolon, comma and
@@ -67,14 +71,30 @@ func writeCalendar(evs []Event, stamp time.Time, loc *time.Location) string {
 	line("PRODID:" + icsProdID)
 	line("CALSCALE:GREGORIAN")
 	line("METHOD:PUBLISH")
+	venues := map[string]*Venue{}
+	where := func(e Event) string {
+		if e.VenueID != "" {
+			v, seen := venues[e.VenueID]
+			if !seen && len(venues) < maxFeedVenues {
+				if r, ok := loadVenue(e.VenueID); ok {
+					v = &r
+				}
+				venues[e.VenueID] = v
+			}
+			if v != nil {
+				return v.line()
+			}
+		}
+		return joinNonEmpty(e.Venue, e.Address)
+	}
 	for _, e := range evs {
-		writeEvent(line, e, stamp, loc)
+		writeEvent(line, e, where(e), stamp, loc)
 	}
 	line("END:VCALENDAR")
 	return b.String()
 }
 
-func writeEvent(line func(string), e Event, stamp time.Time, loc *time.Location) {
+func writeEvent(line func(string), e Event, where string, stamp time.Time, loc *time.Location) {
 	uid := e.ID
 	if uid == "" {
 		uid = e.Slug
@@ -101,14 +121,14 @@ func writeEvent(line func(string), e Event, stamp time.Time, loc *time.Location)
 		}
 	}
 	line("SUMMARY:" + escapeText(e.Name))
-	var where []string
-	for _, p := range []string{e.Venue, e.Address} {
-		if p = strings.TrimSpace(p); p != "" {
-			where = append(where, p)
-		}
+	switch e.EventStatus {
+	case "cancelled":
+		line("STATUS:CANCELLED")
+	case "postponed":
+		line("STATUS:TENTATIVE")
 	}
-	if len(where) > 0 {
-		line("LOCATION:" + escapeText(strings.Join(where, ", ")))
+	if where != "" {
+		line("LOCATION:" + escapeText(where))
 	}
 	if isAbsoluteURL(e.URL) {
 		line("URL:" + e.URL)

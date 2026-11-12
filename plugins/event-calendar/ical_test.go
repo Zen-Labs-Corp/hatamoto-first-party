@@ -101,3 +101,27 @@ func TestWriteCalendarEdgeCases(t *testing.T) {
 		t.Error("URL emitted without a value")
 	}
 }
+
+func TestWriteCalendarStatus(t *testing.T) {
+	stamp := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	start := time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC)
+	out := writeCalendar([]Event{
+		{ID: "a", Name: "A", Start: start, EventStatus: "cancelled"},
+		{ID: "b", Name: "B", Start: start, EventStatus: "postponed"},
+		{ID: "c", Name: "C", Start: start, EventStatus: "scheduled"},
+	}, stamp, time.UTC)
+	if strings.Count(out, "STATUS:CANCELLED\r\n") != 1 || strings.Count(out, "STATUS:TENTATIVE\r\n") != 1 || strings.Count(out, "STATUS:") != 2 {
+		t.Errorf("status lines: %q", out)
+	}
+}
+
+func TestWriteCalendarVenueRef(t *testing.T) {
+	(&fakeHost{entities: []string{venueDoc}}).install(t)
+	out := writeCalendar([]Event{
+		{ID: "a", Name: "A", Start: time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC), VenueID: "v1"},
+		{ID: "b", Name: "B", Start: time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC), VenueID: "gone", Venue: "Text hall"},
+	}, time.Now(), time.UTC)
+	if !strings.Contains(out, `LOCATION:Old Mill\, 12 High St\, Leeds`) || !strings.Contains(out, "LOCATION:Text hall\r\n") {
+		t.Errorf("locations: %q", out)
+	}
+}

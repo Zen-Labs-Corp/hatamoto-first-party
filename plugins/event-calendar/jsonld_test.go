@@ -141,3 +141,76 @@ func TestEnrichKeepsSpecificEventType(t *testing.T) {
 		t.Errorf("@type = %v", got.Doc["@type"])
 	}
 }
+
+const (
+	evHybrid = `{"id":"h1","schema_slug":"calendar-event","slug":"h","name":"Hybrid","status":"published",
+ "attributes":{"start_at":"2027-02-14T19:00:00Z","event_status":"cancelled","attendance_mode":"hybrid","online_url":"https://example.org/join",
+ "venue":["v1"],"organizers":["o1"],"ticket_url":"https://example.org/t","price_amount":12.5,"currency":"GBP"}}`
+	venueDoc = `{"id":"v1","schema_slug":"calendar-venue","name":"Old Mill","status":"published",
+ "attributes":{"address":"12 High St","city":"Leeds","postcode":"LS1","latitude":53.8,"longitude":-1.55}}`
+	orgDoc = `{"id":"o1","schema_slug":"calendar-organizer","name":"Jazz Society","status":"published",
+ "attributes":{"email":"hi@example.org","website":"https://example.org"}}`
+)
+
+func TestEnrichStatusVenueOrganizerOffers(t *testing.T) {
+	(&fakeHost{entities: []string{evHybrid, venueDoc, orgDoc}}).install(t)
+	d := baseDoc()
+	d.Entity = sdk.EntityRef{ID: "h1", SchemaSlug: "calendar-event"}
+	doc := enrich(t, d).Doc
+	if doc["eventStatus"] != "https://schema.org/EventCancelled" {
+		t.Errorf("eventStatus = %v", doc["eventStatus"])
+	}
+	if doc["eventAttendanceMode"] != "https://schema.org/MixedEventAttendanceMode" {
+		t.Errorf("mode = %v", doc["eventAttendanceMode"])
+	}
+	wantLoc := []any{
+		map[string]any{"@type": "Place", "name": "Old Mill",
+			"address": map[string]any{"@type": "PostalAddress", "streetAddress": "12 High St", "addressLocality": "Leeds", "postalCode": "LS1"},
+			"geo":     map[string]any{"@type": "GeoCoordinates", "latitude": 53.8, "longitude": -1.55}},
+		map[string]any{"@type": "VirtualLocation", "url": "https://example.org/join"},
+	}
+	if !reflect.DeepEqual(doc["location"], wantLoc) {
+		t.Errorf("location = %v", doc["location"])
+	}
+	wantOrg := map[string]any{"@type": "Organization", "name": "Jazz Society", "url": "https://example.org", "email": "hi@example.org"}
+	if !reflect.DeepEqual(doc["organizer"], wantOrg) {
+		t.Errorf("organizer = %v", doc["organizer"])
+	}
+	wantOffer := map[string]any{"@type": "Offer", "url": "https://example.org/t", "price": "12.5", "priceCurrency": "GBP"}
+	if !reflect.DeepEqual(doc["offers"], wantOffer) {
+		t.Errorf("offers = %v", doc["offers"])
+	}
+}
+
+func TestEnrichPostponedOnlineAndBrokenRefs(t *testing.T) {
+	(&fakeHost{entities: []string{`{"id":"x","schema_slug":"calendar-event","slug":"x","name":"X","status":"published",
+ "attributes":{"start_at":"2027-02-14T19:00:00Z","event_status":"postponed","attendance_mode":"online","online_url":"https://example.org/join","venue":["gone"],"organizers":["gone"]}}`}}).install(t)
+	d := baseDoc()
+	d.Entity = sdk.EntityRef{ID: "x", SchemaSlug: "calendar-event"}
+	doc := enrich(t, d).Doc
+	if doc["eventStatus"] != "https://schema.org/EventPostponed" || doc["eventAttendanceMode"] != "https://schema.org/OnlineEventAttendanceMode" {
+		t.Errorf("doc = %v", doc)
+	}
+	if !reflect.DeepEqual(doc["location"], map[string]any{"@type": "VirtualLocation", "url": "https://example.org/join"}) {
+		t.Errorf("location = %v", doc["location"])
+	}
+	if _, ok := doc["organizer"]; ok {
+		t.Error("organizer from a missing ref")
+	}
+}
+
+func TestEnrichGate(t *testing.T) {
+	h := &fakeHost{entities: []string{evJazz, evHybrid, venueDoc, orgDoc}}
+	h.install(t)
+	d := baseDoc()
+	d.Entity.SchemaSlug = "page"
+	if got := enrich(t, d); !reflect.DeepEqual(got.Doc, d.Doc) || len(h.getCalls) != 0 {
+		t.Fatalf("page was enriched: %v", got.Doc)
+	}
+	for _, c := range []struct{ id, slug string }{{"3f2a", "event"}, {"h1", "calendar-event"}} {
+		d.Entity = sdk.EntityRef{ID: c.id, SchemaSlug: c.slug}
+		if got := enrich(t, d); got.Doc["@type"] != "Event" {
+			t.Errorf("%s not enriched: %v", c.slug, got.Doc)
+		}
+	}
+}
