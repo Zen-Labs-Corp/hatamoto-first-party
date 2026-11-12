@@ -64,12 +64,13 @@ func serveFeed() sdk.HTTPResponse {
 	}
 	deadline := clock().Add(feedFillBudget)
 	var kept []Event
+	venues := venueMemo{}
 	for _, e := range upcoming {
-		if e, keep := fillDetails(e, s, deadline); keep {
+		if e, keep := fillDetails(e, s, deadline, venues); keep {
 			kept = append(kept, e)
 		}
 	}
-	return calendar(writeCalendar(kept, at, s.location()), "")
+	return calendar(writeCalendarWith(kept, at, s.location(), venues), "")
 }
 
 // serveEvent is one published event as a calendar, past ones included.

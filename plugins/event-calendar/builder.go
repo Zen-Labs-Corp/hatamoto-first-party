@@ -36,6 +36,7 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 		keep bool
 	}
 	filled := map[string]filledEvent{}
+	venues := venueMemo{}
 	for _, q := range r.Requests {
 		if q.Source == sourceEvent {
 			r.Results = append(r.Results, answerEventCard(q, r.EntityID))
@@ -71,7 +72,7 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 		for _, e := range list {
 			f, ok := filled[e.ID]
 			if !ok {
-				f.Event, f.keep = fillDetails(e, s, deadline)
+				f.Event, f.keep = fillDetails(e, s, deadline, venues)
 				filled[e.ID] = f
 			}
 			if !f.keep {
@@ -203,7 +204,7 @@ func firstN(evs []Event, n int) []Event {
 // event stays as the index had it. Events of the entities path are complete
 // and returned unchanged. keep is false for an event whose entity is gone or
 // no longer published: it must not be listed, and its row is dropped.
-func fillDetails(e Event, s settings, deadline time.Time) (_ Event, keep bool) {
+func fillDetails(e Event, s settings, deadline time.Time, venues venueMemo) (_ Event, keep bool) {
 	if e.ID == "" || !clock().Before(deadline) {
 		return e, true
 	}
@@ -213,18 +214,19 @@ func fillDetails(e Event, s settings, deadline time.Time) (_ Event, keep bool) {
 			return e, false
 		}
 	}
-	return withVenue(e, deadline), true
+	return withVenue(e, deadline, venues), true
 }
 
 // withVenue puts the name and address of the chosen venue entity on an event
 // that has no text of its own for them (an event read from the entities has
 // only the venue reference; the index has the name but not the address).
-// Without a budget, a venue or when the host fails the event is unchanged.
-func withVenue(e Event, deadline time.Time) Event {
+// Without a budget, a venue or when the host fails the event is unchanged. A
+// venue is read once per request, however many events share it.
+func withVenue(e Event, deadline time.Time, venues venueMemo) Event {
 	if e.VenueID == "" || (e.Venue != "" && e.Address != "") || !clock().Before(deadline) {
 		return e
 	}
-	if v, ok := loadVenue(e.VenueID); ok {
+	if v, ok := venues.get(e.VenueID); ok {
 		if e.Venue == "" {
 			e.Venue = v.Name
 		}

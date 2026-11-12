@@ -235,3 +235,41 @@ func TestBuilderListResolvesVenueEntity(t *testing.T) {
 		t.Errorf("venue attrs = %v", a)
 	}
 }
+
+func venueGets(h *fakeHost, id string) (n int) {
+	for _, c := range h.getCalls {
+		if c["id"] == id {
+			n++
+		}
+	}
+	return n
+}
+
+// Events at one venue must not each read it again: the list and the feed share a
+// small time budget.
+func TestVenueIsReadOnceForManyEvents(t *testing.T) {
+	ev := func(id string) string {
+		return `{"id":"` + id + `","schema_slug":"calendar-event","slug":"` + id + `","name":"` + id + `","status":"published","attributes":{"start_at":"2099-07-01T19:00","venue":["v1"]}}`
+	}
+	venue := `{"id":"v1","schema_slug":"calendar-venue","slug":"mill","name":"The Old Mill","status":"published","attributes":{"address":"12 High Street","city":"Leeds"}}`
+	ents := []string{ev("e1"), ev("e2"), ev("e3"), venue}
+
+	h := &fakeHost{entities: ents}
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if len(got.Results[0].Items) != 3 || got.Results[0].Items[2].Attrs["venue_name"] != "The Old Mill" {
+		t.Fatalf("items = %+v", got.Results[0].Items)
+	}
+	if n := venueGets(h, "v1"); n != 1 {
+		t.Errorf("list: venue read %d times, want 1", n)
+	}
+
+	h = &fakeHost{entities: ents}
+	h.install(t)
+	if r := call(t, "GET", "/events.ics", ""); r.Status != 200 {
+		t.Fatalf("feed status = %d", r.Status)
+	}
+	if n := venueGets(h, "v1"); n != 1 {
+		t.Errorf("feed: venue read %d times, want 1", n)
+	}
+}

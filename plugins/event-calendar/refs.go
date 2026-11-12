@@ -55,6 +55,25 @@ func loadVenue(id string) (Venue, bool) {
 	}, true
 }
 
+// venueMemo remembers the venues one list or feed request has read, a venue
+// that could not be read included, so events at the same venue cost one host
+// call. Make one per request.
+type venueMemo map[string]*Venue
+
+func (m venueMemo) get(id string) (Venue, bool) {
+	v, seen := m[id]
+	if !seen {
+		if r, ok := loadVenue(id); ok {
+			v = &r
+		}
+		m[id] = v
+	}
+	if v == nil {
+		return Venue{}, false
+	}
+	return *v, true
+}
+
 func loadOrganizer(id string) (Organizer, bool) {
 	raw, a, ok := loadRef(id)
 	if !ok {
