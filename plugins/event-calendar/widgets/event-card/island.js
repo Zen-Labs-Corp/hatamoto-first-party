@@ -67,11 +67,18 @@ function tileUrl(host, z, t) {
   return "https:" + SLASHES + host + "/" + z + "/" + t.x + "/" + t.y + ".png";
 }
 
-// pinPosition places the pin inside the (position: relative) tiles box. It must
-// be left and top: a percentage margin is relative to the container width and
-// would grow the grid row instead of moving the pin.
-function pinPosition(grid) {
-  return { left: grid.px * 100 + "%", top: grid.py * 100 + "%" };
+// pinBackground draws the pin as a dot in a background that covers the whole
+// square of tiles, so its place is a percentage of that square. The pin element
+// is laid over the tiles by CSS (a square as wide as the map, pulled up by its
+// own height). Core refuses position values other than static and relative in
+// a pack's CSS, and a margin-based or offset-based pin does not work: a
+// percentage margin grows the row of a grid and a percentage offset needs a
+// definite height.
+function pinBackground(grid) {
+  const at = grid.px * 100 + "% " + grid.py * 100 + "%";
+  const dot = "var(--hm-color-accent, #d33)";
+  const ring = "var(--hm-color-bg, #fff)";
+  return "radial-gradient(circle at " + at + ", " + dot + " 0 6px, " + ring + " 6px 8px, transparent 8.5px)";
 }
 
 function draw(el) {
@@ -93,15 +100,13 @@ function draw(el) {
   }
   const marker = document.createElement("span");
   marker.className = "pin";
-  const at = pinPosition(grid);
-  marker.style.left = at.left;
-  marker.style.top = at.top;
-  tiles.appendChild(marker);
+  marker.style.background = pinBackground(grid);
 
   const credit = document.createElement("p");
   credit.className = "attrib";
   credit.textContent = "Map data from OpenStreetMap contributors";
   el.appendChild(tiles);
+  el.appendChild(marker);
   el.appendChild(credit);
 }
 
@@ -109,4 +114,4 @@ if (typeof document !== "undefined") {
   for (const el of document.querySelectorAll("[data-map][data-tiles]")) draw(el);
 }
 
-if (typeof module !== "undefined") module.exports = { tileXY, parsePin, gridTiles, validHost, pinPosition, tileUrl };
+if (typeof module !== "undefined") module.exports = { tileXY, parsePin, gridTiles, validHost, pinBackground, tileUrl };

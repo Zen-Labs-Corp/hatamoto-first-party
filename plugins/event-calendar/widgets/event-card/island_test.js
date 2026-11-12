@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { tileXY, parsePin, gridTiles, validHost, pinPosition, tileUrl } = require("./island.js");
+const { tileXY, parsePin, gridTiles, validHost, pinBackground, tileUrl } = require("./island.js");
 
 assert.deepEqual(tileXY(0, 0, 1), { x: 1, y: 1 });
 
@@ -42,16 +42,19 @@ for (const [lat, lon] of [[53.8, -1.55], [0, 0], [51.5, -0.12], [-33.9, 151.2], 
 // tiles are always requested over https
 assert.equal(tileUrl("tile.openstreetmap.org", 15, { x: 1, y: 2 }), "https://tile.openstreetmap.org/15/1/2.png");
 
-// the pin is placed with left/top inside a positioned tiles box, never with margins
-// (a percentage margin inflates the grid row and the pin floats outside the map)
-const pos = pinPosition({ px: 0.5, py: 0.25 });
-assert.deepEqual(pos, { left: "50%", top: "25%" });
+// the pin is a background dot on a square laid over the tiles: it must not sit in
+// the tiles grid (it would take rows and push the tiles down) and core refuses
+// position values other than static and relative in a pack's CSS
+assert.match(pinBackground({ px: 0.5, py: 0.25 }), /^radial-gradient\(circle at 50% 25%, /);
 const css = fs.readFileSync(path.join(__dirname, "widget.css"), "utf8");
-const rule = (sel) => new RegExp(sel.replace(/\./g, "\\.") + "\\{([^}]*)\\}").exec(css)[1];
-assert.match(rule(".hm-event-calendar_event-card .tiles"), /position:relative/);
-assert.match(rule(".hm-event-calendar_event-card .pin"), /position:absolute/);
-assert.doesNotMatch(rule(".hm-event-calendar_event-card .pin"), /grid-area/);
-assert.doesNotMatch(fs.readFileSync(path.join(__dirname, "island.js"), "utf8"), /marginLeft|marginTop/);
+const pin = new RegExp("\\.hm-event-calendar_event-card \\.pin\\{([^}]*)\\}").exec(css)[1];
+assert.match(pin, /aspect-ratio:1\/1/);
+assert.match(pin, /margin-top:-100%/);
+assert.doesNotMatch(pin, /grid-area|position|[^-]top:|left:/);
+assert.doesNotMatch(css, /absolute|fixed|sticky/);
+const island = fs.readFileSync(path.join(__dirname, "island.js"), "utf8");
+assert.doesNotMatch(island, /marginLeft|marginTop/);
+assert.doesNotMatch(island, /tiles\.appendChild\(marker\)/);
 
 // the island is lint-clean: none of the tokens the install scan refuses
 const src = fs.readFileSync(path.join(__dirname, "island.js"), "utf8");

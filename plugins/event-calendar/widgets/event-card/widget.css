@@ -5,9 +5,9 @@
 .hm-event-calendar_event-card dt{font-weight:600}
 .hm-event-calendar_event-card dd{margin:0}
 .hm-event-calendar_event-card .map{display:block;max-width:32rem;margin-bottom:var(--hm-space-2,.5rem)}
-.hm-event-calendar_event-card .tiles{position:relative;display:grid;grid-template-columns:1fr 1fr}
+.hm-event-calendar_event-card .tiles{display:grid;grid-template-columns:1fr 1fr}
 .hm-event-calendar_event-card .map img{display:block;max-width:100%;height:auto}
-.hm-event-calendar_event-card .pin{position:absolute;width:.9rem;height:.9rem;box-sizing:border-box;border:2px solid var(--hm-color-bg,#fff);border-radius:50%;background:var(--hm-color-accent,#d33);transform:translate(-50%,-50%)}
+.hm-event-calendar_event-card .pin{display:block;width:100%;aspect-ratio:1/1;margin-top:-100%;pointer-events:none}
 .hm-event-calendar_event-card .attrib{margin:var(--hm-space-1,.25rem) 0 0;font-size:.75rem}
 .hm-event-calendar_event-card .btn{display:inline-block;padding:var(--hm-space-2,.5rem) var(--hm-space-4,1rem);border-radius:var(--hm-radius,.5rem);background:var(--hm-color-accent,#1a56db);color:var(--hm-color-on-accent,#fff);font-weight:600;text-decoration:none}
 .hm-event-calendar_event-card .cal a{margin-inline-start:var(--hm-space-2,.5rem)}
