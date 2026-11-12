@@ -131,7 +131,7 @@ func TestIndexDeleteOnUnpublish(t *testing.T) {
 		h.calls = nil
 		ok, err := reindexEntity(id, settings{})
 		ex := h.execs()
-		if ok || err != nil || len(ex) != 1 || ex[0].sql != "DELETE FROM events WHERE entity_id = $1" || ex[0].args[0] != id {
+		if ok || err != nil || len(ex) != 1 || !strings.Contains(ex[0].sql, "DELETE FROM events WHERE entity_id = $1") || ex[0].args[0] != id {
 			t.Errorf("%s: ok=%v err=%v calls=%+v", id, ok, err, ex)
 		}
 	}
@@ -204,4 +204,16 @@ func TestIndexQueryEvents(t *testing.T) {
 		t.Errorf("past query = %s", h.calls[1].sql)
 	}
 	h.assertSingleStatements(t)
+}
+
+func TestIndexNotTrustedBeforeFirstReconcile(t *testing.T) {
+	h := &indexHost{queryTo: `{"rows":[[null]]}`} // the query yields NULL until index_state has a row
+	h.install(t)
+	if _, err := queryEvents(indexQuery{Upcoming: true, At: time.Now()}); !errors.Is(err, errIndexNotReady) {
+		t.Errorf("err = %v", err)
+	}
+	h.queryTo = `{"rows":[[[]]]}`
+	if evs, err := queryEvents(indexQuery{Upcoming: true, At: time.Now()}); err != nil || len(evs) != 0 {
+		t.Errorf("empty reconciled index: %v, %v", evs, err)
+	}
 }

@@ -130,15 +130,12 @@ func TestBuilderListsFromIndex(t *testing.T) {
 	if h.listCalls != 0 || len(got.Results) != 2 {
 		t.Fatalf("list calls = %d, results = %+v", h.listCalls, got.Results)
 	}
-	if g := strings.Join(titles(got.Results[0]), "|"); g != "Future, show|Indexed only" {
+	if g := strings.Join(titles(got.Results[0]), "|"); g != "Future, show" { // the row of the entity the host no longer has is dropped
 		t.Errorf("upcoming = %s", g)
 	}
 	// the index has no URL: it comes from the entity, for the events the host knows
 	if it := got.Results[0].Items[0]; it.URL != "https://example.com/e/future" {
 		t.Errorf("item = %+v", it)
-	}
-	if got.Results[0].Items[1].URL != "" {
-		t.Errorf("event unknown to the host got a URL: %+v", got.Results[0].Items[1])
 	}
 }
 

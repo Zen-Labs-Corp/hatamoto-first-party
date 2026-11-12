@@ -70,6 +70,7 @@ func onReconcile(sdk.CronEvent) error {
 // passed and then deletes nothing. It returns the addresses a map still needs
 // looked up. Running it again repeats the same writes.
 func reconcileOnce(s settings, until time.Time) (addrs []string, err error) {
+	started := clock()
 	seen := map[string]bool{}
 	pages := 0
 	complete := true
@@ -105,7 +106,7 @@ listing:
 					complete = false
 					break listing
 				}
-				_, addr, werr := reindexDTO(raw, s)
+				_, addr, werr := reindexDTO(raw, s, &started)
 				if werr != nil {
 					return addrs, errors.Join(err, werr)
 				}
@@ -130,6 +131,9 @@ listing:
 		if !seen[id] {
 			err = errors.Join(err, deleteEvent(id))
 		}
+	}
+	if err == nil {
+		err = markReconciled()
 	}
 	return addrs, err
 }

@@ -91,8 +91,9 @@ func utcText(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 const upsertEventSQL = `INSERT INTO events (entity_id, schema_slug, slug, locale, name, starts_at, ends_at, all_day, time_zone,
  event_status, attendance_mode, venue_id, venue_name, venue_city, category_ids, category_names, series_id,
  price, price_amount, featured, image, source_kind, source_uid, source_url)
-VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
- $18, $19::double precision, $20, $21, $22, $23, $24)
+SELECT $1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8::boolean, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
+ $18, $19::double precision, $20::boolean, $21, $22, $23, $24
+WHERE $25::timestamptz IS NULL OR NOT EXISTS (SELECT 1 FROM deleted_events WHERE entity_id = $1 AND deleted_at >= $25::timestamptz)
 ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug = EXCLUDED.slug, locale = EXCLUDED.locale,
  name = EXCLUDED.name, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, all_day = EXCLUDED.all_day,
  time_zone = EXCLUDED.time_zone, event_status = EXCLUDED.event_status, attendance_mode = EXCLUDED.attendance_mode,
@@ -104,11 +105,18 @@ ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug =
 // The delete skips the row the insert writes, so the two halves never touch
 // one key. One occurrence per event for now; recurrence will write many.
 const upsertOccurrenceSQL = `WITH d AS (DELETE FROM occurrences WHERE event_id = $1 AND starts_at <> $2::timestamptz)
-INSERT INTO occurrences (event_id, starts_at, ends_at) VALUES ($1, $2::timestamptz, $3::timestamptz)
+INSERT INTO occurrences (event_id, starts_at, ends_at) SELECT $1, $2::timestamptz, $3::timestamptz
+WHERE EXISTS (SELECT 1 FROM events WHERE entity_id = $1)
 ON CONFLICT (event_id, starts_at) DO UPDATE SET ends_at = EXCLUDED.ends_at`
 
-// upsertEvent writes the event row, then its occurrence.
-func upsertEvent(r indexRow) error {
+// upsertEvent writes the event row, then its occurrence. A reconcile passes
+// the moment it started as notDeletedSince: an event a hook dropped after that
+// is not written back. Hooks pass nil.
+func upsertEvent(r indexRow, notDeletedSince *time.Time) error {
+	var guard any
+	if notDeletedSince != nil {
+		guard = utcText(*notDeletedSince)
+	}
 	var amount any
 	if r.PriceAmount != nil {
 		amount = *r.PriceAmount
@@ -116,15 +124,28 @@ func upsertEvent(r indexRow) error {
 	if err := dbExec(upsertEventSQL, r.EntityID, r.SchemaSlug, r.Slug, r.Locale, r.Name,
 		utcText(r.StartsAt), utcText(r.EndsAt), r.AllDay, r.TimeZone, r.EventStatus, r.AttendanceMode,
 		r.VenueID, r.VenueName, r.VenueCity, jsonText(r.CategoryIDs), jsonText(r.CategoryNames), r.SeriesID,
-		r.Price, amount, r.Featured, r.Image, r.SourceKind, r.SourceUID, r.SourceURL); err != nil {
+		r.Price, amount, r.Featured, r.Image, r.SourceKind, r.SourceUID, r.SourceURL, guard); err != nil {
 		return err
 	}
 	return dbExec(upsertOccurrenceSQL, r.EntityID, utcText(r.StartsAt), utcText(r.EndsAt))
 }
 
-// deleteEvent removes an event from the index; its occurrences cascade.
+// deleteEvent removes an event from the index (its occurrences cascade) and
+// notes the delete for a reconcile that is running.
 func deleteEvent(id string) error {
-	return dbExec(`DELETE FROM events WHERE entity_id = $1`, id)
+	return dbExec(`WITH t AS (INSERT INTO deleted_events (entity_id) VALUES ($1)
+ ON CONFLICT (entity_id) DO UPDATE SET deleted_at = now())
+DELETE FROM events WHERE entity_id = $1`, id)
+}
+
+// markReconciled records that a reconcile read every event and removed the
+// rows of those that are gone, and forgets old delete notes.
+func markReconciled() error {
+	if err := dbExec(`INSERT INTO index_state (id, reconciled_at) VALUES (true, now())
+ON CONFLICT (id) DO UPDATE SET reconciled_at = now()`); err != nil {
+		return err
+	}
+	return dbExec(`DELETE FROM deleted_events WHERE deleted_at < now() - interval '1 day'`)
 }
 
 // indexedIDs maps the entity id of every indexed event to its updated_at.
@@ -171,14 +192,14 @@ func reindexEntity(id string, s settings) (bool, error) {
 		}
 		return false, err
 	}
-	indexed, _, err := reindexDTO(raw, s)
+	indexed, _, err := reindexDTO(raw, s, nil)
 	return indexed, err
 }
 
 // reindexDTO is reindexEntity for an entity already read. addr is the
 // address a map would need looked up (empty when the venue has coordinates or
 // the event has no address).
-func reindexDTO(raw entityDTO, s settings) (indexed bool, addr string, err error) {
+func reindexDTO(raw entityDTO, s settings, notDeletedSince *time.Time) (indexed bool, addr string, err error) {
 	if !s.accepts(raw.SchemaSlug) {
 		return false, "", deleteEvent(raw.ID)
 	}
@@ -187,7 +208,7 @@ func reindexDTO(raw entityDTO, s settings) (indexed bool, addr string, err error
 		return false, "", deleteEvent(raw.ID)
 	}
 	_, _, _, v := venueOrText(e)
-	if err := upsertEvent(rowFromEvent(e, v, categoryNames(e.CategoryIDs), eventLocation(e, s))); err != nil {
+	if err := upsertEvent(rowFromEvent(e, v, categoryNames(e.CategoryIDs), eventLocation(e, s)), notDeletedSince); err != nil {
 		return false, "", err
 	}
 	venue := Venue{}
@@ -213,7 +234,9 @@ type indexQuery struct {
 
 // queryEventsHead numbers the rows in the wanted order and aggregates them by
 // that number, so the order survives the aggregation.
-const queryEventsHead = `SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.n), '[]'::jsonb) FROM (
+// The result is NULL until a reconcile has completed.
+const queryEventsHead = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
+ THEN COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.n), '[]'::jsonb) END FROM (
 SELECT e.entity_id AS id, e.schema_slug, e.slug, e.locale, e.name, o.starts_at, o.ends_at, e.all_day, e.time_zone,
  e.event_status, e.attendance_mode, e.venue_id, e.venue_name, e.venue_city, e.category_ids, e.series_id, e.price,
  e.price_amount, e.featured, e.image, e.source_kind, e.source_uid, e.source_url, e.updated_at,
@@ -224,8 +247,11 @@ WHERE `
 const queryEventsTail = ` AND ($2::text = '' OR e.locale IN ('', 'und', $2::text)) AND ($3::text = '' OR e.slug = $3::text)
 LIMIT $4::int) r`
 
+var errIndexNotReady = errors.New("event index not reconciled yet")
+
 // queryEvents reads events from the index. The index stores no URL, so the
-// returned events have none.
+// returned events have none. Before the first complete reconcile the index is
+// not trusted and errIndexNotReady is returned.
 func queryEvents(q indexQuery) ([]Event, error) {
 	order, cond := `o.starts_at DESC, e.name, e.entity_id`, `o.ends_at <= $1::timestamptz`
 	if q.Upcoming {
@@ -235,11 +261,15 @@ func queryEvents(q indexQuery) ([]Event, error) {
 	if limit <= 0 || limit > maxIndexRows {
 		limit = maxIndexRows
 	}
-	var raw []map[string]any
-	if err := dbJSON(queryEventsHead+order+queryEventsFrom+cond+queryEventsTail, &raw,
+	var rows *[]map[string]any
+	if err := dbJSON(queryEventsHead+order+queryEventsFrom+cond+queryEventsTail, &rows,
 		utcText(q.At), q.Language, q.Slug, limit); err != nil {
 		return nil, err
 	}
+	if rows == nil {
+		return nil, errIndexNotReady
+	}
+	raw := *rows
 	loc := q.Loc
 	if loc == nil {
 		loc = time.UTC

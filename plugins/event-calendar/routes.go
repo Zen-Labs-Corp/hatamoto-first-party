@@ -63,10 +63,13 @@ func serveFeed() sdk.HTTPResponse {
 		return plain(http.StatusServiceUnavailable, "unavailable")
 	}
 	deadline := clock().Add(feedFillBudget)
-	for i, e := range upcoming {
-		upcoming[i] = fillDetails(e, s, deadline)
+	var kept []Event
+	for _, e := range upcoming {
+		if e, keep := fillDetails(e, s, deadline); keep {
+			kept = append(kept, e)
+		}
 	}
-	return calendar(writeCalendar(upcoming, at, s.location()), "")
+	return calendar(writeCalendar(kept, at, s.location()), "")
 }
 
 // serveEvent is one published event as a calendar, past ones included.

@@ -28,6 +28,8 @@ func (h *fakeHost) install(t *testing.T) {
 		switch fn {
 		case "settings.get":
 			return json.Unmarshal([]byte(`{}`), out)
+		case "db.exec":
+			return nil
 		case "db.query":
 			if h.dbRows == "" {
 				return errors.New("no db")
@@ -128,7 +130,8 @@ const idxRows = `[{"id":"f1","schema_slug":"event","slug":"future","name":"Futur
  {"id":"z0","schema_slug":"post","slug":"stale","name":"Stale type","starts_at":"2026-08-02T10:00:00+00:00","ends_at":"2026-08-02T10:00:00+00:00"}]`
 
 func TestFeedReadsIndex(t *testing.T) {
-	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	indexedOnly := `{"id":"x9","schema_slug":"event","slug":"indexed","name":"Indexed only","status":"published","attributes":{"start_at":"2026-08-01T10:00"}}`
+	h := &fakeHost{entities: []string{evFuture, indexedOnly}, dbRows: idxRows}
 	h.install(t)
 	r := call(t, "GET", "/events.ics", "")
 	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Indexed only\r\n") || !strings.Contains(r.Body, "SUMMARY:Future\\, show\r\n") {
@@ -146,12 +149,38 @@ func TestFeedReadsIndex(t *testing.T) {
 	}
 }
 
-func TestIndexMissFallsBack(t *testing.T) {
+func TestEmptyReconciledIndexIsTrusted(t *testing.T) {
 	h := &fakeHost{entities: []string{evFuture}, dbRows: `[]`}
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || strings.Contains(r.Body, "SUMMARY:Future") || h.listCalls != 0 {
+		t.Fatalf("status = %d, list calls = %d, body = %q", r.Status, h.listCalls, r.Body)
+	}
+}
+
+func TestIndexMissFallsBack(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: `null`} // NULL: no reconcile has completed
 	h.install(t)
 	r := call(t, "GET", "/events.ics", "")
 	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") || h.listCalls == 0 {
 		t.Fatalf("status = %d, list calls = %d", r.Status, h.listCalls)
+	}
+}
+
+func TestFeedDropsRowsOfGoneEntities(t *testing.T) {
+	// f1 exists and is published; x9 is not known to the host (deleted), so its row must not be served
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") || strings.Contains(r.Body, "Indexed only") {
+		t.Fatalf("response = %+v", r)
+	}
+	// an unpublished entity is dropped too
+	draft := strings.Replace(evFuture, `"status":"published"`, `"status":"draft"`, 1)
+	h = &fakeHost{entities: []string{draft}, dbRows: idxRows}
+	h.install(t)
+	if r := call(t, "GET", "/events.ics", ""); strings.Contains(r.Body, "SUMMARY:Future") {
+		t.Errorf("unpublished event in the feed: %q", r.Body)
 	}
 }
 

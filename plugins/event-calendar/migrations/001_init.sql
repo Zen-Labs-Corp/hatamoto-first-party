@@ -44,6 +44,20 @@ CREATE TABLE occurrences (
 CREATE INDEX occurrences_starts_idx ON occurrences (starts_at);
 CREATE INDEX occurrences_ends_idx ON occurrences (ends_at);
 
+-- Set once a reconcile has read every event and removed the rows of events that
+-- are gone. Readers use the index only after that.
+CREATE TABLE index_state (
+    id            boolean PRIMARY KEY DEFAULT true CHECK (id),
+    reconciled_at timestamptz NOT NULL
+);
+
+-- Events dropped by a hook. A reconcile that started earlier must not write
+-- them back from the listing it read before the delete.
+CREATE TABLE deleted_events (
+    entity_id  text PRIMARY KEY,
+    deleted_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Address lookups for the map. A failed lookup is retried after a day.
 CREATE TABLE geocode_cache (
     address    text PRIMARY KEY,

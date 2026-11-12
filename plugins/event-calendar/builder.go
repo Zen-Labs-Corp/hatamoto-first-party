@@ -31,7 +31,11 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	loaded := false
 	var s settings
 	var at, deadline time.Time
-	filled := map[string]Event{}
+	type filledEvent struct {
+		Event
+		keep bool
+	}
+	filled := map[string]filledEvent{}
 	for _, q := range r.Requests {
 		if q.Source == sourceEvent {
 			r.Results = append(r.Results, answerEventCard(q, r.EntityID))
@@ -65,12 +69,15 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 		}
 		res := sdk.BuilderDataResult{ID: q.ID}
 		for _, e := range list {
-			if f, ok := filled[e.ID]; ok {
-				e = f
-			} else {
-				e = fillDetails(e, s, deadline)
-				filled[e.ID] = e
+			f, ok := filled[e.ID]
+			if !ok {
+				f.Event, f.keep = fillDetails(e, s, deadline)
+				filled[e.ID] = f
 			}
+			if !f.keep {
+				continue
+			}
+			e = f.Event
 			res.Items = append(res.Items, toItem(e, s, at))
 		}
 		r.Results = append(r.Results, res)
@@ -143,8 +150,8 @@ func toItem(e Event, s settings, at time.Time) sdk.BuilderDataItem {
 
 // eventsFor reads the wanted lists, each of at most limit events: upcoming
 // (not over at the given moment, soonest first) and past (latest first). The
-// index answers first; a list it cannot answer (no db, or nothing indexed yet,
-// as on a site that has not been reconciled) comes from the entities, which
+// index answers first; a list it cannot answer (no db, or no complete
+// reconcile yet) comes from the entities, which
 // are listed once for both. The error is that listing's, set only when it was
 // needed and failed; lists the index answered are still returned.
 func eventsFor(s settings, lang string, at time.Time, wantUp, wantPast bool, limit int, until time.Time) (upcoming, past []Event, err error) {
@@ -156,7 +163,7 @@ func eventsFor(s settings, lang string, at time.Time, wantUp, wantPast bool, lim
 				out = append(out, e)
 			}
 		}
-		return out, qerr == nil && len(out) > 0
+		return out, qerr == nil
 	}
 	okUp, okPast := !wantUp, !wantPast
 	if wantUp {
@@ -193,18 +200,24 @@ func firstN(evs []Event, n int) []Event {
 // URL, description, address or ticket link: they are read from the entity,
 // while the time budget lasts. Without a budget or when the host fails the
 // event stays as the index had it. Events of the entities path are complete
-// and returned unchanged.
-func fillDetails(e Event, s settings, deadline time.Time) Event {
+// and returned unchanged. keep is false for an event whose entity is gone or
+// no longer published: it must not be listed, and its row is dropped.
+func fillDetails(e Event, s settings, deadline time.Time) (_ Event, keep bool) {
 	if !e.indexed || e.ID == "" || !clock().Before(deadline) {
-		return e
+		return e, true
 	}
 	var raw entityDTO
-	if err := callHost(sdk.FnEntitiesGet, map[string]any{"id": e.ID}, &raw); err != nil || raw.Status != "published" {
-		return e
+	err := callHost(sdk.FnEntitiesGet, map[string]any{"id": e.ID}, &raw)
+	if isNotFound(err) || (err == nil && raw.Status != "published") {
+		_ = deleteEvent(e.ID)
+		return e, false
+	}
+	if err != nil {
+		return e, true
 	}
 	full, ok := eventFromEntity(raw, s)
 	if !ok {
-		return e
+		return e, true
 	}
 	e.URL, e.Description, e.TicketURL, e.Website = full.URL, full.Description, full.TicketURL, full.Website
 	if e.Address == "" {
@@ -213,5 +226,5 @@ func fillDetails(e Event, s settings, deadline time.Time) Event {
 	if e.Image == "" {
 		e.Image = full.Image
 	}
-	return e
+	return e, true
 }

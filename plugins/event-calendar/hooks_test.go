@@ -83,7 +83,7 @@ func (h *hookHost) resetCalls() { h.calls, h.execs = nil, nil }
 
 func (h *hookHost) deletes() (ids []string) {
 	for _, c := range h.execs {
-		if strings.HasPrefix(c.sql, "DELETE FROM events") {
+		if strings.Contains(c.sql, "DELETE FROM events WHERE entity_id") {
 			ids = append(ids, c.args[0].(string))
 		}
 	}
@@ -277,4 +277,43 @@ func TestHooksFailOpen(t *testing.T) {
 	// settings unreadable: defaults apply
 	h.settings = `not json`
 	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
+}
+
+func TestReconcileMarksIndexAndGuardsAgainstDeletes(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"new": hookDoc("new", "calendar-event", "published")},
+		order:    []string{"new"},
+	}
+	h.install(t)
+	marks := func() (n int) {
+		for _, c := range h.execs {
+			if strings.Contains(c.sql, "INTO index_state") {
+				n++
+			}
+		}
+		return
+	}
+	fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
+	if marks() != 1 {
+		t.Errorf("a complete reconcile wrote %d markers", marks())
+	}
+	// the reconcile's upsert is skipped for an event a hook deleted after the run began; hooks' upserts are not
+	if c := h.execs[0]; !strings.Contains(c.sql, "deleted_events") || c.args[24] == nil {
+		t.Errorf("reconcile upsert has no delete guard: %v", c.args)
+	}
+	h.resetCalls()
+	fire(t, sdk.EntityPublished.Export(), entityEv("new", "calendar-event", "published"))
+	if c := h.execs[0]; c.args[24] != nil {
+		t.Errorf("hook upsert is guarded: %v", c.args[24])
+	}
+	// an incomplete or failed run leaves the index untrusted
+	h.resetCalls()
+	h.more = true
+	fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
+	h.more, h.listErr = false, errors.New("down")
+	fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
+	if marks() != 0 {
+		t.Errorf("marker written by an incomplete run")
+	}
 }
