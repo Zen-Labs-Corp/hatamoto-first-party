@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
@@ -377,5 +378,42 @@ func TestHookGeocodesTheVenueOfASavedEvent(t *testing.T) {
 	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
 	if len(fetched) != 0 {
 		t.Errorf("lookups with Show map off = %d", len(fetched))
+	}
+}
+
+// The hook may run 5 s in all: the lookup must end before that however long the
+// reindex before it took.
+func TestHookGeocodeEndsWithinTheHookTimeout(t *testing.T) {
+	doc := `{"id":"e1","schema_slug":"calendar-event","slug":"e1","name":"e1","status":"published",` +
+		`"attributes":{"start_at":"2026-07-01T19:00","venue_address":"1 High St","venue_city":"Leeds"}}`
+	h := &hookHost{settings: `{"show_map":true}`, docs: map[string]string{"e1": doc}}
+	h.install(t)
+	start := time.Now()
+	elapsed := time.Duration(0)
+	clock = func() time.Time { return start.Add(elapsed) }
+	t.Cleanup(func() { clock = time.Now })
+	var worst time.Duration
+	base := callHost
+	callHost = func(fn string, args, out any) error {
+		elapsed += 450 * time.Millisecond // every host call is slow
+		if fn == "http.fetch" {
+			timeout := time.Duration(args.(map[string]any)["timeout_ms"].(int)) * time.Millisecond
+			worst = elapsed + timeout
+			return json.Unmarshal([]byte(`{"status":200,"body":"[]"}`), out)
+		}
+		if fn == "db.exec" {
+			if a := args.(map[string]any)["args"].([]any); a[0] == throttleKey {
+				return json.Unmarshal([]byte(`{"rows_affected":1}`), out)
+			}
+		}
+		return base(fn, args, out)
+	}
+	t.Cleanup(func() { callHost = base })
+	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
+	if worst == 0 {
+		t.Fatal("no lookup was made")
+	}
+	if worst > 4*time.Second {
+		t.Errorf("the lookup may end %v after the hook started, the hook timeout is 5 s", worst)
 	}
 }

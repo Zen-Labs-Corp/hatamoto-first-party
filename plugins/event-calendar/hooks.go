@@ -12,8 +12,8 @@ const (
 	reconcileBudget    = 8 * time.Second // the cron call may run 10 s
 	reconcileMapBudget = 6 * time.Second // leaves room for geocoding
 	geocodeDeadline    = 9 * time.Second
-	hookGeocodeBudget  = 3 * time.Second // the entity hooks may run 5 s
-	reconcilePages     = 10              // 2000 events per run
+	hookDeadline       = 3500 * time.Millisecond // from hook start; the entity hooks may run 5 s
+	reconcilePages     = 10                      // 2000 events per run
 )
 
 func init() {
@@ -32,12 +32,13 @@ func init() {
 // the index when it is no longer a published event. Entity hooks fire for
 // every content type, so other types return before any index work.
 func onEntity(ev sdk.EntityEvent) error {
+	started := clock()
 	s := loadSettings()
 	if !s.accepts(ev.SchemaSlug) || ev.ID == "" {
 		return nil
 	}
 	if _, addr, _ := reindexEntityAddr(ev.ID, s); addr != "" {
-		geocodeOne(s, addr, clock().Add(hookGeocodeBudget))
+		geocodeOne(s, addr, started.Add(hookDeadline))
 	}
 	return nil
 }
