@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 const (
 	listPageSize = 200
 	maxListPages = 5
+	maxRefIDs    = 20
 )
 
 // now is the clock; tests replace it.
@@ -28,6 +30,16 @@ type Event struct {
 	Start, End                  time.Time
 	AllDay, HasEnd              bool
 	Updated                     time.Time
+
+	SchemaSlug, TimeZone             string
+	EventStatus, AttendanceMode      string
+	OnlineURL, Website               string
+	VenueID, SeriesID, VenueCity     string
+	OrganizerIDs, CategoryIDs        []string
+	Price, Currency                  string
+	PriceAmount                      *float64
+	Featured                         bool
+	SourceKind, SourceUID, SourceURL string
 }
 
 // entityDTO is the part of the host's entity JSON this plugin reads.
@@ -75,6 +87,36 @@ func attrBool(m map[string]any, key string) bool {
 	return false
 }
 
+// attrIDs reads an array of strings (a reference field holds entity ids):
+// trimmed, empty entries skipped, at most maxRefIDs.
+func attrIDs(m map[string]any, key string) []string {
+	list, _ := m[key].([]any)
+	var out []string
+	for _, v := range list {
+		if s, _ := v.(string); strings.TrimSpace(s) != "" {
+			out = append(out, strings.TrimSpace(s))
+			if len(out) == maxRefIDs {
+				break
+			}
+		}
+	}
+	return out
+}
+
+// attrFloat reads a number attribute, also accepting a numeric string; nil
+// when missing or not a number.
+func attrFloat(m map[string]any, key string) *float64 {
+	switch v := m[key].(type) {
+	case float64:
+		return &v
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return &f
+		}
+	}
+	return nil
+}
+
 // startOfDay is midnight of t's day in loc.
 func startOfDay(t time.Time, loc *time.Location) time.Time {
 	y, m, d := t.In(loc).Date()
@@ -92,6 +134,12 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 		return Event{}, false
 	}
 	loc := s.location()
+	tz := attrString(attrs, "time_zone")
+	if tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			loc = l
+		}
+	}
 	start, ok := parseTime(attrString(attrs, "start_at"), loc)
 	if !ok {
 		return Event{}, false
@@ -105,6 +153,35 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 		TicketURL:   attrString(attrs, "ticket_url"),
 		AllDay:      attrBool(attrs, "all_day"),
 		Start:       start,
+
+		SchemaSlug:     raw.SchemaSlug,
+		TimeZone:       tz,
+		EventStatus:    attrString(attrs, "event_status"),
+		AttendanceMode: attrString(attrs, "attendance_mode"),
+		OnlineURL:      attrString(attrs, "online_url"),
+		Website:        attrString(attrs, "website"),
+		OrganizerIDs:   attrIDs(attrs, "organizers"),
+		CategoryIDs:    attrIDs(attrs, "category"),
+		VenueCity:      attrString(attrs, "venue_city"),
+		Price:          attrString(attrs, "price"),
+		PriceAmount:    attrFloat(attrs, "price_amount"),
+		Currency:       attrString(attrs, "currency"),
+		Featured:       attrBool(attrs, "featured"),
+		SourceKind:     attrString(attrs, "source_kind"),
+		SourceUID:      attrString(attrs, "source_uid"),
+		SourceURL:      attrString(attrs, "source_url"),
+	}
+	if ids := attrIDs(attrs, "venue"); len(ids) > 0 {
+		e.VenueID = ids[0]
+	}
+	if ids := attrIDs(attrs, "series"); len(ids) > 0 {
+		e.SeriesID = ids[0]
+	}
+	if e.EventStatus == "" {
+		e.EventStatus = "scheduled"
+	}
+	if e.AttendanceMode == "" {
+		e.AttendanceMode = "offline"
 	}
 	if e.Image == "" {
 		e.Image = attrString(attrs, "featured_image")
@@ -189,42 +266,55 @@ func loadEventsUntil(s settings, until time.Time) ([]Event, error) {
 	return evs, err
 }
 
-// eachEvent pages the published events and passes each one to visit until it
-// returns true, so a caller that has what it needs reads no further page. No
-// page after the first starts once until (if set) has passed.
+// eachEvent pages the published events of every accepted content type and
+// passes each one to visit until it returns true, so a caller that has what it
+// needs reads no further page. At most maxListPages pages are read in all, and
+// none after the first once until (if set) has passed. An error on the very
+// first page is returned; a later failure keeps what was read. An event
+// listed twice is visited once.
 func eachEvent(s settings, until time.Time, visit func(Event) bool) error {
-	cursor := ""
-	for page := 0; page < maxListPages; page++ {
-		if page > 0 && !until.IsZero() && !clock().Before(until) {
-			return nil
-		}
-		args := map[string]any{
-			"schema_slug": s.SchemaSlug,
-			"status":      "published",
-			"limit":       listPageSize,
-		}
-		if cursor != "" {
-			args["cursor"] = cursor
-		}
-		var out struct {
-			Items      []entityDTO `json:"items"`
-			NextCursor string      `json:"next_cursor"`
-		}
-		if err := callHost(sdk.FnEntitiesList, args, &out); err != nil {
-			if page == 0 {
-				return err
-			}
-			return nil
-		}
-		for _, raw := range out.Items {
-			if e, ok := eventFromEntity(raw, s); ok && visit(e) {
+	seen := map[string]bool{}
+	pages := 0
+	for si, slug := range s.slugs() {
+		cursor := ""
+		for pages < maxListPages {
+			if pages > 0 && !until.IsZero() && !clock().Before(until) {
 				return nil
 			}
+			args := map[string]any{
+				"schema_slug": slug,
+				"status":      "published",
+				"limit":       listPageSize,
+			}
+			if cursor != "" {
+				args["cursor"] = cursor
+			}
+			var out struct {
+				Items      []entityDTO `json:"items"`
+				NextCursor string      `json:"next_cursor"`
+			}
+			err := callHost(sdk.FnEntitiesList, args, &out)
+			pages++
+			if err != nil {
+				if si == 0 && pages == 1 {
+					return err
+				}
+				break
+			}
+			for _, raw := range out.Items {
+				if raw.SchemaSlug != "" && !s.accepts(raw.SchemaSlug) || seen[raw.ID] {
+					continue
+				}
+				seen[raw.ID] = true
+				if e, ok := eventFromEntity(raw, s); ok && visit(e) {
+					return nil
+				}
+			}
+			if out.NextCursor == "" {
+				break
+			}
+			cursor = out.NextCursor
 		}
-		if out.NextCursor == "" {
-			return nil
-		}
-		cursor = out.NextCursor
 	}
 	return nil
 }

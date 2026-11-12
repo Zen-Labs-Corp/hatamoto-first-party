@@ -15,7 +15,7 @@ func init() { guest.OnFilter(sdk.JSONLDEnrich, enrichEvent) }
 // document does not already carry. Any problem returns the document unchanged.
 func enrichEvent(d sdk.JSONLDDoc) (sdk.JSONLDDoc, error) {
 	s := loadSettings()
-	if d.Entity.SchemaSlug != s.SchemaSlug || d.Entity.ID == "" {
+	if !s.accepts(d.Entity.SchemaSlug) || d.Entity.ID == "" {
 		return d, nil
 	}
 	var raw entityDTO

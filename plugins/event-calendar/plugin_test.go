@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,8 +41,30 @@ func TestSettingsValues(t *testing.T) {
 func TestSettingsBadSlugAndFormat(t *testing.T) {
 	fakeSettings(t, `{"schema_slug":"Bad Slug!","date_format":"weird"}`, nil)
 	got := loadSettings()
-	if got.SchemaSlug != "event" || got.DateFormat != "short" {
+	if got.SchemaSlug != "" || got.DateFormat != "short" {
 		t.Fatalf("settings = %+v", got)
+	}
+}
+
+func TestSettingsMapAndContact(t *testing.T) {
+	fakeSettings(t, `{"show_map":true,"geocode_contact":" `+strings.Repeat("a", 300)+` "}`, nil)
+	got := loadSettings()
+	if !got.ShowMap || len(got.GeocodeContact) != maxContactBytes {
+		t.Fatalf("settings = %+v", got)
+	}
+	if defaultSettings().ShowMap {
+		t.Error("map on by default")
+	}
+}
+
+func TestSettingsSlugsAndAccepts(t *testing.T) {
+	auto := settings{}
+	if !auto.accepts("calendar-event") || !auto.accepts("event") || auto.accepts("post") || auto.accepts("") {
+		t.Errorf("auto slugs = %v", auto.slugs())
+	}
+	one := settings{SchemaSlug: "gig"}
+	if !one.accepts("gig") || one.accepts("event") || len(one.slugs()) != 1 {
+		t.Errorf("explicit slugs = %v", one.slugs())
 	}
 }
 

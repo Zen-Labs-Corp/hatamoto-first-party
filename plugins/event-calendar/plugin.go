@@ -9,33 +9,51 @@ package main
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 	_ "time/tzdata" // zone names work without a filesystem
+	"unicode/utf8"
 
 	"hatamoto.dev/sdk"
 )
 
 const (
-	defaultSchemaSlug = "event"
+	legacySchemaSlug  = "event"
+	defaultNewSlug    = "calendar-event"
 	defaultTimeZone   = "UTC"
 	defaultDateFormat = "short"
+	maxContactBytes   = 200
 )
 
 var slugRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 
 // settings are the plugin's own settings, always usable: every field falls
-// back to its default.
+// back to its default. An empty SchemaSlug is auto mode: the calendar event
+// type and the older event type are both read.
 type settings struct {
-	SchemaSlug string
-	TimeZone   string
-	DateFormat string
+	SchemaSlug     string
+	TimeZone       string
+	DateFormat     string
+	ShowMap        bool
+	GeocodeContact string
 }
 
 func defaultSettings() settings {
-	return settings{SchemaSlug: defaultSchemaSlug, TimeZone: defaultTimeZone, DateFormat: defaultDateFormat}
+	return settings{TimeZone: defaultTimeZone, DateFormat: defaultDateFormat}
 }
+
+// slugs are the content types events are read from.
+func (s settings) slugs() []string {
+	if s.SchemaSlug != "" {
+		return []string{s.SchemaSlug}
+	}
+	return []string{defaultNewSlug, legacySchemaSlug}
+}
+
+// accepts reports whether entities of the given content type are events.
+func (s settings) accepts(slug string) bool { return slices.Contains(s.slugs(), slug) }
 
 // loadSettings never fails: an unreadable or invalid setting yields its default.
 func loadSettings() settings {
@@ -44,6 +62,8 @@ func loadSettings() settings {
 		SchemaSlug string `json:"schema_slug"`
 		TimeZone   string `json:"time_zone"`
 		DateFormat string `json:"date_format"`
+		ShowMap    bool   `json:"show_map"`
+		Contact    string `json:"geocode_contact"`
 	}
 	if err := callHost(sdk.FnSettingsGet, struct{}{}, &raw); err != nil {
 		return s
@@ -54,9 +74,23 @@ func loadSettings() settings {
 	if tz := strings.TrimSpace(raw.TimeZone); tz != "" {
 		s.TimeZone = tz
 	}
+	s.ShowMap = raw.ShowMap
+	s.GeocodeContact = capBytes(strings.TrimSpace(raw.Contact), maxContactBytes)
 	switch raw.DateFormat {
 	case "short", "us", "iso":
 		s.DateFormat = raw.DateFormat
+	}
+	return s
+}
+
+// capBytes shortens s to at most n bytes on a rune boundary.
+func capBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	s = s[:n]
+	for !utf8.ValidString(s) {
+		s = s[:len(s)-1]
 	}
 	return s
 }

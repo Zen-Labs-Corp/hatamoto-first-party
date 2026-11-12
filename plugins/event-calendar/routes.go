@@ -94,20 +94,22 @@ func notFound() sdk.HTTPResponse {
 // nested events are reached; the scan stops at the first match. hostFailed is
 // set when no answer could be had because the host failed.
 func findEvent(s settings, slug string) (e Event, found, hostFailed bool) {
-	var raw entityDTO
-	err := callHost(sdk.FnEntitiesGet, map[string]any{
-		"slug": slug, "parent_id": nil, "schema_slug": s.SchemaSlug,
-	}, &raw)
-	var he *sdk.HostError
-	switch {
-	case err == nil && raw.ID != "":
-		if raw.SchemaSlug != "" && raw.SchemaSlug != s.SchemaSlug {
-			return Event{}, false, false
+	for _, slugType := range s.slugs() {
+		var raw entityDTO
+		err := callHost(sdk.FnEntitiesGet, map[string]any{
+			"slug": slug, "parent_id": nil, "schema_slug": slugType,
+		}, &raw)
+		var he *sdk.HostError
+		switch {
+		case err == nil && raw.ID != "":
+			if raw.SchemaSlug != "" && !s.accepts(raw.SchemaSlug) {
+				return Event{}, false, false
+			}
+			e, found = eventFromEntity(raw, s)
+			return e, found, false
+		case err != nil && !(errors.As(err, &he) && he.Code == sdk.ErrNotFound):
+			return Event{}, false, true
 		}
-		e, found = eventFromEntity(raw, s)
-		return e, found, false
-	case err != nil && !(errors.As(err, &he) && he.Code == sdk.ErrNotFound):
-		return Event{}, false, true
 	}
 	lerr := eachEvent(s, time.Time{}, func(c Event) bool {
 		if c.Slug == slug {

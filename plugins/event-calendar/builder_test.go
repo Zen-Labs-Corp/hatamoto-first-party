@@ -134,7 +134,8 @@ func TestBuilderLoadsOncePerRequest(t *testing.T) {
 		return inner(fn, a, o)
 	}
 	runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}, {ID: "p", Source: sourcePast}}})
-	if calls != 1 {
+	// one listing per request: one call per accepted content type (auto mode)
+	if calls != len(settings{}.slugs()) {
 		t.Fatalf("entities.list calls = %d", calls)
 	}
 }

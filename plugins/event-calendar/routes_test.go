@@ -47,6 +47,9 @@ func (h *fakeHost) install(t *testing.T) {
 			for _, e := range h.entities {
 				var d entityDTO
 				_ = json.Unmarshal([]byte(e), &d)
+				if a["schema_slug"] != nil && a["schema_slug"] != d.SchemaSlug {
+					continue
+				}
 				if d.Slug == a["slug"] || (a["id"] != nil && d.ID == a["id"]) {
 					return json.Unmarshal([]byte(e), out)
 				}
@@ -119,9 +122,19 @@ func TestSingleEventRoute(t *testing.T) {
 	if !strings.Contains(r.Body, "SUMMARY:Old\r\n") || strings.Count(r.Body, "BEGIN:VEVENT") != 1 {
 		t.Errorf("body = %q", r.Body)
 	}
-	g := h.getCalls[0]
-	if g["slug"] != "old" || g["schema_slug"] != "event" || g["parent_id"] != nil {
+	g := h.getCalls[len(h.getCalls)-1] // auto mode asks calendar-event first, then event
+	if len(h.getCalls) != 2 || h.getCalls[0]["schema_slug"] != "calendar-event" || g["slug"] != "old" || g["schema_slug"] != "event" || g["parent_id"] != nil {
 		t.Errorf("get args = %v", g)
+	}
+}
+
+func TestFindEventAutoMode(t *testing.T) {
+	newEv := evOnType("n1", "calendar-event", `{"start_at":"2026-07-01T19:00"}`)
+	(&fakeHost{entities: []string{newEv, evPast}}).install(t)
+	for _, file := range []string{"n1.ics", "old.ics"} {
+		if r := call(t, "GET", "/event/{file}", file); r.Status != 200 {
+			t.Errorf("%s: status = %d", file, r.Status)
+		}
 	}
 }
 
