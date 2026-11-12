@@ -1,0 +1,14 @@
+<section class="hm-ec-details" aria-label="Event details">
+<h2>Event details</h2>
+{{with .Entity}}
+{{if eq .Attributes.event_status "cancelled"}}<p class="hm-ec-status">Cancelled</p>{{end}}
+{{if eq .Attributes.event_status "postponed"}}<p class="hm-ec-status">Postponed</p>{{end}}
+<dl>
+<dt>When</dt><dd>{{plugin_event_calendar_when .Attributes.start_at .Attributes.end_at .Attributes.all_day}}</dd>
+{{if .Attributes.venue_name}}<dt>Venue</dt><dd>{{.Attributes.venue_name}}{{if .Attributes.venue_address}}, {{.Attributes.venue_address}}{{end}}</dd>{{end}}
+{{if .Attributes.price}}<dt>Price</dt><dd>{{.Attributes.price}}</dd>{{end}}
+</dl>
+{{if .Attributes.ticket_url}}<p><a class="hm-ec-ticket" href="{{.Attributes.ticket_url}}">Get tickets</a></p>{{end}}
+<p>Add to calendar: <a href="{{plugin_event_calendar_addlink "google" .ID}}">Google</a> | <a href="{{plugin_event_calendar_addlink "outlook" .ID}}">Outlook</a> | <a href="{{plugin_event_calendar_addlink "ics" .ID}}">Apple/iCal</a> | <a href="{{plugin_event_calendar_addlink "yahoo" .ID}}">Yahoo</a></p>
+{{end}}
+</section>

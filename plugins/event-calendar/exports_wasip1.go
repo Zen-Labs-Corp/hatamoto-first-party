@@ -12,6 +12,9 @@ import (
 //go:wasmexport func_when
 func funcWhen() int32 { return guest.Run(guest.FuncExport("when")) }
 
+//go:wasmexport func_addlink
+func funcAddlink() int32 { return guest.Run(guest.FuncExport("addlink")) }
+
 //go:wasmexport filter_builder_data
 func filterBuilderData() int32 { return guest.Run(sdk.BuilderData.Export()) }
 
