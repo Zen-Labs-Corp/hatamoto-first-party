@@ -62,6 +62,13 @@ function gridTiles(lat, lon, z) {
   return { tiles, px: (f.x - x0) / 2, py: (f.y - y0) / 2 };
 }
 
+// pinPosition places the pin inside the (position: relative) tiles box. It must
+// be left and top: a percentage margin is relative to the container width and
+// would grow the grid row instead of moving the pin.
+function pinPosition(grid) {
+  return { left: grid.px * 100 + "%", top: grid.py * 100 + "%" };
+}
+
 function draw(el) {
   const pin = parsePin(el.getAttribute("data-map"));
   const host = el.getAttribute("data-tiles");
@@ -81,8 +88,9 @@ function draw(el) {
   }
   const marker = document.createElement("span");
   marker.className = "pin";
-  marker.style.marginLeft = grid.px * 100 + "%";
-  marker.style.marginTop = grid.py * 100 + "%";
+  const at = pinPosition(grid);
+  marker.style.left = at.left;
+  marker.style.top = at.top;
   tiles.appendChild(marker);
 
   const credit = document.createElement("p");
@@ -96,4 +104,4 @@ if (typeof document !== "undefined") {
   for (const el of document.querySelectorAll("[data-map][data-tiles]")) draw(el);
 }
 
-if (typeof module !== "undefined") module.exports = { tileXY, parsePin, gridTiles, validHost };
+if (typeof module !== "undefined") module.exports = { tileXY, parsePin, gridTiles, validHost, pinPosition };

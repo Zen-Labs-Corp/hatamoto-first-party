@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { tileXY, parsePin, gridTiles, validHost } = require("./island.js");
+const { tileXY, parsePin, gridTiles, validHost, pinPosition } = require("./island.js");
 
 assert.deepEqual(tileXY(0, 0, 1), { x: 1, y: 1 });
 
@@ -38,6 +38,17 @@ for (const [lat, lon] of [[53.8, -1.55], [0, 0], [51.5, -0.12], [-33.9, 151.2], 
   assert.ok(g.px >= 0.25 && g.px <= 0.75 && g.py >= 0 && g.py <= 1, `${lat},${lon}: ${g.px},${g.py}`);
   for (const t of g.tiles) assert.ok(t.x >= 0 && t.x < 2 ** 15 && t.y >= 0 && t.y < 2 ** 15);
 }
+
+// the pin is placed with left/top inside a positioned tiles box, never with margins
+// (a percentage margin inflates the grid row and the pin floats outside the map)
+const pos = pinPosition({ px: 0.5, py: 0.25 });
+assert.deepEqual(pos, { left: "50%", top: "25%" });
+const css = fs.readFileSync(path.join(__dirname, "widget.css"), "utf8");
+const rule = (sel) => new RegExp(sel.replace(/\./g, "\\.") + "\\{([^}]*)\\}").exec(css)[1];
+assert.match(rule(".hm-event-calendar_event-card .tiles"), /position:relative/);
+assert.match(rule(".hm-event-calendar_event-card .pin"), /position:absolute/);
+assert.doesNotMatch(rule(".hm-event-calendar_event-card .pin"), /grid-area/);
+assert.doesNotMatch(fs.readFileSync(path.join(__dirname, "island.js"), "utf8"), /marginLeft|marginTop/);
 
 // the island is lint-clean: none of the tokens the install scan refuses
 const src = fs.readFileSync(path.join(__dirname, "island.js"), "utf8");
