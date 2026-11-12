@@ -213,6 +213,7 @@ func (e Event) endsAt(loc *time.Location) time.Time {
 	if !e.AllDay {
 		return last
 	}
+	loc = dateLocation(e, loc)
 	y, m, d := last.In(loc).Date()
 	return time.Date(y, m, d+1, 0, 0, 0, 0, loc)
 }

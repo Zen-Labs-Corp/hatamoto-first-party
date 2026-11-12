@@ -30,7 +30,7 @@ func addlinkFunc(args []json.RawMessage) (string, error) {
 	}
 	name, address, city, _ := venueOrText(e)
 	where := joinNonEmpty(name, address, city)
-	links := calendarLinks(e, s.location(), where, e.Description)
+	links := calendarLinks(e, dateLocation(e, s.location()), where, e.Description)
 	switch provider {
 	case "google":
 		return links.Google, nil

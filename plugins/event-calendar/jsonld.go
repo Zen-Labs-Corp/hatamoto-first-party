@@ -27,7 +27,7 @@ func enrichEvent(d sdk.JSONLDDoc) (sdk.JSONLDDoc, error) {
 	if !ok {
 		return d, nil
 	}
-	loc := s.location()
+	loc := dateLocation(e, s.location())
 	doc := make(map[string]any, len(d.Doc)+8)
 	for k, v := range d.Doc {
 		doc[k] = v

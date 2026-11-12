@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -338,5 +339,38 @@ func TestAttrIDsCap(t *testing.T) {
 	}
 	if attrIDs(map[string]any{"k": "x"}, "k") != nil {
 		t.Error("non-array accepted")
+	}
+}
+
+// An all-day event keeps its calendar days in its own zone: on a site whose
+// zone is behind it, no renderer may show the previous day.
+func TestAllDayEventWithOwnZoneKeepsItsDay(t *testing.T) {
+	s := settings{TimeZone: "Europe/London"}
+	raw := entityDTO{ID: "a1", SchemaSlug: "calendar-event", Slug: "fest", Name: "Fest", Status: "published",
+		Attributes: []byte(`{"start_at":"2026-02-14","end_at":"2026-02-15","all_day":true,"time_zone":"Europe/Berlin"}`)}
+	e, ok := eventFromEntity(raw, s)
+	if !ok {
+		t.Fatal("not an event")
+	}
+	loc := s.location()
+	at := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
+
+	if got := toItem(e, s, at); got.Attrs["start_at"][:10] != "2026-02-14" || got.Attrs["end_at"][:10] != "2026-02-15" ||
+		!strings.Contains(got.Attrs["when"], "14") || strings.Contains(got.Attrs["when"], "13") {
+		t.Errorf("list item = %v", got.Attrs)
+	}
+	ics := writeCalendar([]Event{e}, at, loc)
+	if !strings.Contains(ics, "DTSTART;VALUE=DATE:20260214\r\n") || !strings.Contains(ics, "DTEND;VALUE=DATE:20260216\r\n") {
+		t.Errorf("ics = %q", ics)
+	}
+	if g := calendarLinks(e, dateLocation(e, loc), "", "").Google; !strings.Contains(g, "dates=20260214%2F20260216") {
+		t.Errorf("google link = %q", g)
+	}
+	if got := isoTime(e.Start, e.AllDay, dateLocation(e, loc)); got != "2026-02-14" {
+		t.Errorf("json-ld start = %q", got)
+	}
+	// over at the end of the 15th in Berlin
+	if !e.endsAt(loc).Equal(time.Date(2026, 2, 15, 23, 0, 0, 0, time.UTC)) {
+		t.Errorf("endsAt = %v", e.endsAt(loc))
 	}
 }

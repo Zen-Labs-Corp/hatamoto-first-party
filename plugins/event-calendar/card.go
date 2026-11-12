@@ -30,7 +30,7 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 	if !ok {
 		return res
 	}
-	loc := s.location()
+	loc := dateLocation(ev, s.location())
 
 	name, address, city := ev.Venue, ev.Address, ev.VenueCity
 	var venue *Venue

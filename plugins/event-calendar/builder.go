@@ -115,7 +115,7 @@ func capString(s string) string {
 }
 
 func toItem(e Event, s settings, at time.Time) sdk.BuilderDataItem {
-	loc := s.location()
+	loc := dateLocation(e, s.location())
 	attrs := map[string]string{
 		"when":    formatWhen(e.Start, e.End, e.HasEnd, e.AllDay, s.DateFormat, loc, at),
 		"all_day": "false",

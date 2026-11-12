@@ -103,6 +103,7 @@ func writeEvent(line func(string), e Event, where string, stamp time.Time, loc *
 	if ds.IsZero() {
 		ds = stamp
 	}
+	loc = dateLocation(e, loc)
 	line("BEGIN:VEVENT")
 	line("UID:" + escapeText(uid) + "@" + icsUIDDomain)
 	line("DTSTAMP:" + ds.UTC().Format(icsDateTime))
