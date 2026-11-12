@@ -50,7 +50,11 @@ const css = fs.readFileSync(path.join(__dirname, "widget.css"), "utf8");
 const pin = new RegExp("\\.hm-event-calendar_event-card \\.pin\\{([^}]*)\\}").exec(css)[1];
 assert.match(pin, /aspect-ratio:1\/1/);
 assert.match(pin, /margin-top:-100%/);
-assert.doesNotMatch(pin, /grid-area|position|[^-]top:|left:/);
+// a non-positioned pin paints under the opaque tile images (CSS painting order);
+// relative is the one position core allows and lifts it above them
+assert.match(pin, /position:relative/);
+assert.match(pin, /pointer-events:none/);
+assert.doesNotMatch(pin, /grid-area|[^-]top:|left:/);
 assert.doesNotMatch(css, /absolute|fixed|sticky/);
 const island = fs.readFileSync(path.join(__dirname, "island.js"), "utf8");
 assert.doesNotMatch(island, /marginLeft|marginTop/);
