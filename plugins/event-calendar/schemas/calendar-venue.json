@@ -1,0 +1,82 @@
+{
+  "type": "object",
+  "title": "Venue",
+  "description": "A place where events happen.",
+  "properties": {
+    "address": {
+      "type": "string",
+      "title": "Address",
+      "description": "Street address."
+    },
+    "city": {
+      "type": "string",
+      "title": "City",
+      "description": "City or town."
+    },
+    "region": {
+      "type": "string",
+      "title": "Region",
+      "description": "State or region."
+    },
+    "postcode": {
+      "type": "string",
+      "title": "Postcode",
+      "description": "Postal code."
+    },
+    "country": {
+      "type": "string",
+      "title": "Country",
+      "description": "Country name."
+    },
+    "phone": {
+      "type": "string",
+      "title": "Phone",
+      "description": "Phone number."
+    },
+    "website": {
+      "type": "string",
+      "title": "Website",
+      "description": "Venue website.",
+      "format": "uri"
+    },
+    "latitude": {
+      "type": "number",
+      "title": "Latitude",
+      "description": "Optional. Overrides the address lookup for the map.",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "longitude": {
+      "type": "number",
+      "title": "Longitude",
+      "description": "Optional. Overrides the address lookup for the map.",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "image": {
+      "type": "string",
+      "title": "Image",
+      "description": "Picture.",
+      "x-hm-field": "image"
+    },
+    "description": {
+      "type": "string",
+      "title": "Description",
+      "description": "Short text.",
+      "x-hm-field": "plaintext"
+    }
+  },
+  "x-hm-order": [
+    "address",
+    "city",
+    "region",
+    "postcode",
+    "country",
+    "phone",
+    "website",
+    "latitude",
+    "longitude",
+    "image",
+    "description"
+  ]
+}

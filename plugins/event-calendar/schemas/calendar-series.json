@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "title": "Series",
+  "description": "A group of related events.",
+  "properties": {
+    "description": {
+      "type": "string",
+      "title": "Description",
+      "description": "Short text.",
+      "x-hm-field": "plaintext"
+    },
+    "image": {
+      "type": "string",
+      "title": "Image",
+      "description": "Picture.",
+      "x-hm-field": "image"
+    }
+  },
+  "x-hm-order": [
+    "description",
+    "image"
+  ]
+}

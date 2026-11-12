@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "title": "Organizer",
+  "description": "A person or group that runs events.",
+  "properties": {
+    "email": {
+      "type": "string",
+      "title": "Email",
+      "description": "Public contact address.",
+      "format": "email"
+    },
+    "phone": {
+      "type": "string",
+      "title": "Phone",
+      "description": "Phone number."
+    },
+    "website": {
+      "type": "string",
+      "title": "Website",
+      "description": "Organizer website.",
+      "format": "uri"
+    },
+    "image": {
+      "type": "string",
+      "title": "Image",
+      "description": "Picture.",
+      "x-hm-field": "image"
+    },
+    "description": {
+      "type": "string",
+      "title": "Description",
+      "description": "Short text.",
+      "x-hm-field": "plaintext"
+    }
+  },
+  "x-hm-order": [
+    "email",
+    "phone",
+    "website",
+    "image",
+    "description"
+  ]
+}
