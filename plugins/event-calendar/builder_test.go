@@ -218,3 +218,20 @@ func TestBuilderStopsPagingAtDeadline(t *testing.T) {
 		t.Fatalf("pages = %d, items = %d", pages, len(got.Results[0].Items))
 	}
 }
+
+// An event that names a venue entity has no venue text of its own: the list
+// items must still carry the venue's name and address.
+func TestBuilderListResolvesVenueEntity(t *testing.T) {
+	(&fakeHost{entities: []string{
+		`{"id":"e1","schema_slug":"calendar-event","slug":"jazz","name":"Jazz","status":"published","attributes":{"start_at":"2099-07-01T19:00","venue":["v1"]}}`,
+		`{"id":"v1","schema_slug":"calendar-venue","slug":"mill","name":"The Old Mill","status":"published","attributes":{"address":"12 High Street","city":"Leeds"}}`,
+	}}).install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if len(got.Results[0].Items) != 1 {
+		t.Fatalf("items = %+v", got.Results[0].Items)
+	}
+	a := got.Results[0].Items[0].Attrs
+	if a["venue_name"] != "The Old Mill" || a["venue_address"] != "12 High Street, Leeds" {
+		t.Errorf("venue attrs = %v", a)
+	}
+}

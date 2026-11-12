@@ -203,9 +203,39 @@ func firstN(evs []Event, n int) []Event {
 // and returned unchanged. keep is false for an event whose entity is gone or
 // no longer published: it must not be listed, and its row is dropped.
 func fillDetails(e Event, s settings, deadline time.Time) (_ Event, keep bool) {
-	if !e.indexed || e.ID == "" || !clock().Before(deadline) {
+	if e.ID == "" || !clock().Before(deadline) {
 		return e, true
 	}
+	if e.indexed {
+		var keep bool
+		if e, keep = fillFromEntity(e, s); !keep {
+			return e, false
+		}
+	}
+	return withVenue(e, deadline), true
+}
+
+// withVenue puts the name and address of the chosen venue entity on an event
+// that has no text of its own for them (an event read from the entities has
+// only the venue reference; the index has the name but not the address).
+// Without a budget, a venue or when the host fails the event is unchanged.
+func withVenue(e Event, deadline time.Time) Event {
+	if e.VenueID == "" || (e.Venue != "" && e.Address != "") || !clock().Before(deadline) {
+		return e
+	}
+	if v, ok := loadVenue(e.VenueID); ok {
+		if e.Venue == "" {
+			e.Venue = v.Name
+		}
+		if e.Address == "" {
+			e.Address = joinNonEmpty(v.Address, v.City)
+		}
+	}
+	return e
+}
+
+// fillFromEntity is the entity part of fillDetails.
+func fillFromEntity(e Event, s settings) (_ Event, keep bool) {
 	var raw entityDTO
 	err := callHost(sdk.FnEntitiesGet, map[string]any{"id": e.ID}, &raw)
 	if isNotFound(err) || (err == nil && raw.Status != "published") {
