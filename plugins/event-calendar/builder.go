@@ -12,7 +12,7 @@ import (
 const (
 	sourceUpcoming = "ext.event-calendar.upcoming"
 	sourcePast     = "ext.event-calendar.past"
-	// sourceEvent is declared in the manifest; the card source answers it later.
+	// sourceEvent is the details card of the page's own event.
 	sourceEvent   = "ext.event-calendar.event"
 	icsPathPrefix = "/p/event-calendar/event/"
 
@@ -33,6 +33,10 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	var at, deadline time.Time
 	filled := map[string]Event{}
 	for _, q := range r.Requests {
+		if q.Source == sourceEvent {
+			r.Results = append(r.Results, answerEventCard(q, r.EntityID))
+			continue
+		}
 		if q.Source != sourceUpcoming && q.Source != sourcePast {
 			continue
 		}
