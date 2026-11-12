@@ -3,6 +3,9 @@
   "title": "Series",
   "description": "A group of related events.",
   "properties": {
+    "page_sections": {
+      "type": "array"
+    },
     "description": {
       "type": "string",
       "title": "Description",

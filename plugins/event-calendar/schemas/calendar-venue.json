@@ -3,6 +3,9 @@
   "title": "Venue",
   "description": "A place where events happen.",
   "properties": {
+    "page_sections": {
+      "type": "array"
+    },
     "address": {
       "type": "string",
       "title": "Address",

@@ -3,6 +3,9 @@
   "title": "Calendar event",
   "description": "An event with a date, place and optional repeat.",
   "properties": {
+    "page_sections": {
+      "type": "array"
+    },
     "start_at": {
       "type": "string",
       "title": "Starts",

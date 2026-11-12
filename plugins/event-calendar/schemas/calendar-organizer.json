@@ -3,6 +3,9 @@
   "title": "Organizer",
   "description": "A person or group that runs events.",
   "properties": {
+    "page_sections": {
+      "type": "array"
+    },
     "email": {
       "type": "string",
       "title": "Email",

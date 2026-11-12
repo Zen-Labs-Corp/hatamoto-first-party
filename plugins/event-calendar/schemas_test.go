@@ -30,6 +30,7 @@ type fieldSpec struct {
 	enum        []string
 	itemEnum    []string
 	itemFormat  string
+	free        bool // array of objects owned by core (page_sections): items are not checked
 }
 
 func str(format string) fieldSpec      { return fieldSpec{typ: "string", format: format} }
@@ -38,9 +39,14 @@ func arr(itemFormat string) fieldSpec  { return fieldSpec{typ: "array", itemForm
 func arrEnum(vals ...string) fieldSpec { return fieldSpec{typ: "array", itemEnum: vals} }
 func scalar(typ string) fieldSpec      { return fieldSpec{typ: typ} }
 
+// sections is core's page_sections property: its presence is what opens the page
+// builder for the content type.
+var sections = fieldSpec{typ: "array", free: true}
+
 var wantSchemas = map[string]map[string]fieldSpec{
 	"calendar-event": {
-		"start_at": str("date-time"), "end_at": str("date-time"), "all_day": scalar("boolean"),
+		"page_sections": sections,
+		"start_at":      str("date-time"), "end_at": str("date-time"), "all_day": scalar("boolean"),
 		"time_zone":       str(""),
 		"event_status":    en("scheduled", "cancelled", "postponed"),
 		"attendance_mode": en("offline", "online", "hybrid"),
@@ -60,14 +66,16 @@ var wantSchemas = map[string]map[string]fieldSpec{
 		"source_uid":  str(""), "source_url": str("uri"),
 	},
 	"calendar-venue": {
-		"address": str(""), "city": str(""), "region": str(""), "postcode": str(""), "country": str(""),
+		"page_sections": sections,
+		"address":       str(""), "city": str(""), "region": str(""), "postcode": str(""), "country": str(""),
 		"phone": str(""), "website": str("uri"), "latitude": scalar("number"), "longitude": scalar("number"),
 		"image": str(""), "description": str(""),
 	},
 	"calendar-organizer": {
-		"email": str("email"), "phone": str(""), "website": str("uri"), "image": str(""), "description": str(""),
+		"page_sections": sections,
+		"email":         str("email"), "phone": str(""), "website": str("uri"), "image": str(""), "description": str(""),
 	},
-	"calendar-series":   {"description": str(""), "image": str("")},
+	"calendar-series":   {"page_sections": sections, "description": str(""), "image": str("")},
 	"calendar-category": {"description": str(""), "color": str("")},
 }
 
@@ -147,7 +155,7 @@ func TestShippedSchemas(t *testing.T) {
 			if !reflect.DeepEqual(p.Enum, w.enum) {
 				t.Errorf("%s.%s: enum %v, want %v", slug, name, p.Enum, w.enum)
 			}
-			if w.typ == "array" {
+			if w.typ == "array" && !w.free {
 				if p.Items == nil || p.Items.Type != "string" {
 					t.Errorf("%s.%s: items must be strings", slug, name)
 				} else {
