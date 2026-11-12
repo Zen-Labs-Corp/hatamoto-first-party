@@ -105,7 +105,7 @@ func addlinkCall(t *testing.T, args string) string {
 func TestAddlinkFunc(t *testing.T) {
 	(&fakeHost{entities: []string{evHybrid, venueDoc, evJazz}}).install(t)
 	if got := addlinkCall(t, `["google","h1"]`); !strings.HasPrefix(got, "https://calendar.google.com/") ||
-		!strings.Contains(got, "Old+Mill") || !strings.Contains(got, "20270214T190000Z") {
+		!strings.Contains(got, "Old%20Mill") || !strings.Contains(got, "20270214T190000Z") {
 		t.Errorf("google = %q", got)
 	}
 	if got := addlinkCall(t, `["outlook","h1"]`); !strings.HasPrefix(got, "https://outlook.live.com/") {
@@ -180,6 +180,21 @@ func TestPartialRules(t *testing.T) {
 	for _, want := range []string{"Cancelled", "Hall, 1 High St", "Free", `href="https://example.org/t"`} {
 		if !strings.Contains(full, want) {
 			t.Errorf("full lacks %q: %s", want, full)
+		}
+	}
+}
+
+// A "+" in an href is written &#43; by html/template and back to "+" by core's
+// widget sanitiser, which then warns on every render: spaces must be %20.
+func TestCalendarLinksHaveNoPlus(t *testing.T) {
+	e := Event{Name: "Spring Jazz+Blues Night", Start: time.Date(2027, 2, 13, 19, 0, 0, 0, time.UTC)}
+	l := calendarLinks(e, time.UTC, "The Old Mill, Leeds", "An evening of jazz.\nTickets: here")
+	for name, u := range map[string]string{"google": l.Google, "outlook": l.Outlook, "yahoo": l.Yahoo} {
+		if u == "" || strings.Contains(u, "+") {
+			t.Errorf("%s = %q", name, u)
+		}
+		if !strings.Contains(u, "Jazz%2BBlues%20Night") {
+			t.Errorf("%s does not carry the title intact: %q", name, u)
 		}
 	}
 }

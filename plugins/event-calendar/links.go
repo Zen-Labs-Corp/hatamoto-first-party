@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -57,9 +58,9 @@ func calendarLinks(e Event, loc *time.Location, location, details string) calLin
 		l.ICS = icsPathPrefix + e.Slug + ".ics"
 	}
 	l.Google = fitURL(title, details, location, func(t, d, w string) string {
-		return "https://calendar.google.com/calendar/render?" + url.Values{
+		return "https://calendar.google.com/calendar/render?" + queryString(url.Values{
 			"action": {"TEMPLATE"}, "text": {t}, "dates": {gs + "/" + ge}, "details": {d}, "location": {w},
-		}.Encode()
+		})
 	})
 	l.Outlook = fitURL(title, details, location, func(t, d, w string) string {
 		v := url.Values{
@@ -69,14 +70,22 @@ func calendarLinks(e Event, loc *time.Location, location, details string) calLin
 		if e.AllDay {
 			v.Set("allday", "true")
 		}
-		return "https://outlook.live.com/calendar/0/deeplink/compose?" + v.Encode()
+		return "https://outlook.live.com/calendar/0/deeplink/compose?" + queryString(v)
 	})
 	l.Yahoo = fitURL(title, details, location, func(t, d, w string) string {
-		return "https://calendar.yahoo.com/?" + url.Values{
+		return "https://calendar.yahoo.com/?" + queryString(url.Values{
 			"v": {"60"}, "title": {t}, "st": {ys}, "et": {ye}, "desc": {d}, "in_loc": {w},
-		}.Encode()
+		})
 	})
 	return l
+}
+
+// queryString encodes values with %20 for a space. url.Values.Encode writes "+",
+// which html/template escapes to &#43; in an href and core's widget sanitiser
+// then writes back as "+": every render logged a warning. %20 is the same
+// value in a query string and survives both unchanged.
+func queryString(v url.Values) string {
+	return strings.ReplaceAll(v.Encode(), "+", "%20")
 }
 
 // fitURL builds a link and, while it is over the cap (multi-byte text grows
