@@ -308,6 +308,7 @@ const queryEventsHead = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
 SELECT e.entity_id AS id, e.schema_slug, e.slug, e.locale, e.name, o.starts_at, o.ends_at, e.all_day, e.time_zone,
  e.event_status, e.attendance_mode, e.venue_id, e.venue_name, e.venue_city, e.category_ids, e.series_id, e.price,
  e.price_amount, e.featured, e.image, e.source_kind, e.source_uid, e.source_url, e.url, e.updated_at,
+ e.starts_at AS base_starts_at,
  row_number() OVER (ORDER BY `
 const queryEventsFrom = `) AS n
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id
@@ -374,6 +375,9 @@ func eventFromIndex(m map[string]any, loc *time.Location) (Event, bool) {
 	if t, err := time.Parse(time.RFC3339, attrString(m, "updated_at")); err == nil {
 		e.Updated = t
 	}
+	if t, ok := parseTime(attrString(m, "base_starts_at"), time.UTC); ok {
+		e.BaseStart = t
+	}
 	e.Start, e.End, e.HasEnd = indexTimes(start, end, e.AllDay, e.TimeZone, loc)
 	return e, true
 }
@@ -406,6 +410,9 @@ func (r apiRow) event(loc *time.Location) Event {
 		Price: r.Price, PriceAmount: r.PriceAmount, Featured: r.Featured, Image: r.Image,
 	}
 	e.Start, e.End, e.HasEnd = indexTimes(r.StartsAt.UTC(), r.EndsAt.UTC(), r.AllDay, r.TimeZone, loc)
+	if !r.BaseStartsAt.IsZero() {
+		e.BaseStart = r.BaseStartsAt.UTC()
+	}
 	return e
 }
 
@@ -443,6 +450,7 @@ type apiRow struct {
 	PriceAmount   *float64  `json:"price_amount"`
 	Featured      bool      `json:"featured"`
 	Image         string    `json:"image"`
+	BaseStartsAt  time.Time `json:"base_starts_at"`
 }
 
 // freeSQL is the free rule of priceText: an amount of 0 or the text "free".
@@ -457,7 +465,7 @@ const queryRangeSQL = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
 SELECT e.entity_id AS id, e.schema_slug, e.name, e.slug, e.url, o.starts_at, o.ends_at, e.all_day, e.time_zone, e.event_status,
  e.venue_name, e.venue_slug, e.venue_city, e.venue_address,
  COALESCE(e.venue_lat, g.latitude) AS lat, COALESCE(e.venue_lon, g.longitude) AS lon,
- e.category_names, e.price, e.price_amount, e.featured, e.image,
+ e.category_names, e.price, e.price_amount, e.featured, e.image, e.starts_at AS base_starts_at,
  row_number() OVER (ORDER BY CASE WHEN $11::boolean THEN -extract(epoch FROM o.starts_at) ELSE extract(epoch FROM o.starts_at) END,
   e.name, e.entity_id) AS n
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id

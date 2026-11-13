@@ -135,3 +135,28 @@ func TestWriteCalendarTextVenueKeepsTheCity(t *testing.T) {
 		t.Errorf("location: %q", out)
 	}
 }
+
+func TestWriteCalendarOccurrenceUIDs(t *testing.T) {
+	base := time.Date(2027, 2, 14, 19, 0, 0, 0, time.UTC)
+	var evs []Event
+	for i := 0; i < 3; i++ {
+		start := base.AddDate(0, 0, 7*i)
+		evs = append(evs, Event{ID: "abc", Name: "Class", Start: start, BaseStart: base})
+	}
+	// An event the index never gave a base for keeps the bare UID.
+	evs = append(evs, Event{ID: "plain", Name: "Once", Start: base})
+	body := unfold(writeCalendar(evs, base, time.UTC))
+	if n := strings.Count(body, "BEGIN:VEVENT"); n != 4 {
+		t.Fatalf("VEVENTs = %d", n)
+	}
+	for _, uid := range []string{"abc@", "abc-20270221@", "abc-20270228@", "plain@"} {
+		if strings.Count(body, "UID:"+uid) != 1 {
+			t.Errorf("UID %s missing or repeated\n%s", uid, body)
+		}
+	}
+	// the date in the UID is the date in the event's zone
+	late := Event{ID: "z", Name: "Late", TimeZone: "Pacific/Auckland", Start: time.Date(2027, 3, 1, 22, 0, 0, 0, time.UTC), BaseStart: base}
+	if body := unfold(writeCalendar([]Event{late}, base, time.UTC)); !strings.Contains(body, "UID:z-20270302@") {
+		t.Errorf("zone date: %s", body)
+	}
+}

@@ -313,3 +313,36 @@ func TestSingleEventScanStopsAtMatch(t *testing.T) {
 		t.Fatalf("status = %d, pages = %d", r.Status, pages)
 	}
 }
+
+// One entity that repeats comes back from the index as several rows.
+const repeatingRows = `[{"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","starts_at":"2026-07-01T17:00:00+00:00","ends_at":"2026-07-01T19:00:00+00:00","base_starts_at":"2026-07-01T17:00:00+00:00"},
+ {"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","starts_at":"2026-07-08T17:00:00+00:00","ends_at":"2026-07-08T19:00:00+00:00","base_starts_at":"2026-07-01T17:00:00+00:00"},
+ {"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","starts_at":"2026-07-15T17:00:00+00:00","ends_at":"2026-07-15T19:00:00+00:00","base_starts_at":"2026-07-01T17:00:00+00:00"}]`
+
+func TestFeedHasOneEventPerOccurrence(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: repeatingRows}
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	body := unfold(r.Body)
+	if n := strings.Count(body, "BEGIN:VEVENT"); n != 3 {
+		t.Fatalf("VEVENTs = %d\n%s", n, body)
+	}
+	for _, uid := range []string{"UID:f1@" + icsUIDDomain, "UID:f1-20260708@" + icsUIDDomain, "UID:f1-20260715@" + icsUIDDomain} {
+		if strings.Count(body, uid+"\r\n") != 1 {
+			t.Errorf("missing or repeated %s", uid)
+		}
+	}
+	// every date keeps its own start, the details come from the entity
+	for _, start := range []string{"DTSTART:20260701T170000Z", "DTSTART:20260708T170000Z", "DTSTART:20260715T170000Z"} {
+		if !strings.Contains(body, start) {
+			t.Errorf("missing %s", start)
+		}
+	}
+	if strings.Count(body, "URL:https://example.com/e/future") != 3 {
+		t.Errorf("details were not put on every date")
+	}
+	// ... with one entity read, not one per date
+	if n := venueGets(h, "f1"); n != 1 {
+		t.Errorf("entity read %d times, want 1", n)
+	}
+}

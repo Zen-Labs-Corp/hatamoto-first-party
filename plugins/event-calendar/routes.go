@@ -66,9 +66,9 @@ func serveFeed() sdk.HTTPResponse {
 	}
 	deadline := clock().Add(feedFillBudget)
 	var kept []Event
-	venues := venueMemo{}
+	venues, details := venueMemo{}, detailMemo{}
 	for _, e := range upcoming {
-		if e, keep := fillDetails(e, s, deadline, venues); keep {
+		if e, keep := fillDetails(e, s, deadline, venues, details); keep {
 			kept = append(kept, e)
 		}
 	}

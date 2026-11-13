@@ -93,6 +93,16 @@ func writeCalendarWith(evs []Event, stamp time.Time, loc *time.Location, venues 
 	return b.String()
 }
 
+// occurrenceUID is the UID of one date of an event: the bare id for the date
+// the event started on (what a subscriber had before events repeated), the id
+// with the date (YYYYMMDD, in the event's zone) for every other.
+func occurrenceUID(e Event, uid string, loc *time.Location) string {
+	if e.BaseStart.IsZero() || e.Start.Equal(e.BaseStart) {
+		return uid
+	}
+	return uid + "-" + e.Start.In(loc).Format("20060102")
+}
+
 func writeEvent(line func(string), e Event, where string, stamp time.Time, loc *time.Location) {
 	uid := e.ID
 	if uid == "" {
@@ -104,7 +114,7 @@ func writeEvent(line func(string), e Event, where string, stamp time.Time, loc *
 	}
 	loc = dateLocation(e, loc)
 	line("BEGIN:VEVENT")
-	line("UID:" + escapeText(uid) + "@" + icsUIDDomain)
+	line("UID:" + escapeText(occurrenceUID(e, uid, loc)) + "@" + icsUIDDomain)
 	line("DTSTAMP:" + ds.UTC().Format(icsDateTime))
 	if e.AllDay {
 		last := e.Start

@@ -366,3 +366,18 @@ func TestBuilderWithoutParamsIsUnchanged(t *testing.T) {
 		}
 	}
 }
+
+func TestBuilderReadsARepeatingEventOnceAndKeepsEachDate(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: repeatingRows}
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	items := got.Results[0].Items
+	if len(items) != 3 || venueGets(h, "f1") != 1 {
+		t.Fatalf("items = %d, entity reads = %d", len(items), venueGets(h, "f1"))
+	}
+	for i, want := range []string{"2026-07-01T17:00:00Z", "2026-07-08T17:00:00Z", "2026-07-15T17:00:00Z"} {
+		if items[i].PublishedAt != want || items[i].URL != "https://example.com/e/future" {
+			t.Errorf("item %d = %+v", i, items[i])
+		}
+	}
+}
