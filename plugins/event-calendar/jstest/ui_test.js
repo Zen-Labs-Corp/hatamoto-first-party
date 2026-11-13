@@ -287,7 +287,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   await els["#imp-go"].click();
   check(els["#imp-confirm"].textContent.includes("feeds.example.org") && els["#imp-confirm"].textContent.includes("Runs tab") && !els["#imp-confirm"].textContent.includes("token"), "host shown for confirmation: " + els["#imp-confirm"].textContent);
   const manual = calls[calls.length - 1];
-  check(manual.action === "import_url" && manual.kind === "ical" && manual.name === "" && manual.url === "webcal://Feeds.Example.org/cal/events.ics?token=abc", "manual import inputs");
+  check(manual.action === "import_url" && manual.kind === "ical" && manual.name === "" && manual.url === "https://Feeds.Example.org/cal/events.ics?token=abc", "manual import inputs (webcal becomes https)");
   const before = calls.length;
   els["#imp-url"].value = "not an address";
   await els["#imp-go"].click();

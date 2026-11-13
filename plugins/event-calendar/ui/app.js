@@ -315,7 +315,8 @@ $("#imp-go").addEventListener("click", () => {
     return;
   }
   say("#imp-confirm", `Importing from ${host}. Tick the any-address host (*) on the Runs tab before Start.`);
-  return fillRun({ action: "import_url", url, kind: "ical", name: "" });
+  // Core's run form accepts only http(s) addresses.
+  return fillRun({ action: "import_url", url: url.replace(/^webcals?:\/\//i, "https://"), kind: "ical", name: "" });
 });
 
 // ---- Tabs
