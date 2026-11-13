@@ -111,6 +111,25 @@ func TestAdminSubmissionsList(t *testing.T) {
 	}
 }
 
+// Core's bridge sends a non-string query value as its JSON text, so a status
+// array reaches the route as `["pending"]`.
+func TestAdminSubmissionsStatusFromBridgeArray(t *testing.T) {
+	h := &adminHost{rows: `[]`, counts: `{}`}
+	h.install(t)
+	for _, v := range []string{`["pending"]`, `["rejected","all"]`} {
+		r := callRoute(t, "GET", "/admin/submissions", owner, nil, map[string][]string{"status": {v}})
+		if r.Status != 200 {
+			t.Errorf("%s: status %d", v, r.Status)
+		}
+	}
+	if h.queries[0].args[0] != "pending" || h.queries[2].args[0] != "rejected" {
+		t.Errorf("args = %v, %v", h.queries[0].args, h.queries[2].args)
+	}
+	if r := callRoute(t, "GET", "/admin/submissions", owner, nil, map[string][]string{"status": {`["x"]`}}); r.Status != 400 {
+		t.Errorf("bad element: status %d", r.Status)
+	}
+}
+
 func TestAdminSubmissionsStatusFilter(t *testing.T) {
 	h := &adminHost{rows: `[]`, counts: `{}`}
 	h.install(t)

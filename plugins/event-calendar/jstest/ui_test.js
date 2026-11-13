@@ -90,7 +90,10 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   const hatamoto = {
     ready: Promise.resolve(),
     route: async (method, p, body, query) => {
-      routes.push({ method, p, query });
+      // core's bridge sets each query value with toString: a string stays, anything else becomes its JSON text
+      const sent = {};
+      for (const [k, v] of Object.entries(query || {})) sent[k] = typeof v === "string" ? v : v == null ? "" : JSON.stringify(v);
+      routes.push({ method, p, query: sent });
       return { status, body: JSON.stringify(method === "GET" ? bodies[p] : { ok: true }) };
     },
     runInputs: (v) => {
@@ -199,7 +202,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   check(subRows.children.length === 3, "one row per submission");
   check(subRows.text().includes("Open mic night") && subRows.text().includes("Sat 20 Feb 8:00 pm") && subRows.text().includes("visitor@example.org") && subRows.text().includes("The Anchor"), "title, when as typed, venue and sender shown");
   check(subRows.text().includes("Sat 27 Feb 7:00 pm") && subRows.text().includes("Sat 02 Jan"), "a time with Z and a date only");
-  check(routes[0].query.status[0] === "pending", "the filter is sent as a query");
+  check(routes[0].query.status === "pending", "the filter is sent as a query");
   check(subRows.buttons("Approve").length === 2 && subRows.buttons("Reject").length === 3 && subRows.buttons("Delete").length === 3, "buttons per status");
   await subRows.buttons("Approve")[0].click();
   const keys = Object.keys(calls[0]).sort().join(",");
@@ -225,7 +228,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   els["#sub-status"].value = "rejected";
   els["#sub-status"].handlers.change();
   await next();
-  check(routes[0].query.status[0] === "rejected", "changing the filter reloads with it");
+  check(routes[0].query.status === "rejected", "changing the filter reloads with it");
 
   // an editor: approve and delete disabled, reject works
   ({ els, calls, routes } = await load({ tab: "submissions", subs: { ...SUBS, role: "editor" } }));

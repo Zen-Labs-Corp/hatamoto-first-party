@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"slices"
 	"strconv"
@@ -43,7 +44,7 @@ func serveSubmissions(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPRespon
 		return plain(http.StatusForbidden, "forbidden")
 	}
 	status := "pending"
-	if v := first(query["status"]); v != "" {
+	if v := queryValue(query["status"]); v != "" {
 		status = v
 	}
 	if status != "all" && !slices.Contains(submissionStatuses, status) {
@@ -68,6 +69,20 @@ func serveSubmissions(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPRespon
 		})
 	}
 	return jsonReply(http.StatusOK, out)
+}
+
+// queryValue is the first value of a query parameter. Core's bridge turns a
+// non-string value the page sends into its JSON text, so an array arrives as
+// `["pending"]`; its first element is taken.
+func queryValue(v []string) string {
+	s := first(v)
+	if strings.HasPrefix(s, "[") {
+		var list []string
+		if json.Unmarshal([]byte(s), &list) == nil {
+			return first(list)
+		}
+	}
+	return s
 }
 
 func first(v []string) string {

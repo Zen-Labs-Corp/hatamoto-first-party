@@ -241,7 +241,7 @@ $("#sub-reject-all").addEventListener("click", async () => {
 async function loadSubmissions() {
   try {
     say("#notice", "");
-    renderSubmissions(await api("GET", "/admin/submissions", { status: [sub.status] }));
+    renderSubmissions(await api("GET", "/admin/submissions", { status: sub.status }));
   } catch (e) {
     say("#notice", e.message, true);
   }
