@@ -86,11 +86,39 @@ func serveEvent(file string) sdk.HTTPResponse {
 	switch {
 	case found:
 		at := now()
-		return calendar(writeCalendar([]Event{e}, at, s.location()), slug+".ics")
+		return calendar(writeCalendar(nextDates(e, s, at), at, s.location()), slug+".ics")
 	case hostFailed:
 		return plain(http.StatusServiceUnavailable, "unavailable")
 	}
 	return notFound()
+}
+
+// maxEventICSDates is how many upcoming dates a repeating event's own calendar
+// file lists.
+const maxEventICSDates = 12
+
+// nextDates is the events to list in the calendar file of e: the event itself
+// when it does not repeat or has no date left, else its next dates, each with
+// the event's start as BaseStart so the UIDs match the feed. It works from the
+// rule, so it needs no index.
+func nextDates(e Event, s settings, at time.Time) []Event {
+	if e.Repeat.Kind == "" || e.Repeat.Kind == "none" {
+		return []Event{e}
+	}
+	loc := eventLocation(e, s)
+	_, to := windowFor(at)
+	occs := expand(e, loc, at, to, maxEventICSDates)
+	if len(occs) == 0 {
+		return []Event{e}
+	}
+	out := make([]Event, 0, len(occs))
+	for _, o := range occs {
+		d := e
+		d.Start, d.End, d.HasEnd = indexTimes(o.Start.UTC(), o.End.UTC(), e.AllDay, e.TimeZone, loc)
+		d.BaseStart = e.Start
+		out = append(out, d)
+	}
+	return out
 }
 
 // notFound is a 404 that may be cached briefly, so repeated probes of a

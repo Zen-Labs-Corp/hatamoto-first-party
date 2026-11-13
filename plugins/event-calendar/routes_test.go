@@ -346,3 +346,32 @@ func TestFeedHasOneEventPerOccurrence(t *testing.T) {
 		t.Errorf("entity read %d times, want 1", n)
 	}
 }
+
+func TestEventICSListsTheNextTwelveDates(t *testing.T) {
+	weekly := evOnType("r1", "event", `{"start_at":"2026-01-06T18:00","end_at":"2026-01-06T19:00","time_zone":"UTC","repeat":"weekly","repeat_every":1}`)
+	ended := evOnType("r2", "event", `{"start_at":"2026-01-06T18:00","time_zone":"UTC","repeat":"weekly","repeat_until":"2026-02-01"}`)
+	h := &fakeHost{entities: []string{weekly, ended, evFuture}}
+	h.install(t)
+
+	body := unfold(call(t, "GET", "/event/{file}", "r1.ics").Body)
+	if n := strings.Count(body, "BEGIN:VEVENT"); n != 12 {
+		t.Fatalf("VEVENTs = %d\n%s", n, body)
+	}
+	// now is Monday 2026-06-01: the next Tuesday is the 2nd; the first date
+	// listed is not the base date, so every UID carries its day
+	for _, want := range []string{"UID:r1-20260602@", "UID:r1-20260616@", "UID:r1-20260818@", "DTSTART:20260602T180000Z", "DTEND:20260602T190000Z"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if strings.Contains(body, "UID:r1@") || strings.Contains(body, "20260825") {
+		t.Errorf("unexpected date in %s", body)
+	}
+
+	// a repeat with nothing left, and an event that does not repeat: one entry
+	for _, file := range []string{"r2.ics", "future.ics"} {
+		if n := strings.Count(call(t, "GET", "/event/{file}", file).Body, "BEGIN:VEVENT"); n != 1 {
+			t.Errorf("%s: VEVENTs = %d", file, n)
+		}
+	}
+}
