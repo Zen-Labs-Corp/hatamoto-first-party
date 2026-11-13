@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Event countdown",
+    "hint": "Days, hours and minutes until the next event, or until the event with the slug below",
+    "children": true,
+    "seed": [
+      {
+        "t": "loop",
+        "p": {
+          "from": "source",
+          "source": "ext.event-calendar.upcoming",
+          "limit": 1
+        },
+        "c": [
+          {
+            "t": "container",
+            "p": {
+              "tag": "div"
+            },
+            "c": [
+              {
+                "t": "heading",
+                "b": {
+                  "text": "loop.item.title"
+                }
+              },
+              {
+                "t": "text",
+                "b": {
+                  "text": "loop.item.attributes.when"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "properties": {
+    "slug": {
+      "type": "string",
+      "maxLength": 200
+    }
+  }
+}

@@ -24,6 +24,7 @@ const (
 	defaultNewSlug    = "calendar-event"
 	defaultTimeZone   = "UTC"
 	defaultDateFormat = "short"
+	defaultWeekStart  = "monday"
 	maxContactBytes   = 200
 )
 
@@ -36,12 +37,13 @@ type settings struct {
 	SchemaSlug     string
 	TimeZone       string
 	DateFormat     string
+	WeekStartsOn   string // monday or sunday
 	ShowMap        bool
 	GeocodeContact string
 }
 
 func defaultSettings() settings {
-	return settings{TimeZone: defaultTimeZone, DateFormat: defaultDateFormat}
+	return settings{TimeZone: defaultTimeZone, DateFormat: defaultDateFormat, WeekStartsOn: defaultWeekStart}
 }
 
 // slugs are the content types events are read from.
@@ -62,6 +64,7 @@ func loadSettings() settings {
 		SchemaSlug string `json:"schema_slug"`
 		TimeZone   string `json:"time_zone"`
 		DateFormat string `json:"date_format"`
+		WeekStarts string `json:"week_starts_on"`
 		ShowMap    bool   `json:"show_map"`
 		Contact    string `json:"geocode_contact"`
 	}
@@ -79,6 +82,9 @@ func loadSettings() settings {
 	switch raw.DateFormat {
 	case "short", "us", "iso":
 		s.DateFormat = raw.DateFormat
+	}
+	if raw.WeekStarts == "sunday" {
+		s.WeekStartsOn = "sunday"
 	}
 	return s
 }

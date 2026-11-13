@@ -84,6 +84,21 @@ const (
 	evOther  = `{"id":"o1","schema_slug":"post","slug":"post","name":"Post","status":"published","attributes":{"start_at":"2026-08-01"}}`
 )
 
+// callQuery calls a route that reads the query string.
+func callQuery(t *testing.T, method, pattern string, query map[string][]string) sdk.HTTPResponse {
+	t.Helper()
+	in, _ := json.Marshal(sdk.HTTPRequest{Method: method, Pattern: pattern, Query: query})
+	out, err := guest.Handle(guest.HTTPExport, in)
+	if err != nil {
+		t.Fatalf("handler returned an error: %v", err)
+	}
+	var r sdk.HTTPResponse
+	if err := json.Unmarshal(out, &r); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
 func call(t *testing.T, method, pattern, file string) sdk.HTTPResponse {
 	t.Helper()
 	in, _ := json.Marshal(sdk.HTTPRequest{Method: method, Pattern: pattern, PathValues: map[string]string{"file": file}})

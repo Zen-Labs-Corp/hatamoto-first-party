@@ -1,0 +1,5 @@
+.hm-event-calendar_countdown{display:block;margin:var(--hm-space-4,1rem) 0;padding:var(--hm-space-4,1rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-event-calendar_countdown h2,.hm-event-calendar_countdown h3,.hm-event-calendar_countdown .name{margin:0 0 var(--hm-space-2,.5rem);font-size:1.25rem}
+.hm-event-calendar_countdown .left{display:flex;flex-wrap:wrap;gap:var(--hm-space-4,1rem);margin:0 0 var(--hm-space-2,.5rem);font-size:1.75rem;font-weight:700}
+.hm-event-calendar_countdown .unit{font-size:1rem;font-weight:400}
+.hm-event-calendar_countdown .when{margin:0;color:var(--hm-color-muted,#5b6475)}

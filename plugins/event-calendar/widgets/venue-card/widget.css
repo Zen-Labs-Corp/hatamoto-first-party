@@ -1,0 +1,5 @@
+.hm-event-calendar_venue-card{display:block;margin:var(--hm-space-4,1rem) 0;padding:var(--hm-space-4,1rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-event-calendar_venue-card h2,.hm-event-calendar_venue-card h3,.hm-event-calendar_venue-card .name{margin:0 0 var(--hm-space-1,.25rem);font-size:1.25rem}
+.hm-event-calendar_venue-card .address{margin:0 0 var(--hm-space-3,.75rem);color:var(--hm-color-muted,#5b6475)}
+.hm-event-calendar_venue-card .next{margin:0}
+.hm-event-calendar_venue-card .when{display:block;color:var(--hm-color-muted,#5b6475)}

@@ -9,8 +9,8 @@ import (
 
 // Venue is a resolved venue entity.
 type Venue struct {
-	ID, Name, URL, Address, City, Region, Postcode, Country, Phone, Website string
-	Lat, Lon                                                                *float64
+	ID, Slug, Name, URL, Address, City, Region, Postcode, Country, Phone, Website string
+	Lat, Lon                                                                      *float64
 }
 
 // Organizer is a resolved organizer entity.
@@ -47,7 +47,7 @@ func loadVenue(id string) (Venue, bool) {
 		return Venue{}, false
 	}
 	return Venue{
-		ID: id, Name: raw.Name, URL: raw.URL,
+		ID: id, Slug: raw.Slug, Name: raw.Name, URL: raw.URL,
 		Address: attrString(a, "address"), City: attrString(a, "city"), Region: attrString(a, "region"),
 		Postcode: attrString(a, "postcode"), Country: attrString(a, "country"),
 		Phone: attrString(a, "phone"), Website: attrString(a, "website"),

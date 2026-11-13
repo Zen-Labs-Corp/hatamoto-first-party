@@ -80,8 +80,8 @@ const idxDoc = `{"id":"e1","schema_slug":"calendar-event","slug":"gala","name":"
 func TestIndexUpsertOnEntityEvents(t *testing.T) {
 	h := &indexHost{docs: map[string]string{
 		"e1": idxDoc,
-		"v1": `{"name":"Blue Room","status":"published","attributes":{"city":"Bonn"}}`,
-		"c1": `{"name":"Music","status":"published"}`,
+		"v1": `{"name":"Blue Room","slug":"blue-room","status":"published","attributes":{"city":"Bonn","address":"1 Main St","latitude":50.7,"longitude":7.1}}`,
+		"c1": `{"name":"Music","slug":"music","status":"published"}`,
 	}}
 	h.install(t)
 	ok, err := reindexEntity("e1", settings{TimeZone: "UTC"})
@@ -99,6 +99,14 @@ func TestIndexUpsertOnEntityEvents(t *testing.T) {
 	}
 	if ex[0].args[12] != "Blue Room" || ex[0].args[13] != "Bonn" || ex[0].args[15] != `["Music"]` || ex[0].args[18] != 12.5 {
 		t.Errorf("event args = %v", ex[0].args)
+	}
+	// guard stays $25; url, venue slug, address, lat, lon, category slugs follow it
+	if ex[0].args[24] != nil || ex[0].args[26] != "blue-room" || ex[0].args[27] != "1 Main St, Bonn" ||
+		ex[0].args[28] != 50.7 || ex[0].args[29] != 7.1 || ex[0].args[30] != `["music"]` {
+		t.Errorf("view args = %v", ex[0].args[23:])
+	}
+	if len(ex[0].args) != 31 || strings.Count(ex[0].sql, "$31") != 1 {
+		t.Errorf("args = %d", len(ex[0].args))
 	}
 	if ex[1].args[0] != "e1" || ex[1].args[1] != "2026-07-01T17:00:00Z" || ex[1].args[2] != "2026-07-01T19:00:00Z" {
 		t.Errorf("occurrence args = %v", ex[1].args)
@@ -215,5 +223,54 @@ func TestIndexNotTrustedBeforeFirstReconcile(t *testing.T) {
 	h.queryTo = `{"rows":[[[]]]}`
 	if evs, err := queryEvents(indexQuery{Upcoming: true, At: time.Now()}); err != nil || len(evs) != 0 {
 		t.Errorf("empty reconciled index: %v, %v", evs, err)
+	}
+}
+
+func TestIndexQueryRange(t *testing.T) {
+	rows := `[{"id":"e1","name":"Gala","slug":"gala","url":"/event/gala","starts_at":"2026-07-01T17:00:00+00:00",
+		"ends_at":"2026-07-01T19:00:00+00:00","all_day":false,"venue_name":"Hall","venue_slug":"hall","lat":50.5,"lon":null,
+		"category_names":["Music"],"price":"","price_amount":0,"featured":true},
+		{"id":"e2","name":"Fair","starts_at":"2026-03-06T23:00:00+00:00","ends_at":"2026-03-08T23:00:00+00:00","all_day":true}]`
+	h := &indexHost{queryTo: `{"rows":[[` + rows + `]]}`}
+	h.install(t)
+	from := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 0, 31)
+	got, err := queryRange(rangeQuery{From: from, To: to, Q: `50%_\ "off"; DROP`, Category: "Music", Venue: "hall", City: "Bonn", Price: "free", Slug: "gala", Language: "de", Limit: 9999})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("rows = %+v, %v", got, err)
+	}
+	if g := got[0]; g.URL != "/event/gala" || g.VenueSlug != "hall" || g.Lat == nil || *g.Lat != 50.5 || g.Lon != nil ||
+		g.PriceAmount == nil || !g.Featured || g.CategoryNames[0] != "Music" || !g.StartsAt.Equal(time.Date(2026, 7, 1, 17, 0, 0, 0, time.UTC)) {
+		t.Errorf("row = %+v", g)
+	}
+	c := h.calls[0]
+	// $1 from, $2 to: a row overlaps when it starts before to and ends after from
+	if !strings.Contains(c.sql, "o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz") {
+		t.Errorf("no overlap test: %s", c.sql)
+	}
+	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false}
+	if fmt.Sprint(c.args) != fmt.Sprint(want) {
+		t.Errorf("args = %v, want %v", c.args, want)
+	}
+	if strings.Contains(c.sql, "DROP") || strings.Contains(c.sql, "Music") {
+		t.Errorf("input in SQL: %s", c.sql)
+	}
+	h.assertSingleStatements(t)
+
+	h.queryTo = `{"rows":[[null]]}`
+	if _, err := queryRange(rangeQuery{From: from, To: to}); !errors.Is(err, errIndexNotReady) {
+		t.Errorf("not ready: err = %v", err)
+	}
+	h.dbErr = errors.New("no db")
+	if _, err := queryRange(rangeQuery{From: from, To: to}); err == nil || errors.Is(err, errIndexNotReady) {
+		t.Errorf("db error = %v", err)
+	}
+}
+
+func TestEscapeLike(t *testing.T) {
+	for in, want := range map[string]string{"": "", "plain": "plain", "a%b_c": `a\%b\_c`, `x\y`: `x\\y`} {
+		if got := escapeLike(in); got != want {
+			t.Errorf("escapeLike(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

@@ -1,0 +1,10 @@
+.hm-event-calendar_mini-calendar{display:block;max-width:20rem;padding:var(--hm-space-3,.75rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-event-calendar_mini-calendar .head{margin:0;font-size:1rem}
+.hm-event-calendar_mini-calendar .nav{display:flex;align-items:center;justify-content:space-between;gap:var(--hm-space-2,.5rem);margin-bottom:var(--hm-space-2,.5rem)}
+.hm-event-calendar_mini-calendar .nav button{padding:0 var(--hm-space-2,.5rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem);background:var(--hm-color-bg,#fff);color:inherit;cursor:pointer}
+.hm-event-calendar_mini-calendar table{width:100%;border-collapse:collapse}
+.hm-event-calendar_mini-calendar th{width:14.28%;padding:var(--hm-space-1,.25rem) 0;font-size:.75rem;font-weight:600}
+.hm-event-calendar_mini-calendar td{padding:2px;text-align:center}
+.hm-event-calendar_mini-calendar td.out{opacity:.35}
+.hm-event-calendar_mini-calendar td.today{font-weight:700;text-decoration:underline}
+.hm-event-calendar_mini-calendar .has{display:block;border-radius:var(--hm-radius,.5rem);background:var(--hm-color-accent,#1a56db);color:var(--hm-color-on-accent,#fff);text-decoration:none}

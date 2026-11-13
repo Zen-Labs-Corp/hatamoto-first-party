@@ -1,0 +1,85 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Event calendar",
+    "hint": "Searchable calendar with month, list, week, day, photo, summary and map views",
+    "children": true,
+    "seed": [
+      {
+        "t": "loop",
+        "p": {
+          "from": "source",
+          "source": "ext.event-calendar.upcoming",
+          "limit": 12
+        },
+        "c": [
+          {
+            "t": "container",
+            "p": {
+              "tag": "article"
+            },
+            "c": [
+              {
+                "t": "heading",
+                "b": {
+                  "text": "loop.item.title"
+                }
+              },
+              {
+                "t": "text",
+                "b": {
+                  "text": "loop.item.attributes.when"
+                }
+              },
+              {
+                "t": "text",
+                "b": {
+                  "text": "loop.item.attributes.venue_name"
+                }
+              },
+              {
+                "t": "button",
+                "p": {
+                  "text": "Details"
+                },
+                "b": {
+                  "href": "loop.item.url"
+                }
+              }
+            ]
+          },
+          {
+            "t": "loopempty",
+            "c": [
+              {
+                "t": "text",
+                "p": {
+                  "text": "No upcoming events."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "properties": {
+    "view": {
+      "type": "string",
+      "enum": ["month", "list", "week", "day", "photo", "summary"],
+      "default": "month"
+    },
+    "map_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "url"
+    },
+    "per_day": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 3
+    }
+  }
+}

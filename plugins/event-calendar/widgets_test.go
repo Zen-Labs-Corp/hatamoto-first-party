@@ -10,7 +10,10 @@ import (
 	"testing"
 )
 
-const widgetMax = 16 * 1024
+const (
+	widgetMax       = 16 * 1024
+	widgetIslandMax = 32768
+)
 
 var (
 	widgetNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -20,8 +23,21 @@ var (
 	funcWordRe   = regexp.MustCompile(`(?:^|[\s(|])([a-z][a-z_]*)\b`)
 	bannedTagRe  = regexp.MustCompile(`(?i)<\s*(script|style|iframe|object|embed|link|meta|base|form|svg|math|main|header|footer)\b`)
 	handlerRe    = regexp.MustCompile(`(?i)\son[a-z]+\s*=`)
+	siblingRe    = regexp.MustCompile(`[+~]`)
 
-	widgetFiles   = []string{"schema.json", "widget.html", "widget.css", "island.js", "island_test.js"}
+	// islandBans mirrors the host's island lint.
+	islandBans = map[string]*regexp.Regexp{
+		"absolute URL":      regexp.MustCompile(`(?i)https?://`),
+		"eval":              regexp.MustCompile(`\beval\s*\(`),
+		"new Function":      regexp.MustCompile(`\bnew\s+Function\b`),
+		"document.write":    regexp.MustCompile(`\bdocument\s*\.\s*write`),
+		"dynamic import":    regexp.MustCompile(`\bimport\s*\(`),
+		"importScripts":     regexp.MustCompile(`\bimportScripts\b`),
+		"protocol-relative": regexp.MustCompile("[\"'`]//[A-Za-z0-9]"),
+	}
+
+	// widgetFiles are the only files the host accepts in a widget directory.
+	widgetFiles   = []string{"schema.json", "widget.html", "widget.css", "island.js"}
 	templateFuncs = []string{"if", "else", "end", "range", "with", "eq", "ne", "lt", "le", "gt", "ge", "and", "or", "not", "len", "index"}
 )
 
@@ -48,16 +64,24 @@ func readWidget(t *testing.T, name, file string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(b) > widgetMax {
-		t.Errorf("%s/%s is %d bytes", name, file, len(b))
+	limit := widgetMax
+	if file == "island.js" {
+		limit = widgetIslandMax
+	}
+	if len(b) > limit {
+		t.Errorf("%s/%s is %d bytes, max %d", name, file, len(b), limit)
 	}
 	return string(b)
 }
 
-func TestWidgetPacks(t *testing.T) {
+func TestWidgetsValid(t *testing.T) {
 	dirs := widgetDirs(t)
-	if want := []string{"event-card", "event-details"}; !slices.Equal(dirs, want) {
+	slices.Sort(dirs)
+	if want := []string{"calendar", "countdown", "event-card", "event-details", "map", "mini-calendar", "venue-card"}; !slices.Equal(dirs, want) {
 		t.Fatalf("widgets = %v, want %v", dirs, want)
+	}
+	if len(dirs) > 16 {
+		t.Fatalf("%d widgets, a package may ship 16", len(dirs))
 	}
 	for _, name := range dirs {
 		t.Run(name, func(t *testing.T) {
@@ -73,7 +97,29 @@ func TestWidgetPacks(t *testing.T) {
 			checkSchema(t, name)
 			checkTemplate(t, name)
 			checkCSS(t, name)
+			checkIsland(t, name)
 		})
+	}
+}
+
+// checkIsland applies the host's island lint to island.js when the widget has one.
+func checkIsland(t *testing.T, name string) {
+	if _, err := os.Stat(filepath.Join("widgets", name, "island.js")); err != nil {
+		return
+	}
+	src := readWidget(t, name, "island.js")
+	if _, err := os.Stat(filepath.Join("jstest", name+"_test.js")); err != nil {
+		t.Errorf("island.js has no jstest/%s_test.js", name)
+	}
+	for _, host := range []string{"calendar.google.com", "outlook.live.com", "openstreetmap.org"} {
+		if strings.Contains(src, host) {
+			t.Errorf("island.js carries the literal %s; provider addresses come from data- attributes", host)
+		}
+	}
+	for what, re := range islandBans {
+		if re.MatchString(src) {
+			t.Errorf("island.js contains %s: %s", what, re.FindString(src))
+		}
 	}
 }
 
@@ -156,6 +202,9 @@ func checkCSS(t *testing.T, name string) {
 			t.Errorf("contains %q", bad)
 		}
 	}
+	if siblingRe.MatchString(stripCSSParens(css)) {
+		t.Error("sibling combinators are not allowed")
+	}
 	root := ".hm-event-calendar_" + name
 	var buf strings.Builder
 	depth := 0
@@ -189,6 +238,24 @@ func checkCSS(t *testing.T, name string) {
 			}
 		}
 	}
+}
+
+// stripCSSParens drops parenthesised groups (calc(), :nth-child(2n+1)) so
+// that only selector combinators remain for the sibling check.
+func stripCSSParens(css string) string {
+	var b strings.Builder
+	depth := 0
+	for _, c := range css {
+		switch {
+		case c == '(':
+			depth++
+		case c == ')' && depth > 0:
+			depth--
+		case depth == 0:
+			b.WriteRune(c)
+		}
+	}
+	return b.String()
 }
 
 type seedNode struct {
@@ -253,5 +320,85 @@ func TestEventDetailsSeed(t *testing.T) {
 	}
 	if !strings.Contains(html, `data-tiles="tile.openstreetmap.org"`) || strings.Contains(html, "https://") {
 		t.Error("the map block needs the literal tile host and no absolute URL")
+	}
+}
+
+// TestSeedDepth keeps every seed within the host's nesting limit of three.
+func TestSeedDepth(t *testing.T) {
+	var depth func(nodes []seedNode) int
+	depth = func(nodes []seedNode) int {
+		d := 0
+		for _, n := range nodes {
+			d = max(d, 1+depth(n.C))
+		}
+		return d
+	}
+	for _, name := range widgetDirs(t) {
+		var sc struct {
+			XHM struct {
+				Children bool       `json:"children"`
+				Seed     []seedNode `json:"seed"`
+			} `json:"x-hm"`
+		}
+		if err := json.Unmarshal([]byte(readWidget(t, name, "schema.json")), &sc); err != nil {
+			t.Fatal(err)
+		}
+		if len(sc.XHM.Seed) > 0 && !sc.XHM.Children {
+			t.Errorf("%s: a seed needs x-hm.children", name)
+		}
+		if d := depth(sc.XHM.Seed); d > 3 {
+			t.Errorf("%s: seed depth %d, max 3", name, d)
+		}
+	}
+}
+
+func TestCalendarSeedAndProviders(t *testing.T) {
+	var sc struct {
+		XHM struct {
+			Seed []seedNode `json:"seed"`
+		} `json:"x-hm"`
+	}
+	if err := json.Unmarshal([]byte(readWidget(t, "calendar", "schema.json")), &sc); err != nil {
+		t.Fatal(err)
+	}
+	if len(sc.XHM.Seed) != 1 {
+		t.Fatalf("seed = %+v", sc.XHM.Seed)
+	}
+	loop := sc.XHM.Seed[0]
+	src, _ := loop.P["source"].(string)
+	if loop.T != "loop" || loop.P["from"] != "source" || src != "ext.event-calendar.upcoming" || !sourceRe.MatchString(src) {
+		t.Fatalf("loop = %+v", loop)
+	}
+	if len(loop.C) != 2 || loop.C[0].T != "container" || loop.C[1].T != "loopempty" {
+		t.Fatalf("loop children = %+v", loop.C)
+	}
+	html := readWidget(t, "calendar", "widget.html")
+	for _, want := range []string{`data-gcal="https://calendar.google.com/`, `data-outlook="https://outlook.live.com/`, `data-api="/p/event-calendar/api/events"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("calendar widget.html lacks %s", want)
+		}
+	}
+}
+
+func TestPhotoListHasNoBulletsAndMiniCalendarLinksWithoutScript(t *testing.T) {
+	css, err := os.ReadFile("widgets/calendar/widget.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rule string
+	for _, line := range strings.Split(string(css), "\n") {
+		if strings.HasPrefix(line, ".hm-event-calendar_calendar .photos{") {
+			rule = line
+		}
+	}
+	if !strings.Contains(rule, "list-style:none") {
+		t.Errorf("the photo list keeps its bullets: %q", rule)
+	}
+	html, err := os.ReadFile("widgets/mini-calendar/widget.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(html), `href="{{.P.calendar_url}}">See all events`) {
+		t.Error("the mini calendar shows nothing useful without JavaScript")
 	}
 }

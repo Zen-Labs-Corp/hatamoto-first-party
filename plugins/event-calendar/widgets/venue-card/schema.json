@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Featured venue",
+    "hint": "A venue with its address and its next event; set the venue slug or name below",
+    "children": true,
+    "seed": [
+      {
+        "t": "loop",
+        "p": {
+          "from": "source",
+          "source": "ext.event-calendar.upcoming",
+          "limit": 1
+        },
+        "c": [
+          {
+            "t": "container",
+            "p": {
+              "tag": "div"
+            },
+            "c": [
+              {
+                "t": "heading",
+                "b": {
+                  "text": "loop.item.attributes.venue_name"
+                }
+              },
+              {
+                "t": "text",
+                "b": {
+                  "text": "loop.item.title"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "properties": {
+    "venue": {
+      "type": "string",
+      "maxLength": 200
+    }
+  }
+}
