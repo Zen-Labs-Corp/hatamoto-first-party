@@ -158,11 +158,16 @@ function searchFromState(st, today, defView) {
   return p.toString();
 }
 
+// addFilters copies the search and filter values of a state into a query.
+function addFilters(p, st) {
+  for (const k of TEXT_KEYS) if (st[k]) p.set(k, st[k]);
+  if (st.price) p.set("price", st.price);
+}
+
 // apiQuery is the query string of one route call; the view is not sent.
 function apiQuery(range, st) {
   const p = new URLSearchParams({ from: range.from, to: range.to });
-  for (const k of TEXT_KEYS) if (st[k]) p.set(k, st[k]);
-  if (st.price) p.set("price", st.price);
+  addFilters(p, st);
   return p.toString();
 }
 
@@ -203,6 +208,357 @@ function safeUrl(u) {
   if (typeof u !== "string" || u.length > 2048) return "";
   if (u.startsWith("/") && !u.startsWith(SLASHES)) return u;
   return /^https?:/i.test(u) && u.includes(SLASHES) ? u : "";
+}
+
+// ---- DOM ----
+
+const LABELS = { month: "Month", list: "List", week: "Week", day: "Day", photo: "Photo", summary: "Summary", map: "Map" };
+let uid = 0;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function button(label, onClick) {
+  const b = el("button", "", label);
+  b.type = "button";
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function fmtLabel(day, opts) {
+  return new Intl.DateTimeFormat(undefined, { ...opts, timeZone: "UTC" }).format(parseDay(day));
+}
+
+// timeLabel is the clock time of a timed event in the site zone.
+function timeLabel(ev, tz) {
+  if (ev.all_day) return "";
+  try {
+    return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: tz || undefined }).format(new Date(ev.start));
+  } catch (e) {
+    return "";
+  }
+}
+
+// titleLink shows an event title, as a link when the event has a safe address.
+// Titles are only ever set as text.
+function titleLink(ev, cls) {
+  const href = safeUrl(ev.url);
+  const a = el(href ? "a" : "span", cls, String(ev.title || ""));
+  if (href) a.href = href;
+  return a;
+}
+
+function labelled(text, input) {
+  const l = el("label");
+  l.appendChild(el("span", "", text + " "));
+  l.appendChild(input);
+  return l;
+}
+
+function init(box) {
+  const api = box.getAttribute("data-api") || "";
+  if (!api.startsWith("/") || api.startsWith(SLASHES)) return;
+  const defView = box.getAttribute("data-view");
+  const perDay = +box.getAttribute("data-per-day") || 3;
+  const mapUrl = safeUrl(box.getAttribute("data-map-url") || "");
+  const today = fmtDay(Date.now() - new Date().getTimezoneOffset() * 60000);
+  const st = stateFromSearch(location.search, today, defView);
+  const id = "ec-cal-" + ++uid;
+  const cache = new Map();
+  let data = { events: [], tz: "", show_map: false, truncated: false };
+  let ws = "monday";
+  let shown = false;
+  let ctl = null;
+
+  const fallback = Array.from(box.childNodes);
+  const app = el("div", "app");
+  app.hidden = true;
+  box.appendChild(app);
+
+  const sync = () => {
+    const s = searchFromState(st, today, defView);
+    try {
+      history.replaceState(null, "", location.pathname + (s ? "?" + s : "") + location.hash);
+    } catch (e) {
+      // the address stays as it is
+    }
+  };
+  const go = (patch) => {
+    Object.assign(st, patch);
+    sync();
+    load();
+  };
+
+  // search and date jump
+  const bar = el("div", "bar");
+  const q = el("input");
+  q.type = "search";
+  q.placeholder = "Search events...";
+  q.value = st.q;
+  q.setAttribute("aria-label", "Search events");
+  const search = debounce((v) => go({ q: cap(v) }), 300);
+  q.addEventListener("input", () => search(q.value));
+  const jump = el("input");
+  jump.type = "date";
+  jump.value = st.date;
+  jump.setAttribute("aria-label", "Jump to date");
+  bar.append(q, labelled("Jump to date", jump), button("Find", () => validDay(jump.value) && go({ date: jump.value })));
+
+  // filters
+  const filters = el("div", "filters");
+  const lists = {};
+  for (const k of ["category", "venue", "city"]) {
+    const input = el("input");
+    input.type = "text";
+    input.placeholder = "All";
+    input.value = st[k];
+    input.setAttribute("list", id + "-" + k);
+    input.addEventListener("change", () => go({ [k]: cap(input.value) }));
+    lists[k] = el("datalist");
+    lists[k].id = id + "-" + k;
+    filters.append(labelled(k.charAt(0).toUpperCase() + k.slice(1), input), lists[k]);
+  }
+  const price = el("select");
+  for (const [v, t] of [["", "Any"], ["free", "Free"], ["paid", "Paid"]]) {
+    const o = el("option", "", t);
+    o.value = v;
+    price.appendChild(o);
+  }
+  price.value = st.price;
+  price.addEventListener("change", () => go({ price: price.value }));
+  filters.appendChild(labelled("Price", price));
+
+  // views and navigation
+  const tabs = el("div", "tabs");
+  tabs.setAttribute("role", "group");
+  const tabBtn = {};
+  for (const v of VIEWS) {
+    tabBtn[v] = button(LABELS[v], () => go({ view: v }));
+    tabs.appendChild(tabBtn[v]);
+  }
+  const title = el("h3", "title");
+  const nav = el("div", "nav");
+  nav.append(button("< Prev", () => go({ date: shiftDate(st.date, st.view, -1) })), title, button("Today", () => go({ date: today })), button("Next >", () => go({ date: shiftDate(st.date, st.view, 1) })));
+  const status = el("p", "status");
+  status.setAttribute("aria-live", "polite");
+  const content = el("div", "content");
+
+  const sub = el("div", "subscribe");
+  const links = subscribeLinks(location.origin, { gcal: box.getAttribute("data-gcal"), outlook: box.getAttribute("data-outlook") });
+  sub.appendChild(el("span", "", "Subscribe:"));
+  for (const [t, h] of [["iCal", links.ical], ["Google Calendar", links.google], ["Outlook", links.outlook]]) {
+    const a = el("a", "", t);
+    a.href = h;
+    a.rel = "noopener";
+    sub.appendChild(a);
+  }
+  app.append(bar, filters, tabs, nav, status, content, sub);
+
+  function fillLists(events) {
+    const found = { category: new Set(), venue: new Set(), city: new Set() };
+    for (const ev of events) {
+      for (const c of ev.categories || []) found.category.add(c);
+      if (ev.venue) found.venue.add(ev.venue);
+      if (ev.city) found.city.add(ev.city);
+    }
+    for (const k of Object.keys(found)) {
+      const have = new Set(Array.from(lists[k].children, (o) => o.value));
+      for (const v of found[k]) {
+        if (have.has(v)) continue;
+        const o = el("option");
+        o.value = v;
+        lists[k].appendChild(o);
+      }
+    }
+  }
+
+  function chip(ev) {
+    const t = timeLabel(ev, data.tz);
+    const a = titleLink(ev, "chip");
+    a.textContent = (t ? t + " " : "") + String(ev.title || "");
+    return a;
+  }
+
+  function card(ev, photo) {
+    const item = el("li", "item");
+    const src = photo ? safeUrl(ev.image) : "";
+    if (src) {
+      const img = el("img");
+      img.src = src;
+      img.alt = String(ev.title || "");
+      img.loading = "lazy";
+      item.appendChild(img);
+    }
+    const h = el("h4");
+    h.appendChild(titleLink(ev));
+    item.appendChild(h);
+    item.appendChild(el("p", "", ev.when || ""));
+    const where = [ev.venue, ev.city].filter(Boolean).join(", ");
+    if (where) item.appendChild(el("p", "", where));
+    if (ev.price) item.appendChild(el("p", "", ev.price));
+    return item;
+  }
+
+  function monthView(events) {
+    const by = eventsByDay(events);
+    const grid = el("div", "grid");
+    const rows = monthGrid(+st.date.slice(0, 4), +st.date.slice(5, 7), ws);
+    for (const cell of rows[0]) grid.appendChild(el("div", "dow", fmtLabel(cell.day, { weekday: "short" })));
+    for (const cell of rows.flat()) {
+      const d = el("div", "cell" + (cell.inMonth ? "" : " out") + (cell.day === today ? " today" : ""));
+      d.appendChild(el("span", "num", String(+cell.day.slice(8, 10))));
+      const part = cellEvents(by.get(cell.day) || [], perDay);
+      for (const ev of part.shown) d.appendChild(chip(ev));
+      if (part.more) d.appendChild(button("+" + part.more + " more", () => go({ view: "day", date: cell.day })));
+      grid.appendChild(d);
+    }
+    return grid;
+  }
+
+  function weekView(events) {
+    const by = eventsByDay(events);
+    const days = el("div", "days week");
+    const from = weekRange(st.date, ws).from;
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(from, i);
+      const d = el("div", "day");
+      d.appendChild(el("h3", "", fmtLabel(day, { weekday: "short", day: "numeric", month: "short" })));
+      for (const ev of by.get(day) || []) d.appendChild(chip(ev));
+      days.appendChild(d);
+    }
+    return days;
+  }
+
+  function summaryView(events) {
+    const by = eventsByDay(events);
+    const dl = el("dl", "summary");
+    for (const day of Array.from(by.keys()).sort()) {
+      dl.appendChild(el("dt", "", fmtLabel(day, { weekday: "long", day: "numeric", month: "long" })));
+      for (const ev of by.get(day)) {
+        const dd = el("dd");
+        dd.appendChild(chip(ev));
+        dl.appendChild(dd);
+      }
+    }
+    return dl;
+  }
+
+  function mapView(events) {
+    const places = new Map();
+    for (const ev of events) {
+      if (!ev.venue) continue;
+      const p = places.get(ev.venue) || { address: ev.address || "", n: 0 };
+      p.n++;
+      places.set(ev.venue, p);
+    }
+    const wrap = el("div", "map");
+    const ul = el("ul", "places");
+    for (const [name, p] of places) {
+      const li = el("li");
+      li.appendChild(el("strong", "", name));
+      li.appendChild(el("span", "", (p.address ? " - " + p.address : "") + " (" + p.n + ")"));
+      ul.appendChild(li);
+    }
+    wrap.appendChild(places.size ? ul : el("p", "", "No venues in this range."));
+    if (mapUrl) {
+      const f = new URLSearchParams();
+      addFilters(f, st);
+      const qs = f.toString();
+      const a = el("a", "", "Open map");
+      a.href = mapUrl + (qs ? (mapUrl.includes("?") ? "&" : "?") + qs : "");
+      wrap.appendChild(a);
+    }
+    return wrap;
+  }
+
+  function listView(events, photo) {
+    const ul = el("ul", photo ? "photos" : "list");
+    for (const ev of events) ul.appendChild(card(ev, photo));
+    return ul;
+  }
+
+  function render() {
+    for (const v of VIEWS) {
+      tabBtn[v].setAttribute("aria-pressed", String(v === st.view));
+      tabBtn[v].hidden = v === "map" && !data.show_map;
+    }
+    const range = rangeFor(st.view, st.date, ws);
+    if (st.view === "week") {
+      title.textContent = fmtLabel(range.from, { month: "short", day: "numeric" }) + " - " + fmtLabel(addDays(range.to, -1), { month: "short", day: "numeric", year: "numeric" });
+    } else if (st.view === "day") {
+      title.textContent = fmtLabel(st.date, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    } else {
+      title.textContent = fmtLabel(st.date, { month: "long", year: "numeric" });
+    }
+    const events = data.events;
+    content.replaceChildren();
+    const inDay = st.view === "day" ? events.filter((ev) => (eventsByDay([ev]).has(st.date))) : events;
+    status.textContent = !inDay.length ? "No events found." : data.truncated ? "Showing the first events only. Narrow the search to see more." : "";
+    const views = { month: monthView, week: weekView, summary: summaryView, map: mapView };
+    if (st.view === "month" || st.view === "week" || st.view === "map" || inDay.length) {
+      const one = views[st.view];
+      content.appendChild(one ? one(events) : listView(inDay, st.view === "photo"));
+    }
+  }
+
+  function fail() {
+    status.textContent = "Could not load events.";
+    content.replaceChildren();
+  }
+
+  async function load() {
+    const used = ws;
+    const range = rangeFor(st.view, st.date, used);
+    const key = cacheKey(range, st, used);
+    let res = cache.get(key);
+    if (!res) {
+      if (ctl) ctl.abort();
+      const mine = (ctl = new AbortController());
+      if (shown) status.textContent = "Loading events...";
+      try {
+        const r = await fetch(api + "?" + apiQuery(range, st), { signal: mine.signal, headers: { Accept: "application/json" } });
+        if (!r.ok) throw new Error("status " + r.status);
+        res = await r.json();
+      } catch (e) {
+        if (!mine.signal.aborted && shown) fail();
+        return;
+      }
+      if (!res || !Array.isArray(res.events)) {
+        if (shown) fail();
+        return;
+      }
+      if (res.ready) {
+        if (cache.size >= 24) cache.delete(cache.keys().next().value);
+        cache.set(key, res);
+      }
+    }
+    ws = res.week_start === "sunday" ? "sunday" : "monday";
+    if (ws !== used) return load();
+    data = res;
+    if (!shown) {
+      if (!res.ready && !res.events.length) return;
+      shown = true;
+      for (const n of fallback) n.remove();
+      app.hidden = false;
+    }
+    if (st.view === "map" && !data.show_map) {
+      st.view = "month";
+      sync();
+      return load();
+    }
+    fillLists(res.events);
+    render();
+  }
+
+  load();
+}
+
+if (typeof document !== "undefined") {
+  for (const box of document.querySelectorAll(".hm-event-calendar_calendar")) init(box);
 }
 
 if (typeof module !== "undefined") {
