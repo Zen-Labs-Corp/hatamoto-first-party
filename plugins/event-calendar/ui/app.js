@@ -5,8 +5,7 @@
 const $ = (sel) => document.querySelector(sel);
 
 const NOT_OWNED = "Hand this event back in the editor (Who owns this page) to change single dates here, or edit the dates in the event itself.";
-const EDIT_RUN = "Edit repeat dates";
-const DUPLICATE_RUN = "Duplicate event";
+const RUN = "Edit repeat dates or duplicate";
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -52,18 +51,18 @@ const state = { role: "", events: [], open: new Set(), editing: "" };
 
 // fillRun puts the inputs into the run form. Where the page has no run form
 // the admin refuses them; then the owner is told what to enter in the Runs tab.
-async function fillRun(title, inputs) {
+async function fillRun(inputs) {
   const entered = Object.entries(inputs).filter(([, v]) => v !== "").map(([k, v]) => `${k}=${v}`).join(", ");
   try {
     await hatamoto.runInputs(inputs);
-    say("#hint", `The run "${title}" is filled in (${entered}). Press Start, then review the change in Changes.`);
+    say("#hint", `The run "${RUN}" is filled in (${entered}). Press Start, then review the change in Changes.`);
   } catch {
-    say("#hint", `Open the Runs tab, pick "${title}" and enter: ${entered}`);
+    say("#hint", `Open the Runs tab, pick "${RUN}" and enter: ${entered}`);
   }
 }
 
 function editDate(ev, d, action, extra = {}) {
-  return fillRun(EDIT_RUN, { event: ev.slug, action, date: d.day, start_at: "", end_at: "", ...extra });
+  return fillRun({ event: ev.slug, action, date: d.day, start_at: "", end_at: "", shift_days: "", ...extra });
 }
 
 function button(text, onClick, canAct) {
@@ -152,7 +151,7 @@ async function load() {
 
 $("#dup-go").addEventListener("click", () => {
   const n = Math.trunc(Number($("#dup-shift").value));
-  fillRun(DUPLICATE_RUN, { event: $("#dup-event").value, shift_days: Number.isFinite(n) ? String(n) : "0" });
+  fillRun({ event: $("#dup-event").value, action: "duplicate", date: "", start_at: "", end_at: "", shift_days: Number.isFinite(n) ? String(n) : "0" });
 });
 
 hatamoto.ready.then(load);

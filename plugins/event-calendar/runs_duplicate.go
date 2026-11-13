@@ -15,7 +15,7 @@ const (
 	maxCopySlugs = 50
 )
 
-// duplicateEvent stages a copy of one event, its dates moved by shift_days. The
+// duplicateEvent (the duplicate action of edit_dates) stages a copy of one event, its dates moved by shift_days. The
 // copy gets a source key of its own, written into its source_uid, so the page
 // can change its single dates later.
 func duplicateEvent(runID string, p map[string]any) (sdk.RunStepResult, error) {

@@ -149,7 +149,7 @@ func TestEditDatesFailures(t *testing.T) {
 		upErr  error
 		reason string
 	}{
-		{"bad action", map[string]any{"event": "yoga", "action": "delete", "date": "2026-02-24"}, ownedEvent, nil, nil, "skip, change or restore"},
+		{"bad action", map[string]any{"event": "yoga", "action": "delete", "date": "2026-02-24"}, ownedEvent, nil, nil, "skip, change, restore or duplicate"},
 		{"bad date", map[string]any{"event": "yoga", "action": "skip", "date": "24/02/2026"}, ownedEvent, nil, nil, "2026-03-03"},
 		{"change without start", map[string]any{"event": "yoga", "action": "change", "date": "2026-02-24"}, ownedEvent, nil, nil, "start time"},
 		{"bad end", map[string]any{"event": "yoga", "action": "change", "date": "2026-02-24", "start_at": "18:00", "end_at": "soon"}, ownedEvent, nil, nil, "end time"},

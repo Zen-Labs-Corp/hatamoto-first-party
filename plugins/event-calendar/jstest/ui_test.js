@@ -117,14 +117,15 @@ async function load({ data = DATA, refuse = false, status = 200 } = {}) {
 
   // duplicate
   await els["#dup-go"].click();
-  check(calls[calls.length - 1].shift_days === "7" && "event" in calls[calls.length - 1], "duplicate fills event and shift");
+  const dup = calls[calls.length - 1];
+  check(dup.action === "duplicate" && dup.shift_days === "7" && "event" in dup, "duplicate fills the one run: action, event and shift");
 
   // the admin refuses the inputs (Settings tab): instruction line
   ({ els, calls } = await load({ refuse: true }));
   els["#rows"].buttons("v dates")[0].click();
   await els["#rows"].buttons("Skip")[0].click();
   await next();
-  check(els["#hint"].textContent === 'Open the Runs tab, pick "Edit repeat dates" and enter: event=yoga, action=skip, date=2026-02-17', "instruction on rejection: " + els["#hint"].textContent);
+  check(els["#hint"].textContent === 'Open the Runs tab, pick "Edit repeat dates or duplicate" and enter: event=yoga, action=skip, date=2026-02-17', "instruction on rejection: " + els["#hint"].textContent);
 
   // an editor sees disabled buttons
   ({ els } = await load({ data: { ...DATA, role: "editor" } }));

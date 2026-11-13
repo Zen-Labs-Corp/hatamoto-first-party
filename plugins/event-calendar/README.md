@@ -73,15 +73,15 @@ New dates appear as the hourly check (`reconcile`) rolls the window forward, and
 
 The plugin adds a **Repeating events** page to the admin. It lists every repeating event with a summary of its rule and its next 10 dates, each normal, skipped or changed. **Skip**, **Change time** and **Restore** and the **Duplicate event...** button fill in the inputs of a run. Two limits of the admin shape this:
 
-- A page can only fill in a run's inputs; it cannot start the run. Where the admin has no run form for the page, the page shows what to enter instead: open the Runs tab, pick **Edit repeat dates** (or **Duplicate event**), enter the values shown and press Start.
+- A page can only fill in a run's inputs; it cannot start the run. Where the admin has no run form for the page, the page shows what to enter instead: open the Runs tab, pick **Edit repeat dates or duplicate**, enter the values shown and press Start.
 - Nothing is written directly. The run stages the change in **Changes**, and the dates change once you review and publish it. Only the site owner can start a run.
 
-The two runs:
+The admin can start only the first run a plugin declares, so there is one run, `edit_dates` (**Edit repeat dates or duplicate**). Its `action` says what it does:
 
-- **Edit repeat dates** (`edit_dates`): inputs `event` (the event's slug), `action` (`skip`, `change` or `restore`), `date` (`2026-03-03`), and for `change` a `start_at` and optional `end_at` (`18:30` or `2026-03-03T18:30`).
-- **Duplicate event** (`duplicate`): inputs `event` and `shift_days` (0 by default). It stages a copy named "<name> (copy)" with its dates moved, as a draft you publish in Changes. Where the original came from (source fields) is not copied.
+- `skip`, `change` or `restore` a single date. Inputs: `event` (the event's slug), `date` (`2026-03-03`), and for `change` a `start_at` and optional `end_at` (`18:30` or `2026-03-03T18:30`).
+- `duplicate`: inputs `event` and `shift_days` (0 by default); `date` is not used. It stages a copy named "<name> (copy)" with its dates moved, as a draft you publish in Changes. Where the original came from (source fields) is not copied.
 
-A run can only change an event that the plugin itself created, and the plugin cannot see who owns an event. So the page can change single dates of events made by **Duplicate event**; for any other event (made by hand in the editor, imported, or handed back) the page shows "Hand this event back in the editor (Who owns this page) to change single dates here, or edit the dates in the event itself." If an event is edited in a way that takes it over, the run fails with a message and changes nothing.
+A run can only change an event that the plugin itself created, and the plugin cannot see who owns an event. So the page can change single dates of events made by the `duplicate` action; for any other event (made by hand in the editor, imported, or handed back) the page shows "Hand this event back in the editor (Who owns this page) to change single dates here, or edit the dates in the event itself." If an event is edited in a way that takes it over, the run fails with a message and changes nothing.
 
 ### Series, venue and organizer pages
 

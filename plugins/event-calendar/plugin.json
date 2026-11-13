@@ -130,7 +130,7 @@
   "runs": [
     {
       "name": "edit_dates",
-      "title": "Edit repeat dates",
+      "title": "Edit repeat dates or duplicate",
       "inputs": [
         {
           "name": "event",
@@ -145,15 +145,15 @@
           "options": [
             "skip",
             "change",
-            "restore"
+            "restore",
+            "duplicate"
           ],
           "required": true
         },
         {
           "name": "date",
-          "label": "Date (YYYY-MM-DD)",
-          "type": "text",
-          "required": true
+          "label": "Date (YYYY-MM-DD, not for duplicate)",
+          "type": "text"
         },
         {
           "name": "start_at",
@@ -164,26 +164,10 @@
           "name": "end_at",
           "label": "New end (for change, like 20:00)",
           "type": "text"
-        }
-      ],
-      "stages": [
-        "fetch",
-        "transform"
-      ]
-    },
-    {
-      "name": "duplicate",
-      "title": "Duplicate event",
-      "inputs": [
-        {
-          "name": "event",
-          "label": "Event (slug)",
-          "type": "text",
-          "required": true
         },
         {
           "name": "shift_days",
-          "label": "Move dates by (days)",
+          "label": "Move dates by (days, for duplicate)",
           "type": "number"
         }
       ],

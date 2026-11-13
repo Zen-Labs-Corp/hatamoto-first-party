@@ -198,8 +198,7 @@ func TestManifest(t *testing.T) {
 	}
 	exists(t, "ui/"+m.UI.Entry)
 	wantRuns := map[string]string{
-		"edit_dates": "event:text:true action:select:true date:text:true start_at:text:false end_at:text:false",
-		"duplicate":  "event:text:true shift_days:number:false",
+		"edit_dates": "event:text:true action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false",
 	}
 	if len(m.Runs) != len(wantRuns) {
 		t.Fatalf("runs = %+v", m.Runs)

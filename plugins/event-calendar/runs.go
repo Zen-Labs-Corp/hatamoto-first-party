@@ -18,8 +18,9 @@ import (
 // owner reviews it. Fetch has nothing to do.
 
 const (
+	// runEditDates is the plugin's only run: core's admin can start only the
+	// first declared run, so duplicating an event is one of its actions.
 	runEditDates = "edit_dates"
-	runDuplicate = "duplicate"
 
 	// keyPrefix marks a source key this plugin made itself. The key of an
 	// object is not readable from the host, so a run that creates an event
@@ -49,11 +50,8 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 		}
 		var p map[string]any
 		_ = json.Unmarshal(info.Params, &p)
-		switch info.Name {
-		case runEditDates:
-			return editDates(p)
-		case runDuplicate:
-			return duplicateEvent(info.RunID, p)
+		if info.Name == runEditDates {
+			return editDates(info.RunID, p)
 		}
 		return failRun("Unknown run.")
 	}
@@ -192,12 +190,16 @@ func dateTimeInput(in, date string) (string, bool) {
 	return in, true
 }
 
-// editDates stages one event with a date skipped, changed or restored.
-func editDates(p map[string]any) (sdk.RunStepResult, error) {
+// editDates stages one event with a date skipped, changed or restored, or a
+// copy of it (action duplicate).
+func editDates(runID string, p map[string]any) (sdk.RunStepResult, error) {
 	action := strings.ToLower(paramString(p, "action"))
 	date := paramString(p, "date")
+	if action == "duplicate" {
+		return duplicateEvent(runID, p)
+	}
 	if action != "skip" && action != "change" && action != "restore" {
-		return failRun("The action must be skip, change or restore.")
+		return failRun("The action must be skip, change, restore or duplicate.")
 	}
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		return failRun("The date must look like 2026-03-03.")
