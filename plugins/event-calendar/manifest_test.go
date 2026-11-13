@@ -189,7 +189,9 @@ func TestManifest(t *testing.T) {
 		{"GET", "/events.ics", true}, {"GET", "/event/{file}", true}, {"GET", "/api/events", true},
 		{"GET", "/series/{slug}", true}, {"GET", "/venue/{slug}", true}, {"GET", "/organizer/{slug}", true},
 		{"GET", "/submit/token", true}, {"POST", "/submit", true},
-		{"GET", "/admin/repeating", false},
+		{"GET", "/admin/repeating", false}, {"GET", "/admin/submissions", false},
+		{"POST", "/admin/submissions/{id}/reject", false}, {"POST", "/admin/submissions/{id}/delete", false},
+		{"GET", "/admin/imports", false},
 	}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)

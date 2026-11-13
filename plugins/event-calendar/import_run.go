@@ -53,12 +53,17 @@ func importSlug(s string) string {
 // and a hash of the feed's UID. It is the event's source_uid and never starts
 // with dup-, so it cannot be mistaken for a copy made by this plugin.
 func importKey(kind, source, uid string) string {
+	sum := sha1.Sum([]byte(uid))
+	return importPrefix(kind, source) + hex.EncodeToString(sum[:])[:16]
+}
+
+// importPrefix is the start of every key importKey makes for a source.
+func importPrefix(kind, source string) string {
 	name := importSlug(source)
 	if len(name) > 24 {
 		name = strings.Trim(name[:24], "-")
 	}
-	sum := sha1.Sum([]byte(uid))
-	return kind + "-" + name + "-" + hex.EncodeToString(sum[:])[:16]
+	return kind + "-" + name + "-"
 }
 
 // loadImportSources reads the import_sources setting: enabled sources of a

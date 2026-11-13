@@ -136,6 +136,38 @@
         "owner",
         "editor"
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/submissions",
+      "roles": [
+        "owner",
+        "editor"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/submissions/{id}/reject",
+      "roles": [
+        "owner",
+        "editor"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/submissions/{id}/delete",
+      "roles": [
+        "owner",
+        "editor"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/imports",
+      "roles": [
+        "owner",
+        "editor"
+      ]
     }
   ],
   "ui": {
