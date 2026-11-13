@@ -273,3 +273,96 @@ func TestVenueIsReadOnceForManyEvents(t *testing.T) {
 		t.Errorf("feed: venue read %d times, want 1", n)
 	}
 }
+
+// filterEvent is an entity with a venue name and city, a price and a category.
+func filterEvent(id, name, venue, city, extra string) string {
+	return `{"id":"` + id + `","schema_slug":"event","slug":"` + id + `","name":"` + name + `","status":"published",
+ "attributes":{"start_at":"2026-07-01T19:00","venue_name":"` + venue + `","venue_city":"` + city + `"` + extra + `}}`
+}
+
+var filterEntities = []string{
+	filterEvent("a", "Jazz Night", "Blue Room", "Bonn", `,"price_amount":0,"category":["c1"]`),
+	filterEvent("b", "Rock Gig", "Red Hall", "Köln", `,"price_amount":15`),
+	filterEvent("c", "Quiz", "Blue Room", "Bonn", `,"price":"Free"`),
+	`{"id":"c1","schema_slug":"calendar-category","slug":"jazz","name":"Jazz","status":"published"}`,
+}
+
+func filterTitles(t *testing.T, h *fakeHost, params map[string]any) []string {
+	t.Helper()
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming, Params: params}}})
+	return titles(got.Results[0])
+}
+
+func TestUpcomingFallbackFilters(t *testing.T) {
+	tests := []struct {
+		name   string
+		params map[string]any
+		want   string
+	}{
+		{"none", nil, "Jazz Night|Quiz|Rock Gig"},
+		{"category name", map[string]any{"category": "jazz"}, "Jazz Night"},
+		{"venue", map[string]any{"venue": "blue room"}, "Jazz Night|Quiz"},
+		{"city", map[string]any{"city": "köln"}, "Rock Gig"},
+		{"free", map[string]any{"free": true}, "Jazz Night|Quiz"},
+		{"combined", map[string]any{"venue": "Blue Room", "free": true, "category": "Jazz"}, "Jazz Night"},
+		{"no match", map[string]any{"city": "Paris"}, ""},
+	}
+	for _, tc := range tests {
+		// db.query fails here: the entities are listed and filtered
+		if got := strings.Join(filterTitles(t, &fakeHost{entities: filterEntities}, tc.params), "|"); got != tc.want {
+			t.Errorf("%s: titles = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	// the index has no rows yet (NULL): the same fallback
+	if got := strings.Join(filterTitles(t, &fakeHost{entities: filterEntities, dbRows: "null"}, map[string]any{"city": "Bonn", "free": true}), "|"); got != "Jazz Night|Quiz" {
+		t.Errorf("not ready: titles = %q", got)
+	}
+}
+
+func TestUpcomingFiltersReachTheIndexQuery(t *testing.T) {
+	rows := `[{"id":"a","name":"Jazz Night","starts_at":"2026-07-01T19:00:00+00:00","ends_at":"2026-07-01T20:00:00+00:00","schema_slug":"event"},
+		{"id":"b","name":"Rock Gig","starts_at":"2026-07-02T19:00:00+00:00","ends_at":"2026-07-02T20:00:00+00:00","schema_slug":"event"},
+		{"id":"c","name":"Quiz","starts_at":"2026-07-03T19:00:00+00:00","ends_at":"2026-07-03T20:00:00+00:00","schema_slug":"event"}]`
+	h := &fakeHost{entities: filterEntities, dbRows: rows}
+	h.install(t)
+	var args []any
+	inner := callHost
+	callHost = func(fn string, a, o any) error {
+		if fn == "db.query" {
+			args = a.(map[string]any)["args"].([]any)
+		}
+		return inner(fn, a, o)
+	}
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{
+		{ID: "u:p0123456789abcdef", Source: sourceUpcoming, Limit: 2, Params: map[string]any{"category": "Music", "venue": "Hall", "city": "Bonn", "free": true}},
+	}})
+	// the filters are bound, and the list is cut to the limit after them
+	if len(args) != 11 || args[3] != "Music" || args[4] != "Hall" || args[5] != "Bonn" || args[6] != "free" || args[10] != false {
+		t.Errorf("query args = %v", args)
+	}
+	if got.Results[0].ID != "u:p0123456789abcdef" || strings.Join(titles(got.Results[0]), "|") != "Jazz Night|Rock Gig" {
+		t.Errorf("result = %+v", got.Results[0])
+	}
+	// past lists run latest first
+	runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "p", Source: sourcePast, Params: map[string]any{"city": "Bonn"}}}})
+	if args[10] != true || args[5] != "Bonn" {
+		t.Errorf("past args = %v", args)
+	}
+}
+
+func TestBuilderWithoutParamsIsUnchanged(t *testing.T) {
+	for _, db := range []string{"", idxRows} {
+		var out []string
+		for _, params := range []map[string]any{nil, {}, {"unknown": "x", "free": false, "city": ""}} {
+			(&fakeHost{entities: []string{evFuture, evPast}, dbRows: db}).install(t)
+			got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{
+				{ID: "u:p0123456789abcdef", Source: sourceUpcoming, Params: params}, {ID: "p", Source: sourcePast, Params: params}}})
+			b, _ := json.Marshal(got.Results)
+			out = append(out, string(b))
+		}
+		if out[0] != out[1] || out[0] != out[2] || !strings.Contains(out[0], "u:p0123456789abcdef") || !strings.Contains(out[0], "Future, show") {
+			t.Errorf("db=%v: results differ: %v", db != "", out)
+		}
+	}
+}

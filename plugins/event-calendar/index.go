@@ -343,17 +343,39 @@ func eventFromIndex(m map[string]any, loc *time.Location) (Event, bool) {
 	if t, err := time.Parse(time.RFC3339, attrString(m, "updated_at")); err == nil {
 		e.Updated = t
 	}
-	if e.AllDay {
-		// ends_at is midnight after the last day: step back into that day.
-		zone := zoneOr(e.TimeZone, loc)
-		e.Start = startOfDay(start, zone)
-		if last := startOfDay(end.Add(-time.Second), zone); last.After(e.Start) {
-			e.End, e.HasEnd = last, true
-		}
-	} else if end.After(start) {
-		e.End, e.HasEnd = end, true
-	}
+	e.Start, e.End, e.HasEnd = indexTimes(start, end, e.AllDay, e.TimeZone, loc)
 	return e, true
+}
+
+// indexTimes reads the stored start and end back as an Event holds them. An
+// all-day row ends at the midnight after its last day: step back into that
+// day, in the event's zone else loc.
+func indexTimes(start, end time.Time, allDay bool, tz string, loc *time.Location) (s, e time.Time, hasEnd bool) {
+	if allDay {
+		zone := zoneOr(tz, loc)
+		s = startOfDay(start, zone)
+		if last := startOfDay(end.Add(-time.Second), zone); last.After(s) {
+			return s, last, true
+		}
+		return s, time.Time{}, false
+	}
+	if end.After(start) {
+		return start, end, true
+	}
+	return start, time.Time{}, false
+}
+
+// event is the row as an Event; loc is the zone all-day events are read in
+// (the site zone). Like every event from the index it lacks the description.
+func (r apiRow) event(loc *time.Location) Event {
+	e := Event{
+		ID: r.ID, SchemaSlug: r.SchemaSlug, Slug: r.Slug, Name: r.Name, URL: r.URL, indexed: true,
+		AllDay: r.AllDay, TimeZone: r.TimeZone, EventStatus: r.EventStatus,
+		Venue: r.VenueName, VenueCity: r.VenueCity, Address: r.VenueAddress,
+		Price: r.Price, PriceAmount: r.PriceAmount, Featured: r.Featured, Image: r.Image,
+	}
+	e.Start, e.End, e.HasEnd = indexTimes(r.StartsAt.UTC(), r.EndsAt.UTC(), r.AllDay, r.TimeZone, loc)
+	return e
 }
 
 // rangeQuery selects the occurrences that overlap [From, To), narrowed by the
@@ -363,11 +385,13 @@ type rangeQuery struct {
 	Q, Category, Venue, City, Price string // Price: "", "free" or "paid"
 	Slug, Language                  string
 	Limit                           int
+	Desc                            bool // latest first, for a list of past events
 }
 
 // apiRow is one occurrence as the range query returns it.
 type apiRow struct {
 	ID            string    `json:"id"`
+	SchemaSlug    string    `json:"schema_slug"`
 	Name          string    `json:"name"`
 	Slug          string    `json:"slug"`
 	URL           string    `json:"url"`
@@ -398,11 +422,12 @@ const freeSQL = `(COALESCE(e.price_amount = 0, false) OR lower(btrim(e.price)) =
 // from the geocode cache.
 const queryRangeSQL = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
  THEN COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.n), '[]'::jsonb) END FROM (
-SELECT e.entity_id AS id, e.name, e.slug, e.url, o.starts_at, o.ends_at, e.all_day, e.time_zone, e.event_status,
+SELECT e.entity_id AS id, e.schema_slug, e.name, e.slug, e.url, o.starts_at, o.ends_at, e.all_day, e.time_zone, e.event_status,
  e.venue_name, e.venue_slug, e.venue_city, e.venue_address,
  COALESCE(e.venue_lat, g.latitude) AS lat, COALESCE(e.venue_lon, g.longitude) AS lon,
  e.category_names, e.price, e.price_amount, e.featured, e.image,
- row_number() OVER (ORDER BY o.starts_at, e.name, e.entity_id) AS n
+ row_number() OVER (ORDER BY CASE WHEN $11::boolean THEN -extract(epoch FROM o.starts_at) ELSE extract(epoch FROM o.starts_at) END,
+  e.name, e.entity_id) AS n
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id
 LEFT JOIN geocode_cache g ON g.address = e.venue_address AND g.status = 'ok'
 WHERE o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz
@@ -431,7 +456,7 @@ func queryRange(r rangeQuery) ([]apiRow, error) {
 	}
 	var rows *[]apiRow
 	if err := dbJSON(queryRangeSQL, &rows, utcText(r.From), utcText(r.To), escapeLike(r.Q), r.Category, r.Venue,
-		r.City, r.Price, r.Slug, r.Language, limit); err != nil {
+		r.City, r.Price, r.Slug, r.Language, limit, r.Desc); err != nil {
 		return nil, err
 	}
 	if rows == nil {

@@ -28,7 +28,7 @@ func init() { guest.OnFilter(sdk.BuilderData, answerBuilder) }
 // alone. A failure yields an empty list, never an error string.
 func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	var upcoming, past []Event
-	loaded := false
+	loaded, started := false, false
 	var s settings
 	var at, deadline time.Time
 	type filledEvent struct {
@@ -45,25 +45,37 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 		if q.Source != sourceUpcoming && q.Source != sourcePast {
 			continue
 		}
-		if !loaded {
-			loaded = true
+		if !started {
+			started = true
 			s = loadSettings()
 			at = now()
 			deadline = clock().Add(builderBudget)
-			var wantUp, wantPast bool
-			for _, w := range r.Requests {
-				wantUp = wantUp || w.Source == sourceUpcoming
-				wantPast = wantPast || w.Source == sourcePast
-			}
-			upcoming, past, _ = eventsFor(s, r.Language, at, wantUp, wantPast, sdk.MaxBuilderDataItems, deadline)
 		}
-		list := upcoming
-		if q.Source == sourcePast {
-			list = past
-		}
+		f := filtersFromParams(q.Params)
 		limit := q.Limit
 		if limit <= 0 || limit > sdk.MaxBuilderDataItems {
 			limit = sdk.MaxBuilderDataItems
+		}
+		var list []Event
+		switch {
+		case !f.empty():
+			list = filteredEvents(s, r.Language, at, q.Source == sourceUpcoming, f, limit, deadline, venues)
+		default:
+			if !loaded {
+				loaded = true
+				var wantUp, wantPast bool
+				for _, w := range r.Requests {
+					if filtersFromParams(w.Params).empty() {
+						wantUp = wantUp || w.Source == sourceUpcoming
+						wantPast = wantPast || w.Source == sourcePast
+					}
+				}
+				upcoming, past, _ = eventsFor(s, r.Language, at, wantUp, wantPast, sdk.MaxBuilderDataItems, deadline)
+			}
+			list = upcoming
+			if q.Source == sourcePast {
+				list = past
+			}
 		}
 		if len(list) > limit {
 			list = list[:limit]
@@ -189,6 +201,69 @@ func eventsFor(s settings, lang string, at time.Time, wantUp, wantPast bool, lim
 		past = firstN(pa, limit)
 	}
 	return upcoming, past, nil
+}
+
+// filteredEvents is one upcoming or past list narrowed by f. The filters run
+// in the index query, so the cut to limit comes after them. While the index
+// cannot answer, the entities are listed and filtered here.
+func filteredEvents(s settings, lang string, at time.Time, upcoming bool, f filters, limit int, until time.Time, venues venueMemo) []Event {
+	q := rangeQuery{
+		From: at.AddDate(-100, 0, 0), To: at.AddDate(100, 0, 0), Q: f.Q, Category: f.Category, Venue: f.Venue,
+		City: f.City, Price: f.Price, Language: lang, Limit: maxIndexRows, Desc: !upcoming,
+	}
+	if upcoming {
+		q.From = at
+	} else {
+		q.To = at
+	}
+	if rows, err := queryRange(q); err == nil {
+		var out []Event
+		for _, r := range rows {
+			e := r.event(s.location())
+			// the query overlaps [From, To): keep the side of the split it must have
+			if s.accepts(e.SchemaSlug) && at.Before(e.endsAt(s.location())) == upcoming {
+				out = append(out, e)
+			}
+		}
+		return firstN(out, limit)
+	}
+	evs, err := loadEventsUntil(s, until)
+	if err != nil {
+		return nil
+	}
+	up, pa := split(filterLanguage(evs, lang), at, s.location())
+	list := pa
+	if upcoming {
+		list = up
+	}
+	var out []Event
+	for _, e := range list {
+		if matchEntityEvent(e, f, until, venues) {
+			out = append(out, e)
+		}
+	}
+	return firstN(out, limit)
+}
+
+// matchEntityEvent is f.match for an event read from the entities: the venue
+// and category names are read first, while the time budget lasts, and only
+// when the filter needs them.
+func matchEntityEvent(e Event, f filters, until time.Time, venues venueMemo) bool {
+	if e.VenueID != "" && (f.Venue != "" || f.City != "" || f.Q != "") && clock().Before(until) {
+		if v, ok := venues.get(e.VenueID); ok {
+			if e.Venue == "" {
+				e.Venue = v.Name
+			}
+			if e.VenueCity == "" {
+				e.VenueCity = v.City
+			}
+		}
+	}
+	var cats categoryRefs
+	if f.Category != "" && clock().Before(until) {
+		cats = categoriesOf(e.CategoryIDs)
+	}
+	return f.match(e, cats)
 }
 
 func firstN(evs []Event, n int) []Event {
