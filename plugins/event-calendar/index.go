@@ -250,15 +250,22 @@ func reindexEntity(id string, s settings) (bool, error) {
 // reindexEntityAddr is reindexEntity that also returns the address a map would
 // need looked up, as reindexDTO does.
 func reindexEntityAddr(id string, s settings) (indexed bool, addr string, err error) {
-	var raw entityDTO
+	_, indexed, addr, err = reindexEntityRaw(id, s)
+	return indexed, addr, err
+}
+
+// reindexEntityRaw is reindexEntityAddr that also returns the entity it read,
+// so a hook needs no second read.
+func reindexEntityRaw(id string, s settings) (raw entityDTO, indexed bool, addr string, err error) {
 	if err := callHost(sdk.FnEntitiesGet, map[string]any{"id": id}, &raw); err != nil {
 		var he *sdk.HostError
 		if errors.As(err, &he) && he.Code == sdk.ErrNotFound {
-			return false, "", deleteEvent(id)
+			return raw, false, "", deleteEvent(id)
 		}
-		return false, "", err
+		return raw, false, "", err
 	}
-	return reindexDTO(raw, s, nil)
+	indexed, addr, err = reindexDTO(raw, s, nil)
+	return raw, indexed, addr, err
 }
 
 // reindexDTO is reindexEntity for an entity already read. addr is the

@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"hatamoto.dev/sdk"
@@ -23,6 +27,7 @@ func init() {
 	guest.OnAction(sdk.EntityDeleted, onEntityDeleted)
 	guest.OnAction(sdk.ImportCompleted, onImport)
 	guest.OnCron("reconcile", onReconcile)
+	guest.OnCron("prune", onPrune)
 }
 
 // The hooks never return an error: a failing index must not fail the save or
@@ -37,7 +42,8 @@ func onEntity(ev sdk.EntityEvent) error {
 	if !s.accepts(ev.SchemaSlug) || ev.ID == "" {
 		return nil
 	}
-	_, addr, _ := reindexEntityAddr(ev.ID, s)
+	raw, _, addr, _ := reindexEntityRaw(ev.ID, s)
+	markSubmissionPublished(raw)
 	if addr != "" {
 		geocodeOne(s, addr, started.Add(hookDeadline))
 	}
@@ -47,6 +53,66 @@ func onEntity(ev sdk.EntityEvent) error {
 	// that never completes does not repeat it.
 	if !indexReady() && claimReconcile() {
 		_, _ = reconcileOnce(s, started.Add(hookDeadline))
+	}
+	return nil
+}
+
+var submissionUIDRe = regexp.MustCompile(`^sub-([0-9]{1,18})$`)
+
+// markSubmissionPublished records that the event staged from a submission is
+// live. Core says nothing about which hook a changeset's entity fires, so
+// every created, updated or published event is looked at; only a published
+// event with source_kind submission and source_uid sub-<id> counts. A failure
+// (no db grant, no table yet) is ignored.
+func markSubmissionPublished(raw entityDTO) {
+	if raw.Status != "published" || len(raw.Attributes) == 0 {
+		return
+	}
+	var a map[string]any
+	if json.Unmarshal(raw.Attributes, &a) != nil || attrString(a, "source_kind") != "submission" {
+		return
+	}
+	m := submissionUIDRe.FindStringSubmatch(attrString(a, "source_uid"))
+	if m == nil {
+		return
+	}
+	if id, err := strconv.ParseInt(m[1], 10, 64); err == nil {
+		setSubmissionStatus(id, "published", "pending", "approved")
+	}
+}
+
+// maxDigestTitles is how many titles the digest mail lists.
+const maxDigestTitles = 20
+
+// onPrune is the hourly clean-up of the submissions table and, when the owner
+// set notify_email, one mail about the submissions the per-submission mails
+// did not cover (over the hourly cap or failed). It lists titles only. A mail
+// that fails leaves the rows for the next run.
+func onPrune(sdk.CronEvent) error {
+	_ = pruneSubmissions(now())
+	to := notifyEmail()
+	if to == "" {
+		return nil
+	}
+	rows, err := unnotified()
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+	lines := []string{strconv.Itoa(len(rows)) + " new event submissions are waiting:", ""}
+	ids := make([]int64, 0, len(rows))
+	for i, r := range rows {
+		ids = append(ids, r.ID)
+		if i < maxDigestTitles {
+			lines = append(lines, "- "+r.Title)
+		}
+	}
+	if len(rows) > maxDigestTitles {
+		lines = append(lines, "- and "+strconv.Itoa(len(rows)-maxDigestTitles)+" more")
+	}
+	lines = append(lines, "", "Review them in the Event calendar plugin page, Submissions tab.")
+	args := map[string]any{"to": []string{to}, "subject": "New event submissions", "text": strings.Join(lines, "\n")}
+	if callHost(sdk.FnMailSend, args, nil) == nil {
+		_ = markNotified(ids...)
 	}
 	return nil
 }

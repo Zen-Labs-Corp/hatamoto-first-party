@@ -283,6 +283,7 @@
       "entity.deleted": 5000,
       "import.completed": 10000,
       "on_cron_reconcile": 10000,
+      "on_cron_prune": 10000,
       "on_run_step": 10000
     }
   },
@@ -400,6 +401,10 @@
     {
       "name": "import",
       "every": "6h"
+    },
+    {
+      "name": "prune",
+      "every": "1h"
     }
   ]
 }

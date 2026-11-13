@@ -123,7 +123,7 @@ func TestManifest(t *testing.T) {
 	if !slices.Equal(m.AllowedHosts, wantHosts) || len(m.AllowedHosts)-1 > 32 {
 		t.Errorf("allowed_hosts = %v", m.AllowedHosts)
 	}
-	if len(m.Cron) != 2 || m.Cron[0].Name != "reconcile" || m.Cron[0].Every != "1h" || m.Cron[1].Name != "import" || m.Cron[1].Every != "6h" {
+	if len(m.Cron) != 3 || m.Cron[2].Name != "prune" || m.Cron[2].Every != "1h" || m.Cron[0].Name != "reconcile" || m.Cron[0].Every != "1h" || m.Cron[1].Name != "import" || m.Cron[1].Every != "6h" {
 		t.Errorf("cron = %+v", m.Cron)
 	}
 	if !slices.Equal(m.Funcs, []string{"when", "addlink"}) {

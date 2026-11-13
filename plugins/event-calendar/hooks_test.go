@@ -637,3 +637,177 @@ func TestRollingWindowCronPartialRunLeavesRowsIntact(t *testing.T) {
 		}
 	}
 }
+
+// submissionHost fakes the host for the submission hooks: entities.get,
+// settings, the submissions table and the mail call.
+type submissionHost struct {
+	doc      string
+	notify   string
+	dbErr    error
+	mailErr  error
+	rows     string // the unnotified rows, as the jsonb cell
+	execs    []dbCall
+	mails    []map[string]any
+	notified string // the ids markNotified was called with
+}
+
+func (h *submissionHost) install(t *testing.T) {
+	t.Helper()
+	callHost = func(fn string, args, out any) error {
+		a, _ := args.(map[string]any)
+		switch fn {
+		case "settings.get":
+			return json.Unmarshal([]byte(`{"notify_email":"`+h.notify+`"}`), out)
+		case "entities.get":
+			return json.Unmarshal([]byte(h.doc), out)
+		case "mail.send":
+			h.mails = append(h.mails, a)
+			return h.mailErr
+		case "db.exec":
+			sql := a["sql"].(string)
+			h.execs = append(h.execs, dbCall{fn, sql, a["args"].([]any)})
+			if h.dbErr != nil {
+				return h.dbErr
+			}
+			if strings.HasPrefix(sql, "UPDATE submissions SET notified") {
+				h.notified = a["args"].([]any)[0].(string)
+			}
+			if out != nil {
+				return json.Unmarshal([]byte(`{"rows_affected":1}`), out)
+			}
+			return nil
+		case "db.query":
+			if h.dbErr != nil {
+				return h.dbErr
+			}
+			if strings.Contains(a["sql"].(string), "NOT notified") {
+				return json.Unmarshal([]byte(`{"rows":[[`+h.rows+`]]}`), out)
+			}
+			return json.Unmarshal([]byte(`{"rows":[[{}]]}`), out)
+		}
+		t.Fatalf("unexpected host call %q", fn)
+		return nil
+	}
+}
+
+func (h *submissionHost) statusUpdates() (out []dbCall) {
+	for _, c := range h.execs {
+		if strings.HasPrefix(c.sql, "UPDATE submissions SET status") {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func submissionDoc(status, kind, uid string) string {
+	return `{"id":"s1","schema_slug":"calendar-event","slug":"s1","name":"s1","status":"` + status +
+		`","attributes":{"start_at":"2027-02-20T20:00","source_kind":"` + kind + `","source_uid":"` + uid + `"}}`
+}
+
+func TestSubmissionMarkedWhenPublished(t *testing.T) {
+	for _, a := range []sdk.Action[sdk.EntityEvent]{sdk.EntityCreated, sdk.EntityPublished} {
+		t.Run(a.Name, func(t *testing.T) {
+			h := &submissionHost{doc: submissionDoc("published", "submission", "sub-42")}
+			h.install(t)
+			fire(t, a.Export(), entityEv("s1", "calendar-event", "published"))
+			got := h.statusUpdates()
+			if len(got) != 1 || got[0].args[0] != int64(42) {
+				t.Fatalf("status updates = %+v", h.execs)
+			}
+			if got[0].args[1] != "published" || got[0].args[2] != "pending" || got[0].args[3] != "approved" || strings.Contains(got[0].sql, "rejected") {
+				t.Errorf("update = %+v", got[0])
+			}
+		})
+	}
+	ignored := map[string]string{
+		"not a submission": submissionDoc("published", "ical", "sub-42"),
+		"draft":            submissionDoc("draft", "submission", "sub-42"),
+		"odd uid":          submissionDoc("published", "submission", "sub-4x"),
+		"uid with suffix":  submissionDoc("published", "submission", "sub-42/yoga"),
+		"no attributes":    `{"id":"s1","schema_slug":"calendar-event","slug":"s1","name":"s1","status":"published"}`,
+	}
+	for name, doc := range ignored {
+		t.Run(name, func(t *testing.T) {
+			h := &submissionHost{doc: doc}
+			h.install(t)
+			fire(t, sdk.EntityPublished.Export(), entityEv("s1", "calendar-event", "published"))
+			if got := h.statusUpdates(); len(got) != 0 {
+				t.Errorf("status updates = %+v", got)
+			}
+		})
+	}
+	t.Run("db error is ignored", func(t *testing.T) {
+		h := &submissionHost{doc: submissionDoc("published", "submission", "sub-42"), dbErr: errors.New("permission denied for table submissions")}
+		h.install(t)
+		fire(t, sdk.EntityPublished.Export(), entityEv("s1", "calendar-event", "published"))
+	})
+}
+
+func TestPruneCron(t *testing.T) {
+	rows := `[{"id":1,"title":"Open mic","email":"a@example.org"},{"id":2,"title":"Quiz","email":"b@example.org"}]`
+	prune := func() { fire(t, guest.CronExport("prune"), sdk.CronEvent{Name: "prune"}) }
+
+	t.Run("prunes and sends one digest", func(t *testing.T) {
+		h := &submissionHost{notify: "owner@example.org", rows: rows}
+		h.install(t)
+		prune()
+		if len(h.execs) < 1 || !strings.HasPrefix(h.execs[0].sql, "DELETE FROM submissions") || len(h.execs[0].args) != 2 {
+			t.Fatalf("execs = %+v", h.execs)
+		}
+		if len(h.mails) != 1 {
+			t.Fatalf("mails = %v", h.mails)
+		}
+		text := h.mails[0]["text"].(string)
+		if !strings.Contains(text, "- Open mic") || !strings.Contains(text, "- Quiz") || strings.Contains(text, "@") {
+			t.Errorf("digest = %q", text)
+		}
+		if h.notified != "[1,2]" {
+			t.Errorf("marked %q", h.notified)
+		}
+	})
+	t.Run("mail failure keeps the rows", func(t *testing.T) {
+		h := &submissionHost{notify: "owner@example.org", rows: rows, mailErr: errors.New("smtp down")}
+		h.install(t)
+		prune()
+		if h.notified != "" {
+			t.Errorf("marked %q after a failed mail", h.notified)
+		}
+	})
+	t.Run("no address, no mail", func(t *testing.T) {
+		h := &submissionHost{rows: rows}
+		h.install(t)
+		prune()
+		if len(h.mails) != 0 || len(h.execs) != 1 {
+			t.Errorf("mails %v execs %+v", h.mails, h.execs)
+		}
+	})
+	t.Run("nothing waiting", func(t *testing.T) {
+		h := &submissionHost{notify: "owner@example.org", rows: `[]`}
+		h.install(t)
+		prune()
+		if len(h.mails) != 0 {
+			t.Errorf("mails %v", h.mails)
+		}
+	})
+	t.Run("titles are capped", func(t *testing.T) {
+		var list []string
+		for i := 1; i <= 25; i++ {
+			list = append(list, fmt.Sprintf(`{"id":%d,"title":"T%d"}`, i, i))
+		}
+		h := &submissionHost{notify: "owner@example.org", rows: "[" + strings.Join(list, ",") + "]"}
+		h.install(t)
+		prune()
+		text := h.mails[0]["text"].(string)
+		if !strings.Contains(text, "- T20\n") || strings.Contains(text, "- T21\n") || !strings.Contains(text, "and 5 more") {
+			t.Errorf("digest = %q", text)
+		}
+	})
+	t.Run("db down", func(t *testing.T) {
+		h := &submissionHost{notify: "owner@example.org", dbErr: errors.New("down")}
+		h.install(t)
+		prune()
+		if len(h.mails) != 0 {
+			t.Errorf("mails %v", h.mails)
+		}
+	})
+}
