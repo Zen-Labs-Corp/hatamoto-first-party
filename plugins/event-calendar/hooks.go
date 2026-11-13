@@ -37,7 +37,14 @@ func onEntity(ev sdk.EntityEvent) error {
 	if !s.accepts(ev.SchemaSlug) || ev.ID == "" {
 		return nil
 	}
-	if _, addr, _ := reindexEntityAddr(ev.ID, s); addr != "" {
+	_, addr, _ := reindexEntityAddr(ev.ID, s)
+	if !indexReady() {
+		// A new site has no completed reconcile yet and the JSON route stays
+		// empty until one has: run it now instead of waiting for the hourly one.
+		_, _ = reconcileOnce(s, started.Add(hookDeadline))
+		return nil
+	}
+	if addr != "" {
 		geocodeOne(s, addr, started.Add(hookDeadline))
 	}
 	return nil

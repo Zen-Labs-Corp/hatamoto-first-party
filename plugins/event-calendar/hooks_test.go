@@ -23,6 +23,7 @@ type hookHost struct {
 	types    []string // when set, entities.list of any other type is not_found, as in core
 	getErr   error
 	dbErr    error
+	unready  bool              // index_state has no row yet
 	failID   string            // db.exec fails for the statements of this entity id
 	indexed  map[string]string // what db.query answers for indexedIDs
 	calls    []string          // every host function called
@@ -75,6 +76,9 @@ func (h *hookHost) install(t *testing.T) {
 		case "db.query":
 			if h.dbErr != nil {
 				return h.dbErr
+			}
+			if strings.Contains(a["sql"].(string), "EXISTS (SELECT 1 FROM index_state)") {
+				return json.Unmarshal([]byte(fmt.Sprintf(`{"rows":[[%t]]}`, !h.unready)), out)
 			}
 			cell, _ := json.Marshal(h.indexed)
 			return json.Unmarshal([]byte(`{"rows":[[`+string(cell)+`]]}`), out)
@@ -415,5 +419,37 @@ func TestHookGeocodeEndsWithinTheHookTimeout(t *testing.T) {
 	}
 	if worst > 4*time.Second {
 		t.Errorf("the lookup may end %v after the hook started, the hook timeout is 5 s", worst)
+	}
+}
+
+func TestFirstEntityHookReconcilesAnUnreadyIndex(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs: map[string]string{
+			"e1": hookDoc("e1", "calendar-event", "published"),
+			"e2": hookDoc("e2", "calendar-event", "published"),
+		},
+		order:   []string{"e1", "e2"},
+		unready: true,
+	}
+	h.install(t)
+	marks := func() (n int) {
+		for _, c := range h.execs {
+			if strings.Contains(c.sql, "INTO index_state") {
+				n++
+			}
+		}
+		return
+	}
+	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
+	if marks() != 1 || !slices.Contains(h.upserts(), "e2") {
+		t.Errorf("the first hook did not reconcile: marks = %d, upserts = %v", marks(), h.upserts())
+	}
+	// once ready, a hook indexes only its own entity
+	h.unready = false
+	h.resetCalls()
+	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
+	if marks() != 0 || len(h.upserts()) != 1 {
+		t.Errorf("ready index: marks = %d, upserts = %v", marks(), h.upserts())
 	}
 }
