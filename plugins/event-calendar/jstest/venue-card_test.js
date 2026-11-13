@@ -12,7 +12,7 @@ assert.equal(v.venueQuery("x".repeat(300)).length, 200);
 const now = Date.UTC(2026, 1, 14, 12, 30, 15);
 assert.equal(
   v.routeQuery("The Old Mill", now),
-  "from=2026-02-14T12%3A30%3A15Z&to=2027-03-20T12%3A30%3A15Z&limit=1&venue=The+Old+Mill",
+  "from=2026-02-14T12%3A30%3A15Z&to=2027-03-20T12%3A30%3A15Z&limit=1&upcoming=1&venue=The+Old+Mill",
 );
 assert.equal(new URLSearchParams(v.routeQuery("a&limit=500", now)).get("venue"), "a&limit=500");
 assert.equal(new URLSearchParams(v.routeQuery("a&limit=500", now)).get("limit"), "1");

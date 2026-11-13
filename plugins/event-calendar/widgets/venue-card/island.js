@@ -23,6 +23,7 @@ function routeQuery(prop, nowMs) {
     from: isoSeconds(nowMs),
     to: isoSeconds(nowMs + AHEAD_DAYS * DAY_MS),
     limit: "1",
+    upcoming: "1",
     venue: venueQuery(prop),
   }).toString();
 }

@@ -147,6 +147,26 @@ func TestAPIEventsDefaultsCapAndHead(t *testing.T) {
 	}
 }
 
+// upcoming=1 asks for events that start at or after from, so a countdown or a
+// venue card skips an event already running.
+func TestAPIEventsUpcoming(t *testing.T) {
+	h := &apiHost{fakeHost: fakeHost{dbRows: `[]`}}
+	getAPI(t, h, nil)
+	if h.args[11] != false {
+		t.Errorf("default StartsAfter = %v", h.args[11])
+	}
+	getAPI(t, h, q1("upcoming", "1", "limit", "1"))
+	if h.args[11] != true {
+		t.Errorf("upcoming=1 StartsAfter = %v", h.args[11])
+	}
+	if !strings.Contains(queryRangeSQL, "NOT $12::boolean OR o.starts_at >= $1::timestamptz") {
+		t.Error("the range SQL does not use $12 to require starts_at >= from")
+	}
+	if r, _ := getAPI(t, h, q1("upcoming", "yes")); r.Status != http.StatusBadRequest {
+		t.Errorf("upcoming=yes = %d", r.Status)
+	}
+}
+
 func TestAPIEventsFilters(t *testing.T) {
 	h := &apiHost{fakeHost: fakeHost{dbRows: `[]`}}
 	if r, _ := getAPI(t, h, q1("q", "jazz", "category", "Music", "venue", "hall", "city", "Bonn", "price", "free", "view", "month")); r.Status != 200 {

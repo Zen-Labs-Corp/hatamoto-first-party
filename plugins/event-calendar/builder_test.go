@@ -338,7 +338,7 @@ func TestUpcomingFiltersReachTheIndexQuery(t *testing.T) {
 		{ID: "u:p0123456789abcdef", Source: sourceUpcoming, Limit: 2, Params: map[string]any{"category": "Music", "venue": "Hall", "city": "Bonn", "free": true}},
 	}})
 	// the filters are bound, and the list is cut to the limit after them
-	if len(args) != 11 || args[3] != "Music" || args[4] != "Hall" || args[5] != "Bonn" || args[6] != "free" || args[10] != false {
+	if len(args) != 12 || args[3] != "Music" || args[4] != "Hall" || args[5] != "Bonn" || args[6] != "free" || args[10] != false {
 		t.Errorf("query args = %v", args)
 	}
 	if got.Results[0].ID != "u:p0123456789abcdef" || strings.Join(titles(got.Results[0]), "|") != "Jazz Night|Rock Gig" {

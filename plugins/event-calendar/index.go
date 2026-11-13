@@ -386,6 +386,7 @@ type rangeQuery struct {
 	Slug, Language                  string
 	Limit                           int
 	Desc                            bool // latest first, for a list of past events
+	StartsAfter                     bool // only events that start at or after From, not ones in progress
 }
 
 // apiRow is one occurrence as the range query returns it.
@@ -431,6 +432,7 @@ SELECT e.entity_id AS id, e.schema_slug, e.name, e.slug, e.url, o.starts_at, o.e
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id
 LEFT JOIN geocode_cache g ON g.address = e.venue_address AND g.status = 'ok'
 WHERE o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz
+ AND (NOT $12::boolean OR o.starts_at >= $1::timestamptz)
  AND ($3::text = '' OR e.name ILIKE '%' || $3::text || '%' OR e.venue_name ILIKE '%' || $3::text || '%')
  AND ($4::text = '' OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(e.category_names) c WHERE lower(c) = lower($4::text))
   OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(e.category_slugs) c WHERE lower(c) = lower($4::text)))
@@ -456,7 +458,7 @@ func queryRange(r rangeQuery) ([]apiRow, error) {
 	}
 	var rows *[]apiRow
 	if err := dbJSON(queryRangeSQL, &rows, utcText(r.From), utcText(r.To), escapeLike(r.Q), r.Category, r.Venue,
-		r.City, r.Price, r.Slug, r.Language, limit, r.Desc); err != nil {
+		r.City, r.Price, r.Slug, r.Language, limit, r.Desc, r.StartsAfter); err != nil {
 		return nil, err
 	}
 	if rows == nil {

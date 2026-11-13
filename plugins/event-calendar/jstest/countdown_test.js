@@ -22,7 +22,7 @@ assert.deepEqual(c.parts(NaN), { d: 0, h: 0, m: 0 });
 
 // route query
 const now = Date.UTC(2026, 1, 14, 12, 30, 15, 999);
-assert.equal(c.countdownQuery("", now), "from=2026-02-14T12%3A30%3A15Z&to=2027-03-20T12%3A30%3A15Z&limit=1");
+assert.equal(c.countdownQuery("", now), "from=2026-02-14T12%3A30%3A15Z&to=2027-03-20T12%3A30%3A15Z&limit=1&upcoming=1");
 assert.equal(
   c.countdownQuery(" spring-jazz ", now),
   "from=2026-02-14T12%3A30%3A15Z&to=2027-03-20T12%3A30%3A15Z&limit=1&slug=spring-jazz",

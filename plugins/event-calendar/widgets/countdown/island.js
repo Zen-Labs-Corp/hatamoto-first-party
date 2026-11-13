@@ -31,6 +31,7 @@ function countdownQuery(slug, nowMs) {
   const p = new URLSearchParams({ from: isoSeconds(nowMs), to: isoSeconds(nowMs + AHEAD_DAYS * DAY_MS), limit: "1" });
   const s = typeof slug === "string" ? slug.trim().slice(0, 200) : "";
   if (s) p.set("slug", s);
+  else p.set("upcoming", "1"); // the next event, not one already running
   return p.toString();
 }
 

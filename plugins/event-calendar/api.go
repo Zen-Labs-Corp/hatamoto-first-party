@@ -89,7 +89,7 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 	}}
 }
 
-// rangeFromQuery reads from, to, limit and slug. from and to are RFC 3339 or a
+// rangeFromQuery reads from, to, limit, slug and upcoming (1: only events that start at or after from). from and to are RFC 3339 or a
 // date (midnight in the site zone); the range defaults to a month from now.
 func rangeFromQuery(query map[string][]string, f filters, at time.Time, loc *time.Location) (rangeQuery, bool) {
 	get := func(k string) string {
@@ -124,6 +124,7 @@ func rangeFromQuery(query map[string][]string, f filters, at time.Time, loc *tim
 		}
 		q.Limit = min(n, maxIndexRows)
 	}
+	q.StartsAfter = get("upcoming") == "1"
 	if v := get("slug"); v != "" {
 		if !fileSlugRe.MatchString(v) {
 			return q, false

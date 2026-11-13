@@ -33,7 +33,7 @@ func filtersFromParams(p map[string]any) filters {
 }
 
 // queryKeys are the only keys the public events route accepts.
-var queryKeys = []string{"from", "to", "q", "category", "venue", "city", "price", "view", "limit", "slug"}
+var queryKeys = []string{"from", "to", "q", "category", "venue", "city", "price", "view", "limit", "slug", "upcoming"}
 
 var queryViews = []string{"", "month", "list", "week", "day", "photo", "summary", "map"}
 
@@ -50,6 +50,9 @@ func filtersFromQuery(q map[string][]string) (filters, bool) {
 		val[k] = strings.TrimSpace(vs[0])
 	}
 	if !slices.Contains(queryViews, val["view"]) {
+		return filters{}, false
+	}
+	if val["upcoming"] != "" && val["upcoming"] != "1" {
 		return filters{}, false
 	}
 	f := filters{Q: val["q"], Category: val["category"], Venue: val["venue"], City: val["city"]}
