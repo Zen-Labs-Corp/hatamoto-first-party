@@ -71,15 +71,26 @@ func TestUITellsEventsArriveAsDrafts(t *testing.T) {
 }
 
 // A run reads at most 100 events per feed and running again does not reach the
-// rest, so the Imports tab and the README must say so.
+// rest, so the Imports tab and the README must say so. Core does not show a
+// finished run's message, so neither may promise it. The Imports tab does not
+// mention scheduled imports; the README Upgrading section does.
 func TestUIAndReadmeExplainTheImportCap(t *testing.T) {
 	readme, err := os.ReadFile("README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if strings.Contains(readUI(t, "index.html"), "later core update") {
+		t.Error("the Imports tab footnote must not mention a later core update")
+	}
+	if _, upgrading, ok := strings.Cut(string(readme), "### Upgrading\n"); !ok || !strings.Contains(upgrading, "scheduled imports need a later core update") {
+		t.Error("README Upgrading must keep the scheduled-imports note")
+	}
 	for name, text := range map[string]string{"ui/index.html": readUI(t, "index.html"), "README.md": string(readme)} {
-		if !strings.Contains(text, "first 100") || !strings.Contains(text, "message on the Runs tab") {
+		if !strings.Contains(text, "first 100") || !strings.Contains(text, "running again") {
 			t.Errorf("%s does not explain the 100-event cap", name)
+		}
+		if strings.Contains(text, "message on the Runs tab") {
+			t.Errorf("%s promises a run message the Runs tab does not show", name)
 		}
 	}
 }
