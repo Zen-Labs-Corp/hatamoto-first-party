@@ -32,6 +32,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveEvent(r.PathValues["file"]), nil
 		case "/api/events":
 			return serveAPI(r.Query), nil
+		case "/submit/token":
+			return serveSubmitToken(), nil
 		case "/admin/repeating":
 			return serveRepeating(r.User), nil
 		case "/series/{slug}":
@@ -41,6 +43,9 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		case "/organizer/{slug}":
 			return servePage(pageOrganizer, r.PathValues["slug"]), nil
 		}
+	}
+	if r.Method == http.MethodPost && r.Pattern == "/submit" {
+		return serveSubmit(r), nil
 	}
 	return plain(http.StatusNotFound, "not found"), nil
 }

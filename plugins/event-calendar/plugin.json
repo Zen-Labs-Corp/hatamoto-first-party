@@ -121,6 +121,16 @@
     },
     {
       "method": "GET",
+      "path": "/submit/token",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "/submit",
+      "public": true
+    },
+    {
+      "method": "GET",
       "path": "/admin/repeating",
       "roles": [
         "owner",
