@@ -4,7 +4,7 @@
 {{if eq .Attributes.event_status "cancelled"}}<p class="hm-ec-status">Cancelled</p>{{end}}
 {{if eq .Attributes.event_status "postponed"}}<p class="hm-ec-status">Postponed</p>{{end}}
 <dl>
-<dt>When</dt><dd>{{plugin_event_calendar_when .Attributes.start_at .Attributes.end_at .Attributes.all_day}}</dd>
+<dt>When</dt><dd>{{plugin_event_calendar_when .Attributes.start_at .Attributes.end_at .Attributes.all_day .Attributes.time_zone}}</dd>
 {{if .Attributes.venue_name}}<dt>Venue</dt><dd>{{.Attributes.venue_name}}{{if .Attributes.venue_address}}, {{.Attributes.venue_address}}{{end}}</dd>{{end}}
 {{if .Attributes.price}}<dt>Price</dt><dd>{{.Attributes.price}}</dd>{{end}}
 </dl>

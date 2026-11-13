@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -196,5 +197,29 @@ func TestCalendarLinksHaveNoPlus(t *testing.T) {
 		if !strings.Contains(u, "Jazz%2BBlues%20Night") {
 			t.Errorf("%s does not carry the title intact: %q", name, u)
 		}
+	}
+}
+
+// Every `when` call in a shipped partial passes the event's time zone, else the
+// partial formats in the site zone while the add-to-calendar links use the event's.
+func TestPartialsPassTheEventZoneToWhen(t *testing.T) {
+	files, _ := filepath.Glob("partials/*.html")
+	call := regexp.MustCompile(`plugin_event_calendar_when([^}]*)\}\}`)
+	calls := 0
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range call.FindAllStringSubmatch(string(b), -1) {
+			calls++
+			args := strings.Fields(m[1])
+			if len(args) != 4 || args[3] != ".Attributes.time_zone" {
+				t.Errorf("%s: when args = %q, want the 4th to be .Attributes.time_zone", f, args)
+			}
+		}
+	}
+	if calls == 0 {
+		t.Error("no when call found in partials/")
 	}
 }
