@@ -56,6 +56,8 @@ type indexRow struct {
 	Featured                                 bool
 	Image                                    string
 	SourceKind, SourceUID, SourceURL         string
+	Repeating                                bool
+	OrganizerIDs                             []string
 }
 
 // rowFromEvent is the index row of an event. loc is the zone an all-day event
@@ -79,6 +81,7 @@ func rowFromEvent(e Event, v *Venue, cats categoryRefs, loc *time.Location) inde
 		SeriesID: e.SeriesID, Price: e.Price, PriceAmount: e.PriceAmount,
 		Featured: e.Featured, Image: e.Image,
 		SourceKind: e.SourceKind, SourceUID: e.SourceUID, SourceURL: e.SourceURL,
+		Repeating: e.Repeat.Kind != "" && e.Repeat.Kind != "none", OrganizerIDs: nonNil(e.OrganizerIDs),
 	}
 }
 
@@ -99,10 +102,10 @@ func utcText(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 const upsertEventSQL = `INSERT INTO events (entity_id, schema_slug, slug, locale, name, starts_at, ends_at, all_day, time_zone,
  event_status, attendance_mode, venue_id, venue_name, venue_city, category_ids, category_names, series_id,
  price, price_amount, featured, image, source_kind, source_uid, source_url,
- url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs)
+ url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs, repeating, organizer_ids)
 SELECT $1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8::boolean, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
  $18, $19::double precision, $20::boolean, $21, $22, $23, $24,
- $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb
+ $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb, $32::boolean, $33::jsonb
 WHERE $25::timestamptz IS NULL OR NOT EXISTS (SELECT 1 FROM deleted_events WHERE entity_id = $1 AND deleted_at >= $25::timestamptz)
 ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug = EXCLUDED.slug, locale = EXCLUDED.locale,
  name = EXCLUDED.name, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, all_day = EXCLUDED.all_day,
@@ -112,19 +115,36 @@ ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug =
  price = EXCLUDED.price, price_amount = EXCLUDED.price_amount, featured = EXCLUDED.featured, image = EXCLUDED.image,
  source_kind = EXCLUDED.source_kind, source_uid = EXCLUDED.source_uid, source_url = EXCLUDED.source_url,
  url = EXCLUDED.url, venue_slug = EXCLUDED.venue_slug, venue_address = EXCLUDED.venue_address,
- venue_lat = EXCLUDED.venue_lat, venue_lon = EXCLUDED.venue_lon, category_slugs = EXCLUDED.category_slugs, updated_at = now()`
+ venue_lat = EXCLUDED.venue_lat, venue_lon = EXCLUDED.venue_lon, category_slugs = EXCLUDED.category_slugs,
+ repeating = EXCLUDED.repeating, organizer_ids = EXCLUDED.organizer_ids, updated_at = now()`
 
-// The delete skips the row the insert writes, so the two halves never touch
-// one key. One occurrence per event for now; recurrence will write many.
-const upsertOccurrenceSQL = `WITH d AS (DELETE FROM occurrences WHERE event_id = $1 AND starts_at <> $2::timestamptz)
-INSERT INTO occurrences (event_id, starts_at, ends_at) SELECT $1, $2::timestamptz, $3::timestamptz
+// One statement writes every date of the event from a jsonb array of
+// {"s": start, "e": end}. The delete skips the rows the insert writes, so the
+// two halves never touch one key; dates no longer in the array are removed.
+const upsertOccurrencesSQL = `WITH d AS (DELETE FROM occurrences WHERE event_id = $1 AND starts_at NOT IN
+ (SELECT (x->>'s')::timestamptz FROM jsonb_array_elements($2::jsonb) x))
+INSERT INTO occurrences (event_id, starts_at, ends_at)
+SELECT $1, (x->>'s')::timestamptz, (x->>'e')::timestamptz FROM jsonb_array_elements($2::jsonb) x
 WHERE EXISTS (SELECT 1 FROM events WHERE entity_id = $1)
 ON CONFLICT (event_id, starts_at) DO UPDATE SET ends_at = EXCLUDED.ends_at`
 
-// upsertEvent writes the event row, then its occurrence. A reconcile passes
+// occurrencesJSON is the array upsertOccurrencesSQL reads.
+func occurrencesJSON(occs []occ) string {
+	type row struct {
+		S string `json:"s"`
+		E string `json:"e"`
+	}
+	rows := make([]row, 0, len(occs))
+	for _, o := range occs {
+		rows = append(rows, row{utcText(o.Start), utcText(o.End)})
+	}
+	return jsonText(rows)
+}
+
+// upsertEvent writes the event row, then its dates (occs). A reconcile passes
 // the moment it started as notDeletedSince: an event a hook dropped after that
 // is not written back. Hooks pass nil.
-func upsertEvent(r indexRow, notDeletedSince *time.Time) error {
+func upsertEvent(r indexRow, occs []occ, notDeletedSince *time.Time) error {
 	var guard any
 	if notDeletedSince != nil {
 		guard = utcText(*notDeletedSince)
@@ -134,10 +154,10 @@ func upsertEvent(r indexRow, notDeletedSince *time.Time) error {
 		utcText(r.StartsAt), utcText(r.EndsAt), r.AllDay, r.TimeZone, r.EventStatus, r.AttendanceMode,
 		r.VenueID, r.VenueName, r.VenueCity, jsonText(r.CategoryIDs), jsonText(r.CategoryNames), r.SeriesID,
 		r.Price, amount, r.Featured, r.Image, r.SourceKind, r.SourceUID, r.SourceURL, guard,
-		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs)); err != nil {
+		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs), r.Repeating, jsonText(r.OrganizerIDs)); err != nil {
 		return err
 	}
-	return dbExec(upsertOccurrenceSQL, r.EntityID, utcText(r.StartsAt), utcText(r.EndsAt))
+	return dbExec(upsertOccurrencesSQL, r.EntityID, occurrencesJSON(occs))
 }
 
 // floatArg is a SQL argument: NULL for nil.
@@ -253,7 +273,10 @@ func reindexDTO(raw entityDTO, s settings, notDeletedSince *time.Time) (indexed 
 		return false, "", deleteEvent(raw.ID)
 	}
 	_, _, _, v := venueOrText(e)
-	if err := upsertEvent(rowFromEvent(e, v, categoriesOf(e.CategoryIDs), eventLocation(e, s)), notDeletedSince); err != nil {
+	loc := eventLocation(e, s)
+	from, to := windowFor(now())
+	occs := expand(e, loc, from, to, maxOccurrences)
+	if err := upsertEvent(rowFromEvent(e, v, categoriesOf(e.CategoryIDs), loc), occs, notDeletedSince); err != nil {
 		return false, "", err
 	}
 	venue := Venue{}
