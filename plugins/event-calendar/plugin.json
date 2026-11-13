@@ -1,7 +1,7 @@
 {
   "name": "event-calendar",
-  "version": "0.4.0",
-  "sdk": "^0.21",
+  "version": "0.5.0",
+  "sdk": "^0.22",
   "description": "Events with dates, venue and ticket link: upcoming and past lists for the page builder, an iCal feed and Event structured data.",
   "permissions": [
     "entities.read",
@@ -9,10 +9,19 @@
     "settings",
     "db",
     "http.fetch",
-    "builder.island"
+    "builder.island",
+    "http.fetch.any",
+    "mail.send"
   ],
   "allowed_hosts": [
-    "nominatim.openstreetmap.org"
+    "nominatim.openstreetmap.org",
+    "calendar.google.com",
+    "outlook.office365.com",
+    "outlook.office.com",
+    "outlook.live.com",
+    "www.meetup.com",
+    "www.eventbrite.com",
+    "*"
   ],
   "builder_sources": [
     {
@@ -120,7 +129,7 @@
     }
   ],
   "ui": {
-    "title": "Repeating events",
+    "title": "Event calendar",
     "entry": "index.html",
     "roles": [
       "owner",
@@ -146,7 +155,9 @@
             "skip",
             "change",
             "restore",
-            "duplicate"
+            "duplicate",
+            "import_url",
+            "approve"
           ],
           "required": true
         },
@@ -169,12 +180,82 @@
           "name": "shift_days",
           "label": "Move dates by (days, for duplicate)",
           "type": "number"
+        },
+        {
+          "name": "url",
+          "label": "Calendar address (for import_url)",
+          "type": "url"
+        },
+        {
+          "name": "kind",
+          "label": "Kind (for import_url)",
+          "type": "select",
+          "options": [
+            "ical",
+            "google",
+            "outlook",
+            "eventbrite",
+            "meetup"
+          ]
+        },
+        {
+          "name": "name",
+          "label": "Source name (for import_url)",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "label": "Title (for approve)",
+          "type": "text"
+        },
+        {
+          "name": "venue_name",
+          "label": "Venue (for approve)",
+          "type": "text"
+        },
+        {
+          "name": "description",
+          "label": "Description (for approve)",
+          "type": "text"
+        },
+        {
+          "name": "submission",
+          "label": "Submission number (for approve)",
+          "type": "text"
         }
       ],
       "stages": [
         "fetch",
         "transform"
       ]
+    },
+    {
+      "name": "import_scheduled",
+      "title": "Scheduled calendar import",
+      "stages": [
+        "fetch",
+        "transform"
+      ],
+      "cron": "import",
+      "standing_approval": {
+        "fields": [
+          "event_status",
+          "all_day",
+          "featured",
+          "price_amount",
+          "start_at",
+          "end_at"
+        ],
+        "schemas": [
+          "calendar-event"
+        ],
+        "create": {
+          "schemas": [
+            "calendar-event"
+          ],
+          "max_per_hour": 50
+        }
+      }
     }
   ],
   "limits": {
@@ -243,6 +324,61 @@
         "title": "Nominatim contact",
         "description": "Email or web address added to the lookup User-Agent, as the Nominatim usage policy asks.",
         "default": ""
+      },
+      "notify_email": {
+        "type": "string",
+        "format": "email",
+        "title": "Notification email",
+        "description": "Where new event submissions are announced. Leave empty for no mail.",
+        "default": "",
+        "maxLength": 254
+      },
+      "import_sources": {
+        "type": "array",
+        "title": "Calendar sources",
+        "description": "Public calendar addresses imported every 6 hours. At most 8. Google, Outlook and Meetup addresses only.",
+        "default": [],
+        "maxItems": 8,
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "kind",
+            "url"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "maxLength": 80
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "enum": [
+                "google",
+                "outlook",
+                "meetup"
+              ]
+            },
+            "url": {
+              "type": "string",
+              "title": "Address",
+              "maxLength": 2048,
+              "pattern": "^(https|webcal)://"
+            },
+            "category": {
+              "type": "string",
+              "title": "Category",
+              "maxLength": 80
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "default": true
+            }
+          }
+        }
       }
     }
   },
@@ -250,6 +386,10 @@
     {
       "name": "reconcile",
       "every": "1h"
+    },
+    {
+      "name": "import",
+      "every": "6h"
     }
   ]
 }
