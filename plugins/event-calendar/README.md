@@ -18,13 +18,14 @@ It covers what The Events Calendar, Events Manager and Google Calendar Events do
 
 5. In the page builder, bind a list widget to the data source **Event calendar: Upcoming events** or **Event calendar: Past events** (`ext.event-calendar.upcoming`, `ext.event-calendar.past`). Upcoming lists events that are not over yet, soonest first (an event in progress counts as upcoming); past lists the rest, most recent first. No event is in both. Each item has the title, URL, excerpt, image and these attributes: `when`, `start_at`, `end_at`, `all_day`, `time_zone` (when the event has its own), `venue_name`, `venue_address`, `ticket_url` and `ics_url`. When the page has a language, events of that language and events without one are kept.
 
-6. Page builder widgets. Besides **Event details**, the plugin adds six more:
+6. Page builder widgets. Besides **Event details**, the plugin adds seven more:
    - **Event calendar**: a searchable calendar with month, list, week, day, photo, summary and map views, filters (search, category, venue, city, free or paid), previous and next navigation, and subscribe links (Google Calendar, Outlook and the iCal feed). It loads its events from the JSON route below.
    - **Mini calendar**: a compact month that marks the days with events. A day links to the full calendar; set its page in **Calendar URL**.
    - **Event countdown**: days, hours and minutes until the next event, or until the event whose slug you enter.
    - **Featured venue**: a venue with its address and its next event; set the venue slug or name.
    - **Event map**: a map of the venues of upcoming events, with a height setting. It shows only while **Show map** is on.
    - **Event card**: the card used inside Event details, which you can also place on its own.
+   - **Submit an event**: a form for visitors to send in an event (see Imports and submissions below).
 
    The calendar, countdown and venue widgets are seeded when you add them from the palette: they come with a plain list bound to the upcoming source, so without JavaScript a visitor still sees real events. The interactive views need JavaScript. The seed only applies to a newly added widget; widgets already on a page are not changed.
 
@@ -71,21 +72,44 @@ New dates appear as the hourly check (`reconcile`) rolls the window forward, and
 
 ### Repeating events page
 
-The plugin adds a **Repeating events** page to the admin. It lists every repeating event with a summary of its rule and its next 10 dates, each normal, skipped or changed. **Skip**, **Change time** and **Restore** and the **Duplicate event...** button fill in the inputs of a run. Two limits of the admin shape this:
+The plugin's admin page, **Event calendar**, has three tabs: Submissions, Imports and Repeating (see Imports and submissions below for the first two). The Repeating tab lists every repeating event with a summary of its rule and its next 10 dates, each normal, skipped or changed. **Skip**, **Change time** and **Restore** and the **Duplicate event...** button fill in the inputs of a run. Two limits of the admin shape this:
 
 - A page can only fill in a run's inputs; it cannot start the run. Where the admin has no run form for the page, the page shows what to enter instead: open the Runs tab, pick **Edit repeat dates or duplicate**, enter the values shown and press Start.
 - Nothing is written directly. The run stages the change in **Changes**, and the dates change once you review and publish it. Only the site owner can start a run.
 
-The admin can start only the first run a plugin declares, so there is one run, `edit_dates` (**Edit repeat dates or duplicate**). Its `action` says what it does:
+The admin can start only the first run a plugin declares, so one run, `edit_dates` (**Edit repeat dates or duplicate**), carries every action started by hand; its `action` says what it does:
 
 - `skip`, `change` or `restore` a single date. Inputs: `event` (the event's slug), `date` (`2026-03-03`), and for `change` a `start_at` and optional `end_at` (`18:30` or `2026-03-03T18:30`).
 - `duplicate`: inputs `event` and `shift_days` (0 by default); `date` is not used. It stages a copy named "<name> (copy)" with its dates moved, as a draft you publish in Changes. Where the original came from (source fields) is not copied.
+- `import_url` and `approve`: described under Imports and submissions.
 
-A run can only change an event that the plugin itself created, and the plugin cannot see who owns an event. So the page can change single dates of events made by the `duplicate` action; for any other event (made by hand in the editor, imported, or handed back) the page shows "Hand this event back in the editor (Who owns this page) to change single dates here, or edit the dates in the event itself." If an event is edited in a way that takes it over, the run fails with a message and changes nothing. The same happens when the event's Source ID points at no event the plugin made. The page offers the buttons only for an event whose `dup-` Source ID no other event carries, so an event copied with core's Duplicate is not treated as the plugin's.
+A second run, `import_scheduled`, is started by the plugin itself every 6 hours and takes no inputs.
+
+A run can only change an event that the plugin itself created, and the plugin cannot see who owns an event. So the page can change single dates of events made by the `duplicate` action; for any other event (made by hand in the editor, imported, or handed back) the page shows "Hand this event back in the editor (Who owns this page) to change single dates here, or edit the dates in the event itself." If an event is edited in a way that takes it over, the run fails with a message and changes nothing. The same happens when the event's Source ID points at no event the plugin made. The plugin writes the copy's Source ID as `dup-<run>/<slug>`, with the copy's slug. The page offers the buttons only for an event whose Source ID names its own slug and which no other event shares, so an event copied with core's Duplicate is not treated as the plugin's.
 
 ### Series, venue and organizer pages
 
 The plugin serves a page for each of these, at `/p/event-calendar/series/<slug>`, `/p/event-calendar/venue/<slug>` and `/p/event-calendar/organizer/<slug>`. A page shows the details of the series, venue or organizer and the upcoming dates of its events (skipped dates are not listed). The pages are plain HTML, cached for 5 minutes, and answer 404 for an unknown or unpublished slug. The event card links to them.
+
+### Imports and submissions
+
+**Imports.** The plugin can read calendars and stage their events as new or changed events. Nothing it reads is public until it is in Changes and published.
+
+- **Sources.** Add up to 8 in the `import_sources` setting (Settings tab of the plugin): a name, a kind (`google`, `outlook` or `meetup`), the calendar's address (`https` or `webcal`, on that provider's host), an optional category name and an on/off switch. A scheduled import reads them every 6 hours. Only addresses on the hosts the plugin lists (see Permissions) are read on a schedule. Other kinds, such as Eventbrite pages or any other iCal address, are imported by hand.
+- **Import now.** On the **Imports** tab, **Run now** next to a source, or **Import now** under **Any other iCal URL**, fills in the `import_url` action of the run (inputs `url`, `kind` and `name`; `kind` is `ical`, `google`, `outlook`, `eventbrite` or `meetup`, `ical` by default). You then start the run on the Runs tab and tick the host it asks for: an address outside the plugin's list needs the any-address host (`*`). Only the site owner can start a run. An Eventbrite event page is read from its structured data; an organizer page with no event data in it imports nothing.
+- **What is read.** iCalendar feeds (`.ics`, `webcal://`) and pages that carry schema.org `Event` data. Per event: title, description, start and end (all-day events too), the place, a cancelled status, the page's ticket, online and website links, and repeating rules for daily, weekly, monthly and yearly events (an interval, weekdays, an Nth weekday, an end date or count, skipped and extra dates). Any other repeating rule imports the first date only, and the run summary counts what was left out. A run reads at most 100 events; a feed that is cut off at 1 MiB, an address that cannot be read or a host that is not allowed counts as a failed source, and the other sources still run.
+- **What is never imported.** Images, and anything that was removed from the source: the plugin deletes nothing. The scheduled run does not write the event's `source_url`; the event's address is kept only as the ticket, online or website link where the source gives one.
+- **Matching.** An imported event keeps a Source ID made from the source and the feed's own id, and its source kind. The next run finds the event by that and changes it, it does not add a copy. An event whose imported data has not changed is skipped. A venue or category whose name matches (ignoring case) a published venue or category is linked; otherwise the venue text fields are filled and the category is dropped. No venue or category is created.
+- **What waits for review.** The scheduled run has a standing approval for creates of events and for changes to the status, all-day flag, featured flag, price and start and end of an existing one. Core never publishes by itself an event that carries a link (the ticket, online or website link, or a link in the description), nor a change to its text, nor an image, and one such item keeps the whole changeset of that run in **Changes**. Real feeds carry links often, so scheduled imports often wait for you. Other new events publish themselves, but only after you approve the rule once on the plugin's **Automatic updates** tab; updating the plugin voids that approval (see Upgrading). A run started by hand never publishes anything by itself.
+- **Hand edits.** If you change the title, description or dates (or a link, place or category) of an imported event by hand, the feed no longer matches it, so every scheduled run stages the feed's version again. Each such run then waits in Changes as a whole until you discard that change or switch the source off. The plugin does not remember that you changed it on purpose.
+
+**Submissions.** The **Submit an event** widget lets a visitor send in an event: title, start, end, venue, description and their email. It needs JavaScript (a widget cannot hold a form element); without it a short note shows.
+
+- Nothing a visitor sends is public. A submission is stored in the plugin's own table and listed on the **Submissions** tab. Only the owner or an editor sees it there, with the visitor's email.
+- **Approve** (owner) fills in the `approve` action with the public fields (never the email). You start the run on the Runs tab; it stages one event in **Changes**, which you review and publish there. When that event is published the submission is marked published. **Reject** (owner or editor) keeps the row for 30 days; **Delete** (owner) removes it.
+- The email stays in the `submissions` table. It never goes into an event, a run, a log or an answer to the visitor.
+- Protections, all quiet: a hidden field people never fill, a signed token that a post must carry (issued when the form loads, valid from 3 seconds to 1 hour), at most 100 pending submissions, JSON only, at most 16 KiB, unknown fields refused, and an identical email, title and start is dropped. A post that fails a quiet check gets the same thank-you as a real one and is not stored. Answers never contain error text from the server. The plugin cannot see the visitor's address, so it does no per-address limiting beyond what core applies to public routes.
+- **Mail.** Set `notify_email` to be mailed about each submission (title, start, venue, the visitor's email and a pointer to the Submissions tab). At most 10 such mails go out per hour; the rest, and any that could not be sent, are summarised in one hourly mail that lists titles only. Empty means no mail. A mail that fails never stops a submission from being stored.
 
 ### Settings
 
@@ -97,6 +121,8 @@ The plugin serves a page for each of these, at `/p/event-calendar/series/<slug>`
 | Week starts on (`week_starts_on`) | `monday` | `monday` or `sunday`: the first column of the calendar and mini calendar. |
 | Show map (`show_map`) | off | Show an OpenStreetMap map in the event card and the map widget. Turning it on looks up venue addresses (see Permissions). |
 | Nominatim contact (`geocode_contact`) | empty | An email or web address added to the lookup's User-Agent, as the Nominatim usage policy asks. Use one you control, for example `events@example.org`. |
+| Notify email (`notify_email`) | empty | Where new submissions are mailed. Empty means no mail. |
+| Import sources (`import_sources`) | empty | Up to 8 calendars read every 6 hours: name, kind (`google`, `outlook` or `meetup`), address, optional category and an on/off switch. See Imports and submissions. |
 
 Set the time zone to your site's zone. The editor stores times without a zone, so the plugin reads them in this zone, shows them in it, and converts them to UTC for the calendar feeds. A time that carries its own offset keeps it. An unknown zone name falls back to UTC.
 
@@ -106,6 +132,7 @@ The map is off by default, and nothing is requested from OpenStreetMap until you
 
 ### Upgrading
 
+- Version 0.5.0 adds calendar imports, public submissions and the Submissions and Imports tabs. It needs a Hatamoto core with plugin SDK 0.22 or later; an older core refuses to load it. It adds a database migration (004: the `meta` and `submissions` tables) and two permissions, `mail.send` and `http.fetch.any`, which the site owner has to confirm. The manifest change also voids an earlier standing approval, so approve the rule again on the plugin's **Automatic updates** tab; until then scheduled imports stage everything in Changes. The Source ID that the Duplicate action writes now ends with the copy's slug (`dup-<run>/<slug>`): a copy made by an earlier build with a plain `dup-<run>` ID is no longer treated as the plugin's own, so its dates cannot be changed from the Repeating tab.
 - Version 0.4.0 adds a database migration (003) and the repeating events, pages and runs above. The index is cleared and rebuilt, so until the next hourly check the lists read your events directly and a repeating event shows only its first date; its other dates appear after that check. The new admin page and runs need no new permission. No action is needed.
 - Version 0.3.0 adds a database migration (002) with new index columns. After the update, the lists and the feed read your events directly until the next hourly check (`reconcile`) rebuilds the index, which then fills the new columns; they may be slightly slower until that check has run. The JSON route behind the calendar, mini calendar, countdown, venue card and map has no such fallback: until the index is ready it answers with no events, so those widgets show only their no-JavaScript content. No action is needed.
 
@@ -121,14 +148,23 @@ The map is off by default, and nothing is requested from OpenStreetMap until you
 - The public route `/p/event-calendar/api/events`, which needs no grant and only reads the plugin's own index.
 - `settings`: reads the settings above.
 - `db`: the plugin's own event index (used by the lists and the feed, and kept up to date when events change, are imported or are removed, plus an hourly check) and the cache of address lookups. Both live in the plugin's own schema.
-- `http.fetch`, to `nominatim.openstreetmap.org` only: looks up the position of venue addresses that have no coordinates. It runs only while **Show map** is on, a venue address is looked up when its event is saved or published (or, at the latest, by the hourly check), results are cached, a failed lookup is retried after a day, and it makes at most one request per second (at most 20 lookups per hourly run).
-- `builder.island`: runs small scripts on pages that use the calendar, mini calendar, countdown, venue or map widgets, and the Event details widget (which draws the map). Without this grant the widgets still show their seeded content and links, but not the interactive views or the map picture.
+- `http.fetch`: to `nominatim.openstreetmap.org` it looks up the position of venue addresses that have no coordinates. It runs only while **Show map** is on, a venue address is looked up when its event is saved or published (or, at the latest, by the hourly check), results are cached, a failed lookup is retried after a day, and it makes at most one request per second (at most 20 lookups per hourly run). For imports the manifest lists the calendar hosts the scheduled run may read: `calendar.google.com`, `outlook.office365.com`, `outlook.office.com`, `outlook.live.com`, `www.meetup.com` and `www.eventbrite.com`. The scheduled run reads only your `import_sources` on those hosts.
+- `http.fetch.any`: lets a run started by hand read any address, for **Import now**. The manifest lists `*` for this. A run started by the plugin on a schedule never gets it, and for a run you start you tick the host in the admin before pressing Start. This is a warning permission that you confirm when you install or update.
+- `mail.send`: mails the address in `notify_email` about new submissions, text only, at most 10 per hour plus one hourly summary. Nothing is mailed when that setting is empty.
+- `builder.island`: runs small scripts on pages that use the calendar, mini calendar, countdown, venue, map or submit widgets, and the Event details widget (which draws the map). Without this grant the widgets still show their seeded content and links, but not the interactive views or the map picture.
 
-Nothing else: no mail, no scripts added to every page, no other hosts.
+Nothing else: no scripts added to every page, and no other hosts than the ones above.
 
 ## Data kept
 
-The plugin keeps three things in its own database schema: the event index (one row per event with its time, name, venue, categories and status, and one row per date of a repeating event, plus a marker for when it was last checked in full and a short list of recently removed event ids), and the address lookup cache (address text, position, when it was looked up). Events themselves stay in your content. Both tables are removed with the plugin's data; the index is rebuilt from your events if it is lost.
+The plugin keeps these in its own database schema:
+
+- The event index: one row per event with its time, name, venue, categories and status, and one row per date of a repeating event, plus a marker for when it was last checked in full and a short list of recently removed event ids.
+- The address lookup cache: address text, position, when it was looked up.
+- `submissions`: the events visitors sent in, with the visitor's email. The email is kept only here, never in an event. An approved or published submission is deleted after 90 days, a rejected one after 30, and a pending one stays until you act on it.
+- `meta`: the secret that signs the form's token, made once on first use.
+
+Events themselves stay in your content. The index is rebuilt from your events if it is lost; the submissions and the secret are not. All tables are removed with the plugin's data.
 
 ## Build
 

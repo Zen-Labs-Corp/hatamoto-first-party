@@ -75,7 +75,7 @@ const GOOD = { title: " Open mic ", start: "2027-02-20T20:00", end: "", venue: "
   assert.deepEqual(s.missingFields({ title: " ", start: "", email: "z" }), ["title", "start"]);
   assert.deepEqual(Object.keys(s.buildPayload(GOOD, "t", "")).sort(), ["description", "email", "end", "start", "title", "token", "venue", "website"]);
   assert.equal(s.buildPayload(GOOD, "t", "").title, "Open mic");
-  assert.equal(s.buildPayload({}, "t", "bot").website, "bot");
+  assert.equal(s.buildPayload({}, "t", "spam").website, "spam");
   assert.equal(s.messageFor(200, { ok: true }), "Thank you. We will look at your event soon.");
   assert.equal(s.messageFor(422, { ok: false, error: "check the highlighted fields" }), "Please check the highlighted fields.");
   assert.equal(s.messageFor(503, { ok: false, error: "try again later" }), "Try again later.");
