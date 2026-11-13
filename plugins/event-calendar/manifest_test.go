@@ -239,6 +239,8 @@ func TestShippedFiles(t *testing.T) {
 	}
 	exists(t, "migrations/001_init.sql")
 	exists(t, "migrations/002_view_columns.sql")
+	exists(t, "migrations/003_recurring.sql")
+	exists(t, "migrations/004_submissions.sql")
 	exists(t, "widgets/event-details/widget.html")
 	exists(t, "widgets/event-card/widget.html")
 	exists(t, "partials/event_details.html")
