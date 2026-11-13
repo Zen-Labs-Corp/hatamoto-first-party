@@ -38,10 +38,12 @@ function countdownQuery(slug, nowMs) {
 // startTicker calls fn now and then every ms until the returned function is
 // called; timers can be replaced for tests.
 function startTicker(fn, ms, timers) {
-  const t = timers || { setInterval, clearInterval };
+  // Pulled out of the object: browsers throw "Illegal invocation" when these
+  // run as methods of anything but window.
+  const { setInterval: set, clearInterval: clear } = timers || { setInterval, clearInterval };
   fn();
-  const id = t.setInterval(fn, ms);
-  return () => t.clearInterval(id);
+  const id = set(fn, ms);
+  return () => clear(id);
 }
 
 // safeUrl keeps links to the site and to web pages and drops the rest, such as

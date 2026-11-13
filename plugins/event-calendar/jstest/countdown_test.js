@@ -38,8 +38,17 @@ assert.ok((Date.parse(q.get("to")) - Date.parse(q.get("from"))) / DAY <= 400);
   const log = [];
   let fn = null;
   const timers = {
-    setInterval: (f, ms) => ((fn = f), log.push("set " + ms), 7),
-    clearInterval: (id) => log.push("clear " + id),
+    // like the browser: throws unless called without a receiver
+    setInterval: function (f, ms) {
+      if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+      fn = f;
+      log.push("set " + ms);
+      return 7;
+    },
+    clearInterval: function (id) {
+      if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+      log.push("clear " + id);
+    },
   };
   let ticks = 0;
   const stop = c.startTicker(() => ticks++, 60000, timers);

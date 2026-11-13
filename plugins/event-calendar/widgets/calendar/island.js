@@ -178,11 +178,13 @@ function cacheKey(range, st, weekStart) {
 // debounce delays fn until ms have passed without a call; timers can be
 // replaced for tests.
 function debounce(fn, ms, timers) {
-  const t = timers || { setTimeout, clearTimeout };
+  // Pulled out of the object: browsers throw "Illegal invocation" when these
+  // run as methods of anything but window.
+  const { setTimeout: set, clearTimeout: clear } = timers || { setTimeout, clearTimeout };
   let id = null;
   return (...args) => {
-    if (id !== null) t.clearTimeout(id);
-    id = t.setTimeout(() => {
+    if (id !== null) clear(id);
+    id = set(() => {
       id = null;
       fn(...args);
     }, ms);

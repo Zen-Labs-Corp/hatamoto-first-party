@@ -97,8 +97,16 @@ assert.notEqual(c.cacheKey(range, st, "monday"), c.cacheKey(range, { ...st, city
   const pending = new Map();
   let next = 1;
   const timers = {
-    setTimeout: (fn, ms) => (pending.set(next, { fn, ms }), next++),
-    clearTimeout: (id) => pending.delete(id),
+    // like the browser: throws unless called without a receiver
+    setTimeout: function (fn, ms) {
+      if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+      pending.set(next, { fn, ms });
+      return next++;
+    },
+    clearTimeout: function (id) {
+      if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+      pending.delete(id);
+    },
   };
   const calls = [];
   const d = c.debounce((v) => calls.push(v), 300, timers);
