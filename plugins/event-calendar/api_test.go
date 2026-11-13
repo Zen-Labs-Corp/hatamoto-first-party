@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -191,6 +192,24 @@ func TestAPIEventsDropsUnpublishedRows(t *testing.T) {
 	h = &apiHost{fakeHost: fakeHost{dbRows: apiRows, getErr: errors.New("boom")}}
 	if _, body = getAPI(t, h, nil); len(body.Events) != 3 {
 		t.Errorf("events on host error = %+v", body.Events)
+	}
+}
+
+// The published re-check is capped per request, so a cache-busting client
+// cannot make one call cost a host read per row; rows past the cap are kept.
+func TestAPIEventsCheckCap(t *testing.T) {
+	var rows []string
+	for i := 0; i < apiCheckMax+10; i++ {
+		id := fmt.Sprintf("e%d", i)
+		rows = append(rows, `{"id":"`+id+`","schema_slug":"event","name":"`+id+`","slug":"`+id+`","starts_at":"2026-06-12T20:00:00+00:00","ends_at":"2026-06-12T22:00:00+00:00"}`)
+	}
+	h := &apiHost{fakeHost: fakeHost{dbRows: "[" + strings.Join(rows, ",") + "]"}} // no entities: all not_found
+	_, body := getAPI(t, h, nil)
+	if len(h.getCalls) != apiCheckMax {
+		t.Errorf("entities.get calls = %d, want %d", len(h.getCalls), apiCheckMax)
+	}
+	if len(body.Events) != 10 { // the unchecked rows are kept
+		t.Errorf("events = %d, want the 10 past the cap", len(body.Events))
 	}
 }
 

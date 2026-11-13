@@ -73,7 +73,7 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 	resp := apiResponse{TZ: loc.String(), WeekStart: s.WeekStartsOn, ShowMap: s.ShowMap, Events: []apiEvent{}}
 	if rows, err := queryRange(q); err == nil {
 		resp.Ready, resp.Truncated = true, len(rows) == q.Limit
-		deadline := clock().Add(feedFillBudget)
+		deadline := clock().Add(apiCheckBudget)
 		gone := map[string]bool{} // entity id -> no longer published, read once
 		for _, r := range rows {
 			if s.accepts(r.SchemaSlug) && !unpublished(r.ID, deadline, gone) {
@@ -91,10 +91,18 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 	}}
 }
 
+// The published re-check of the public route is kept short, since a visitor can
+// bypass the cache: at most apiCheckMax distinct entities and apiCheckBudget
+// per request. Rows past either limit are kept; hooks and reconcile repair them.
+const (
+	apiCheckMax    = 50
+	apiCheckBudget = 300 * time.Millisecond
+)
+
 // unpublished is true for an index row whose entity is gone or no longer
 // published, as the lists and the feed check (an index hook that failed leaves
 // such a row behind). The row is dropped from the index as well. The check is
-// skipped once the budget is spent and when the host fails: the row is kept.
+// skipped once the budget or the entity cap is spent and when the host fails: the row is kept.
 // seen remembers the answer per entity, since occurrences share one.
 func unpublished(id string, deadline time.Time, seen map[string]bool) bool {
 	if id == "" || !clock().Before(deadline) {
@@ -102,6 +110,9 @@ func unpublished(id string, deadline time.Time, seen map[string]bool) bool {
 	}
 	if v, ok := seen[id]; ok {
 		return v
+	}
+	if len(seen) >= apiCheckMax {
+		return false
 	}
 	var raw entityDTO
 	err := callHost(sdk.FnEntitiesGet, map[string]any{"id": id}, &raw)
