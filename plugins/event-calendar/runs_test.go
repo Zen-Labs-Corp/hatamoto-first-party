@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -24,6 +26,23 @@ type runHost struct {
 	failed   string
 	finished any
 	calls    []string
+
+	// settings is the answer of settings.get ("{}" when empty); phase is the
+	// phase run.info reports ("transform" when empty).
+	settings string
+	phase    string
+	pages    map[string]fakePage // http.fetch answers by address
+	buffer   map[string][]byte
+	cursor   string // the last run.checkpoint
+	fetched  []string
+}
+
+// fakePage is the answer of a fake http.fetch.
+type fakePage struct {
+	status    int
+	body      string
+	truncated bool
+	err       error
 }
 
 func (h *runHost) install(t *testing.T) {
@@ -32,10 +51,65 @@ func (h *runHost) install(t *testing.T) {
 		h.calls = append(h.calls, fn)
 		switch fn {
 		case "settings.get":
+			if h.settings != "" {
+				return json.Unmarshal([]byte(h.settings), out)
+			}
 			return json.Unmarshal([]byte(`{}`), out)
 		case "run.info":
 			p, _ := json.Marshal(h.params)
-			b, _ := json.Marshal(sdk.RunInfo{RunID: h.runID, Name: h.name, Phase: "transform", Params: p})
+			phase := h.phase
+			if phase == "" {
+				phase = "transform"
+			}
+			b, _ := json.Marshal(sdk.RunInfo{RunID: h.runID, Name: h.name, Phase: phase, Params: p, Cursor: h.cursor})
+			return json.Unmarshal(b, out)
+		case "run.checkpoint":
+			h.cursor = args.(sdk.RunCheckpointArgs).Cursor
+			return nil
+		case "run.progress":
+			return nil
+		case "http.fetch":
+			u := args.(map[string]any)["url"].(string)
+			h.fetched = append(h.fetched, u)
+			page, ok := h.pages[u]
+			if !ok {
+				return &sdk.HostError{Code: sdk.ErrBlocked}
+			}
+			if page.err != nil {
+				return page.err
+			}
+			b, _ := json.Marshal(map[string]any{"status": page.status, "body": page.body, "truncated": page.truncated})
+			return json.Unmarshal(b, out)
+		case "buffer.put":
+			a := args.(sdk.BufferPutArgs)
+			v, err := base64.StdEncoding.DecodeString(a.ValueB64)
+			if err != nil {
+				return err
+			}
+			if h.buffer == nil {
+				h.buffer = map[string][]byte{}
+			}
+			h.buffer[a.Key] = v
+			return nil
+		case "buffer.get":
+			v, ok := h.buffer[args.(sdk.BufferGetArgs).Key]
+			b, _ := json.Marshal(sdk.BufferValue{Found: ok, ValueB64: base64.StdEncoding.EncodeToString(v)})
+			return json.Unmarshal(b, out)
+		case "buffer.list":
+			a := args.(sdk.BufferListArgs)
+			var keys []string
+			for k := range h.buffer {
+				if strings.HasPrefix(k, a.Prefix) && k > a.After {
+					keys = append(keys, k)
+				}
+			}
+			sort.Strings(keys)
+			next := ""
+			if a.Limit > 0 && len(keys) > a.Limit {
+				keys = keys[:a.Limit]
+				next = keys[len(keys)-1]
+			}
+			b, _ := json.Marshal(sdk.BufferKeys{Keys: keys, Next: next})
 			return json.Unmarshal(b, out)
 		case "run.fail":
 			h.failed = args.(sdk.RunFailArgs).Reason
@@ -197,12 +271,12 @@ func TestEditDatesFailsWhenUpsertCreates(t *testing.T) {
 }
 
 func TestRunFetchPhaseFinishes(t *testing.T) {
-	h := &runHost{name: runEditDates}
+	h := &runHost{name: runEditDates, phase: "fetch"}
 	h.install(t)
 	if _, err := onStep(sdk.RunStep{Phase: sdk.RunPhaseFetch}); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.calls) != 1 || h.calls[0] != "run.finish" {
+	if len(h.calls) != 2 || h.calls[0] != "run.info" || h.calls[1] != "run.finish" {
 		t.Errorf("calls = %v", h.calls)
 	}
 }

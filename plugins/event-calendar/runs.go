@@ -13,13 +13,15 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-// The plugin's runs. Both run in the transform phase only: they read one event
-// with entities.get and stage one changeset item; nothing is written until the
-// owner reviews it. Fetch has nothing to do.
+// The plugin's runs. Edit dates reads one event with entities.get and stages
+// one changeset item in the transform phase; the import runs read calendars in
+// the fetch phase (import_run.go). Nothing is written until the owner reviews
+// the changeset, except what a standing approval lets a scheduled run publish.
 
 const (
-	// runEditDates is the plugin's only run: core's admin can start only the
-	// first declared run, so duplicating an event is one of its actions.
+	// runEditDates is the run the admin starts: core's admin can start only the
+	// first declared run, so duplicating an event and the manual import are
+	// actions of it.
 	runEditDates = "edit_dates"
 
 	// keyPrefix marks a source key this plugin made itself. The key of an
@@ -42,7 +44,7 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 	}()
 	switch s.Phase {
 	case sdk.RunPhaseFetch:
-		return sdk.RunStepResult{}, guest.RunFinish(callHost, nil)
+		return fetchPhase(s)
 	case sdk.RunPhaseTransform:
 		info, err := guest.RunInfo(callHost)
 		if err != nil {
