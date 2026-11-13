@@ -51,12 +51,12 @@ func importTransformStep() (sdk.RunStepResult, error) {
 			ev.Title = "Untitled event"
 		}
 		sum["dropped_recurrence"] += ev.Dropped
-		want := buildCreateAttrs(ev, rec.Kind, rec.Key, venues[strings.ToLower(ev.Venue)], cats[strings.ToLower(rec.Category)])
+		want := buildCreateAttrs(ev, s.location(), rec.Kind, rec.Key, venues[strings.ToLower(ev.Venue)], cats[strings.ToLower(rec.Category)])
 		up := sdk.EntityUpsert{SourceKey: rec.Key, Schema: schema, Name: ev.Title}
 		old, found := existing[rec.Key]
 		if found {
 			up.Schema, up.Slug, up.Locale = old.Schema, old.Slug, old.Locale
-			if sameImport(old.Attrs, want) && old.Name == ev.Title {
+			if sameImport(old.Attrs, want, s.location()) && old.Name == ev.Title {
 				sum["unchanged"]++
 				continue
 			}
@@ -90,8 +90,8 @@ func hasLink(ev importEvent) bool {
 }
 
 // buildCreateAttrs is the attributes an imported event is created with, or
-// overlaid on an existing one. It never sets source_url or image.
-func buildCreateAttrs(ev importEvent, kind, key, venueID, catID string) map[string]json.RawMessage {
+// overlaid on an existing one. Times are in the editor's form, in loc. It never sets source_url or image.
+func buildCreateAttrs(ev importEvent, loc *time.Location, kind, key, venueID, catID string) map[string]json.RawMessage {
 	a := map[string]json.RawMessage{}
 	set := func(k string, v any) {
 		switch x := v.(type) {
@@ -104,9 +104,9 @@ func buildCreateAttrs(ev importEvent, kind, key, venueID, catID string) map[stri
 		}
 		a[k], _ = json.Marshal(v)
 	}
-	set("start_at", ev.Start.Format(time.RFC3339))
+	set("start_at", editorTime(ev.Start, loc))
 	if !ev.End.IsZero() {
-		set("end_at", ev.End.Format(time.RFC3339))
+		set("end_at", editorTime(ev.End, loc))
 	}
 	if ev.AllDay {
 		set("all_day", true)
@@ -138,7 +138,7 @@ func buildCreateAttrs(ev importEvent, kind, key, venueID, catID string) map[stri
 
 // sameImport reports whether every attribute the import wants is already what
 // the event has. Times compare as instants, everything else as JSON values.
-func sameImport(existing, want map[string]json.RawMessage) bool {
+func sameImport(existing, want map[string]json.RawMessage, loc *time.Location) bool {
 	for k, w := range want {
 		e, ok := existing[k]
 		if !ok {
@@ -149,8 +149,8 @@ func sameImport(existing, want map[string]json.RawMessage) bool {
 			if json.Unmarshal(w, &ws) != nil || json.Unmarshal(e, &es) != nil {
 				return false
 			}
-			wt, wok := parseTime(ws, time.UTC)
-			et, eok := parseTime(es, time.UTC)
+			wt, wok := parseTime(ws, loc)
+			et, eok := parseTime(es, loc)
 			if !wok || !eok || !wt.Equal(et) {
 				return false
 			}

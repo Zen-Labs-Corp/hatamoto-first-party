@@ -77,14 +77,14 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 		}
 		for _, k := range []string{"start_at", "end_at"} {
 			if v := attrText(t, attrs, k); v != "" {
-				if _, err := time.Parse(time.RFC3339, v); err != nil {
-					t.Errorf("%s %q is not RFC 3339", k, v)
+				if _, err := time.Parse("2006-01-02T15:04", v); err != nil {
+					t.Errorf("%s %q is not the editor's form", k, v)
 				}
 			}
 		}
 	}
 	a := attrsOf(t, byKey[plain.Key])
-	if attrText(t, a, "source_kind") != "google" || attrText(t, a, "start_at") != "2027-06-12T10:00:00Z" || attrText(t, a, "end_at") != "2027-06-12T12:00:00Z" ||
+	if attrText(t, a, "source_kind") != "google" || attrText(t, a, "start_at") != "2027-06-12T10:00" || attrText(t, a, "end_at") != "2027-06-12T12:00" ||
 		string(a["venue"]) != `["v1"]` || string(a["category"]) != `["c1"]` || a["venue_name"] != nil || attrText(t, a, "description") != "Bring a friend." {
 		t.Errorf("plain: %s", byKey[plain.Key].Attributes)
 	}
@@ -138,7 +138,7 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 	}
 	up := h3.upserts[0]
 	a = attrsOf(t, up)
-	if up.Slug != "open-mic" || up.Name != "Open mic" || up.Locale != "en" || up.SourceKey != plain.Key || attrText(t, a, "end_at") != "2027-06-12T13:00:00Z" ||
+	if up.Slug != "open-mic" || up.Name != "Open mic" || up.Locale != "en" || up.SourceKey != plain.Key || attrText(t, a, "end_at") != "2027-06-12T13:00" ||
 		string(a["page_sections"]) != `[{"k":1}]` || attrText(t, a, "price") != "Free" || a["source_url"] != nil {
 		t.Errorf("update: %+v %s", up, up.Attributes)
 	}
@@ -205,16 +205,60 @@ func TestSameImport(t *testing.T) {
 		}
 		return out
 	}
-	if !sameImport(m(`{"start_at":"2027-06-12T12:00:00+02:00","a":[1]}`), m(`{"start_at":"2027-06-12T10:00:00Z","a":[1]}`)) {
+	if !sameImport(m(`{"start_at":"2027-06-12T12:00:00+02:00","a":[1]}`), m(`{"start_at":"2027-06-12T10:00:00Z","a":[1]}`), time.UTC) {
 		t.Error("the same instant in another offset is the same")
 	}
-	if sameImport(m(`{"start_at":"2027-06-12T12:00:00+02:00"}`), m(`{"start_at":"2027-06-12T12:00:00Z"}`)) {
+	if sameImport(m(`{"start_at":"2027-06-12T12:00:00+02:00"}`), m(`{"start_at":"2027-06-12T12:00:00Z"}`), time.UTC) {
 		t.Error("another instant differs")
 	}
-	if sameImport(m(`{"a":1}`), m(`{"a":1,"b":"x"}`)) || sameImport(m(`{"a":"x"}`), m(`{"a":"y"}`)) {
+	if sameImport(m(`{"a":1}`), m(`{"a":1,"b":"x"}`), time.UTC) || sameImport(m(`{"a":"x"}`), m(`{"a":"y"}`), time.UTC) {
 		t.Error("a missing or different attribute differs")
 	}
-	if !sameImport(m(`{"a":1,"extra":true}`), m(`{"a":1}`)) {
+	if !sameImport(m(`{"a":1,"extra":true}`), m(`{"a":1}`), time.UTC) {
 		t.Error("attributes the import does not set are ignored")
+	}
+}
+
+// Core's editor loads and saves a date-time field as a local "2006-01-02T15:04"
+// without a zone; an RFC 3339 value with Z or an offset does not load.
+func TestImportedTimesAreEditorLoadable(t *testing.T) {
+	berlin, _ := time.LoadLocation("Europe/Berlin")
+	london, _ := time.LoadLocation("Europe/London")
+	cases := []struct {
+		name       string
+		ev         importEvent
+		start, end string
+	}{
+		{"winter", importEvent{Start: time.Date(2026, 12, 20, 20, 0, 0, 0, time.UTC), End: time.Date(2026, 12, 20, 22, 0, 0, 0, time.UTC)}, "2026-12-20T21:00", "2026-12-20T23:00"},
+		{"summer", importEvent{Start: time.Date(2027, 6, 12, 18, 0, 0, 0, time.UTC)}, "2027-06-12T20:00", ""},
+		// the clocks change on 2027-03-28: 01:30 UTC+1 and 03:30 UTC+2 are one hour apart
+		{"across the change", importEvent{Start: time.Date(2027, 3, 27, 23, 30, 0, 0, time.UTC), End: time.Date(2027, 3, 28, 1, 30, 0, 0, time.UTC)}, "2027-03-28T00:30", "2027-03-28T03:30"},
+		// a feed in another zone: 19:00 in London is 20:00 in Berlin
+		{"feed zone", importEvent{Start: time.Date(2027, 6, 12, 19, 0, 0, 0, london)}, "2027-06-12T20:00", ""},
+		{"all day", importEvent{Start: time.Date(2027, 7, 1, 0, 0, 0, 0, berlin), End: time.Date(2027, 7, 2, 0, 0, 0, 0, berlin), AllDay: true}, "2027-07-01T00:00", "2027-07-02T00:00"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := buildCreateAttrs(c.ev, berlin, "google", "k", "", "")
+			if got := attrText(t, a, "start_at"); got != c.start {
+				t.Errorf("start_at = %q, want %q", got, c.start)
+			}
+			if got := attrText(t, a, "end_at"); got != c.end {
+				t.Errorf("end_at = %q, want %q", got, c.end)
+			}
+			// what the plugin and the index read back is the same instant
+			back, ok := parseTime(c.start, berlin)
+			if !ok || !back.Equal(c.ev.Start) {
+				t.Errorf("parseTime(%q) = %v, want %v", c.start, back, c.ev.Start)
+			}
+			// and a second import of the same event is unchanged
+			if !sameImport(a, a, berlin) {
+				t.Error("an import differs from itself")
+			}
+			raw, _ := json.Marshal(c.start)
+			if !sameImport(map[string]json.RawMessage{"start_at": raw}, map[string]json.RawMessage{"start_at": a["start_at"]}, berlin) {
+				t.Error("the stored form differs from the wanted one")
+			}
+		})
 	}
 }

@@ -95,6 +95,17 @@ func parseTime(s string, loc *time.Location) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// editorTime writes t the way core's editor reads and writes a date-time
+// field (a datetime-local input): the local date and time in loc, no zone,
+// seconds only when they are not zero.
+func editorTime(t time.Time, loc *time.Location) string {
+	t = t.In(loc)
+	if t.Second() != 0 {
+		return t.Format("2006-01-02T15:04:05")
+	}
+	return t.Format("2006-01-02T15:04")
+}
+
 // attrString returns a string attribute, empty when missing or not a string.
 func attrString(m map[string]any, key string) string {
 	s, _ := m[key].(string)

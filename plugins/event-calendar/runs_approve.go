@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"regexp"
-	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
@@ -40,13 +39,13 @@ func approveSubmission(p map[string]any) (sdk.RunStepResult, error) {
 			attrs[k], _ = json.Marshal(v)
 		}
 	}
-	set("start_at", start.Format(time.RFC3339))
+	set("start_at", editorTime(start, s.location()))
 	if e := paramString(p, "end_at"); e != "" {
 		end, ok := parseTime(e, s.location())
 		if !ok || end.Before(start) {
 			return failRun("The end must look like 2026-03-03T20:00 and not be before the start.")
 		}
-		set("end_at", end.Format(time.RFC3339))
+		set("end_at", editorTime(end, s.location()))
 	}
 	set("venue_name", capBytes(paramString(p, "venue_name"), maxSubmitVenue))
 	set("description", capBytes(paramString(p, "description"), maxSubmitDesc))
