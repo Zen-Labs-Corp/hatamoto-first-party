@@ -169,13 +169,13 @@ func cleanSubmission(b submitBody, loc *time.Location) (submission, bool) {
 	if !ok {
 		return s, false
 	}
-	s.Start = utcText(start)
+	s.Start = start.Format(time.RFC3339)
 	if e := strings.TrimSpace(b.End); e != "" {
 		end, ok := parseTime(e, loc)
 		if !ok || end.Before(start) {
 			return s, false
 		}
-		s.End = utcText(end)
+		s.End = end.Format(time.RFC3339)
 	}
 	return s, true
 }

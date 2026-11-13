@@ -1,4 +1,4 @@
-// Repeating events admin page. It runs in a sandboxed iframe and reaches the
+// Event calendar admin page: Submissions, Imports and Repeating events. It runs in a sandboxed iframe and reaches the
 // plugin only through the hatamoto bridge. Text is set with textContent. The
 // buttons fill in the inputs of a run through the bridge; the owner then
 // starts the run, and the change is reviewed in Changes before it is live.
@@ -22,8 +22,8 @@ function say(selector, msg, isError) {
   n.hidden = !msg;
 }
 
-async function api(method, path) {
-  const res = await hatamoto.route(method, path, null);
+async function api(method, path, query) {
+  const res = await hatamoto.route(method, path, null, query);
   let data = {};
   try { data = JSON.parse(res.body || "{}"); } catch { /* not JSON */ }
   if (res.status >= 400) throw new Error(data.error || `HTTP ${res.status}`);
@@ -51,11 +51,13 @@ const state = { role: "", events: [], open: new Set(), editing: "" };
 
 // fillRun puts the inputs into the run form. Where the page has no run form
 // the admin refuses them; then the owner is told what to enter in the Runs tab.
-async function fillRun(inputs) {
+// summary names what was filled in when the values themselves are too long to
+// list.
+async function fillRun(inputs, summary) {
   const entered = Object.entries(inputs).filter(([, v]) => v !== "").map(([k, v]) => `${k}=${v}`).join(", ");
   try {
     await hatamoto.runInputs(inputs);
-    say("#hint", `The run "${RUN}" is filled in (${entered}). Press Start, then review the change in Changes.`);
+    say("#hint", `The run "${RUN}" is filled in (${summary || entered}). Open the Runs tab, press Start, then review the change in Changes.`);
   } catch {
     say("#hint", `Open the Runs tab, type these into the "${RUN}" form and press Start: ${entered}`);
   }
@@ -134,7 +136,7 @@ function render() {
   if (!canAct && state.events.length) $("#state").textContent = "Ask the site owner to skip, change or restore dates.";
 }
 
-async function load() {
+async function loadRepeating() {
   try {
     say("#notice", "");
     const data = await api("GET", "/admin/repeating");
@@ -154,4 +156,167 @@ $("#dup-go").addEventListener("click", () => {
   fillRun({ event: $("#dup-event").value, action: "duplicate", date: "", start_at: "", end_at: "", shift_days: Number.isFinite(n) ? String(n) : "0" });
 });
 
-hatamoto.ready.then(load);
+// ---- Submissions
+
+const STATUSES = [["pending", "Pending"], ["approved", "Approved"], ["published", "Published"], ["rejected", "Rejected"], ["all", "All"]];
+const sub = { role: "", status: "pending" };
+
+// "Fri 20 Feb 8:00 pm" from "2027-02-20T20:00:00+01:00": the clock the
+// submitter typed, so no zone conversion.
+function submittedWhen(text) {
+  const [date, rest] = String(text || "").split("T");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return text || "";
+  return rest ? `${dayText(date)} ${clockText(rest.slice(0, 5))}` : dayText(date);
+}
+
+function submissionActions(item) {
+  const owner = sub.role === "owner";
+  const cell = el("td", { className: "actions" });
+  if (item.status === "pending") {
+    cell.append(button("Approve", () => fillRun({
+      action: "approve", title: item.title, start_at: item.start_at, end_at: item.end_at,
+      venue_name: item.venue, description: item.description, submission: String(item.id),
+    }, `submission ${item.id}`), owner));
+  }
+  if (item.status === "pending" || item.status === "approved") {
+    cell.append(button("Reject", () => submissionAction(item, "reject"), true));
+  }
+  cell.append(button("Delete", () => submissionAction(item, "delete"), owner));
+  return cell;
+}
+
+async function submissionAction(item, what) {
+  try {
+    say("#notice", "");
+    await api("POST", `/admin/submissions/${item.id}/${what}`);
+    await loadSubmissions();
+  } catch (e) {
+    say("#notice", e.message, true);
+  }
+}
+
+function renderSubmissions(data) {
+  sub.role = data.role || "";
+  const rows = $("#sub-rows");
+  rows.replaceChildren();
+  for (const item of data.items || []) {
+    rows.append(el("tr", {},
+      el("td", { textContent: item.title }),
+      el("td", { textContent: submittedWhen(item.start_at) }),
+      el("td", { textContent: item.venue || "-" }),
+      el("td", { textContent: item.email }),
+      submissionActions(item)));
+  }
+  const n = (data.items || []).length;
+  $("#sub-table").hidden = !n;
+  $("#sub-state").textContent = n ? "" : "No submissions here.";
+  const pending = (data.counts && data.counts.pending) || 0;
+  $("#tab-submissions").textContent = pending ? `Submissions (${pending})` : "Submissions";
+  if (sub.role !== "owner" && n) $("#sub-state").textContent = "Ask the site owner to approve or delete a submission. You can reject one.";
+}
+
+async function loadSubmissions() {
+  try {
+    say("#notice", "");
+    renderSubmissions(await api("GET", "/admin/submissions", { status: [sub.status] }));
+  } catch (e) {
+    say("#notice", e.message, true);
+  }
+}
+
+// ---- Imports
+
+const KINDS = { google: "Google", outlook: "Outlook", meetup: "Meetup", ical: "iCal", eventbrite: "Eventbrite" };
+const imp = { role: "", sources: [] };
+
+// "3 hours ago" from a timestamp; "never" when there is none.
+function agoText(stamp) {
+  const t = Date.parse(stamp);
+  if (!stamp || Number.isNaN(t)) return "never";
+  const hours = Math.floor((Date.now() - t) / 3600000);
+  if (hours < 1) return "less than 1 hour ago";
+  if (hours < 48) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  return `${Math.floor(hours / 24)} days ago`;
+}
+
+function importRow(src, owner) {
+  const run = () => fillRun({ action: "import_url", url: src.url || "", kind: src.kind, name: src.name });
+  const edit = el("button", { type: "button", textContent: "Edit" });
+  edit.addEventListener("click", () => {
+    const parts = [`Name: ${src.name}`, `Kind: ${KINDS[src.kind] || src.kind}`, `Host: ${src.host || "-"}`, `Category: ${src.category || "-"}`];
+    say("#imp-detail", `${parts.join(", ")}. Change sources on the plugin's Settings tab.`);
+  });
+  return el("tr", {},
+    el("td", { textContent: src.name }),
+    el("td", { textContent: KINDS[src.kind] || src.kind }),
+    el("td", { textContent: src.enabled ? "every 6 h" : "off" }),
+    el("td", { textContent: agoText(src.last_imported) }),
+    el("td", { className: "actions" }, button("Run now", run, owner && Boolean(src.url)), edit));
+}
+
+function renderImports(data) {
+  imp.role = data.role || "";
+  imp.sources = data.sources || [];
+  const rows = $("#imp-rows");
+  rows.replaceChildren();
+  for (const src of imp.sources) rows.append(importRow(src, imp.role === "owner"));
+  $("#imp-table").hidden = !imp.sources.length;
+  $("#imp-state").textContent = imp.sources.length ? "" : "No sources yet. Add them in import_sources on the plugin's Settings tab.";
+  const owner = imp.role === "owner";
+  $("#imp-go").disabled = !owner;
+  $("#imp-go").title = owner ? "" : "Ask the site owner";
+  $("#imp-url").disabled = !owner;
+}
+
+async function loadImports() {
+  try {
+    say("#notice", "");
+    renderImports(await api("GET", "/admin/imports"));
+  } catch (e) {
+    say("#notice", e.message, true);
+  }
+}
+
+// The host of an address as typed, "" when it is not a web or webcal address.
+function hostOfAddress(text) {
+  const m = /^(?:https?|webcals?):\/\/([^/?#@\s]+)/i.exec(String(text || "").trim());
+  return m ? m[1].toLowerCase() : "";
+}
+
+$("#imp-go").addEventListener("click", () => {
+  const url = $("#imp-url").value.trim();
+  const host = hostOfAddress(url);
+  if (!host) {
+    say("#imp-confirm", "Enter the calendar address; it starts with https or webcal.", true);
+    return;
+  }
+  say("#imp-confirm", `Importing from ${host}. Tick the any-address host (*) on the Runs tab before Start.`);
+  return fillRun({ action: "import_url", url, kind: "ical", name: "" });
+});
+
+// ---- Tabs
+
+const TABS = { submissions: loadSubmissions, imports: loadImports, repeating: loadRepeating };
+const loaded = new Set();
+
+function showTab(name) {
+  for (const tab of Object.keys(TABS)) {
+    $(`#panel-${tab}`).hidden = tab !== name;
+    $(`#tab-${tab}`).classList.toggle("active", tab === name);
+  }
+  say("#hint", "");
+  if (!loaded.has(name)) {
+    loaded.add(name);
+    TABS[name]();
+  }
+}
+
+for (const tab of Object.keys(TABS)) $(`#tab-${tab}`).addEventListener("click", () => showTab(tab));
+
+$("#sub-status").replaceChildren(...STATUSES.map(([value, text]) => el("option", { value, textContent: text })));
+$("#sub-status").addEventListener("change", () => {
+  sub.status = $("#sub-status").value;
+  loadSubmissions();
+});
+
+hatamoto.ready.then(() => showTab("submissions"));
