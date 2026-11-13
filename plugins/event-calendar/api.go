@@ -73,8 +73,10 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 	resp := apiResponse{TZ: loc.String(), WeekStart: s.WeekStartsOn, ShowMap: s.ShowMap, Events: []apiEvent{}}
 	if rows, err := queryRange(q); err == nil {
 		resp.Ready, resp.Truncated = true, len(rows) == q.Limit
+		deadline := clock().Add(feedFillBudget)
+		gone := map[string]bool{} // entity id -> no longer published, read once
 		for _, r := range rows {
-			if s.accepts(r.SchemaSlug) {
+			if s.accepts(r.SchemaSlug) && !unpublished(r.ID, deadline, gone) {
 				resp.Events = append(resp.Events, toAPIEvent(r, s, at))
 			}
 		}
@@ -87,6 +89,28 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 		"Content-Type":  "application/json; charset=utf-8",
 		"Cache-Control": "public, max-age=60",
 	}}
+}
+
+// unpublished is true for an index row whose entity is gone or no longer
+// published, as the lists and the feed check (an index hook that failed leaves
+// such a row behind). The row is dropped from the index as well. The check is
+// skipped once the budget is spent and when the host fails: the row is kept.
+// seen remembers the answer per entity, since occurrences share one.
+func unpublished(id string, deadline time.Time, seen map[string]bool) bool {
+	if id == "" || !clock().Before(deadline) {
+		return false
+	}
+	if v, ok := seen[id]; ok {
+		return v
+	}
+	var raw entityDTO
+	err := callHost(sdk.FnEntitiesGet, map[string]any{"id": id}, &raw)
+	gone := isNotFound(err) || (err == nil && raw.Status != "published")
+	if gone {
+		_ = deleteEvent(id)
+	}
+	seen[id] = gone
+	return gone
 }
 
 // rangeFromQuery reads from, to, limit, slug and upcoming (1: only events that start at or after from). from and to are RFC 3339 or a

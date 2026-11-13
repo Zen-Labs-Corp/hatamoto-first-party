@@ -38,6 +38,16 @@ func (h *apiHost) install(t *testing.T) {
 	}
 }
 
+// published makes the entities of the given ids published, as the route's
+// check of each index row finds them.
+func published(ids ...string) []string {
+	var out []string
+	for _, id := range ids {
+		out = append(out, `{"id":"`+id+`","schema_slug":"event","slug":"`+id+`","name":"`+id+`","status":"published"}`)
+	}
+	return out
+}
+
 func getAPI(t *testing.T, h *apiHost, q map[string][]string) (sdk.HTTPResponse, apiResponse) {
 	t.Helper()
 	h.install(t)
@@ -69,7 +79,7 @@ const apiRows = `[
  {"id":"x","schema_slug":"post","name":"Not an event","slug":"x","starts_at":"2026-06-12T20:00:00+00:00","ends_at":"2026-06-12T22:00:00+00:00"}]`
 
 func TestAPIEventsRange(t *testing.T) {
-	h := &apiHost{fakeHost: fakeHost{dbRows: apiRows}, settings: `{"time_zone":"Europe/Berlin","week_starts_on":"sunday","show_map":true}`}
+	h := &apiHost{fakeHost: fakeHost{dbRows: apiRows, entities: published("a", "b", "c", "x")}, settings: `{"time_zone":"Europe/Berlin","week_starts_on":"sunday","show_map":true}`}
 	r, body := getAPI(t, h, q1("from", "2026-06-10", "to", "2026-06-20"))
 	if r.Status != 200 || r.Headers["Content-Type"] != "application/json; charset=utf-8" || r.Headers["Cache-Control"] != "public, max-age=60" {
 		t.Fatalf("response = %d %v", r.Status, r.Headers)
@@ -134,6 +144,7 @@ func TestAPIEventsDefaultsCapAndHead(t *testing.T) {
 		t.Errorf("args = %v", h.args)
 	}
 	// truncated when the cap was reached
+	h.entities = published("a")
 	h.dbRows = `[{"id":"a","schema_slug":"event","name":"A","starts_at":"2026-06-02T10:00:00Z","ends_at":"2026-06-02T11:00:00Z"}]`
 	if _, body = getAPI(t, h, q1("limit", "1")); !body.Truncated || len(body.Events) != 1 {
 		t.Errorf("truncated = %+v", body)
@@ -164,6 +175,22 @@ func TestAPIEventsUpcoming(t *testing.T) {
 	}
 	if r, _ := getAPI(t, h, q1("upcoming", "yes")); r.Status != http.StatusBadRequest {
 		t.Errorf("upcoming=yes = %d", r.Status)
+	}
+}
+
+// A row whose entity was unpublished or deleted while an index hook failed is
+// not served, as the lists and the feed do not list it.
+func TestAPIEventsDropsUnpublishedRows(t *testing.T) {
+	h := &apiHost{fakeHost: fakeHost{dbRows: apiRows, entities: published("a", "c", "x")}}
+	h.entities = append(h.entities, `{"id":"b","schema_slug":"event","slug":"b","name":"b","status":"draft"}`)
+	_, body := getAPI(t, h, nil)
+	if len(body.Events) != 2 || body.Events[0].ID != "a" || body.Events[1].ID != "c" { // b is a draft
+		t.Errorf("events = %+v", body.Events)
+	}
+	// the host failing keeps the rows (fail open)
+	h = &apiHost{fakeHost: fakeHost{dbRows: apiRows, getErr: errors.New("boom")}}
+	if _, body = getAPI(t, h, nil); len(body.Events) != 3 {
+		t.Errorf("events on host error = %+v", body.Events)
 	}
 }
 
