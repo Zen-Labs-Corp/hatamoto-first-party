@@ -73,11 +73,11 @@ The map is off by default, and nothing is requested from OpenStreetMap until you
 
 ### Upgrading
 
-- Version 0.3.0 adds a database migration (002) with new index columns. After the update, the plugin reads your events directly until the next hourly check (`reconcile`) rebuilds the index, which then fills the new columns. No action is needed; the lists and the calendar may be slightly slower until that check has run.
+- Version 0.3.0 adds a database migration (002) with new index columns. After the update, the lists and the feed read your events directly until the next hourly check (`reconcile`) rebuilds the index, which then fills the new columns; they may be slightly slower until that check has run. The JSON route behind the calendar, mini calendar, countdown, venue card and map has no such fallback: until the index is ready it answers with no events, so those widgets show only their no-JavaScript content. No action is needed.
 
 ### Upgrading from 0.1
 
-- Updating from 0.1.0 needs the site owner to confirm it: the new version asks for another host (`nominatim.openstreetmap.org`) and for the `builder.island` permission. Until the update is confirmed and `db` is granted, the plugin keeps reading the events themselves, as 0.1 did.
+- Updating from 0.1.0 needs the site owner to confirm it: the new version asks for another host (`nominatim.openstreetmap.org`) and for the `builder.island` permission. Until the update is confirmed and `db` is granted, the lists and the feed keep reading the events themselves, as 0.1 did; the widgets that use the JSON route stay empty.
 - If you saved **Event content type** as `event` in 0.1, that value is still stored and pins the plugin to that one type, so the new **Calendar event** type is ignored. Clear the setting (leave it empty) to use both types.
 
 ## Permissions
