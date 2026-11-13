@@ -79,11 +79,19 @@ var wantSchemas = map[string]map[string]fieldSpec{
 	"calendar-category": {"description": str(""), "color": str("")},
 }
 
+// reservedPropertyNames is core's denylist of names that would pollute the
+// JavaScript object prototype (entity.reservedPropertyNames).
+var reservedPropertyNames = map[string]bool{
+	"__proto__": true, "constructor": true, "prototype": true, "hasOwnProperty": true,
+	"isPrototypeOf": true, "propertyIsEnumerable": true, "toString": true, "valueOf": true,
+	"__defineGetter__": true, "__defineSetter__": true, "__lookupGetter__": true, "__lookupSetter__": true,
+}
+
 // shapeErrors mirrors core's entity.ValidateSchemaShape, which refuses a content
 // type at install time (the plugin is then enabled without it): every node has a
 // supported type, objects have properties and no additionalProperties or
 // patternProperties, property names match nameRe, required names exist, every
-// array has items and no array holds an array.
+// array has items, no array holds an array and no property name is reserved.
 func shapeErrors(node map[string]any, path string, nameRe *regexp.Regexp) []string {
 	var errs []string
 	typ, _ := node["type"].(string)
@@ -102,6 +110,9 @@ func shapeErrors(node map[string]any, path string, nameRe *regexp.Regexp) []stri
 			return append(errs, path+" of type 'object' missing 'properties'")
 		}
 		for name, c := range props {
+			if reservedPropertyNames[name] {
+				errs = append(errs, "property name "+name+" is reserved")
+			}
 			if !nameRe.MatchString(name) {
 				errs = append(errs, "property name "+name+" is invalid")
 			}
@@ -263,5 +274,13 @@ func TestShippedSchemas(t *testing.T) {
 		if single != r.single {
 			t.Errorf("calendar-event.%s: single = %v, want %v", name, single, r.single)
 		}
+	}
+}
+
+func TestShapeMirrorRejectsReservedNames(t *testing.T) {
+	nameRe := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	node := map[string]any{"type": "object", "properties": map[string]any{"constructor": map[string]any{"type": "string"}}}
+	if errs := shapeErrors(node, "$", nameRe); len(errs) != 1 || !strings.Contains(errs[0], "reserved") {
+		t.Errorf("errs = %v", errs)
 	}
 }
