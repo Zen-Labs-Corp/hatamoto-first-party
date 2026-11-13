@@ -57,7 +57,7 @@ async function fillRun(inputs) {
     await hatamoto.runInputs(inputs);
     say("#hint", `The run "${RUN}" is filled in (${entered}). Press Start, then review the change in Changes.`);
   } catch {
-    say("#hint", `Open the Runs tab, pick "${RUN}" and enter: ${entered}`);
+    say("#hint", `Open the Runs tab, type these into the "${RUN}" form and press Start: ${entered}`);
   }
 }
 

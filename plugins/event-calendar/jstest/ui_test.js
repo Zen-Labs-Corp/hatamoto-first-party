@@ -125,7 +125,7 @@ async function load({ data = DATA, refuse = false, status = 200 } = {}) {
   els["#rows"].buttons("v dates")[0].click();
   await els["#rows"].buttons("Skip")[0].click();
   await next();
-  check(els["#hint"].textContent === 'Open the Runs tab, pick "Edit repeat dates or duplicate" and enter: event=yoga, action=skip, date=2026-02-17', "instruction on rejection: " + els["#hint"].textContent);
+  check(els["#hint"].textContent === 'Open the Runs tab, type these into the "Edit repeat dates or duplicate" form and press Start: event=yoga, action=skip, date=2026-02-17', "instruction on rejection: " + els["#hint"].textContent);
 
   // an editor sees disabled buttons
   ({ els } = await load({ data: { ...DATA, role: "editor" } }));
