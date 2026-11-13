@@ -117,6 +117,16 @@ type importCursor struct {
 	N      int `json:"n"`      // events buffered
 	Over   int `json:"over"`   // events left out by the cap
 	Failed int `json:"failed"` // sources that could not be read
+	// Keys are short hashes of the keys buffered so far, so a later source
+	// that carries the same event is skipped (the buffer cannot be read in
+	// the fetch phase). At most maxImportEvents of 8 characters each.
+	Keys []string `json:"keys,omitempty"`
+}
+
+// keyTag is the short hash kept in importCursor.Keys.
+func keyTag(key string) string {
+	sum := sha1.Sum([]byte(key))
+	return hex.EncodeToString(sum[:])[:8]
 }
 
 // fetchPhase routes the fetch phase: the import runs read calendars, every
@@ -217,6 +227,10 @@ func readSource(cur *importCursor, src importSource, s settings) error {
 			continue // the same UID twice in one source
 		}
 		seen[key] = true
+		tag := keyTag(key)
+		if slices.Contains(cur.Keys, tag) {
+			continue // an earlier source already buffered this key
+		}
 		if cur.N >= maxImportEvents {
 			cur.Over++
 			continue
@@ -226,6 +240,7 @@ func readSource(cur *importCursor, src importSource, s settings) error {
 			return err
 		}
 		cur.N++
+		cur.Keys = append(cur.Keys, tag)
 	}
 	return nil
 }

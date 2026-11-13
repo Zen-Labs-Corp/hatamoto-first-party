@@ -198,6 +198,31 @@ func TestImportCaps(t *testing.T) {
 		}
 	})
 
+	t.Run("a second source with the same key is skipped", func(t *testing.T) {
+		const gcalURL2 = "https://calendar.google.com/calendar/ical/second%40example.org/public/basic.ics"
+		// two unnamed Google calendars share a name, and so keys; the second also has one event of its own
+		shared := vevent("UID:shared@example.org", "SUMMARY:Shared", "DTSTART:20270612T100000Z")
+		h := &runHost{name: runImportScheduled, runID: "r1", settings: sourcesSetting(src("Google", "google", gcalURL), src("Google", "google", gcalURL2)),
+			pages: map[string]fakePage{
+				gcalURL:  {status: 200, body: icsBody(shared)},
+				gcalURL2: {status: 200, body: icsBody(strings.Replace(shared, "SUMMARY:Shared", "SUMMARY:Shared again", 1), vevent("UID:own@example.org", "SUMMARY:Own", "DTSTART:20270613T100000Z"))},
+			}}
+		h.install(t)
+		h.runFetch(t)
+		recs := h.records(t)
+		if h.failed != "" || len(recs) != 2 {
+			t.Fatalf("failed %q records %+v", h.failed, recs)
+		}
+		for _, r := range recs {
+			if r.Ev.Title == "Shared again" {
+				t.Errorf("the second source overwrote the first: %+v", r)
+			}
+		}
+		if got := fmt.Sprint(h.finished); !strings.Contains(got, `"events":2`) {
+			t.Errorf("finished %v, want 2 events counted once", h.finished)
+		}
+	})
+
 	t.Run("disabled and unlisted sources are not fetched", func(t *testing.T) {
 		h := &runHost{name: runImportScheduled, runID: "r1",
 			settings: sourcesSetting(src("Off", "google", gcalURL, `,"enabled":false`), src("Unlisted", "google", otherURL), src("Meetup", "meetup", meetURL)),
