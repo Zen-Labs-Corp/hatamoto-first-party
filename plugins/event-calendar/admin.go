@@ -50,7 +50,8 @@ type adminList struct {
 
 const repeatingSQL = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
  THEN COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.name, r.id), '[]'::jsonb) END FROM (
-SELECT e.entity_id AS id, e.slug, e.name, e.source_uid FROM events e
+SELECT e.entity_id AS id, e.slug, e.name, e.source_uid,
+ (SELECT count(*) FROM events o WHERE o.source_uid = e.source_uid) AS uid_count FROM events e
 WHERE e.repeating ORDER BY e.name, e.entity_id LIMIT $1::int) r`
 
 // serveRepeating answers GET /admin/repeating. It is an admin route: without a
@@ -74,7 +75,12 @@ func serveRepeating(u *sdk.HTTPUser) sdk.HTTPResponse {
 		reads := 0
 		for _, m := range *rows {
 			ae := adminEvent{ID: attrString(m, "id"), Slug: attrString(m, "slug"), Name: attrString(m, "name"), Dates: []adminDate{}}
+			// source_uid is editable and core's Duplicate copies it, so a key that
+			// more than one event carries does not say which event is the plugin's.
 			_, ae.Owned = ownedKey(attrString(m, "source_uid"))
+			if n, _ := m["uid_count"].(float64); n != 1 {
+				ae.Owned = false
+			}
 			if reads < maxAdminReads && clock().Sub(started) < adminBudget {
 				reads++
 				var raw entityDTO

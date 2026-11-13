@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -18,6 +19,7 @@ type runHost struct {
 	entities []string
 	getErr   error
 	upErr    error
+	created  bool // the host reports the staged upsert as a new object
 	upserts  []sdk.EntityUpsert
 	failed   string
 	finished any
@@ -62,7 +64,7 @@ func (h *runHost) install(t *testing.T) {
 			if h.upErr != nil {
 				return h.upErr
 			}
-			return json.Unmarshal([]byte(`{"source_key":"`+up.SourceKey+`"}`), out)
+			return json.Unmarshal([]byte(`{"source_key":"`+up.SourceKey+`","created":`+strconv.FormatBool(h.created)+`}`), out)
 		}
 		t.Fatalf("unexpected host call %q", fn)
 		return nil
@@ -180,6 +182,17 @@ func TestEditDatesFailures(t *testing.T) {
 				t.Errorf("a not-owned upsert was retried: %d", len(h.upserts))
 			}
 		})
+	}
+}
+
+// A source key that maps to no earlier object would stage a second event; the
+// run must fail instead of finishing, which discards the changeset.
+func TestEditDatesFailsWhenUpsertCreates(t *testing.T) {
+	h := &runHost{name: runEditDates, params: map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, entities: []string{ownedEvent}, created: true}
+	h.install(t)
+	h.step(t)
+	if !strings.Contains(h.failed, "Who owns this page") || h.finished != nil {
+		t.Errorf("failed = %q, finished = %v", h.failed, h.finished)
 	}
 }
 

@@ -33,7 +33,7 @@ const (
 
 func TestRepeatingList(t *testing.T) {
 	h := &fakeHost{entities: []string{yogaEntity, bookEntity},
-		dbRows: `[{"id":"y1","slug":"yoga","name":"Yoga in the park","source_uid":"dup-r1"},{"id":"b1","slug":"book-club","name":"Book club","source_uid":""},{"id":"gone","slug":"gone","name":"Gone"}]`}
+		dbRows: `[{"id":"y1","slug":"yoga","name":"Yoga in the park","source_uid":"dup-r1","uid_count":1},{"id":"b1","slug":"book-club","name":"Book club","source_uid":""},{"id":"gone","slug":"gone","name":"Gone"}]`}
 	h.install(t)
 
 	r := callAdmin(t, "GET", &sdk.HTTPUser{ID: "u", Role: "editor"})
@@ -73,6 +73,21 @@ func TestRepeatingList(t *testing.T) {
 	}
 	if book.Dates[0].Date != "2026-06-11" || book.Dates[0].End != "" {
 		t.Errorf("book first date = %+v", book.Dates[0])
+	}
+}
+
+// A dup- key that two events carry (core's Duplicate copies source_uid) owns neither.
+func TestRepeatingListSharedKeyNotOwned(t *testing.T) {
+	h := &fakeHost{entities: []string{yogaEntity},
+		dbRows: `[{"id":"y1","slug":"yoga","name":"Yoga","source_uid":"dup-r1","uid_count":2},{"id":"y2","slug":"yoga-2","name":"Yoga 2","source_uid":"dup-r1"}]`}
+	h.install(t)
+	r := callAdmin(t, "GET", &sdk.HTTPUser{ID: "u", Role: "owner"})
+	var got adminList
+	if err := json.Unmarshal([]byte(r.Body), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Events) != 2 || got.Events[0].Owned || got.Events[1].Owned {
+		t.Errorf("events = %+v", got.Events)
 	}
 }
 

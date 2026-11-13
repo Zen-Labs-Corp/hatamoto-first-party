@@ -252,11 +252,19 @@ func editDates(runID string, p map[string]any) (sdk.RunStepResult, error) {
 	if err != nil {
 		return failRun(err.Error())
 	}
-	if _, err := guest.EntityUpsert(callHost, up); err != nil {
+	res, err := guest.EntityUpsert(callHost, up)
+	if err != nil {
 		if guest.NotOwned(err) {
 			return failRun(notOwnedHint)
 		}
 		return failRun("The change could not be staged. Try again.")
+	}
+	// source_uid is editable, so the key may not map to this event. The run
+	// cannot see which object a key maps to before staging, but the host says
+	// whether it did: created means no earlier run made this key, so the item
+	// would be a second event. Failing the run discards the changeset.
+	if res.Created {
+		return failRun(notOwnedHint)
 	}
 	return sdk.RunStepResult{}, guest.RunFinish(callHost, map[string]any{"staged": 1, "event": ev.Slug, "date": date, "action": action})
 }
