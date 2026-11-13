@@ -122,6 +122,11 @@ func TestApproveWritesTheEditorForm(t *testing.T) {
 			if got := attrText(t, a, "start_at"); got != c.wantStart {
 				t.Errorf("start_at = %q, want %q", got, c.wantStart)
 			}
+			for k, v := range map[string]string{"start_at": c.wantStart, "end_at": c.wantEnd} {
+				if v != "" && !schemaAcceptsTime(t, k, v) {
+					t.Errorf("the schema refuses %s %q", k, v)
+				}
+			}
 			if got := attrText(t, a, "end_at"); got != c.wantEnd {
 				t.Errorf("end_at = %q, want %q", got, c.wantEnd)
 			}

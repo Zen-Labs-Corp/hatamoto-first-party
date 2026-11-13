@@ -8,11 +8,13 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 type schemaNode struct {
 	Type                 string                `json:"type"`
 	Format               string                `json:"format"`
+	Pattern              string                `json:"pattern"`
 	Enum                 []string              `json:"enum"`
 	Items                *schemaNode           `json:"items"`
 	Properties           map[string]schemaNode `json:"properties"`
@@ -46,7 +48,7 @@ var sections = fieldSpec{typ: "array", free: true}
 var wantSchemas = map[string]map[string]fieldSpec{
 	"calendar-event": {
 		"page_sections": sections,
-		"start_at":      str("date-time"), "end_at": str("date-time"), "all_day": scalar("boolean"),
+		"start_at":      str(""), "end_at": str(""), "all_day": scalar("boolean"),
 		"time_zone":       str(""),
 		"event_status":    en("scheduled", "cancelled", "postponed"),
 		"attendance_mode": en("offline", "online", "hybrid"),
@@ -282,5 +284,41 @@ func TestShapeMirrorRejectsReservedNames(t *testing.T) {
 	node := map[string]any{"type": "object", "properties": map[string]any{"constructor": map[string]any{"type": "string"}}}
 	if errs := shapeErrors(node, "$", nameRe); len(errs) != 1 || !strings.Contains(errs[0], "reserved") {
 		t.Errorf("errs = %v", errs)
+	}
+}
+
+// schemaAcceptsTime reports whether core's entity validator takes v for
+// calendar-event start_at/end_at. Core asserts any date* format as strict
+// RFC 3339 on save and on publish, so the fields carry a pattern instead.
+func schemaAcceptsTime(t *testing.T, name, v string) bool {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("schemas", "calendar-event.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n schemaNode
+	if err := json.Unmarshal(raw, &n); err != nil {
+		t.Fatal(err)
+	}
+	p := n.Properties[name]
+	if p.Format != "" {
+		_, err := time.Parse(time.RFC3339, v)
+		return err == nil
+	}
+	return p.Pattern == "" || regexp.MustCompile(p.Pattern).MatchString(v)
+}
+
+func TestTimeFieldsTakeWhatTheEditorPosts(t *testing.T) {
+	for _, name := range []string{"start_at", "end_at"} {
+		for _, v := range []string{"2026-12-20T20:00", "2026-12-20T20:00:30", "2026-12-20T20:00:00Z", "2026-12-20T20:00:00+01:00"} {
+			if !schemaAcceptsTime(t, name, v) {
+				t.Errorf("%s refuses %q", name, v)
+			}
+		}
+		for _, v := range []string{"", "2026-12-20", "20:00", "tomorrow", "2026-12-20 20:00"} {
+			if v != "" && schemaAcceptsTime(t, name, v) {
+				t.Errorf("%s takes %q", name, v)
+			}
+		}
 	}
 }

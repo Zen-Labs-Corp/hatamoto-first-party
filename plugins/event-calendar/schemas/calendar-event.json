@@ -17,15 +17,15 @@
     "start_at": {
       "type": "string",
       "title": "Starts",
-      "description": "When the event starts, in the site time zone unless a time zone is set below.",
-      "format": "date-time",
+      "description": "When the event starts, as 2026-03-03T18:30, in the site time zone unless a time zone is set below.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?(Z|[+-]\\d{2}:\\d{2})?$",
       "x-hm-group": "Time"
     },
     "end_at": {
       "type": "string",
       "title": "Ends",
-      "description": "When the event ends. Leave empty for an event without an end time.",
-      "format": "date-time",
+      "description": "When the event ends, written like the start. Leave empty for an event without an end time.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?(Z|[+-]\\d{2}:\\d{2})?$",
       "x-hm-group": "Time"
     },
     "all_day": {

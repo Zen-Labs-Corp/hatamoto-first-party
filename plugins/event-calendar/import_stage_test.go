@@ -143,6 +143,30 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 		t.Errorf("update: %+v %s", up, up.Attributes)
 	}
 
+	// the owner set a time zone on the event: its stored times are read in that
+	// zone, so an unchanged feed stages nothing and a change keeps the instant
+	ny := record("google", "src", "ny", importEvent{Title: "Open mic", Start: start, End: start.Add(2 * time.Hour)})
+	nyJSON := strings.Replace(existingJSON(ny, "ny-mic", `,"time_zone":"America/New_York","end_at":"2027-06-12T08:00"`), "2027-06-12T12:00:00+02:00", "2027-06-12T06:00", 1)
+	h5 := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r5", lists: map[string][]string{"calendar-event": {nyJSON}}}
+	h5.install(t)
+	buffered(t, h5, ny)
+	h5.step(t)
+	if h5.failed != "" || len(h5.upserts) != 0 {
+		t.Fatalf("own zone, same feed: failed %q, upserts %+v", h5.failed, h5.upserts)
+	}
+	ny.Ev.End = start.Add(3 * time.Hour)
+	h6 := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r6", lists: h5.lists}
+	h6.install(t)
+	buffered(t, h6, ny)
+	h6.step(t)
+	if len(h6.upserts) != 1 {
+		t.Fatalf("own zone, moved end: %+v", h6.upserts)
+	}
+	a = attrsOf(t, h6.upserts[0])
+	if attrText(t, a, "start_at") != "2027-06-12T06:00" || attrText(t, a, "end_at") != "2027-06-12T09:00" || attrText(t, a, "time_zone") != "America/New_York" {
+		t.Errorf("own zone update: %s", h6.upserts[0].Attributes)
+	}
+
 	// a changed title updates too
 	renamed := plain
 	renamed.Ev.Title = "Open mic night"
@@ -219,8 +243,8 @@ func TestSameImport(t *testing.T) {
 	}
 }
 
-// Core's editor loads and saves a date-time field as a local "2006-01-02T15:04"
-// without a zone; an RFC 3339 value with Z or an offset does not load.
+// Core's editor posts a local "2006-01-02T15:04" for a time field
+// without a zone, and the schema takes it as a pattern, not as RFC 3339.
 func TestImportedTimesAreEditorLoadable(t *testing.T) {
 	berlin, _ := time.LoadLocation("Europe/Berlin")
 	london, _ := time.LoadLocation("Europe/London")
@@ -246,6 +270,11 @@ func TestImportedTimesAreEditorLoadable(t *testing.T) {
 			if got := attrText(t, a, "end_at"); got != c.end {
 				t.Errorf("end_at = %q, want %q", got, c.end)
 			}
+			for k, v := range map[string]string{"start_at": c.start, "end_at": c.end} {
+				if v != "" && !schemaAcceptsTime(t, k, v) {
+					t.Errorf("the schema refuses %s %q", k, v)
+				}
+			}
 			// what the plugin and the index read back is the same instant
 			back, ok := parseTime(c.start, berlin)
 			if !ok || !back.Equal(c.ev.Start) {
@@ -260,5 +289,17 @@ func TestImportedTimesAreEditorLoadable(t *testing.T) {
 				t.Error("the stored form differs from the wanted one")
 			}
 		})
+	}
+}
+
+func TestEditorTimeRoundsToTheMinute(t *testing.T) {
+	for in, want := range map[time.Time]string{
+		time.Date(2027, 6, 12, 18, 0, 29, 0, time.UTC):  "2027-06-12T20:00",
+		time.Date(2027, 6, 12, 18, 0, 30, 0, time.UTC):  "2027-06-12T20:01",
+		time.Date(2027, 6, 12, 17, 59, 45, 0, time.UTC): "2027-06-12T20:00",
+	} {
+		if got := editorTime(in, time.FixedZone("x", 7200)); got != want {
+			t.Errorf("editorTime(%v) = %q, want %q", in, got, want)
+		}
 	}
 }

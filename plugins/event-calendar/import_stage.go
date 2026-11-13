@@ -51,12 +51,16 @@ func importTransformStep() (sdk.RunStepResult, error) {
 			ev.Title = "Untitled event"
 		}
 		sum["dropped_recurrence"] += ev.Dropped
-		want := buildCreateAttrs(ev, s.location(), rec.Kind, rec.Key, venues[strings.ToLower(ev.Venue)], cats[strings.ToLower(rec.Category)])
-		up := sdk.EntityUpsert{SourceKey: rec.Key, Schema: schema, Name: ev.Title}
 		old, found := existing[rec.Key]
+		loc := s.location()
+		if found {
+			loc = storedLocation(old.Attrs, loc)
+		}
+		want := buildCreateAttrs(ev, loc, rec.Kind, rec.Key, venues[strings.ToLower(ev.Venue)], cats[strings.ToLower(rec.Category)])
+		up := sdk.EntityUpsert{SourceKey: rec.Key, Schema: schema, Name: ev.Title}
 		if found {
 			up.Schema, up.Slug, up.Locale = old.Schema, old.Slug, old.Locale
-			if sameImport(old.Attrs, want, s.location()) && old.Name == ev.Title {
+			if sameImport(old.Attrs, want, loc) && old.Name == ev.Title {
 				sum["unchanged"]++
 				continue
 			}
@@ -81,6 +85,18 @@ func importTransformStep() (sdk.RunStepResult, error) {
 		}
 	}
 	return finishImport(sum)
+}
+
+// storedLocation is the zone an event's stored times are read in: its own
+// time_zone attribute when that names a zone, else site (as eventFromEntity).
+func storedLocation(attrs map[string]json.RawMessage, site *time.Location) *time.Location {
+	var tz string
+	if json.Unmarshal(attrs["time_zone"], &tz) == nil && strings.TrimSpace(tz) != "" {
+		if l, err := time.LoadLocation(strings.TrimSpace(tz)); err == nil {
+			return l
+		}
+	}
+	return site
 }
 
 // hasLink reports an event that carries a link, which core never publishes on
