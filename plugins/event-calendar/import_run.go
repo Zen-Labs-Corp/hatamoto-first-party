@@ -210,13 +210,13 @@ func readSource(cur *importCursor, src importSource, s settings) error {
 		note, _ := json.Marshal(map[string]string{"source": src.Name, "reason": why})
 		return guest.BufferPut(callHost, fmt.Sprintf("%s%02d", bufError, cur.Src), note)
 	}
+	seen := map[string]bool{}
 	for _, ev := range events {
 		key := importKey(src.Kind, src.Name, ev.UID)
-		if _, found, err := guest.BufferGet(callHost, bufEvent+key); err != nil {
-			return err
-		} else if found {
+		if seen[key] {
 			continue // the same UID twice in one source
 		}
+		seen[key] = true
 		if cur.N >= maxImportEvents {
 			cur.Over++
 			continue

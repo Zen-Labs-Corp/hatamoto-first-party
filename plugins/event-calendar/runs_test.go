@@ -50,6 +50,14 @@ func (h *runHost) install(t *testing.T) {
 	t.Helper()
 	callHost = func(fn string, args, out any) error {
 		h.calls = append(h.calls, fn)
+		// core's phase gate: the run buffer is written in fetch, read in transform
+		phase := h.phase
+		if phase == "" {
+			phase = "transform"
+		}
+		if (phase == "fetch" && (fn == "buffer.get" || fn == "buffer.list")) || (phase == "transform" && fn == "buffer.put") {
+			return &sdk.HostError{Code: sdk.ErrPhaseDenied, Message: fn + " is not available in the " + phase + " phase"}
+		}
 		switch fn {
 		case "settings.get":
 			if h.settings != "" {
