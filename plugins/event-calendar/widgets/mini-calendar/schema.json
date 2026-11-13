@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Mini calendar",
+    "hint": "Compact month with the days that have events; a day links to the full calendar"
+  },
+  "properties": {
+    "calendar_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "url"
+    }
+  }
+}
