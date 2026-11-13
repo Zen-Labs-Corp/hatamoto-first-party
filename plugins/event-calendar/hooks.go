@@ -65,19 +65,58 @@ var submissionUIDRe = regexp.MustCompile(`^sub-([0-9]{1,18})$`)
 // event with source_kind submission and source_uid sub-<id> counts. A failure
 // (no db grant, no table yet) is ignored.
 func markSubmissionPublished(raw entityDTO) {
+	if id, ok := publishedSubmissionID(raw); ok {
+		setSubmissionStatus(id, "published", "pending", "approved")
+	}
+}
+
+// publishedSubmissionID is the submission id of a published event staged from
+// a submission.
+func publishedSubmissionID(raw entityDTO) (int64, bool) {
 	if raw.Status != "published" || len(raw.Attributes) == 0 {
-		return
+		return 0, false
 	}
 	var a map[string]any
 	if json.Unmarshal(raw.Attributes, &a) != nil || attrString(a, "source_kind") != "submission" {
-		return
+		return 0, false
 	}
 	m := submissionUIDRe.FindStringSubmatch(attrString(a, "source_uid"))
 	if m == nil {
-		return
+		return 0, false
 	}
-	if id, err := strconv.ParseInt(m[1], 10, 64); err == nil {
-		setSubmissionStatus(id, "published", "pending", "approved")
+	id, err := strconv.ParseInt(m[1], 10, 64)
+	return id, err == nil
+}
+
+// markOpenSubmissions moves the open submissions (pending or approved, at
+// most maxSubmissionRows) whose event is published to published. It looks each
+// one up by its title, so it does not depend on how far the reconcile listing
+// reaches, and a published row costs nothing. A changeset fires no per-entity
+// hook, so the import and reconcile hooks call this. It stops at until.
+func markOpenSubmissions(s settings, until time.Time) {
+	rows, err := openSubmissions()
+	for _, r := range rows {
+		if err != nil || !clock().Before(until) {
+			return
+		}
+		for _, slug := range s.slugs() {
+			var out struct {
+				Items []entityDTO `json:"items"`
+			}
+			args := map[string]any{"schema_slug": slug, "status": "published", "search": r.Title, "limit": listPageSize}
+			if callHost(sdk.FnEntitiesList, args, &out) != nil {
+				continue
+			}
+			found := false
+			for _, raw := range out.Items {
+				if id, ok := publishedSubmissionID(raw); ok && id == r.ID {
+					found = setSubmissionStatus(id, "published", "pending", "approved") || found
+				}
+			}
+			if found {
+				break
+			}
+		}
 	}
 }
 
@@ -168,6 +207,7 @@ func onReconcile(sdk.CronEvent) error {
 // the same writes.
 func reconcileOnce(s settings, until time.Time) (addrs []string, err error) {
 	started := clock()
+	markOpenSubmissions(s, until)
 	seen := map[string]bool{}
 	pages := 0
 	complete := true
@@ -199,8 +239,6 @@ listing:
 					continue
 				}
 				seen[raw.ID] = true
-				// a changeset fires no per-entity hook: catch up here
-				markSubmissionPublished(raw)
 				if !clock().Before(until) {
 					complete = false
 					break listing

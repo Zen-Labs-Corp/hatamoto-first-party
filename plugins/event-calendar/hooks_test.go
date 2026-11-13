@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ type hookHost struct {
 	claimed  bool              // the hook reconcile slot is taken
 	unready  bool              // index_state has no row yet
 	failID   string            // db.exec fails for the statements of this entity id
+	subs     string            // the open submissions, as the jsonb cell
 	indexed  map[string]string // what db.query answers for indexedIDs
 	calls    []string          // every host function called
 	execs    []dbCall
@@ -47,9 +49,17 @@ func (h *hookHost) install(t *testing.T) {
 				return &sdk.HostError{Code: sdk.ErrNotFound}
 			}
 			var items []string
-			for _, id := range h.order {
+			ids := h.order
+			if q, _ := a["search"].(string); q != "" {
+				// a search reaches every entity, listed or not
+				ids = slices.Sorted(maps.Keys(h.docs))
+			}
+			for _, id := range ids {
 				var d entityDTO
 				_ = json.Unmarshal([]byte(h.docs[id]), &d)
+				if q, _ := a["search"].(string); q != "" && !strings.Contains(strings.ToLower(d.Name), strings.ToLower(q)) {
+					continue
+				}
 				if d.SchemaSlug == a["schema_slug"] {
 					items = append(items, h.docs[id])
 				}
@@ -87,6 +97,13 @@ func (h *hookHost) install(t *testing.T) {
 			}
 			if strings.Contains(a["sql"].(string), "EXISTS (SELECT 1 FROM index_state)") {
 				return json.Unmarshal([]byte(fmt.Sprintf(`{"rows":[[%t]]}`, !h.unready)), out)
+			}
+			if strings.Contains(a["sql"].(string), "FROM submissions") {
+				cell := h.subs
+				if cell == "" {
+					cell = "[]"
+				}
+				return json.Unmarshal([]byte(`{"rows":[[`+cell+`]]}`), out)
 			}
 			cell, _ := json.Marshal(h.indexed)
 			return json.Unmarshal([]byte(`{"rows":[[`+string(cell)+`]]}`), out)
@@ -813,14 +830,14 @@ func TestPruneCron(t *testing.T) {
 }
 
 func TestReconcileMarksPublishedSubmissions(t *testing.T) {
+	sub := strings.Replace(submissionDoc("published", "submission", "sub-42"), `"name":"s1"`, `"name":"Spring fair"`, 1)
+	other := strings.Replace(submissionDoc("published", "ical", "sub-43"), `"id":"s1"`, `"id":"s2"`, 1)
 	h := &hookHost{
 		settings: `{}`,
-		docs: map[string]string{
-			"s1": submissionDoc("published", "submission", "sub-42"),
-			"s2": submissionDoc("published", "ical", "sub-43"),
-		},
-		order:   []string{"s1", "s2"},
-		indexed: map[string]string{"s1": "x", "s2": "x"},
+		docs:     map[string]string{"s1": sub, "s2": other},
+		order:    []string{"s2"}, // s1 lies beyond the pages a run reads
+		indexed:  map[string]string{"s1": "x", "s2": "x"},
+		subs:     `[{"id":42,"title":"Spring fair","status":"pending"},{"id":43,"title":"s1","status":"pending"}]`,
 	}
 	h.install(t)
 	if _, err := reconcileOnce(loadSettings(), clock().Add(reconcileBudget)); err != nil {
@@ -834,5 +851,23 @@ func TestReconcileMarksPublishedSubmissions(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].args[0] != int64(42) || got[0].args[1] != "published" {
 		t.Fatalf("status updates = %+v", got)
+	}
+}
+
+func TestReconcileLeavesPublishedSubmissionsAlone(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"s1": submissionDoc("published", "submission", "sub-42")},
+		order:    []string{"s1"},
+		indexed:  map[string]string{"s1": "x"},
+	}
+	h.install(t)
+	if _, err := reconcileOnce(loadSettings(), clock().Add(reconcileBudget)); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range h.execs {
+		if strings.Contains(c.sql, "submissions") {
+			t.Errorf("unexpected submissions write %+v", c)
+		}
 	}
 }

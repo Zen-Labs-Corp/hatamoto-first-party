@@ -103,6 +103,13 @@ func listSubmissions(status string) ([]submission, error) {
 	return out, err
 }
 
+// openSubmissions lists the pending and approved rows, oldest first.
+func openSubmissions() ([]submission, error) {
+	var out []submission
+	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM (SELECT `+submissionCols+` FROM submissions WHERE status IN ('pending', 'approved') ORDER BY id LIMIT $1) s`, &out, maxSubmissionRows)
+	return out, err
+}
+
 // getSubmission reads one row; false when there is none.
 func getSubmission(id int64) (submission, bool, error) {
 	var out []submission
