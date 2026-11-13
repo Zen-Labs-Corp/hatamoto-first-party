@@ -155,6 +155,9 @@ func geocodeAddresses(s settings, addrs []string, budgetEnd time.Time) (done int
 				break
 			}
 		}
+		if left = budgetEnd.Sub(clock()); left < minCall {
+			break // the database calls ate the time; the slot is spent
+		}
 		done++
 		lookup(s, addr, left)
 	}
@@ -186,11 +189,20 @@ func geocodeOne(s settings, addr string, budgetEnd time.Time) {
 	if !s.ShowMap || addr == "" || budgetEnd.Sub(clock()) < minCall || !needsLookup(addr) || !claimSlot() {
 		return
 	}
-	lookup(s, addr, budgetEnd.Sub(clock()))
+	// the database calls above take time: measure what is left only now
+	if left := budgetEnd.Sub(clock()); left >= minCall {
+		lookup(s, addr, left)
+	}
 }
 
 // lookup asks Nominatim for one address and caches the answer, or the failure.
+// It sends nothing when left is under a millisecond: core would give a request
+// without a positive timeout its 10 s default. Nothing is cached then, the
+// address was not tried.
 func lookup(s settings, addr string, left time.Duration) {
+	if left < time.Millisecond {
+		return
+	}
 	var res fetched
 	err := callHost(sdk.FnHTTPFetch, map[string]any{
 		"method": "GET", "url": geocodeURL(addr), "timeout_ms": int(min(fetchTimeout, left) / time.Millisecond),

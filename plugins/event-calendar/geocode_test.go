@@ -273,3 +273,46 @@ func TestGeocodeOneStaysWithinPolicy(t *testing.T) {
 		t.Errorf("freed: done = %d, fetches = %d", n, len(h.fetches))
 	}
 }
+
+// slowClaim makes the throttle claim cost d of the fake clock, as a busy database would.
+func slowClaim(h *geoHost, start time.Time, d time.Duration) {
+	at := start
+	clock = func() time.Time { return at }
+	inner := callHost
+	callHost = func(fn string, args, out any) error {
+		if a, ok := args.(map[string]any); ok && fn == "db.exec" && a["args"].([]any)[0] == throttleKey {
+			at = at.Add(d)
+		}
+		return inner(fn, args, out)
+	}
+}
+
+func TestGeocodeSkipsTheFetchWhenTheClaimAteTheTime(t *testing.T) {
+	start := time.Now()
+	end := start.Add(minCall + 100*time.Millisecond) // passes the first check
+	for name, run := range map[string]func(){
+		"one":    func() { geocodeOne(mapOn(), "a", end) },
+		"hourly": func() { geocodeAddresses(mapOn(), []string{"a"}, end) },
+	} {
+		h := newGeoHost(t)
+		slowClaim(h, start, 200*time.Millisecond)
+		run()
+		if len(h.fetches) != 0 || h.cache["a"] != nil {
+			t.Errorf("%s: fetches = %d, cache = %+v (no fetch and no failed row when time ran out)", name, len(h.fetches), h.cache["a"])
+		}
+	}
+}
+
+func TestLookupNeverSendsANonPositiveTimeout(t *testing.T) {
+	h := newGeoHost(t)
+	for _, left := range []time.Duration{-time.Second, 0, 500 * time.Microsecond} {
+		lookup(mapOn(), "a", left)
+	}
+	if len(h.fetches) != 0 || h.cache["a"] != nil {
+		t.Fatalf("fetches = %d, cache = %+v", len(h.fetches), h.cache["a"])
+	}
+	lookup(mapOn(), "a", 3*time.Second)
+	if len(h.fetches) != 1 || h.fetches[0]["timeout_ms"].(int) != 3000 {
+		t.Errorf("fetches = %+v", h.fetches)
+	}
+}

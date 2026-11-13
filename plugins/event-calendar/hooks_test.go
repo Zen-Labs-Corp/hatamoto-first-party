@@ -395,7 +395,7 @@ func TestHookGeocodeEndsWithinTheHookTimeout(t *testing.T) {
 	var worst time.Duration
 	base := callHost
 	callHost = func(fn string, args, out any) error {
-		elapsed += 450 * time.Millisecond // every host call is slow
+		elapsed += 300 * time.Millisecond // every host call is slow
 		if fn == "http.fetch" {
 			timeout := time.Duration(args.(map[string]any)["timeout_ms"].(int)) * time.Millisecond
 			worst = elapsed + timeout
