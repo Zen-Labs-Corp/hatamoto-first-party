@@ -359,7 +359,7 @@
         "title": "Notification email",
         "description": "Where new event submissions are announced. Leave empty for no mail.",
         "default": "",
-        "maxLength": 254
+        "maxLength": 200
       },
       "import_sources": {
         "type": "array",

@@ -69,6 +69,7 @@ type manifestFile struct {
 			Default any      `json:"default"`
 			Pattern string   `json:"pattern"`
 			Enum    []string `json:"enum"`
+			MaxLen  int      `json:"maxLength"`
 		} `json:"properties"`
 	} `json:"settings_schema"`
 }
@@ -181,6 +182,11 @@ func TestManifest(t *testing.T) {
 
 	if sub := m.Settings.Properties["submissions_enabled"]; sub.Type != "boolean" || sub.Default != false {
 		t.Errorf("submissions_enabled = %+v", sub)
+	}
+
+	// core's settings form shows a text field with a maxLength above 200 as a textarea
+	if n := m.Settings.Properties["notify_email"]; n.Type != "string" || n.MaxLen <= 0 || n.MaxLen > 200 {
+		t.Errorf("notify_email = %+v, want a maxLength of at most 200 so it stays a one-line field", n)
 	}
 
 	week := m.Settings.Properties["week_starts_on"]
