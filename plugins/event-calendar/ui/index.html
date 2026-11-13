@@ -2,31 +2,69 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Repeating events</title>
+  <title>Event calendar</title>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <main>
-    <h1>Repeating events</h1>
+    <h1>Event calendar</h1>
+    <nav class="tabs">
+      <button id="tab-submissions" type="button" class="tab">Submissions</button>
+      <button id="tab-imports" type="button" class="tab">Imports</button>
+      <button id="tab-repeating" type="button" class="tab">Repeating</button>
+    </nav>
     <p id="notice" class="notice" hidden></p>
     <p id="hint" class="hint" hidden></p>
-    <p id="state" class="muted"></p>
 
-    <table id="events" hidden>
-      <thead>
-        <tr><th>Event</th><th>Repeats</th><th>Next dates</th></tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-
-    <section id="duplicate" hidden>
-      <h2>Duplicate an event</h2>
-      <label>Event <select id="dup-event"></select></label>
-      <label>Move dates by <input id="dup-shift" type="number" value="0" step="1"> days</label>
-      <button id="dup-go" type="button">Duplicate event...</button>
+    <section id="panel-submissions" hidden>
+      <label>Filter <select id="sub-status"></select></label>
+      <p id="sub-off" class="muted" hidden>Public submissions are off, so visitors cannot send events. Turn on "Accept public event submissions" in this plugin's settings to use the Submit an event widget.</p>
+      <button id="sub-reject-all" type="button">Reject all pending</button>
+      <p id="sub-state" class="muted"></p>
+      <table id="sub-table" hidden>
+        <thead>
+          <tr><th>Title</th><th>When</th><th>Venue</th><th>From</th><th>Action</th></tr>
+        </thead>
+        <tbody id="sub-rows"></tbody>
+      </table>
+      <p class="muted">Approve stages the event in Changes. After you publish the change there, the event exists as a draft: open it and publish it to go live. Nothing is public until you do.</p>
+      <p class="muted">The email address is kept here only, never in an event. Approved and published submissions are deleted after 90 days, rejected ones after 30.</p>
     </section>
 
-    <footer class="muted">Skip / Change time / Restore stage a change in Changes (review, then publish).</footer>
+    <section id="panel-imports" hidden>
+      <p id="imp-state" class="muted"></p>
+      <table id="imp-table" hidden>
+        <thead>
+          <tr><th>Source</th><th>Kind</th><th>Schedule</th><th>Last imported</th><th>Action</th></tr>
+        </thead>
+        <tbody id="imp-rows"></tbody>
+      </table>
+      <p id="imp-detail" class="muted" hidden></p>
+      <h2>Any other iCal URL</h2>
+      <label>Address <input id="imp-url" type="text" size="48" maxlength="2048"></label>
+      <button id="imp-go" type="button">Import now</button>
+      <p id="imp-confirm" class="muted" hidden></p>
+      <p class="muted">New events stay in Changes until you publish them there, and then arrive as drafts: publish each event to put it on the site. A run imports at most 100 events: the first 100 in the calendar. The rest are left out, and running again does not reach them. Imports run only when you press Run now or Import now. Eventbrite pages are imported with Any other iCal URL.</p>
+    </section>
+
+    <section id="panel-repeating" hidden>
+      <p id="state" class="muted"></p>
+      <table id="events" hidden>
+        <thead>
+          <tr><th>Event</th><th>Repeats</th><th>Next dates</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+
+      <section id="duplicate" hidden>
+        <h2>Duplicate an event</h2>
+        <label>Event <select id="dup-event"></select></label>
+        <label>Move dates by <input id="dup-shift" type="number" value="0" step="1"> days</label>
+        <button id="dup-go" type="button">Duplicate event...</button>
+      </section>
+
+      <footer class="muted">Skip / Change time / Restore stage a change in Changes (review, then publish).</footer>
+    </section>
   </main>
   <script src="/plugin-ui/_sdk/bridge.js"></script>
   <script src="app.js"></script>

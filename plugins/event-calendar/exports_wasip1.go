@@ -39,6 +39,9 @@ func onImportCompletedExport() int32 { return guest.Run(sdk.ImportCompleted.Expo
 //go:wasmexport on_cron_reconcile
 func onCronReconcileExport() int32 { return guest.Run(guest.CronExport("reconcile")) }
 
+//go:wasmexport on_cron_prune
+func onCronPruneExport() int32 { return guest.Run(guest.CronExport("prune")) }
+
 //go:wasmexport on_run_step
 func onRunStepExport() int32 { return guest.Run(sdk.RunStepExport) }
 

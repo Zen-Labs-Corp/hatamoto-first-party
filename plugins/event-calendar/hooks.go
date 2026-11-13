@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"hatamoto.dev/sdk"
@@ -23,6 +27,7 @@ func init() {
 	guest.OnAction(sdk.EntityDeleted, onEntityDeleted)
 	guest.OnAction(sdk.ImportCompleted, onImport)
 	guest.OnCron("reconcile", onReconcile)
+	guest.OnCron("prune", onPrune)
 }
 
 // The hooks never return an error: a failing index must not fail the save or
@@ -37,7 +42,8 @@ func onEntity(ev sdk.EntityEvent) error {
 	if !s.accepts(ev.SchemaSlug) || ev.ID == "" {
 		return nil
 	}
-	_, addr, _ := reindexEntityAddr(ev.ID, s)
+	raw, _, addr, _ := reindexEntityRaw(ev.ID, s)
+	markSubmissionPublished(raw)
 	if addr != "" {
 		geocodeOne(s, addr, started.Add(hookDeadline))
 	}
@@ -47,6 +53,118 @@ func onEntity(ev sdk.EntityEvent) error {
 	// that never completes does not repeat it.
 	if !indexReady() && claimReconcile() {
 		_, _ = reconcileOnce(s, started.Add(hookDeadline))
+	}
+	return nil
+}
+
+var submissionUIDRe = regexp.MustCompile(`^sub-([0-9]{1,18})$`)
+
+// markSubmissionPublished records that the event staged from a submission is
+// live. Core says nothing about which hook a changeset's entity fires, so
+// every created, updated or published event is looked at; only a published
+// event with source_kind submission and source_uid sub-<id> counts. A failure
+// (no db grant, no table yet) is ignored.
+func markSubmissionPublished(raw entityDTO) {
+	if id, ok := publishedSubmissionID(raw); ok {
+		setSubmissionStatus(id, "published", "pending", "approved")
+	}
+}
+
+// publishedSubmissionID is the submission id of a published event staged from
+// a submission.
+func publishedSubmissionID(raw entityDTO) (int64, bool) {
+	if raw.Status != "published" || len(raw.Attributes) == 0 {
+		return 0, false
+	}
+	var a map[string]any
+	if json.Unmarshal(raw.Attributes, &a) != nil || attrString(a, "source_kind") != "submission" {
+		return 0, false
+	}
+	m := submissionUIDRe.FindStringSubmatch(attrString(a, "source_uid"))
+	if m == nil {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(m[1], 10, 64)
+	return id, err == nil
+}
+
+// markOpenSubmissions moves the open submissions (pending or approved, at
+// most maxSubmissionRows) whose event is published to published. It looks each
+// one up by its title, so it does not depend on how far the reconcile listing
+// reaches, and a published row costs nothing. A changeset fires no per-entity
+// hook, so the import and reconcile hooks call this. It stops at until. It
+// returns the ids of the open submissions it loaded.
+//
+// The search is a plain ILIKE, so a title with a backslash (a trailing one is
+// an error in Postgres) is not searched; the reconcile listing catches its
+// event when it is among the newest.
+func markOpenSubmissions(s settings, until time.Time) map[int64]bool {
+	rows, err := openSubmissions()
+	open := map[int64]bool{}
+	for _, r := range rows {
+		open[r.ID] = true
+	}
+	for _, r := range rows {
+		if err != nil || !clock().Before(until) {
+			return open
+		}
+		if strings.Contains(r.Title, `\`) {
+			continue
+		}
+		for _, slug := range s.slugs() {
+			var out struct {
+				Items []entityDTO `json:"items"`
+			}
+			args := map[string]any{"schema_slug": slug, "status": "published", "search": r.Title, "limit": listPageSize}
+			if callHost(sdk.FnEntitiesList, args, &out) != nil {
+				continue
+			}
+			found := false
+			for _, raw := range out.Items {
+				if id, ok := publishedSubmissionID(raw); ok && id == r.ID {
+					found = setSubmissionStatus(id, "published", "pending", "approved") || found
+				}
+			}
+			if found {
+				break
+			}
+		}
+	}
+	return open
+}
+
+// maxDigestTitles is how many titles the digest mail lists.
+const maxDigestTitles = 20
+
+// onPrune is the hourly clean-up of the submissions table and, when the owner
+// set notify_email, one mail about the submissions the per-submission mails
+// did not cover (over the hourly cap or failed). It lists titles only. A mail
+// that fails leaves the rows for the next run.
+func onPrune(sdk.CronEvent) error {
+	_ = pruneSubmissions(now())
+	to := notifyEmail()
+	if to == "" {
+		return nil
+	}
+	rows, err := unnotified()
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+	lines := []string{strconv.Itoa(len(rows)) + " new event submissions are waiting:", ""}
+	ids := make([]int64, 0, len(rows))
+	for i, r := range rows {
+		ids = append(ids, r.ID)
+		if i < maxDigestTitles {
+			lines = append(lines, "- "+r.Title)
+		}
+	}
+	if len(rows) > maxDigestTitles {
+		lines = append(lines, "- and "+strconv.Itoa(len(rows)-maxDigestTitles)+" more")
+	}
+	lines = append(lines, "", "Review them in the Event calendar plugin page, Submissions tab.")
+	args := map[string]any{"to": []string{to}, "subject": "New event submissions", "text": strings.Join(lines, "\n")}
+	if callHost(sdk.FnMailSend, args, nil) == nil {
+		_ = markNotified(ids...)
 	}
 	return nil
 }
@@ -102,6 +220,7 @@ func onReconcile(sdk.CronEvent) error {
 // the same writes.
 func reconcileOnce(s settings, until time.Time) (addrs []string, err error) {
 	started := clock()
+	open := markOpenSubmissions(s, until)
 	seen := map[string]bool{}
 	pages := 0
 	complete := true
@@ -133,6 +252,10 @@ listing:
 					continue
 				}
 				seen[raw.ID] = true
+				// a retitled event is not found by its submission's title
+				if id, ok := publishedSubmissionID(raw); ok && open[id] {
+					setSubmissionStatus(id, "published", "pending", "approved")
+				}
 				if !clock().Before(until) {
 					complete = false
 					break listing

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ type hookHost struct {
 	claimed  bool              // the hook reconcile slot is taken
 	unready  bool              // index_state has no row yet
 	failID   string            // db.exec fails for the statements of this entity id
+	subs     string            // the open submissions, as the jsonb cell
 	indexed  map[string]string // what db.query answers for indexedIDs
 	calls    []string          // every host function called
 	execs    []dbCall
@@ -47,9 +49,17 @@ func (h *hookHost) install(t *testing.T) {
 				return &sdk.HostError{Code: sdk.ErrNotFound}
 			}
 			var items []string
-			for _, id := range h.order {
+			ids := h.order
+			if q, _ := a["search"].(string); q != "" {
+				// a search reaches every entity, listed or not
+				ids = slices.Sorted(maps.Keys(h.docs))
+			}
+			for _, id := range ids {
 				var d entityDTO
 				_ = json.Unmarshal([]byte(h.docs[id]), &d)
+				if q, _ := a["search"].(string); q != "" && !strings.Contains(strings.ToLower(d.Name), strings.ToLower(q)) {
+					continue
+				}
 				if d.SchemaSlug == a["schema_slug"] {
 					items = append(items, h.docs[id])
 				}
@@ -87,6 +97,13 @@ func (h *hookHost) install(t *testing.T) {
 			}
 			if strings.Contains(a["sql"].(string), "EXISTS (SELECT 1 FROM index_state)") {
 				return json.Unmarshal([]byte(fmt.Sprintf(`{"rows":[[%t]]}`, !h.unready)), out)
+			}
+			if strings.Contains(a["sql"].(string), "FROM submissions") {
+				cell := h.subs
+				if cell == "" {
+					cell = "[]"
+				}
+				return json.Unmarshal([]byte(`{"rows":[[`+cell+`]]}`), out)
 			}
 			cell, _ := json.Marshal(h.indexed)
 			return json.Unmarshal([]byte(`{"rows":[[`+string(cell)+`]]}`), out)
@@ -634,6 +651,265 @@ func TestRollingWindowCronPartialRunLeavesRowsIntact(t *testing.T) {
 	for _, c := range h.execs {
 		if c.args[0] == "b" || strings.Contains(c.sql, "DELETE FROM events WHERE entity_id") {
 			t.Errorf("unexpected statement for an unreached event or a delete: %s %v", c.sql, c.args[0])
+		}
+	}
+}
+
+// submissionHost fakes the host for the submission hooks: entities.get,
+// settings, the submissions table and the mail call.
+type submissionHost struct {
+	doc      string
+	notify   string
+	dbErr    error
+	mailErr  error
+	rows     string // the unnotified rows, as the jsonb cell
+	execs    []dbCall
+	mails    []map[string]any
+	notified string // the ids markNotified was called with
+}
+
+func (h *submissionHost) install(t *testing.T) {
+	t.Helper()
+	callHost = func(fn string, args, out any) error {
+		a, _ := args.(map[string]any)
+		switch fn {
+		case "settings.get":
+			return json.Unmarshal([]byte(`{"notify_email":"`+h.notify+`"}`), out)
+		case "entities.get":
+			return json.Unmarshal([]byte(h.doc), out)
+		case "mail.send":
+			h.mails = append(h.mails, a)
+			return h.mailErr
+		case "db.exec":
+			sql := a["sql"].(string)
+			h.execs = append(h.execs, dbCall{fn, sql, a["args"].([]any)})
+			if h.dbErr != nil {
+				return h.dbErr
+			}
+			if strings.HasPrefix(sql, "UPDATE submissions SET notified") {
+				h.notified = a["args"].([]any)[0].(string)
+			}
+			if out != nil {
+				return json.Unmarshal([]byte(`{"rows_affected":1}`), out)
+			}
+			return nil
+		case "db.query":
+			if h.dbErr != nil {
+				return h.dbErr
+			}
+			if strings.Contains(a["sql"].(string), "NOT notified") {
+				return json.Unmarshal([]byte(`{"rows":[[`+h.rows+`]]}`), out)
+			}
+			return json.Unmarshal([]byte(`{"rows":[[{}]]}`), out)
+		}
+		t.Fatalf("unexpected host call %q", fn)
+		return nil
+	}
+}
+
+func (h *submissionHost) statusUpdates() (out []dbCall) {
+	for _, c := range h.execs {
+		if strings.HasPrefix(c.sql, "UPDATE submissions SET status") {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func submissionDoc(status, kind, uid string) string {
+	return `{"id":"s1","schema_slug":"calendar-event","slug":"s1","name":"s1","status":"` + status +
+		`","attributes":{"start_at":"2027-02-20T20:00","source_kind":"` + kind + `","source_uid":"` + uid + `"}}`
+}
+
+func TestSubmissionMarkedWhenPublished(t *testing.T) {
+	for _, a := range []sdk.Action[sdk.EntityEvent]{sdk.EntityCreated, sdk.EntityPublished} {
+		t.Run(a.Name, func(t *testing.T) {
+			h := &submissionHost{doc: submissionDoc("published", "submission", "sub-42")}
+			h.install(t)
+			fire(t, a.Export(), entityEv("s1", "calendar-event", "published"))
+			got := h.statusUpdates()
+			if len(got) != 1 || got[0].args[0] != int64(42) {
+				t.Fatalf("status updates = %+v", h.execs)
+			}
+			if got[0].args[1] != "published" || got[0].args[2] != "pending" || got[0].args[3] != "approved" || strings.Contains(got[0].sql, "rejected") {
+				t.Errorf("update = %+v", got[0])
+			}
+		})
+	}
+	ignored := map[string]string{
+		"not a submission": submissionDoc("published", "ical", "sub-42"),
+		"draft":            submissionDoc("draft", "submission", "sub-42"),
+		"odd uid":          submissionDoc("published", "submission", "sub-4x"),
+		"uid with suffix":  submissionDoc("published", "submission", "sub-42/yoga"),
+		"no attributes":    `{"id":"s1","schema_slug":"calendar-event","slug":"s1","name":"s1","status":"published"}`,
+	}
+	for name, doc := range ignored {
+		t.Run(name, func(t *testing.T) {
+			h := &submissionHost{doc: doc}
+			h.install(t)
+			fire(t, sdk.EntityPublished.Export(), entityEv("s1", "calendar-event", "published"))
+			if got := h.statusUpdates(); len(got) != 0 {
+				t.Errorf("status updates = %+v", got)
+			}
+		})
+	}
+	t.Run("db error is ignored", func(t *testing.T) {
+		h := &submissionHost{doc: submissionDoc("published", "submission", "sub-42"), dbErr: errors.New("permission denied for table submissions")}
+		h.install(t)
+		fire(t, sdk.EntityPublished.Export(), entityEv("s1", "calendar-event", "published"))
+	})
+}
+
+func TestPruneCron(t *testing.T) {
+	rows := `[{"id":1,"title":"Open mic","email":"a@example.org"},{"id":2,"title":"Quiz","email":"b@example.org"}]`
+	prune := func() { fire(t, guest.CronExport("prune"), sdk.CronEvent{Name: "prune"}) }
+
+	t.Run("prunes and sends one digest", func(t *testing.T) {
+		h := &submissionHost{notify: "owner@example.org", rows: rows}
+		h.install(t)
+		prune()
+		if len(h.execs) < 1 || !strings.HasPrefix(h.execs[0].sql, "DELETE FROM submissions") || len(h.execs[0].args) != 2 {
+			t.Fatalf("execs = %+v", h.execs)
+		}
+		if len(h.mails) != 1 {
+			t.Fatalf("mails = %v", h.mails)
+		}
+		text := h.mails[0]["text"].(string)
+		if !strings.Contains(text, "- Open mic") || !strings.Contains(text, "- Quiz") || strings.Contains(text, "@") {
+			t.Errorf("digest = %q", text)
+		}
+		if h.notified != "[1,2]" {
+			t.Errorf("marked %q", h.notified)
+		}
+	})
+	t.Run("mail failure keeps the rows", func(t *testing.T) {
+		h := &submissionHost{notify: "owner@example.org", rows: rows, mailErr: errors.New("smtp down")}
+		h.install(t)
+		prune()
+		if h.notified != "" {
+			t.Errorf("marked %q after a failed mail", h.notified)
+		}
+	})
+	t.Run("no address, no mail", func(t *testing.T) {
+		h := &submissionHost{rows: rows}
+		h.install(t)
+		prune()
+		if len(h.mails) != 0 || len(h.execs) != 1 {
+			t.Errorf("mails %v execs %+v", h.mails, h.execs)
+		}
+	})
+	t.Run("nothing waiting", func(t *testing.T) {
+		h := &submissionHost{notify: "owner@example.org", rows: `[]`}
+		h.install(t)
+		prune()
+		if len(h.mails) != 0 {
+			t.Errorf("mails %v", h.mails)
+		}
+	})
+	t.Run("titles are capped", func(t *testing.T) {
+		var list []string
+		for i := 1; i <= 25; i++ {
+			list = append(list, fmt.Sprintf(`{"id":%d,"title":"T%d"}`, i, i))
+		}
+		h := &submissionHost{notify: "owner@example.org", rows: "[" + strings.Join(list, ",") + "]"}
+		h.install(t)
+		prune()
+		text := h.mails[0]["text"].(string)
+		if !strings.Contains(text, "- T20\n") || strings.Contains(text, "- T21\n") || !strings.Contains(text, "and 5 more") {
+			t.Errorf("digest = %q", text)
+		}
+	})
+	t.Run("db down", func(t *testing.T) {
+		h := &submissionHost{notify: "owner@example.org", dbErr: errors.New("down")}
+		h.install(t)
+		prune()
+		if len(h.mails) != 0 {
+			t.Errorf("mails %v", h.mails)
+		}
+	})
+}
+
+func TestReconcileMarksPublishedSubmissions(t *testing.T) {
+	sub := strings.Replace(submissionDoc("published", "submission", "sub-42"), `"name":"s1"`, `"name":"Spring fair"`, 1)
+	other := strings.Replace(submissionDoc("published", "ical", "sub-43"), `"id":"s1"`, `"id":"s2"`, 1)
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"s1": sub, "s2": other},
+		order:    []string{"s2"}, // s1 lies beyond the pages a run reads
+		indexed:  map[string]string{"s1": "x", "s2": "x"},
+		subs:     `[{"id":42,"title":"Spring fair","status":"pending"},{"id":43,"title":"s1","status":"pending"}]`,
+	}
+	h.install(t)
+	if _, err := reconcileOnce(loadSettings(), clock().Add(reconcileBudget)); err != nil {
+		t.Fatal(err)
+	}
+	var got []dbCall
+	for _, c := range h.execs {
+		if strings.HasPrefix(c.sql, "UPDATE submissions SET status") {
+			got = append(got, c)
+		}
+	}
+	if len(got) != 1 || got[0].args[0] != int64(42) || got[0].args[1] != "published" {
+		t.Fatalf("status updates = %+v", got)
+	}
+}
+
+func TestReconcileLeavesPublishedSubmissionsAlone(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"s1": submissionDoc("published", "submission", "sub-42")},
+		order:    []string{"s1"},
+		indexed:  map[string]string{"s1": "x"},
+	}
+	h.install(t)
+	if _, err := reconcileOnce(loadSettings(), clock().Add(reconcileBudget)); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range h.execs {
+		if strings.Contains(c.sql, "submissions") {
+			t.Errorf("unexpected submissions write %+v", c)
+		}
+	}
+}
+
+func TestReconcileMarksRetitledSubmission(t *testing.T) {
+	sub := strings.Replace(submissionDoc("published", "submission", "sub-42"), `"name":"s1"`, `"name":"Jazz Night at the Blue Room"`, 1)
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"s1": sub},
+		order:    []string{"s1"},
+		indexed:  map[string]string{"s1": "x"},
+		subs:     `[{"id":42,"title":"Jazz nite at Blue Room","status":"pending"}]`,
+	}
+	h.install(t)
+	if _, err := reconcileOnce(loadSettings(), clock().Add(reconcileBudget)); err != nil {
+		t.Fatal(err)
+	}
+	var got []dbCall
+	for _, c := range h.execs {
+		if strings.HasPrefix(c.sql, "UPDATE submissions SET status") {
+			got = append(got, c)
+		}
+	}
+	if len(got) != 1 || got[0].args[0] != int64(42) || got[0].args[1] != "published" {
+		t.Fatalf("status updates = %+v", got)
+	}
+}
+
+func TestMarkOpenSubmissionsSkipsBackslashTitles(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"s1": submissionDoc("published", "submission", "sub-42")},
+		subs:     `[{"id":42,"title":"Back\\","status":"pending"}]`,
+	}
+	h.install(t)
+	open := markOpenSubmissions(loadSettings(), clock().Add(reconcileBudget))
+	if !open[42] {
+		t.Errorf("open = %v", open)
+	}
+	for _, c := range h.calls {
+		if c == "entities.list" {
+			t.Fatal("searched for a title ending in a backslash")
 		}
 	}
 }

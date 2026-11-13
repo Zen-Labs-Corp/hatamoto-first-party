@@ -95,6 +95,15 @@ func parseTime(s string, loc *time.Location) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// editorTime writes t as the schema's start_at/end_at pattern asks: the local
+// date and time in loc, no zone, rounded to the minute. The fields are plain
+// text with a pattern, not format date-time: core asserts that format as
+// RFC 3339 on save and on publish, which its own datetime-local input never
+// posts.
+func editorTime(t time.Time, loc *time.Location) string {
+	return t.Round(time.Minute).In(loc).Format("2006-01-02T15:04")
+}
+
 // attrString returns a string attribute, empty when missing or not a string.
 func attrString(m map[string]any, key string) string {
 	s, _ := m[key].(string)
@@ -192,13 +201,8 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 	if len(raw.Attributes) == 0 || json.Unmarshal(raw.Attributes, &attrs) != nil {
 		return Event{}, false
 	}
-	loc := s.location()
 	tz := attrString(attrs, "time_zone")
-	if tz != "" {
-		if l, err := time.LoadLocation(tz); err == nil {
-			loc = l
-		}
-	}
+	loc := zoneOr(tz, s.location())
 	start, ok := parseTime(attrString(attrs, "start_at"), loc)
 	if !ok {
 		return Event{}, false

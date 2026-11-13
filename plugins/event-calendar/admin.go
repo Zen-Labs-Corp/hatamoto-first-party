@@ -77,7 +77,7 @@ func serveRepeating(u *sdk.HTTPUser) sdk.HTTPResponse {
 			ae := adminEvent{ID: attrString(m, "id"), Slug: attrString(m, "slug"), Name: attrString(m, "name"), Dates: []adminDate{}}
 			// source_uid is editable and core's Duplicate copies it, so a key that
 			// more than one event carries does not say which event is the plugin's.
-			_, ae.Owned = ownedKey(attrString(m, "source_uid"))
+			_, ae.Owned = ownedKey(attrString(m, "source_uid"), attrString(m, "slug"))
 			if n, _ := m["uid_count"].(float64); n != 1 {
 				ae.Owned = false
 			}

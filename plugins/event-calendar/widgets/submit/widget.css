@@ -1,0 +1,8 @@
+.hm-event-calendar_submit{display:block;margin:var(--hm-space-4,1rem) 0;padding:var(--hm-space-4,1rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-event-calendar_submit h3{margin:0 0 var(--hm-space-2,.5rem);font-size:1.25rem}
+.hm-event-calendar_submit .field{display:flex;flex-direction:column;gap:.25rem;margin:0 0 var(--hm-space-2,.5rem)}
+.hm-event-calendar_submit .field input,.hm-event-calendar_submit .field textarea{padding:.4rem .5rem;border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem);font:inherit;max-width:100%}
+.hm-event-calendar_submit .field .invalid{border-color:var(--hm-color-danger,#b3261e)}
+.hm-event-calendar_submit .trap{width:0;height:0;margin:0;padding:0;border:0;overflow:hidden;opacity:0}
+.hm-event-calendar_submit button{padding:.4rem 1rem;font:inherit;cursor:pointer}
+.hm-event-calendar_submit .status{margin:var(--hm-space-2,.5rem) 0 0;color:var(--hm-color-muted,#5b6475)}

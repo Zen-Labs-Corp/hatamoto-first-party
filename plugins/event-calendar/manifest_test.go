@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"hatamoto.dev/sdk"
 )
 
 type manifestFile struct {
@@ -41,7 +43,16 @@ type manifestFile struct {
 		Roles []string `json:"roles"`
 	} `json:"ui"`
 	Runs []struct {
-		Name   string   `json:"name"`
+		Name             string `json:"name"`
+		Cron             string `json:"cron"`
+		StandingApproval *struct {
+			Fields  []string `json:"fields"`
+			Schemas []string `json:"schemas"`
+			Create  struct {
+				Schemas    []string `json:"schemas"`
+				MaxPerHour int      `json:"max_per_hour"`
+			} `json:"create"`
+		} `json:"standing_approval"`
 		Stages []string `json:"stages"`
 		Inputs []struct {
 			Name     string `json:"name"`
@@ -58,6 +69,7 @@ type manifestFile struct {
 			Default any      `json:"default"`
 			Pattern string   `json:"pattern"`
 			Enum    []string `json:"enum"`
+			MaxLen  int      `json:"maxLength"`
 		} `json:"properties"`
 	} `json:"settings_schema"`
 }
@@ -88,7 +100,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m, _ := loadManifest(t)
-	if m.Name != "event-calendar" || m.Version != "0.4.0" {
+	if m.Name != "event-calendar" || m.Version != "0.5.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 	if icsProdID != "-//Hatamoto//event-calendar "+m.Version+"//EN" {
@@ -101,19 +113,20 @@ func TestManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := regexp.MustCompile(`hatamoto\.dev/sdk v(\d+\.\d+\.\d+)`).FindSubmatch(mod)
-	if m.SDK != "^0.21" || got == nil || !strings.HasPrefix(string(got[1]), "0.21.") {
+	if m.SDK != "^0.22" || got == nil || !strings.HasPrefix(string(got[1]), "0.22.") {
 		t.Errorf("sdk range %q, go.mod %q", m.SDK, got)
 	}
 
-	wantPerms := []string{"builder.data", "builder.island", "db", "entities.read", "http.fetch", "settings"}
+	wantPerms := []string{"builder.data", "builder.island", "db", "entities.read", "http.fetch", "http.fetch.any", "mail.send", "settings"}
 	perms := slices.Sorted(slices.Values(m.Permissions))
 	if !slices.Equal(perms, wantPerms) {
 		t.Errorf("permissions = %v, want %v", perms, wantPerms)
 	}
-	if !slices.Equal(m.AllowedHosts, []string{"nominatim.openstreetmap.org"}) {
+	wantHosts := []string{"nominatim.openstreetmap.org", "calendar.google.com", "outlook.office365.com", "outlook.office.com", "outlook.live.com", "www.meetup.com", "www.eventbrite.com", "*"}
+	if !slices.Equal(m.AllowedHosts, wantHosts) || len(m.AllowedHosts)-1 > 32 {
 		t.Errorf("allowed_hosts = %v", m.AllowedHosts)
 	}
-	if len(m.Cron) != 1 || m.Cron[0].Name != "reconcile" || m.Cron[0].Every != "1h" {
+	if len(m.Cron) != 2 || m.Cron[1].Name != "prune" || m.Cron[1].Every != "1h" || m.Cron[0].Name != "reconcile" || m.Cron[0].Every != "1h" {
 		t.Errorf("cron = %+v", m.Cron)
 	}
 	if !slices.Equal(m.Funcs, []string{"when", "addlink"}) {
@@ -167,6 +180,15 @@ func TestManifest(t *testing.T) {
 		t.Errorf("schema_slug = %+v", slug)
 	}
 
+	if sub := m.Settings.Properties["submissions_enabled"]; sub.Type != "boolean" || sub.Default != false {
+		t.Errorf("submissions_enabled = %+v", sub)
+	}
+
+	// core's settings form shows a text field with a maxLength above 200 as a textarea
+	if n := m.Settings.Properties["notify_email"]; n.Type != "string" || n.MaxLen <= 0 || n.MaxLen > 200 {
+		t.Errorf("notify_email = %+v, want a maxLength of at most 200 so it stays a one-line field", n)
+	}
+
 	week := m.Settings.Properties["week_starts_on"]
 	if week.Type != "string" || week.Default != "monday" || !slices.Equal(week.Enum, []string{"monday", "sunday"}) {
 		t.Errorf("week_starts_on = %+v", week)
@@ -178,7 +200,11 @@ func TestManifest(t *testing.T) {
 	}{
 		{"GET", "/events.ics", true}, {"GET", "/event/{file}", true}, {"GET", "/api/events", true},
 		{"GET", "/series/{slug}", true}, {"GET", "/venue/{slug}", true}, {"GET", "/organizer/{slug}", true},
-		{"GET", "/admin/repeating", false},
+		{"GET", "/submit/token", true}, {"POST", "/submit", true},
+		{"GET", "/admin/repeating", false}, {"GET", "/admin/submissions", false},
+		{"POST", "/admin/submissions/{id}/reject", false}, {"POST", "/admin/submissions/reject-all", false},
+		{"POST", "/admin/submissions/{id}/delete", false},
+		{"GET", "/admin/imports", false},
 	}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
@@ -193,12 +219,13 @@ func TestManifest(t *testing.T) {
 		}
 	}
 
-	if m.UI.Title != "Repeating events" || m.UI.Entry != "index.html" || !slices.Equal(m.UI.Roles, []string{"owner", "editor"}) {
+	if m.UI.Title != "Event calendar" || m.UI.Entry != "index.html" || !slices.Equal(m.UI.Roles, []string{"owner", "editor"}) {
 		t.Errorf("ui = %+v", m.UI)
 	}
 	exists(t, "ui/"+m.UI.Entry)
 	wantRuns := map[string]string{
-		"edit_dates": "event:text:true action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false",
+		"edit_dates": "event:text:false action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false " +
+			"url:url:false kind:select:false name:text:false title:text:false venue_name:text:false description:text:false submission:text:false",
 	}
 	if len(m.Runs) != len(wantRuns) {
 		t.Fatalf("runs = %+v", m.Runs)
@@ -227,7 +254,56 @@ func TestShippedFiles(t *testing.T) {
 	}
 	exists(t, "migrations/001_init.sql")
 	exists(t, "migrations/002_view_columns.sql")
+	exists(t, "migrations/003_recurring.sql")
+	exists(t, "migrations/004_submissions.sql")
 	exists(t, "widgets/event-details/widget.html")
 	exists(t, "widgets/event-card/widget.html")
 	exists(t, "partials/event_details.html")
+}
+
+// Scheduled imports are not shipped: core refuses a standing approval for the
+// hyphenated calendar-event type, so no run may carry a cron job or a rule.
+func TestManifestStandingApproval(t *testing.T) {
+	m, _ := loadManifest(t)
+	raw, err := os.ReadFile("plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Runs) == 0 || m.Runs[0].Name != "edit_dates" {
+		t.Fatalf("the first run must be edit_dates (the only one the admin starts): %+v", m.Runs)
+	}
+	for _, r := range m.Runs {
+		if r.StandingApproval != nil || r.Cron != "" {
+			t.Errorf("run %s has a standing approval or cron job: %+v", r.Name, r)
+		}
+	}
+	for _, c := range m.Cron {
+		if c.Name == "import" {
+			t.Error("cron job import must not be declared")
+		}
+	}
+	for _, bad := range []string{"link_fields", "standing_approval", "import_scheduled", "on_cron_import"} {
+		if strings.Contains(string(raw), bad) {
+			t.Errorf("plugin.json must not mention %s", bad)
+		}
+	}
+}
+
+// TestManifestSDKValidate runs the manifest through the validation core
+// applies at load, so a manifest core would refuse fails the build.
+func TestManifestSDKValidate(t *testing.T) {
+	raw, err := os.ReadFile("plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m sdk.Manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Validate(); err != nil {
+		t.Errorf("core would refuse this manifest: %v", err)
+	}
+	if len(m.Runs) == 0 {
+		t.Error("the manifest decoded without runs")
+	}
 }

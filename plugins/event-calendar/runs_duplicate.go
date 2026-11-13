@@ -31,7 +31,14 @@ func duplicateEvent(runID string, p map[string]any) (sdk.RunStepResult, error) {
 	if err != nil {
 		return failRun(err.Error())
 	}
-	key := keyPrefix + runID
+	slug, err := freeCopySlug(ev)
+	if err != nil {
+		return failRun("The copy's slug could not be checked. Try again.")
+	}
+	if slug == "" {
+		return failRun("No free slug was found for the copy. Rename or delete the earlier copies first.")
+	}
+	key := dupKey(runID, slug)
 
 	attrs := cloneAttrs(ev.Attrs)
 	for _, k := range []string{"start_at", "end_at", "repeat_until"} {
@@ -65,12 +72,7 @@ func duplicateEvent(runID string, p map[string]any) (sdk.RunStepResult, error) {
 		return failRun(err.Error())
 	}
 	up.Name = ev.Name + " (copy)"
-	if up.Slug, err = freeCopySlug(ev); err != nil {
-		return failRun("The copy's slug could not be checked. Try again.")
-	}
-	if up.Slug == "" {
-		return failRun("No free slug was found for the copy. Rename or delete the earlier copies first.")
-	}
+	up.Slug = slug
 	if _, err := guest.EntityUpsert(callHost, up); err != nil {
 		return failRun("The copy could not be staged. Try again.")
 	}

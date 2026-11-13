@@ -32,14 +32,32 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveEvent(r.PathValues["file"]), nil
 		case "/api/events":
 			return serveAPI(r.Query), nil
+		case "/submit/token":
+			return serveSubmitToken(), nil
 		case "/admin/repeating":
 			return serveRepeating(r.User), nil
+		case "/admin/submissions":
+			return serveSubmissions(r.User, r.Query), nil
+		case "/admin/imports":
+			return serveImports(r.User), nil
 		case "/series/{slug}":
 			return servePage(pageSeries, r.PathValues["slug"]), nil
 		case "/venue/{slug}":
 			return servePage(pageVenue, r.PathValues["slug"]), nil
 		case "/organizer/{slug}":
 			return servePage(pageOrganizer, r.PathValues["slug"]), nil
+		}
+	}
+	if r.Method == http.MethodPost {
+		switch r.Pattern {
+		case "/submit":
+			return serveSubmit(r), nil
+		case "/admin/submissions/reject-all":
+			return serveRejectAll(r.User), nil
+		case "/admin/submissions/{id}/reject":
+			return serveSubmissionAction(r.User, r.PathValues["id"], false), nil
+		case "/admin/submissions/{id}/delete":
+			return serveSubmissionAction(r.User, r.PathValues["id"], true), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil

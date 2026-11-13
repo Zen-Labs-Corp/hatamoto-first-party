@@ -43,7 +43,7 @@ func TestDuplicateEventRun(t *testing.T) {
 		t.Fatalf("failed = %q, upserts = %d", h.failed, len(h.upserts))
 	}
 	up := h.upserts[0]
-	if up.SourceKey != "dup-run-5" || up.Slug != "yoga-copy-2" || up.Name != "Yoga (copy)" || up.Schema != "calendar-event" || up.Locale != "en" {
+	if up.SourceKey != "dup-run-5/yoga-copy-2" || up.Slug != "yoga-copy-2" || up.Name != "Yoga (copy)" || up.Schema != "calendar-event" || up.Locale != "en" {
 		t.Errorf("upsert = %+v", up)
 	}
 	var orig, got map[string]json.RawMessage
@@ -56,7 +56,7 @@ func TestDuplicateEventRun(t *testing.T) {
 		"start_at": `"2026-02-24T18:00"`, "end_at": `"2026-02-24T19:00"`, "repeat_until": `"2026-07-07"`,
 		"repeat_extra_dates": `["2026-12-31"]`, "repeat_skip_dates": `["2026-03-17"]`,
 		"repeat_overrides": `["2026-03-10|2026-03-10T19:00|2026-03-10T20:00"]`,
-		"source_uid":       `"dup-run-5"`, "source_kind": `"manual"`,
+		"source_uid":       `"dup-run-5/yoga-copy-2"`, "source_kind": `"manual"`,
 	} {
 		want[k] = json.RawMessage(v)
 	}

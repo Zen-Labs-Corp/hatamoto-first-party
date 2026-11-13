@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,6 +15,7 @@ import (
 // runHost fakes the host side of a run step: run.info, entities.get and the
 // run.* and changeset calls, which it records.
 type runHost struct {
+	progress string // the last run.progress message
 	name     string
 	runID    string
 	params   map[string]any
@@ -24,18 +27,111 @@ type runHost struct {
 	failed   string
 	finished any
 	calls    []string
+
+	// settings is the answer of settings.get ("{}" when empty); phase is the
+	// phase run.info reports ("transform" when empty).
+	settings string
+	phase    string
+	pages    map[string]fakePage // http.fetch answers by address
+	buffer   map[string][]byte
+	cursor   string // the last run.checkpoint
+	fetched  []string
+	lists    map[string][]string // entities.list answers by content type
+}
+
+// fakePage is the answer of a fake http.fetch.
+type fakePage struct {
+	status    int
+	body      string
+	truncated bool
+	err       error
 }
 
 func (h *runHost) install(t *testing.T) {
 	t.Helper()
 	callHost = func(fn string, args, out any) error {
 		h.calls = append(h.calls, fn)
+		// core's phase gate: the run buffer is written in fetch, read in transform
+		phase := h.phase
+		if phase == "" {
+			phase = "transform"
+		}
+		if (phase == "fetch" && (fn == "buffer.get" || fn == "buffer.list")) || (phase == "transform" && fn == "buffer.put") {
+			return &sdk.HostError{Code: sdk.ErrPhaseDenied, Message: fn + " is not available in the " + phase + " phase"}
+		}
 		switch fn {
 		case "settings.get":
+			if h.settings != "" {
+				return json.Unmarshal([]byte(h.settings), out)
+			}
 			return json.Unmarshal([]byte(`{}`), out)
 		case "run.info":
 			p, _ := json.Marshal(h.params)
-			b, _ := json.Marshal(sdk.RunInfo{RunID: h.runID, Name: h.name, Phase: "transform", Params: p})
+			phase := h.phase
+			if phase == "" {
+				phase = "transform"
+			}
+			b, _ := json.Marshal(sdk.RunInfo{RunID: h.runID, Name: h.name, Phase: phase, Params: p, Cursor: h.cursor})
+			return json.Unmarshal(b, out)
+		case "run.checkpoint":
+			h.cursor = args.(sdk.RunCheckpointArgs).Cursor
+			return nil
+		case "run.progress":
+			h.progress = args.(sdk.RunProgressArgs).Message
+			return nil
+		case "http.fetch":
+			u := args.(map[string]any)["url"].(string)
+			h.fetched = append(h.fetched, u)
+			page, ok := h.pages[u]
+			if !ok {
+				return &sdk.HostError{Code: sdk.ErrBlocked}
+			}
+			if page.err != nil {
+				return page.err
+			}
+			b, _ := json.Marshal(map[string]any{"status": page.status, "body": page.body, "truncated": page.truncated})
+			return json.Unmarshal(b, out)
+		case "entities.list":
+			// the whole list comes on the first page, whatever the cursor
+			schema := args.(map[string]any)["schema_slug"].(string)
+			if args.(map[string]any)["cursor"] != nil {
+				return json.Unmarshal([]byte(`{"items":[]}`), out)
+			}
+			items := h.lists[schema]
+			if items == nil {
+				items = []string{}
+			}
+			return json.Unmarshal([]byte(`{"items":[`+strings.Join(items, ",")+`]}`), out)
+		case "buffer.put":
+			a := args.(sdk.BufferPutArgs)
+			v, err := base64.StdEncoding.DecodeString(a.ValueB64)
+			if err != nil {
+				return err
+			}
+			if h.buffer == nil {
+				h.buffer = map[string][]byte{}
+			}
+			h.buffer[a.Key] = v
+			return nil
+		case "buffer.get":
+			v, ok := h.buffer[args.(sdk.BufferGetArgs).Key]
+			b, _ := json.Marshal(sdk.BufferValue{Found: ok, ValueB64: base64.StdEncoding.EncodeToString(v)})
+			return json.Unmarshal(b, out)
+		case "buffer.list":
+			a := args.(sdk.BufferListArgs)
+			var keys []string
+			for k := range h.buffer {
+				if strings.HasPrefix(k, a.Prefix) && k > a.After {
+					keys = append(keys, k)
+				}
+			}
+			sort.Strings(keys)
+			next := ""
+			if a.Limit > 0 && len(keys) > a.Limit {
+				keys = keys[:a.Limit]
+				next = keys[len(keys)-1]
+			}
+			b, _ := json.Marshal(sdk.BufferKeys{Keys: keys, Next: next})
 			return json.Unmarshal(b, out)
 		case "run.fail":
 			h.failed = args.(sdk.RunFailArgs).Reason
@@ -79,7 +175,7 @@ func (h *runHost) step(t *testing.T) {
 }
 
 const ownedEvent = `{"id":"e1","schema_slug":"calendar-event","slug":"yoga","name":"Yoga","locale":"en","status":"published","attributes":{
-"start_at":"2026-02-17T18:00","repeat":"weekly","source_uid":"dup-run-1","source_kind":"manual","page_sections":[{"k":1}],
+"start_at":"2026-02-17T18:00","repeat":"weekly","source_uid":"dup-run-1/yoga","source_kind":"manual","page_sections":[{"k":1}],
 "repeat_skip_dates":["2026-03-10"],"repeat_overrides":["2026-03-03|2026-03-03T19:00"],"venue":["v1"]}}`
 
 func attrsOf(t *testing.T, up sdk.EntityUpsert) map[string]json.RawMessage {
@@ -121,7 +217,7 @@ func TestSkipRestoreChangeStages(t *testing.T) {
 				t.Fatalf("failed = %q, upserts = %d", h.failed, len(h.upserts))
 			}
 			up := h.upserts[0]
-			if up.SourceKey != "dup-run-1" || up.Schema != "calendar-event" || up.Slug != "yoga" || up.Name != "Yoga" || up.Locale != "en" {
+			if up.SourceKey != "dup-run-1/yoga" || up.Schema != "calendar-event" || up.Slug != "yoga" || up.Name != "Yoga" || up.Locale != "en" {
 				t.Errorf("upsert = %+v", up)
 			}
 			got := attrsOf(t, up)
@@ -159,7 +255,7 @@ func TestEditDatesFailures(t *testing.T) {
 		{"missing event", map[string]any{"event": "nope", "action": "skip", "date": "2026-02-24"}, ownedEvent, nil, nil, "No published event"},
 		{"draft event", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, strings.Replace(ownedEvent, `"published"`, `"draft"`, 1), nil, nil, "No published event"},
 		{"parent", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, strings.Replace(ownedEvent, `"status"`, `"parent_id":"p","status"`, 1), nil, nil, "parent"},
-		{"no key", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, strings.Replace(ownedEvent, `dup-run-1`, `abc`, 1), nil, nil, "Who owns this page"},
+		{"no key", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, strings.Replace(ownedEvent, `dup-run-1/yoga`, `abc`, 1), nil, nil, "Who owns this page"},
 		{"host read error", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, ownedEvent, &sdk.HostError{Code: "internal", Message: "secret detail"}, nil, "could not be read"},
 		{"not owned", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, ownedEvent, nil, &sdk.HostError{Code: sdk.ErrNotOwned}, "Who owns this page"},
 		{"other upsert error", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, ownedEvent, nil, &sdk.HostError{Code: "internal", Message: "secret detail"}, "could not be staged"},
@@ -197,20 +293,60 @@ func TestEditDatesFailsWhenUpsertCreates(t *testing.T) {
 }
 
 func TestRunFetchPhaseFinishes(t *testing.T) {
-	h := &runHost{name: runEditDates}
+	h := &runHost{name: runEditDates, phase: "fetch"}
 	h.install(t)
 	if _, err := onStep(sdk.RunStep{Phase: sdk.RunPhaseFetch}); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.calls) != 1 || h.calls[0] != "run.finish" {
+	if len(h.calls) != 2 || h.calls[0] != "run.info" || h.calls[1] != "run.finish" {
 		t.Errorf("calls = %v", h.calls)
 	}
 }
 
 func TestOwnedKey(t *testing.T) {
-	for in, want := range map[string]string{"dup-r1": "dup-r1", " dup-r1 ": "dup-r1", "dup-": "", "": "", "abc-1": ""} {
-		if k, ok := ownedKey(in); k != want && ok || ok != (want != "") {
-			t.Errorf("ownedKey(%q) = %q, %v", in, k, ok)
+	for _, c := range []struct{ uid, slug, want string }{
+		{"dup-r1/yoga", "yoga", "dup-r1/yoga"},
+		{" dup-r1/yoga ", "yoga", "dup-r1/yoga"},
+		{"dup-r1/yoga-copy", "yoga", ""}, // made for another slug
+		{"dup-r1/yoga", "yoga-copy", ""},
+		{"dup-/yoga", "yoga", ""},
+		{"dup-r1/", "", ""},
+		{"dup-r1", "yoga", ""}, // the 0.4.0 shape is not accepted
+		{"dup-r1/a/yoga", "yoga", "dup-r1/a/yoga"},
+		{"dup-", "", ""}, {"", "yoga", ""}, {"abc-1/yoga", "yoga", ""},
+	} {
+		if k, ok := ownedKey(c.uid, c.slug); k != c.want || ok != (c.want != "") {
+			t.Errorf("ownedKey(%q, %q) = %q, %v", c.uid, c.slug, k, ok)
 		}
+	}
+}
+
+// The event input is optional in the manifest (approve and import_url have no
+// event), so each action that needs one must ask for it itself.
+func TestRunActionsWithoutEvent(t *testing.T) {
+	for _, action := range []string{"skip", "change", "restore", "duplicate"} {
+		h := &runHost{name: runEditDates, runID: "r1", params: map[string]any{
+			"action": action, "date": "2027-03-03", "start_at": "18:30",
+		}}
+		h.install(t)
+		h.step(t)
+		if !strings.Contains(h.failed, "slug of an event") || len(h.upserts) != 0 {
+			t.Errorf("%s: failed %q, %d upserts", action, h.failed, len(h.upserts))
+		}
+	}
+
+	h := &runHost{name: runEditDates, runID: "r2", params: approveParams(), created: true}
+	h.install(t)
+	h.step(t)
+	if h.failed != "" || len(h.upserts) != 1 {
+		t.Errorf("approve: failed %q, %d upserts", h.failed, len(h.upserts))
+	}
+
+	h = &runHost{name: runEditDates, runID: "r3", params: map[string]any{"action": "import_url", "url": gcalURL, "kind": "google"},
+		pages: map[string]fakePage{gcalURL: {status: 200, body: feedOf(2, "g")}}}
+	h.install(t)
+	h.runFetch(t)
+	if h.failed != "" || len(h.records(t)) != 2 {
+		t.Errorf("import_url: failed %q, %d records", h.failed, len(h.records(t)))
 	}
 }

@@ -13,13 +13,15 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-// The plugin's runs. Both run in the transform phase only: they read one event
-// with entities.get and stage one changeset item; nothing is written until the
-// owner reviews it. Fetch has nothing to do.
+// The plugin's runs. Edit dates reads one event with entities.get and stages
+// one changeset item in the transform phase; the manual import reads a calendar in
+// the fetch phase (import_run.go). Nothing is written until the owner reviews
+// the changeset.
 
 const (
-	// runEditDates is the plugin's only run: core's admin can start only the
-	// first declared run, so duplicating an event is one of its actions.
+	// runEditDates is the run the admin starts: core's admin can start only the
+	// first declared run, so duplicating an event and the manual import are
+	// actions of it.
 	runEditDates = "edit_dates"
 
 	// keyPrefix marks a source key this plugin made itself. The key of an
@@ -42,7 +44,7 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 	}()
 	switch s.Phase {
 	case sdk.RunPhaseFetch:
-		return sdk.RunStepResult{}, guest.RunFinish(callHost, nil)
+		return fetchPhase(s)
 	case sdk.RunPhaseTransform:
 		info, err := guest.RunInfo(callHost)
 		if err != nil {
@@ -50,7 +52,12 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 		}
 		var p map[string]any
 		_ = json.Unmarshal(info.Params, &p)
-		if info.Name == runEditDates {
+		switch {
+		case info.Name == runEditDates && paramString(p, "action") == actionImportURL:
+			return importTransformStep()
+		case info.Name == runEditDates && paramString(p, "action") == actionApprove:
+			return approveSubmission(p)
+		case info.Name == runEditDates:
 			return editDates(info.RunID, p)
 		}
 		return failRun("Unknown run.")
@@ -68,11 +75,24 @@ func failRun(reason string) (sdk.RunStepResult, error) {
 	return sdk.RunStepResult{}, guest.RunFail(callHost, reason)
 }
 
-// ownedKey is the source key this plugin made for an event, read from the
-// event's source_uid; false for any other event, whose key is not known.
-func ownedKey(sourceUID string) (string, bool) {
-	sourceUID = strings.TrimSpace(sourceUID)
-	return sourceUID, strings.HasPrefix(sourceUID, keyPrefix) && len(sourceUID) > len(keyPrefix)
+// dupKey is the source key of a copy made by run runID. It carries the copy's
+// slug, so core's Duplicate (which copies source_uid but not the slug) does not
+// hand the key to another event.
+func dupKey(runID, slug string) string { return keyPrefix + runID + "/" + slug }
+
+// ownedKey is the source key this plugin made for the event with this slug,
+// read from the event's source_uid; false for any other event, whose key is
+// not known, and for a key made for another slug.
+func ownedKey(sourceUID, slug string) (string, bool) {
+	uid := strings.TrimSpace(sourceUID)
+	if !strings.HasPrefix(uid, keyPrefix) || slug == "" {
+		return "", false
+	}
+	i := strings.LastIndex(uid, "/")
+	if i <= len(keyPrefix) || uid[i+1:] != slug {
+		return "", false
+	}
+	return uid, true
 }
 
 const notOwnedHint = "This event was not created by this plugin, so its dates cannot be changed here. " +
@@ -220,7 +240,7 @@ func editDates(runID string, p map[string]any) (sdk.RunStepResult, error) {
 	if err != nil {
 		return failRun(err.Error())
 	}
-	key, ok := ownedKey(ev.attrText("source_uid"))
+	key, ok := ownedKey(ev.attrText("source_uid"), ev.Slug)
 	if !ok {
 		return failRun(notOwnedHint)
 	}

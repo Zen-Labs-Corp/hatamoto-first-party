@@ -21,3 +21,8 @@ ul.dates li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; pad
 .editor { padding: 4px 0 8px; display: flex; gap: 8px; align-items: center; }
 #duplicate label { margin-right: 12px; }
 footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid var(--color-kinu, #e2e0da); }
+.tabs { display: flex; gap: 4px; margin: 0 0 12px; border-bottom: 1px solid var(--color-kinu, #e2e0da); }
+.tabs button { border-radius: 4px 4px 0 0; border-bottom: 0; }
+.tabs button.active { background: var(--color-accent-soft, #e8eef6); font-weight: 600; }
+td.actions button { margin-right: 4px; }
+.detail { white-space: pre-wrap; }
