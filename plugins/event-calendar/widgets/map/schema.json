@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Event map",
+    "hint": "Map of the venues of upcoming events, shown while the map setting is on"
+  },
+  "properties": {
+    "height": {
+      "type": "integer",
+      "minimum": 200,
+      "maximum": 800,
+      "default": 360
+    }
+  }
+}
