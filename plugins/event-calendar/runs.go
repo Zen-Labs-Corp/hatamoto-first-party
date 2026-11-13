@@ -19,6 +19,7 @@ import (
 
 const (
 	runEditDates = "edit_dates"
+	runDuplicate = "duplicate"
 
 	// keyPrefix marks a source key this plugin made itself. The key of an
 	// object is not readable from the host, so a run that creates an event
@@ -51,6 +52,8 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 		switch info.Name {
 		case runEditDates:
 			return editDates(p)
+		case runDuplicate:
+			return duplicateEvent(info.RunID, p)
 		}
 		return failRun("Unknown run.")
 	}
