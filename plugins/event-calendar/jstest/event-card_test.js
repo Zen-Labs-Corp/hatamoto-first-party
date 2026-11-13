@@ -1,8 +1,8 @@
-// Run with: node island_test.js
+// Run with: node jstest/event-card_test.js
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { tileXY, parsePin, gridTiles, validHost, pinBackground, tileUrl } = require("./island.js");
+const { tileXY, parsePin, gridTiles, validHost, pinBackground, tileUrl } = require("../widgets/event-card/island.js");
 
 assert.deepEqual(tileXY(0, 0, 1), { x: 1, y: 1 });
 
@@ -46,7 +46,7 @@ assert.equal(tileUrl("tile.openstreetmap.org", 15, { x: 1, y: 2 }), "https://til
 // the tiles grid (it would take rows and push the tiles down) and core refuses
 // position values other than static and relative in a pack's CSS
 assert.match(pinBackground({ px: 0.5, py: 0.25 }), /^radial-gradient\(circle at 50% 25%, /);
-const css = fs.readFileSync(path.join(__dirname, "widget.css"), "utf8");
+const css = fs.readFileSync(path.join(__dirname, "..", "widgets", "event-card", "widget.css"), "utf8");
 const pin = new RegExp("\\.hm-event-calendar_event-card \\.pin\\{([^}]*)\\}").exec(css)[1];
 assert.match(pin, /aspect-ratio:1\/1/);
 assert.match(pin, /margin-top:-100%/);
@@ -56,12 +56,12 @@ assert.match(pin, /position:relative/);
 assert.match(pin, /pointer-events:none/);
 assert.doesNotMatch(pin, /grid-area|[^-]top:|left:/);
 assert.doesNotMatch(css, /absolute|fixed|sticky/);
-const island = fs.readFileSync(path.join(__dirname, "island.js"), "utf8");
+const island = fs.readFileSync(path.join(__dirname, "..", "widgets", "event-card", "island.js"), "utf8");
 assert.doesNotMatch(island, /marginLeft|marginTop/);
 assert.doesNotMatch(island, /tiles\.appendChild\(marker\)/);
 
 // the island is lint-clean: none of the tokens the install scan refuses
-const src = fs.readFileSync(path.join(__dirname, "island.js"), "utf8");
+const src = fs.readFileSync(path.join(__dirname, "..", "widgets", "event-card", "island.js"), "utf8");
 assert.ok(src.length <= 32 * 1024);
 const banned = [
   /\beval\s*\(/, /\bnew\s+Function\b/, /\bdocument\s*\.\s*write/, /\bimport\s*\(/, /\bimportScripts\b/,

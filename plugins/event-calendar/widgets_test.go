@@ -10,7 +10,10 @@ import (
 	"testing"
 )
 
-const widgetMax = 16 * 1024
+const (
+	widgetMax       = 16 * 1024
+	widgetIslandMax = 32768
+)
 
 var (
 	widgetNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -20,8 +23,21 @@ var (
 	funcWordRe   = regexp.MustCompile(`(?:^|[\s(|])([a-z][a-z_]*)\b`)
 	bannedTagRe  = regexp.MustCompile(`(?i)<\s*(script|style|iframe|object|embed|link|meta|base|form|svg|math|main|header|footer)\b`)
 	handlerRe    = regexp.MustCompile(`(?i)\son[a-z]+\s*=`)
+	siblingRe    = regexp.MustCompile(`[+~]`)
 
-	widgetFiles   = []string{"schema.json", "widget.html", "widget.css", "island.js", "island_test.js"}
+	// islandBans mirrors the host's island lint.
+	islandBans = map[string]*regexp.Regexp{
+		"absolute URL":      regexp.MustCompile(`(?i)https?://`),
+		"eval":              regexp.MustCompile(`\beval\s*\(`),
+		"new Function":      regexp.MustCompile(`\bnew\s+Function\b`),
+		"document.write":    regexp.MustCompile(`\bdocument\s*\.\s*write`),
+		"dynamic import":    regexp.MustCompile(`\bimport\s*\(`),
+		"importScripts":     regexp.MustCompile(`\bimportScripts\b`),
+		"protocol-relative": regexp.MustCompile("[\"'`]//[A-Za-z0-9]"),
+	}
+
+	// widgetFiles are the only files the host accepts in a widget directory.
+	widgetFiles   = []string{"schema.json", "widget.html", "widget.css", "island.js"}
 	templateFuncs = []string{"if", "else", "end", "range", "with", "eq", "ne", "lt", "le", "gt", "ge", "and", "or", "not", "len", "index"}
 )
 
@@ -48,16 +64,22 @@ func readWidget(t *testing.T, name, file string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(b) > widgetMax {
-		t.Errorf("%s/%s is %d bytes", name, file, len(b))
+	limit := widgetMax
+	if file == "island.js" {
+		limit = widgetIslandMax
+	}
+	if len(b) > limit {
+		t.Errorf("%s/%s is %d bytes, max %d", name, file, len(b), limit)
 	}
 	return string(b)
 }
 
-func TestWidgetPacks(t *testing.T) {
+func TestWidgetsValid(t *testing.T) {
 	dirs := widgetDirs(t)
-	if want := []string{"event-card", "event-details"}; !slices.Equal(dirs, want) {
-		t.Fatalf("widgets = %v, want %v", dirs, want)
+	for _, want := range []string{"event-card", "event-details"} {
+		if !slices.Contains(dirs, want) {
+			t.Fatalf("widgets = %v, missing %s", dirs, want)
+		}
 	}
 	for _, name := range dirs {
 		t.Run(name, func(t *testing.T) {
@@ -73,7 +95,21 @@ func TestWidgetPacks(t *testing.T) {
 			checkSchema(t, name)
 			checkTemplate(t, name)
 			checkCSS(t, name)
+			checkIsland(t, name)
 		})
+	}
+}
+
+// checkIsland applies the host's island lint to island.js when the widget has one.
+func checkIsland(t *testing.T, name string) {
+	if _, err := os.Stat(filepath.Join("widgets", name, "island.js")); err != nil {
+		return
+	}
+	src := readWidget(t, name, "island.js")
+	for what, re := range islandBans {
+		if re.MatchString(src) {
+			t.Errorf("island.js contains %s: %s", what, re.FindString(src))
+		}
 	}
 }
 
@@ -156,6 +192,9 @@ func checkCSS(t *testing.T, name string) {
 			t.Errorf("contains %q", bad)
 		}
 	}
+	if siblingRe.MatchString(stripCSSParens(css)) {
+		t.Error("sibling combinators are not allowed")
+	}
 	root := ".hm-event-calendar_" + name
 	var buf strings.Builder
 	depth := 0
@@ -189,6 +228,24 @@ func checkCSS(t *testing.T, name string) {
 			}
 		}
 	}
+}
+
+// stripCSSParens drops parenthesised groups (calc(), :nth-child(2n+1)) so
+// that only selector combinators remain for the sibling check.
+func stripCSSParens(css string) string {
+	var b strings.Builder
+	depth := 0
+	for _, c := range css {
+		switch {
+		case c == '(':
+			depth++
+		case c == ')' && depth > 0:
+			depth--
+		case depth == 0:
+			b.WriteRune(c)
+		}
+	}
+	return b.String()
 }
 
 type seedNode struct {
