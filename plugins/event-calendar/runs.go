@@ -55,6 +55,8 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 		switch {
 		case info.Name == runImportScheduled, info.Name == runEditDates && paramString(p, "action") == actionImportURL:
 			return importTransformStep()
+		case info.Name == runEditDates && paramString(p, "action") == actionApprove:
+			return approveSubmission(p)
 		case info.Name == runEditDates:
 			return editDates(info.RunID, p)
 		}
