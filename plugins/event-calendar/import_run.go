@@ -13,33 +13,25 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-// Calendar imports. The fetch phase reads one source per step and buffers the
+// Calendar imports, started by hand from the run form. The fetch phase reads one source per step and buffers the
 // normalised events; the transform phase (import_stage.go) matches them with
 // the events on the site and stages the changes.
 
 const (
-	runImportScheduled = "import_scheduled"
-	actionImportURL    = "import_url"
-	maxImportEvents    = 100 // per run, as many as the standing rule lets through in an hour
-	maxSources         = 8
-	importFetchMs      = 7000
-	maxImportCursor    = 4096
+	actionImportURL = "import_url"
+	maxImportEvents = 100 // per run
+	maxSources      = 8   // import_sources entries listed on the Imports tab
+	importFetchMs   = 7000
+	maxImportCursor = 4096
 
 	bufEvent = "ev/"
 	bufError = "err/"
 	bufStat  = "stat/fetch"
 )
 
-// importHosts are the hosts a scheduled import may read, the manifest's
-// allowed_hosts without the geocoder and the any-address entry.
-var importHosts = []string{
-	"calendar.google.com", "outlook.office365.com", "outlook.office.com", "outlook.live.com", "www.meetup.com", "www.eventbrite.com",
-}
-
 var (
-	scheduledKinds = []string{"google", "outlook", "meetup"}
-	importKinds    = []string{"ical", "google", "outlook", "eventbrite", "meetup"}
-	nonSlugRe      = regexp.MustCompile(`[^a-z0-9]+`)
+	importKinds = []string{"ical", "google", "outlook", "eventbrite", "meetup"}
+	nonSlugRe   = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
 type importSource struct{ Name, Kind, URL, Category string }
@@ -64,43 +56,6 @@ func importPrefix(kind, source string) string {
 		name = strings.Trim(name[:24], "-")
 	}
 	return kind + "-" + name + "-"
-}
-
-// loadImportSources reads the import_sources setting: enabled sources of a
-// scheduled kind with an https address on one of the fixed hosts, at most
-// maxSources. Anything else is ignored.
-func loadImportSources() []importSource {
-	var raw struct {
-		Sources []struct {
-			Name     string `json:"name"`
-			Kind     string `json:"kind"`
-			URL      string `json:"url"`
-			Category string `json:"category"`
-			Enabled  *bool  `json:"enabled"`
-		} `json:"import_sources"`
-	}
-	if callHost(sdk.FnSettingsGet, struct{}{}, &raw) != nil {
-		return nil
-	}
-	var out []importSource
-	for _, r := range raw.Sources {
-		if len(out) >= maxSources {
-			break
-		}
-		if r.Enabled != nil && !*r.Enabled || !slices.Contains(scheduledKinds, r.Kind) {
-			continue
-		}
-		u, err := normaliseFeedURL(r.URL)
-		if err != nil || !strings.HasPrefix(u, "https://") || !slices.Contains(importHosts, hostOf(u)) {
-			continue
-		}
-		name := cleanText(r.Name, 80, false)
-		if name == "" {
-			name = hostOf(u)
-		}
-		out = append(out, importSource{Name: name, Kind: r.Kind, URL: u, Category: cleanText(r.Category, 80, false)})
-	}
-	return out
 }
 
 // importRecord is what the fetch phase buffers for one event.
@@ -136,7 +91,7 @@ func fetchPhase(s sdk.RunStep) (sdk.RunStepResult, error) {
 	if err != nil {
 		return failRun("The run inputs could not be read.")
 	}
-	if info.Name == runImportScheduled || info.Name == runEditDates && importAction(info) {
+	if info.Name == runEditDates && importAction(info) {
 		return importFetchStep(s, info)
 	}
 	return sdk.RunStepResult{}, guest.RunFinish(callHost, nil)
@@ -148,12 +103,8 @@ func importAction(info sdk.RunInfo) bool {
 	return paramString(p, "action") == actionImportURL
 }
 
-// sourcesFor lists what this run reads: the settings for the scheduled run,
-// the one address of the form otherwise.
+// sourcesFor lists what this run reads: the one address of the run form.
 func sourcesFor(info sdk.RunInfo) ([]importSource, string) {
-	if info.Name == runImportScheduled {
-		return loadImportSources(), ""
-	}
 	var p map[string]any
 	_ = json.Unmarshal(info.Params, &p)
 	u, err := normaliseFeedURL(paramString(p, "url"))

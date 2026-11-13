@@ -272,7 +272,7 @@ function importRow(src, owner) {
   return el("tr", {},
     el("td", { textContent: src.name }),
     el("td", { textContent: KINDS[src.kind] || src.kind }),
-    el("td", { textContent: src.enabled ? "every 6 h" : "off" }),
+    el("td", { textContent: src.enabled ? "manual" : "off" }),
     el("td", { textContent: agoText(src.last_imported) }),
     el("td", { className: "actions" }, button("Run now", run, owner && Boolean(src.url)), edit));
 }

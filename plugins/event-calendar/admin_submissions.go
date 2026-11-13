@@ -130,10 +130,8 @@ type importRow struct {
 }
 
 type importList struct {
-	Role           string      `json:"role"`
-	Sources        []importRow `json:"sources"`
-	Every          string      `json:"every"`
-	ScheduledKinds []string    `json:"scheduled_kinds"`
+	Role    string      `json:"role"`
+	Sources []importRow `json:"sources"`
 }
 
 const lastImportedSQL = `SELECT to_jsonb(max(updated_at)) FROM events WHERE source_kind = $2 AND left(source_uid, length($1::text)) = $1::text`
@@ -154,7 +152,7 @@ func serveImports(u *sdk.HTTPUser) sdk.HTTPResponse {
 		} `json:"import_sources"`
 	}
 	_ = callHost(sdk.FnSettingsGet, struct{}{}, &raw)
-	out := importList{Role: u.Role, Sources: []importRow{}, Every: "6 hours", ScheduledKinds: scheduledKinds}
+	out := importList{Role: u.Role, Sources: []importRow{}}
 	for _, r := range raw.Sources {
 		if len(out.Sources) >= maxSources {
 			break

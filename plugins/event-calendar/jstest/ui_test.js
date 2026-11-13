@@ -66,8 +66,6 @@ const SUBS = {
 const HOUR = 3600 * 1000;
 const IMPORTS = {
   role: "owner",
-  every: "6 hours",
-  scheduled_kinds: ["google", "outlook", "meetup"],
   sources: [
     { name: "Town council", kind: "google", host: "calendar.google.com", category: "Civic", enabled: true, last_imported: new Date(Date.now() - 3 * HOUR - 60000).toISOString(), url: "https://calendar.example.org/town.ics" },
     { name: "Riverside venue", kind: "outlook", host: "outlook.office365.com", category: "", enabled: false, last_imported: null, url: "https://outlook.example.org/river.ics" },
@@ -272,7 +270,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   ({ els, calls } = await load({ tab: "imports" }));
   let impRows = els["#imp-rows"];
   const impText = impRows.text();
-  check(impRows.children.length === 2 && impText.includes("Town council") && impText.includes("Google") && impText.includes("every 6 h"), "source rows");
+  check(impRows.children.length === 2 && impText.includes("Town council") && impText.includes("Google") && impText.includes("manual") && !impText.includes("every 6"), "source rows");
   check(impText.includes("3 hours ago") && impText.includes("never") && impText.includes("off"), "last imported and a disabled source");
   check(!impText.includes("calendar.example.org"), "the address is not shown in the table");
   await impRows.buttons("Run now")[0].click();

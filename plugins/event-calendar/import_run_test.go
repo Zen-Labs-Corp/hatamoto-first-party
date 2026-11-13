@@ -11,9 +11,7 @@ import (
 )
 
 const (
-	gcalURL  = "https://calendar.google.com/calendar/ical/example%40example.org/public/basic.ics"
-	meetURL  = "https://www.meetup.com/example-group/events/ical/"
-	otherURL = "https://example.org/unlisted.ics"
+	gcalURL = "https://calendar.google.com/calendar/ical/example%40example.org/public/basic.ics"
 )
 
 func feedOf(n int, prefix string) string {
@@ -63,14 +61,6 @@ func (h *runHost) records(t *testing.T) []importRecord {
 	return out
 }
 
-func sourcesSetting(entries ...string) string {
-	return `{"import_sources":[` + strings.Join(entries, ",") + `]}`
-}
-
-func src(name, kind, url string, extra ...string) string {
-	return fmt.Sprintf(`{"name":%q,"kind":%q,"url":%q%s}`, name, kind, url, strings.Join(extra, ""))
-}
-
 func TestImportKey(t *testing.T) {
 	a := importKey("google", "Town Hall: Events & More, long name here", "u1")
 	if a != importKey("google", "Town Hall: Events & More, long name here", "u1") || a == importKey("google", "Town Hall: Events & More, long name here", "u2") {
@@ -87,45 +77,18 @@ func TestImportKey(t *testing.T) {
 	}
 }
 
-func TestLoadImportSources(t *testing.T) {
-	var entries []string
-	entries = append(entries,
-		src("Google", "google", gcalURL, `,"category":"Music"`),
-		src("Off", "google", gcalURL, `,"enabled":false`),
-		src("Unlisted host", "google", otherURL),
-		src("Wrong kind", "eventbrite", "https://www.eventbrite.com/o/example-1"),
-		src("Plain http", "outlook", "http://outlook.office365.com/x.ics"),
-		src("Webcal", "outlook", "webcal://outlook.office365.com/owa/calendar/x/calendar.ics"),
-		src("", "meetup", meetURL),
-	)
-	for i := range 10 {
-		entries = append(entries, src(fmt.Sprintf("More %d", i), "meetup", meetURL))
-	}
-	h := &runHost{settings: sourcesSetting(entries...)}
-	h.install(t)
-	got := loadImportSources()
-	if len(got) != maxSources {
-		t.Fatalf("%d sources, want the cap %d: %+v", len(got), maxSources, got)
-	}
-	want := []importSource{
-		{"Google", "google", gcalURL, "Music"},
-		{"Webcal", "outlook", "https://outlook.office365.com/owa/calendar/x/calendar.ics", ""},
-		{"www.meetup.com", "meetup", meetURL, ""},
-	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("source %d = %+v, want %+v", i, got[i], w)
-		}
-	}
+// manualRun is a hand-started import of one address, as the Imports tab fills the run form.
+func manualRun(url, kind, name string, pages map[string]fakePage) *runHost {
+	return &runHost{name: runEditDates, runID: "r1", pages: pages,
+		params: map[string]any{"action": "import_url", "url": url, "kind": kind, "name": name}}
 }
 
 func TestImportCaps(t *testing.T) {
-	t.Run("101st event is dropped", func(t *testing.T) {
-		h := &runHost{name: runImportScheduled, runID: "r1", settings: sourcesSetting(src("Google", "google", gcalURL), src("Meetup", "meetup", meetURL)),
-			pages: map[string]fakePage{gcalURL: {status: 200, body: feedOf(60, "g")}, meetURL: {status: 200, body: feedOf(60, "m")}}}
+	t.Run("events over the cap are dropped and counted", func(t *testing.T) {
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(120, "g")}})
 		h.install(t)
-		if steps := h.runFetch(t); steps != 2 {
-			t.Errorf("%d steps, one source per step wanted", steps)
+		if steps := h.runFetch(t); steps != 1 {
+			t.Errorf("%d steps, one source wanted", steps)
 		}
 		if h.failed != "" || h.finished == nil {
 			t.Fatalf("failed %q finished %v", h.failed, h.finished)
@@ -138,37 +101,30 @@ func TestImportCaps(t *testing.T) {
 		}
 	})
 
-	t.Run("truncated answer is a source error", func(t *testing.T) {
-		h := &runHost{name: runImportScheduled, runID: "r1", settings: sourcesSetting(src("Google", "google", gcalURL), src("Meetup", "meetup", meetURL)),
-			pages: map[string]fakePage{gcalURL: {status: 200, body: feedOf(3, "g"), truncated: true}, meetURL: {status: 200, body: feedOf(2, "m")}}}
+	t.Run("truncated answer fails the run", func(t *testing.T) {
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(3, "g"), truncated: true}})
 		h.install(t)
 		h.runFetch(t)
-		recs := h.records(t)
-		if h.failed != "" || len(recs) != 2 || recs[0].Source != "Meetup" {
-			t.Fatalf("failed %q records %+v", h.failed, recs)
-		}
 		note := string(h.buffer["err/00"])
-		if !strings.Contains(note, "too large") || strings.Contains(note, "calendar.google.com") || strings.Contains(note, "example") {
-			t.Errorf("error note %s", note)
+		if !strings.HasPrefix(h.failed, "No calendar could be read") || !strings.Contains(note, "too large") || strings.Contains(note, "example") {
+			t.Errorf("failed %q, error note %s", h.failed, note)
 		}
 	})
 
-	t.Run("a blocked host is a source error and the others still import", func(t *testing.T) {
-		h := &runHost{name: runImportScheduled, runID: "r1", settings: sourcesSetting(src("Google", "google", gcalURL), src("Meetup", "meetup", meetURL)),
-			pages: map[string]fakePage{gcalURL: {err: &sdk.HostError{Code: sdk.ErrBlocked}}, meetURL: {status: 200, body: feedOf(2, "m")}}}
-		h.install(t)
-		h.runFetch(t)
-		if h.failed != "" || len(h.records(t)) != 2 || h.buffer["err/00"] == nil {
-			t.Errorf("failed %q records %d buffer %v", h.failed, len(h.records(t)), h.buffer)
-		}
-	})
-
-	t.Run("every source failing fails the run without the address", func(t *testing.T) {
-		h := &runHost{name: runImportScheduled, runID: "r1", settings: sourcesSetting(src("Google", "google", gcalURL)),
-			pages: map[string]fakePage{gcalURL: {status: 404}}}
+	t.Run("a blocked host fails the run without the address", func(t *testing.T) {
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {err: &sdk.HostError{Code: sdk.ErrBlocked}}})
 		h.install(t)
 		h.runFetch(t)
 		if !strings.HasPrefix(h.failed, "No calendar could be read") || strings.Contains(h.failed, "google.com") {
+			t.Errorf("failed %q", h.failed)
+		}
+	})
+
+	t.Run("a bad answer fails the run", func(t *testing.T) {
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 404}})
+		h.install(t)
+		h.runFetch(t)
+		if !strings.HasPrefix(h.failed, "No calendar could be read") {
 			t.Errorf("failed %q", h.failed)
 		}
 	})
@@ -178,8 +134,7 @@ func TestImportCaps(t *testing.T) {
 			vevent("UID:same@example.org", "SUMMARY:First", "DTSTART:20270612T100000Z"),
 			vevent("UID:same@example.org", "SUMMARY:Second", "DTSTART:20270612T100000Z"),
 			vevent("UID:other@example.org", "SUMMARY:Other", "DTSTART:20270613T100000Z"))
-		h := &runHost{name: runImportScheduled, runID: "r1", settings: sourcesSetting(src("Google", "google", gcalURL)),
-			pages: map[string]fakePage{gcalURL: {status: 200, body: twice}}}
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: twice}})
 		h.install(t)
 		h.runFetch(t)
 		recs := h.records(t)
@@ -195,51 +150,6 @@ func TestImportCaps(t *testing.T) {
 			if r.Kind != "google" || r.Source != "Google" || r.Key != importKey("google", "Google", r.Ev.UID) || strings.HasPrefix(r.Key, keyPrefix) {
 				t.Errorf("record %+v", r)
 			}
-		}
-	})
-
-	t.Run("a second source with the same key is skipped", func(t *testing.T) {
-		const gcalURL2 = "https://calendar.google.com/calendar/ical/second%40example.org/public/basic.ics"
-		// two unnamed Google calendars share a name, and so keys; the second also has one event of its own
-		shared := vevent("UID:shared@example.org", "SUMMARY:Shared", "DTSTART:20270612T100000Z")
-		h := &runHost{name: runImportScheduled, runID: "r1", settings: sourcesSetting(src("Google", "google", gcalURL), src("Google", "google", gcalURL2)),
-			pages: map[string]fakePage{
-				gcalURL:  {status: 200, body: icsBody(shared)},
-				gcalURL2: {status: 200, body: icsBody(strings.Replace(shared, "SUMMARY:Shared", "SUMMARY:Shared again", 1), vevent("UID:own@example.org", "SUMMARY:Own", "DTSTART:20270613T100000Z"))},
-			}}
-		h.install(t)
-		h.runFetch(t)
-		recs := h.records(t)
-		if h.failed != "" || len(recs) != 2 {
-			t.Fatalf("failed %q records %+v", h.failed, recs)
-		}
-		for _, r := range recs {
-			if r.Ev.Title == "Shared again" {
-				t.Errorf("the second source overwrote the first: %+v", r)
-			}
-		}
-		if got := fmt.Sprint(h.finished); !strings.Contains(got, `"events":2`) {
-			t.Errorf("finished %v, want 2 events counted once", h.finished)
-		}
-	})
-
-	t.Run("disabled and unlisted sources are not fetched", func(t *testing.T) {
-		h := &runHost{name: runImportScheduled, runID: "r1",
-			settings: sourcesSetting(src("Off", "google", gcalURL, `,"enabled":false`), src("Unlisted", "google", otherURL), src("Meetup", "meetup", meetURL)),
-			pages:    map[string]fakePage{meetURL: {status: 200, body: feedOf(1, "m")}}}
-		h.install(t)
-		h.runFetch(t)
-		if len(h.fetched) != 1 || h.fetched[0] != meetURL {
-			t.Errorf("fetched %v", h.fetched)
-		}
-	})
-
-	t.Run("no sources finishes quietly", func(t *testing.T) {
-		h := &runHost{name: runImportScheduled, runID: "r1", settings: `{}`}
-		h.install(t)
-		h.runFetch(t)
-		if h.failed != "" || h.finished == nil || len(h.fetched) != 0 {
-			t.Errorf("failed %q finished %v fetched %v", h.failed, h.finished, h.fetched)
 		}
 	})
 }

@@ -14,9 +14,9 @@ import (
 )
 
 // The plugin's runs. Edit dates reads one event with entities.get and stages
-// one changeset item in the transform phase; the import runs read calendars in
+// one changeset item in the transform phase; the manual import reads a calendar in
 // the fetch phase (import_run.go). Nothing is written until the owner reviews
-// the changeset, except what a standing approval lets a scheduled run publish.
+// the changeset.
 
 const (
 	// runEditDates is the run the admin starts: core's admin can start only the
@@ -53,7 +53,7 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 		var p map[string]any
 		_ = json.Unmarshal(info.Params, &p)
 		switch {
-		case info.Name == runImportScheduled, info.Name == runEditDates && paramString(p, "action") == actionImportURL:
+		case info.Name == runEditDates && paramString(p, "action") == actionImportURL:
 			return importTransformStep()
 		case info.Name == runEditDates && paramString(p, "action") == actionApprove:
 			return approveSubmission(p)

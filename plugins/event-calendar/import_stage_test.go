@@ -50,7 +50,7 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 		Repeat: map[string]any{"repeat": "weekly", "repeat_every": 2, "repeat_weekdays": []string{"tu"}}, Dropped: 0})
 	odd := record("google", "Town", "odd@example.org", importEvent{Title: "Odd", Start: start, Dropped: 1})
 
-	h := &runHost{name: runImportScheduled, runID: "r1", created: true, lists: map[string][]string{
+	h := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r1", created: true, lists: map[string][]string{
 		"calendar-venue":    {`{"id":"v1","name":"town hall"}`},
 		"calendar-category": {`{"id":"c1","name":"Music"}`},
 	}}
@@ -108,7 +108,7 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 	}
 
 	// the second run with the same feed stages nothing, whatever the stored offset is
-	h2 := &runHost{name: runImportScheduled, runID: "r2", lists: map[string][]string{
+	h2 := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r2", lists: map[string][]string{
 		"calendar-event": {
 			existingJSON(plain, "open-mic", `,"end_at":"2027-06-12T14:00:00+02:00","description":"Bring a friend.","venue":["v1"],"category":["c1"]`),
 			existingJSON(text, "street-fair", `,"venue_name":"Unknown Barn","venue_address":"Main Street 1","venue_city":"Example City"`),
@@ -126,7 +126,7 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 	// a changed end time updates the event and resends its slug, name and attributes
 	moved := plain
 	moved.Ev.End = start.Add(3 * time.Hour)
-	h3 := &runHost{name: runImportScheduled, runID: "r3", lists: map[string][]string{
+	h3 := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r3", lists: map[string][]string{
 		"calendar-event": {existingJSON(plain, "open-mic", `,"end_at":"2027-06-12T14:00:00+02:00","description":"Bring a friend.","venue":["v1"],"category":["c1"],"page_sections":[{"k":1}],"price":"Free"`)},
 		"calendar-venue": {`{"id":"v1","name":"Town Hall"}`}, "calendar-category": {`{"id":"c1","name":"Music"}`},
 	}}
@@ -146,7 +146,7 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 	// a changed title updates too
 	renamed := plain
 	renamed.Ev.Title = "Open mic night"
-	h4 := &runHost{name: runImportScheduled, runID: "r4", lists: h2.lists}
+	h4 := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r4", lists: h2.lists}
 	h4.install(t)
 	buffered(t, h4, renamed)
 	h4.step(t)
@@ -160,7 +160,7 @@ func TestImportStagingEdges(t *testing.T) {
 	rec := record("ical", "One", "a@example.org", importEvent{Title: "A", Start: start})
 
 	t.Run("nothing buffered finishes with zeros", func(t *testing.T) {
-		h := &runHost{name: runImportScheduled, runID: "r"}
+		h := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r"}
 		h.install(t)
 		h.step(t)
 		if h.failed != "" || len(h.upserts) != 0 || h.finished == nil {
@@ -168,7 +168,7 @@ func TestImportStagingEdges(t *testing.T) {
 		}
 	})
 	t.Run("a refused upsert is counted and the rest goes on", func(t *testing.T) {
-		h := &runHost{name: runImportScheduled, runID: "r", upErr: &sdk.HostError{Code: sdk.ErrInvalidArgument}}
+		h := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r", upErr: &sdk.HostError{Code: sdk.ErrInvalidArgument}}
 		h.install(t)
 		buffered(t, h, rec, record("ical", "One", "b@example.org", importEvent{Title: "B", Start: start}))
 		h.step(t)
@@ -187,7 +187,7 @@ func TestImportStagingEdges(t *testing.T) {
 	})
 	t.Run("an existing event of another kind is not matched", func(t *testing.T) {
 		other := strings.Replace(existingJSON(rec, "a", ""), `"source_kind":"ical"`, `"source_kind":"manual"`, 1)
-		h := &runHost{name: runImportScheduled, runID: "r", lists: map[string][]string{"calendar-event": {other}}}
+		h := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r", lists: map[string][]string{"calendar-event": {other}}}
 		h.install(t)
 		buffered(t, h, rec)
 		h.step(t)

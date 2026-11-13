@@ -237,7 +237,7 @@ func TestAdminImports(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.Body), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Every != "6 hours" || len(got.ScheduledKinds) != 3 || len(got.Sources) != 3 {
+	if len(got.Sources) != 3 {
 		t.Fatalf("list = %+v", got)
 	}
 	s0, s1, s2 := got.Sources[0], got.Sources[1], got.Sources[2]

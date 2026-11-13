@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"hatamoto.dev/sdk"
 )
 
 type manifestFile struct {
@@ -123,7 +125,7 @@ func TestManifest(t *testing.T) {
 	if !slices.Equal(m.AllowedHosts, wantHosts) || len(m.AllowedHosts)-1 > 32 {
 		t.Errorf("allowed_hosts = %v", m.AllowedHosts)
 	}
-	if len(m.Cron) != 3 || m.Cron[2].Name != "prune" || m.Cron[2].Every != "1h" || m.Cron[0].Name != "reconcile" || m.Cron[0].Every != "1h" || m.Cron[1].Name != "import" || m.Cron[1].Every != "6h" {
+	if len(m.Cron) != 2 || m.Cron[1].Name != "prune" || m.Cron[1].Every != "1h" || m.Cron[0].Name != "reconcile" || m.Cron[0].Every != "1h" {
 		t.Errorf("cron = %+v", m.Cron)
 	}
 	if !slices.Equal(m.Funcs, []string{"when", "addlink"}) {
@@ -218,7 +220,6 @@ func TestManifest(t *testing.T) {
 	wantRuns := map[string]string{
 		"edit_dates": "event:text:true action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false " +
 			"url:url:false kind:select:false name:text:false title:text:false venue_name:text:false description:text:false submission:text:false",
-		"import_scheduled": "",
 	}
 	if len(m.Runs) != len(wantRuns) {
 		t.Fatalf("runs = %+v", m.Runs)
@@ -254,44 +255,49 @@ func TestShippedFiles(t *testing.T) {
 	exists(t, "partials/event_details.html")
 }
 
+// Scheduled imports are not shipped: core refuses a standing approval for the
+// hyphenated calendar-event type, so no run may carry a cron job or a rule.
 func TestManifestStandingApproval(t *testing.T) {
 	m, _ := loadManifest(t)
-	if len(m.Runs) == 0 || m.Runs[0].Name != "edit_dates" {
-		t.Fatalf("the first run must be edit_dates (the only one the admin starts): %+v", m.Runs)
-	}
-	jobs := map[string]bool{}
-	for _, c := range m.Cron {
-		jobs[c.Name] = true
-	}
-	withRule := 0
-	for _, r := range m.Runs {
-		if r.StandingApproval == nil {
-			continue
-		}
-		withRule++
-		sa := r.StandingApproval
-		if r.Name != "import_scheduled" || !jobs[r.Cron] || len(r.Inputs) != 0 {
-			t.Errorf("run %s: cron %q, %d inputs", r.Name, r.Cron, len(r.Inputs))
-		}
-		if !slices.Equal(sa.Create.Schemas, []string{"calendar-event"}) || sa.Create.MaxPerHour < 1 || sa.Create.MaxPerHour > 100 {
-			t.Errorf("create rule = %+v", sa.Create)
-		}
-		if !slices.Equal(sa.Schemas, []string{"calendar-event"}) {
-			t.Errorf("schemas = %v", sa.Schemas)
-		}
-		want := []string{"event_status", "all_day", "featured", "price_amount", "start_at", "end_at"}
-		if !slices.Equal(sa.Fields, want) {
-			t.Errorf("fields = %v", sa.Fields)
-		}
-	}
-	if withRule != 1 {
-		t.Errorf("%d runs carry a standing approval, want 1", withRule)
-	}
 	raw, err := os.ReadFile("plugin.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "link_fields") {
-		t.Error("plugin.json must not use link_fields")
+	if len(m.Runs) == 0 || m.Runs[0].Name != "edit_dates" {
+		t.Fatalf("the first run must be edit_dates (the only one the admin starts): %+v", m.Runs)
+	}
+	for _, r := range m.Runs {
+		if r.StandingApproval != nil || r.Cron != "" {
+			t.Errorf("run %s has a standing approval or cron job: %+v", r.Name, r)
+		}
+	}
+	for _, c := range m.Cron {
+		if c.Name == "import" {
+			t.Error("cron job import must not be declared")
+		}
+	}
+	for _, bad := range []string{"link_fields", "standing_approval", "import_scheduled", "on_cron_import"} {
+		if strings.Contains(string(raw), bad) {
+			t.Errorf("plugin.json must not mention %s", bad)
+		}
+	}
+}
+
+// TestManifestSDKValidate runs the manifest through the validation core
+// applies at load, so a manifest core would refuse fails the build.
+func TestManifestSDKValidate(t *testing.T) {
+	raw, err := os.ReadFile("plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m sdk.Manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Validate(); err != nil {
+		t.Errorf("core would refuse this manifest: %v", err)
+	}
+	if len(m.Runs) == 0 {
+		t.Error("the manifest decoded without runs")
 	}
 }
