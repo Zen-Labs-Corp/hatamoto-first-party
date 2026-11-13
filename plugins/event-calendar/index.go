@@ -156,8 +156,6 @@ func deleteEvent(id string) error {
 DELETE FROM events WHERE entity_id = $1`, id)
 }
 
-// markReconciled records that a reconcile read every event and removed the
-// rows of those that are gone, and forgets old delete notes.
 // indexReady is false only when the host says no reconcile has completed yet;
 // a failing check counts as ready so a hook never repeats a reconcile blindly.
 func indexReady() bool {
@@ -166,6 +164,8 @@ func indexReady() bool {
 	return err != nil || ready
 }
 
+// markReconciled records that a reconcile read every event and removed the
+// rows of those that are gone, and forgets old delete notes.
 func markReconciled() error {
 	if err := dbExec(`INSERT INTO index_state (id, reconciled_at) VALUES (true, now())
 ON CONFLICT (id) DO UPDATE SET reconciled_at = now()`); err != nil {
