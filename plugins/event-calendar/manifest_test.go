@@ -72,7 +72,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m, keys := loadManifest(t)
-	if m.Name != "event-calendar" || m.Version != "0.3.1" {
+	if m.Name != "event-calendar" || m.Version != "0.3.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 	if icsProdID != "-//Hatamoto//event-calendar "+m.Version+"//EN" {
