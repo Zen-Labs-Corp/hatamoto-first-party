@@ -101,6 +101,22 @@ func TestImportCaps(t *testing.T) {
 		}
 	})
 
+	t.Run("the run summary says how many were left out", func(t *testing.T) {
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(120, "g")}})
+		h.created = true
+		h.install(t)
+		h.runFetch(t)
+		h.phase = "transform"
+		h.step(t)
+		sum, _ := h.finished.(sdk.RunFinishArgs)
+		b, _ := json.Marshal(sum.Summary)
+		var got map[string]int
+		_ = json.Unmarshal(b, &got)
+		if h.failed != "" || got["created"] != maxImportEvents || got["skipped_over_cap"] != 20 {
+			t.Errorf("failed %q, summary %v", h.failed, got)
+		}
+	})
+
 	t.Run("truncated answer fails the run", func(t *testing.T) {
 		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(3, "g"), truncated: true}})
 		h.install(t)

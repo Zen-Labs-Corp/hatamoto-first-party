@@ -32,7 +32,7 @@ func importTransformStep() (sdk.RunStepResult, error) {
 	if err != nil {
 		return failRun("The run buffer could not be read. Try again.")
 	}
-	sum := map[string]int{"created": 0, "updated": 0, "unchanged": 0, "with_links": 0, "failed": 0, "failed_sources": failedSources, "dropped_recurrence": 0}
+	sum := map[string]int{"created": 0, "updated": 0, "unchanged": 0, "with_links": 0, "failed": 0, "failed_sources": failedSources, "dropped_recurrence": 0, "skipped_over_cap": overCap()}
 	if len(records) == 0 {
 		return sdk.RunStepResult{}, guest.RunFinish(callHost, sum)
 	}
@@ -161,6 +161,19 @@ func sameImport(existing, want map[string]json.RawMessage) bool {
 		}
 	}
 	return true
+}
+
+// overCap is how many events the fetch phase left out because of the
+// per-run cap; 0 when it left none or its note cannot be read.
+func overCap() int {
+	raw, found, err := guest.BufferGet(callHost, bufStat)
+	var stat struct {
+		Over int `json:"over"`
+	}
+	if err != nil || !found || json.Unmarshal(raw, &stat) != nil || stat.Over < 0 {
+		return 0
+	}
+	return stat.Over
 }
 
 // bufferedRecords reads every event the fetch phase buffered, in key order.

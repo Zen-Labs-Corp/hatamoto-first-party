@@ -69,3 +69,17 @@ func TestUITellsEventsArriveAsDrafts(t *testing.T) {
 		t.Error("README must say imported and approved events arrive as drafts")
 	}
 }
+
+// A run reads at most 100 events per feed and running again does not reach the
+// rest, so the Imports tab and the README must say so.
+func TestUIAndReadmeExplainTheImportCap(t *testing.T) {
+	readme, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{"ui/index.html": readUI(t, "index.html"), "README.md": string(readme)} {
+		if !strings.Contains(text, "first 100") || !strings.Contains(text, "skipped_over_cap") {
+			t.Errorf("%s does not explain the 100-event cap", name)
+		}
+	}
+}
