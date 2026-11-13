@@ -301,6 +301,9 @@ func schemaAcceptsTime(t *testing.T, name, v string) bool {
 		t.Fatal(err)
 	}
 	p := n.Properties[name]
+	if strings.Contains(p.Pattern, "[+-]") {
+		t.Errorf("%s: pattern has an unescaped '-' in a class; browsers compile it with the v flag and drop it", name)
+	}
 	if p.Format != "" {
 		_, err := time.Parse(time.RFC3339, v)
 		return err == nil

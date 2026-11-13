@@ -201,13 +201,8 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 	if len(raw.Attributes) == 0 || json.Unmarshal(raw.Attributes, &attrs) != nil {
 		return Event{}, false
 	}
-	loc := s.location()
 	tz := attrString(attrs, "time_zone")
-	if tz != "" {
-		if l, err := time.LoadLocation(tz); err == nil {
-			loc = l
-		}
-	}
+	loc := zoneOr(tz, s.location())
 	start, ok := parseTime(attrString(attrs, "start_at"), loc)
 	if !ok {
 		return Event{}, false

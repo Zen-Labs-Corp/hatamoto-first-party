@@ -167,6 +167,22 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 		t.Errorf("own zone update: %s", h6.upserts[0].Attributes)
 	}
 
+	// an all-day event keeps the feed's date in the owner's zone, however far
+	// west of the site zone it is, and a second import stages nothing
+	berlin, _ := time.LoadLocation("Europe/Berlin")
+	day := record("google", "src", "ny-day", importEvent{Title: "Fair", Start: time.Date(2029, 10, 31, 0, 0, 0, 0, berlin), End: time.Date(2029, 11, 1, 0, 0, 0, 0, berlin), AllDay: true})
+	dayJSON := strings.Replace(existingJSON(day, "ny-day", `,"time_zone":"America/New_York","all_day":true,"end_at":"2029-11-01T00:00"`), "2027-06-12T12:00:00+02:00", "2029-10-31T00:00", 1)
+	h7 := &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "r7", lists: map[string][]string{"calendar-event": {dayJSON}}}
+	h7.install(t)
+	buffered(t, h7, day)
+	h7.step(t)
+	if h7.failed != "" || len(h7.upserts) != 0 {
+		t.Fatalf("all day, own zone: failed %q, upserts %+v", h7.failed, h7.upserts)
+	}
+	if a := buildCreateAttrs(day.Ev, time.UTC, "google", "k", "", ""); attrText(t, a, "start_at") != "2029-10-31T00:00" || attrText(t, a, "end_at") != "2029-11-01T00:00" {
+		t.Errorf("all day dates: %s", a["start_at"])
+	}
+
 	// a changed title updates too
 	renamed := plain
 	renamed.Ev.Title = "Open mic night"

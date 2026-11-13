@@ -91,10 +91,8 @@ func importTransformStep() (sdk.RunStepResult, error) {
 // time_zone attribute when that names a zone, else site (as eventFromEntity).
 func storedLocation(attrs map[string]json.RawMessage, site *time.Location) *time.Location {
 	var tz string
-	if json.Unmarshal(attrs["time_zone"], &tz) == nil && strings.TrimSpace(tz) != "" {
-		if l, err := time.LoadLocation(strings.TrimSpace(tz)); err == nil {
-			return l
-		}
+	if json.Unmarshal(attrs["time_zone"], &tz) == nil {
+		return zoneOr(tz, site)
 	}
 	return site
 }
@@ -120,9 +118,16 @@ func buildCreateAttrs(ev importEvent, loc *time.Location, kind, key, venueID, ca
 		}
 		a[k], _ = json.Marshal(v)
 	}
-	set("start_at", editorTime(ev.Start, loc))
+	// an all-day event keeps the feed's calendar date whatever zone it is read in
+	stamp := func(t time.Time) string {
+		if ev.AllDay {
+			return t.Format("2006-01-02") + "T00:00"
+		}
+		return editorTime(t, loc)
+	}
+	set("start_at", stamp(ev.Start))
 	if !ev.End.IsZero() {
-		set("end_at", editorTime(ev.End, loc))
+		set("end_at", stamp(ev.End))
 	}
 	if ev.AllDay {
 		set("all_day", true)
