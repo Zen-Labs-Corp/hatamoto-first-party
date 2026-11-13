@@ -19,7 +19,7 @@
 .hm-event-calendar_calendar .list{display:grid;gap:var(--hm-space-3,.75rem);margin:0;padding:0;list-style:none}
 .hm-event-calendar_calendar .item{padding:var(--hm-space-3,.75rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
 .hm-event-calendar_calendar .item h4,.hm-event-calendar_calendar .item p{margin:0}
-.hm-event-calendar_calendar .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(14rem,1fr));gap:var(--hm-space-3,.75rem)}
+.hm-event-calendar_calendar .photos{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(14rem,1fr));gap:var(--hm-space-3,.75rem)}
 .hm-event-calendar_calendar .photos img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}
 .hm-event-calendar_calendar .summary dt{margin-top:var(--hm-space-3,.75rem);font-weight:700}
 .hm-event-calendar_calendar .summary dd{margin:0}

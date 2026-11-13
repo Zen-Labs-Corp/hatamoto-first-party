@@ -379,3 +379,26 @@ func TestCalendarSeedAndProviders(t *testing.T) {
 		}
 	}
 }
+
+func TestPhotoListHasNoBulletsAndMiniCalendarLinksWithoutScript(t *testing.T) {
+	css, err := os.ReadFile("widgets/calendar/widget.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rule string
+	for _, line := range strings.Split(string(css), "\n") {
+		if strings.HasPrefix(line, ".hm-event-calendar_calendar .photos{") {
+			rule = line
+		}
+	}
+	if !strings.Contains(rule, "list-style:none") {
+		t.Errorf("the photo list keeps its bullets: %q", rule)
+	}
+	html, err := os.ReadFile("widgets/mini-calendar/widget.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(html), `href="{{.P.calendar_url}}">See all events`) {
+		t.Error("the mini calendar shows nothing useful without JavaScript")
+	}
+}
