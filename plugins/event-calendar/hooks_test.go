@@ -23,6 +23,7 @@ type hookHost struct {
 	types    []string // when set, entities.list of any other type is not_found, as in core
 	getErr   error
 	dbErr    error
+	claimed  bool              // the hook reconcile slot is taken
 	unready  bool              // index_state has no row yet
 	failID   string            // db.exec fails for the statements of this entity id
 	indexed  map[string]string // what db.query answers for indexedIDs
@@ -69,6 +70,13 @@ func (h *hookHost) install(t *testing.T) {
 			return json.Unmarshal([]byte(doc), out)
 		case "db.exec":
 			h.execs = append(h.execs, dbCall{fn, a["sql"].(string), a["args"].([]any)})
+			if args, _ := a["args"].([]any); len(args) > 0 && args[0] == reconcileKey {
+				if h.claimed {
+					return json.Unmarshal([]byte(`{"rows_affected":0}`), out)
+				}
+				h.claimed = true
+				return json.Unmarshal([]byte(`{"rows_affected":1}`), out)
+			}
 			if h.failID != "" && a["args"].([]any)[0] == h.failID {
 				return errors.New("check constraint")
 			}
@@ -451,5 +459,65 @@ func TestFirstEntityHookReconcilesAnUnreadyIndex(t *testing.T) {
 	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
 	if marks() != 0 || len(h.upserts()) != 1 {
 		t.Errorf("ready index: marks = %d, upserts = %v", marks(), h.upserts())
+	}
+}
+
+func TestUnreadyHookGeocodesAndThrottlesTheReconcile(t *testing.T) {
+	doc := `{"id":"e1","schema_slug":"calendar-event","slug":"e1","name":"e1","status":"published",` +
+		`"attributes":{"start_at":"2026-07-01T19:00","venue_address":"1 High St","venue_city":"Leeds"}}`
+	h := &hookHost{settings: `{"show_map":true}`, docs: map[string]string{"e1": doc}, order: []string{"e1"}, unready: true}
+	h.install(t)
+	fetched := 0
+	base := callHost
+	callHost = func(fn string, args, out any) error {
+		switch fn {
+		case "http.fetch":
+			fetched++
+			return json.Unmarshal([]byte(`{"status":200,"body":"[{\"lat\":\"53.8\",\"lon\":\"-1.5\"}]"}`), out)
+		case "db.exec":
+			if a, _ := args.(map[string]any)["args"].([]any); len(a) > 0 && a[0] == throttleKey {
+				return json.Unmarshal([]byte(`{"rows_affected":1}`), out)
+			}
+		}
+		return base(fn, args, out)
+	}
+	t.Cleanup(func() { callHost = base })
+	lists := func() (n int) {
+		for _, fn := range h.calls {
+			if fn == "entities.list" {
+				n++
+			}
+		}
+		return
+	}
+	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
+	if fetched != 1 {
+		t.Errorf("lookups on an unready index = %d, want 1", fetched)
+	}
+	if lists() == 0 {
+		t.Error("the first hook did not reconcile")
+	}
+	// a second save inside the window (the index is still unready) must not reconcile again
+	h.calls = nil
+	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
+	if lists() != 0 {
+		t.Errorf("a second hook inside the window listed %d times", lists())
+	}
+}
+
+func TestHookSkipsTheReconcileWhenTheReadyCheckFails(t *testing.T) {
+	h := &hookHost{settings: `{}`, docs: map[string]string{"e1": hookDoc("e1", "calendar-event", "published")}, order: []string{"e1"}, unready: true}
+	h.install(t)
+	base := callHost
+	callHost = func(fn string, args, out any) error {
+		if a, _ := args.(map[string]any); fn == "db.query" && strings.Contains(a["sql"].(string), "FROM index_state") {
+			return errors.New("no db")
+		}
+		return base(fn, args, out)
+	}
+	t.Cleanup(func() { callHost = base })
+	fire(t, sdk.EntityPublished.Export(), entityEv("e1", "calendar-event", "published"))
+	if slices.Contains(h.calls, "entities.list") {
+		t.Error("reconciled although the ready check failed")
 	}
 }

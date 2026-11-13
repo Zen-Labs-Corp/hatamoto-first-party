@@ -38,16 +38,35 @@ func onEntity(ev sdk.EntityEvent) error {
 		return nil
 	}
 	_, addr, _ := reindexEntityAddr(ev.ID, s)
-	if !indexReady() {
-		// A new site has no completed reconcile yet and the JSON route stays
-		// empty until one has: run it now instead of waiting for the hourly one.
-		_, _ = reconcileOnce(s, started.Add(hookDeadline))
-		return nil
-	}
 	if addr != "" {
 		geocodeOne(s, addr, started.Add(hookDeadline))
 	}
+	// A new site has no completed reconcile yet and the JSON route stays
+	// empty until one has: run it now instead of waiting for the hourly one,
+	// but at most once per 10 minutes, so a burst of saves on a site
+	// that never completes does not repeat it.
+	if !indexReady() && claimReconcile() {
+		_, _ = reconcileOnce(s, started.Add(hookDeadline))
+	}
 	return nil
+}
+
+// reconcileKey is the geocode_cache row that holds the time of the last
+// reconcile a hook started, shared by every instance of the plugin.
+const reconcileKey = "!last-hook-reconcile"
+
+// claimReconcile reserves the right to run a reconcile from a hook now: true
+// when the last one started at least 10 minutes ago. It is atomic in
+// the database.
+func claimReconcile() bool {
+	var res struct {
+		RowsAffected int `json:"rows_affected"`
+	}
+	err := callHost(sdk.FnDBExec, map[string]any{"sql": `INSERT INTO geocode_cache (address, status, fetched_at)
+VALUES ($1, 'failed', now())
+ON CONFLICT (address) DO UPDATE SET fetched_at = now()
+ WHERE geocode_cache.fetched_at <= now() - interval '10 minutes'`, "args": []any{reconcileKey}}, &res)
+	return err == nil && res.RowsAffected > 0
 }
 
 // onEntityDeleted drops a deleted event; the entity may no longer be readable.
