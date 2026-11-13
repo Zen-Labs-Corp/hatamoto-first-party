@@ -76,10 +76,12 @@ func readWidget(t *testing.T, name, file string) string {
 
 func TestWidgetsValid(t *testing.T) {
 	dirs := widgetDirs(t)
-	for _, want := range []string{"event-card", "event-details"} {
-		if !slices.Contains(dirs, want) {
-			t.Fatalf("widgets = %v, missing %s", dirs, want)
-		}
+	slices.Sort(dirs)
+	if want := []string{"calendar", "countdown", "event-card", "event-details", "map", "mini-calendar", "venue-card"}; !slices.Equal(dirs, want) {
+		t.Fatalf("widgets = %v, want %v", dirs, want)
+	}
+	if len(dirs) > 16 {
+		t.Fatalf("%d widgets, a package may ship 16", len(dirs))
 	}
 	for _, name := range dirs {
 		t.Run(name, func(t *testing.T) {
@@ -106,6 +108,14 @@ func checkIsland(t *testing.T, name string) {
 		return
 	}
 	src := readWidget(t, name, "island.js")
+	if _, err := os.Stat(filepath.Join("jstest", name+"_test.js")); err != nil {
+		t.Errorf("island.js has no jstest/%s_test.js", name)
+	}
+	for _, host := range []string{"calendar.google.com", "outlook.live.com", "openstreetmap.org"} {
+		if strings.Contains(src, host) {
+			t.Errorf("island.js carries the literal %s; provider addresses come from data- attributes", host)
+		}
+	}
 	for what, re := range islandBans {
 		if re.MatchString(src) {
 			t.Errorf("island.js contains %s: %s", what, re.FindString(src))
@@ -310,5 +320,62 @@ func TestEventDetailsSeed(t *testing.T) {
 	}
 	if !strings.Contains(html, `data-tiles="tile.openstreetmap.org"`) || strings.Contains(html, "https://") {
 		t.Error("the map block needs the literal tile host and no absolute URL")
+	}
+}
+
+// TestSeedDepth keeps every seed within the host's nesting limit of three.
+func TestSeedDepth(t *testing.T) {
+	var depth func(nodes []seedNode) int
+	depth = func(nodes []seedNode) int {
+		d := 0
+		for _, n := range nodes {
+			d = max(d, 1+depth(n.C))
+		}
+		return d
+	}
+	for _, name := range widgetDirs(t) {
+		var sc struct {
+			XHM struct {
+				Children bool       `json:"children"`
+				Seed     []seedNode `json:"seed"`
+			} `json:"x-hm"`
+		}
+		if err := json.Unmarshal([]byte(readWidget(t, name, "schema.json")), &sc); err != nil {
+			t.Fatal(err)
+		}
+		if len(sc.XHM.Seed) > 0 && !sc.XHM.Children {
+			t.Errorf("%s: a seed needs x-hm.children", name)
+		}
+		if d := depth(sc.XHM.Seed); d > 3 {
+			t.Errorf("%s: seed depth %d, max 3", name, d)
+		}
+	}
+}
+
+func TestCalendarSeedAndProviders(t *testing.T) {
+	var sc struct {
+		XHM struct {
+			Seed []seedNode `json:"seed"`
+		} `json:"x-hm"`
+	}
+	if err := json.Unmarshal([]byte(readWidget(t, "calendar", "schema.json")), &sc); err != nil {
+		t.Fatal(err)
+	}
+	if len(sc.XHM.Seed) != 1 {
+		t.Fatalf("seed = %+v", sc.XHM.Seed)
+	}
+	loop := sc.XHM.Seed[0]
+	src, _ := loop.P["source"].(string)
+	if loop.T != "loop" || loop.P["from"] != "source" || src != "ext.event-calendar.upcoming" || !sourceRe.MatchString(src) {
+		t.Fatalf("loop = %+v", loop)
+	}
+	if len(loop.C) != 2 || loop.C[0].T != "container" || loop.C[1].T != "loopempty" {
+		t.Fatalf("loop children = %+v", loop.C)
+	}
+	html := readWidget(t, "calendar", "widget.html")
+	for _, want := range []string{`data-gcal="https://calendar.google.com/`, `data-outlook="https://outlook.live.com/`, `data-api="/p/event-calendar/api/events"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("calendar widget.html lacks %s", want)
+		}
 	}
 }
