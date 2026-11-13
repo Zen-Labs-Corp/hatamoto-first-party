@@ -24,6 +24,7 @@ const (
 type occ struct {
 	Start, End time.Time
 	State      string
+	Day        string // the generated day (YYYY-MM-DD) a changed date moved from
 }
 
 // windowFor is the span occurrences are written for: from 90 days before now
@@ -87,7 +88,7 @@ func expand(e Event, loc *time.Location, from, to time.Time, max int) []occ {
 func expandAll(e Event, loc *time.Location, from, to time.Time, max int) []occ {
 	base := e.Start.In(loc)
 	end := e.endsAt(loc)
-	single := []occ{{Start: base, End: end, State: stateNormal}}
+	single := []occ{{Start: base, End: end, State: stateNormal, Day: startDayKey(base, loc)}}
 	r := e.Repeat
 	if r.Kind == "" || r.Kind == "none" {
 		return single
@@ -114,7 +115,7 @@ func expandAll(e Event, loc *time.Location, from, to time.Time, max int) []occ {
 	}
 	var rows []occ
 	add := func(day civil) {
-		o := occ{Start: day.at(h, mi, s, loc), End: length(day), State: stateNormal}
+		o := occ{Start: day.at(h, mi, s, loc), End: length(day), State: stateNormal, Day: day.key()}
 		if skip[day.key()] {
 			o.State = stateSkipped
 		} else if ov, ok := r.Over[day.key()]; ok {
@@ -146,6 +147,8 @@ func expandAll(e Event, loc *time.Location, from, to time.Time, max int) []occ {
 	}
 	return out
 }
+
+func startDayKey(t time.Time, loc *time.Location) string { return civilOf(t, loc).key() }
 
 // override applies a changed date: a new start (and end, else the same
 // length). An unreadable start leaves the date as generated.

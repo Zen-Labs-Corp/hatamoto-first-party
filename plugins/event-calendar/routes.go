@@ -32,6 +32,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveEvent(r.PathValues["file"]), nil
 		case "/api/events":
 			return serveAPI(r.Query), nil
+		case "/admin/repeating":
+			return serveRepeating(r.User), nil
 		case "/series/{slug}":
 			return servePage(pageSeries, r.PathValues["slug"]), nil
 		case "/venue/{slug}":
