@@ -115,6 +115,9 @@ func TestImportCaps(t *testing.T) {
 		if h.failed != "" || got["created"] != maxImportEvents || got["skipped_over_cap"] != 20 {
 			t.Errorf("failed %q, summary %v", h.failed, got)
 		}
+		if want := "100 events read, 20 left out by the 100-event limit"; h.progress != want {
+			t.Errorf("progress message %q, want %q", h.progress, want)
+		}
 	})
 
 	t.Run("truncated answer fails the run", func(t *testing.T) {

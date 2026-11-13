@@ -78,7 +78,7 @@ func TestUIAndReadmeExplainTheImportCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, text := range map[string]string{"ui/index.html": readUI(t, "index.html"), "README.md": string(readme)} {
-		if !strings.Contains(text, "first 100") || !strings.Contains(text, "skipped_over_cap") {
+		if !strings.Contains(text, "first 100") || !strings.Contains(text, "message on the Runs tab") {
 			t.Errorf("%s does not explain the 100-event cap", name)
 		}
 	}

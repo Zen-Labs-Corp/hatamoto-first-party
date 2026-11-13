@@ -15,6 +15,7 @@ import (
 // runHost fakes the host side of a run step: run.info, entities.get and the
 // run.* and changeset calls, which it records.
 type runHost struct {
+	progress string // the last run.progress message
 	name     string
 	runID    string
 	params   map[string]any
@@ -76,6 +77,7 @@ func (h *runHost) install(t *testing.T) {
 			h.cursor = args.(sdk.RunCheckpointArgs).Cursor
 			return nil
 		case "run.progress":
+			h.progress = args.(sdk.RunProgressArgs).Message
 			return nil
 		case "http.fetch":
 			u := args.(map[string]any)["url"].(string)

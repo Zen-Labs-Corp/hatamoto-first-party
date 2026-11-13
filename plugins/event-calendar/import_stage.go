@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -34,7 +35,7 @@ func importTransformStep() (sdk.RunStepResult, error) {
 	}
 	sum := map[string]int{"created": 0, "updated": 0, "unchanged": 0, "with_links": 0, "failed": 0, "failed_sources": failedSources, "dropped_recurrence": 0, "skipped_over_cap": overCap()}
 	if len(records) == 0 {
-		return sdk.RunStepResult{}, guest.RunFinish(callHost, sum)
+		return finishImport(sum)
 	}
 
 	existing, err := loadImported(s)
@@ -79,7 +80,7 @@ func importTransformStep() (sdk.RunStepResult, error) {
 			sum["with_links"]++
 		}
 	}
-	return sdk.RunStepResult{}, guest.RunFinish(callHost, sum)
+	return finishImport(sum)
 }
 
 // hasLink reports an event that carries a link, which core never publishes on
@@ -295,4 +296,19 @@ func namesToIDs(schema string) map[string]string {
 		cursor = res.NextCursor
 	}
 	return out
+}
+
+// finishImport ends the run. Core shows a run's progress message but not its
+// summary, so the counts the owner needs are also put in the message.
+func finishImport(sum map[string]int) (sdk.RunStepResult, error) {
+	read := sum["created"] + sum["updated"] + sum["unchanged"] + sum["failed"]
+	msg := fmt.Sprintf("%d events read", read)
+	if n := sum["skipped_over_cap"]; n > 0 {
+		msg += fmt.Sprintf(", %d left out by the %d-event limit", n, maxImportEvents)
+	}
+	if n := sum["dropped_recurrence"]; n > 0 {
+		msg += fmt.Sprintf(", %d repeating rules left out", n)
+	}
+	_ = guest.RunProgress(callHost, read, read, msg)
+	return sdk.RunStepResult{}, guest.RunFinish(callHost, sum)
 }
