@@ -161,8 +161,9 @@ listing:
 	if ierr != nil {
 		return addrs, ierr
 	}
-	for id := range indexed {
-		if !seen[id] {
+	for id, updated := range indexed {
+		// a row written after this run began was not in the listing
+		if !seen[id] && !writtenSince(updated, started) {
 			err = errors.Join(err, deleteEvent(id))
 		}
 	}
@@ -170,4 +171,11 @@ listing:
 		err = markReconciled()
 	}
 	return addrs, err
+}
+
+// writtenSince reports whether an updated_at from the index is at or after t.
+// An unreadable value counts as old, as before this check existed.
+func writtenSince(updated string, t time.Time) bool {
+	u, err := time.Parse(time.RFC3339Nano, updated)
+	return err == nil && !u.Before(t)
 }

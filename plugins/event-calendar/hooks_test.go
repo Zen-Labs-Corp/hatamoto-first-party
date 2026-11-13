@@ -521,3 +521,20 @@ func TestHookSkipsTheReconcileWhenTheReadyCheckFails(t *testing.T) {
 		t.Error("reconciled although the ready check failed")
 	}
 }
+
+func TestReconcileKeepsRowsWrittenAfterItStarted(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"listed": hookDoc("listed", "calendar-event", "published")},
+		order:    []string{"listed"},
+		indexed: map[string]string{
+			"gone": "2000-01-01T00:00:00.123456+00:00", // indexed long ago, no longer listed
+			"late": "2999-01-01T00:00:00.123456+00:00", // a hook wrote it after the listing was read
+		},
+	}
+	h.install(t)
+	fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
+	if got := strings.Join(h.deletes(), ","); got != "gone" {
+		t.Errorf("deleted = %q, want only gone", got)
+	}
+}
