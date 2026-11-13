@@ -225,3 +225,52 @@ func TestIndexNotTrustedBeforeFirstReconcile(t *testing.T) {
 		t.Errorf("empty reconciled index: %v, %v", evs, err)
 	}
 }
+
+func TestIndexQueryRange(t *testing.T) {
+	rows := `[{"id":"e1","name":"Gala","slug":"gala","url":"/event/gala","starts_at":"2026-07-01T17:00:00+00:00",
+		"ends_at":"2026-07-01T19:00:00+00:00","all_day":false,"venue_name":"Hall","venue_slug":"hall","lat":50.5,"lon":null,
+		"category_names":["Music"],"price":"","price_amount":0,"featured":true},
+		{"id":"e2","name":"Fair","starts_at":"2026-03-06T23:00:00+00:00","ends_at":"2026-03-08T23:00:00+00:00","all_day":true}]`
+	h := &indexHost{queryTo: `{"rows":[[` + rows + `]]}`}
+	h.install(t)
+	from := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 0, 31)
+	got, err := queryRange(rangeQuery{From: from, To: to, Q: `50%_\ "off"; DROP`, Category: "Music", Venue: "hall", City: "Bonn", Price: "free", Slug: "gala", Language: "de", Limit: 9999})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("rows = %+v, %v", got, err)
+	}
+	if g := got[0]; g.URL != "/event/gala" || g.VenueSlug != "hall" || g.Lat == nil || *g.Lat != 50.5 || g.Lon != nil ||
+		g.PriceAmount == nil || !g.Featured || g.CategoryNames[0] != "Music" || !g.StartsAt.Equal(time.Date(2026, 7, 1, 17, 0, 0, 0, time.UTC)) {
+		t.Errorf("row = %+v", g)
+	}
+	c := h.calls[0]
+	// $1 from, $2 to: a row overlaps when it starts before to and ends after from
+	if !strings.Contains(c.sql, "o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz") {
+		t.Errorf("no overlap test: %s", c.sql)
+	}
+	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows}
+	if fmt.Sprint(c.args) != fmt.Sprint(want) {
+		t.Errorf("args = %v, want %v", c.args, want)
+	}
+	if strings.Contains(c.sql, "DROP") || strings.Contains(c.sql, "Music") {
+		t.Errorf("input in SQL: %s", c.sql)
+	}
+	h.assertSingleStatements(t)
+
+	h.queryTo = `{"rows":[[null]]}`
+	if _, err := queryRange(rangeQuery{From: from, To: to}); !errors.Is(err, errIndexNotReady) {
+		t.Errorf("not ready: err = %v", err)
+	}
+	h.dbErr = errors.New("no db")
+	if _, err := queryRange(rangeQuery{From: from, To: to}); err == nil || errors.Is(err, errIndexNotReady) {
+		t.Errorf("db error = %v", err)
+	}
+}
+
+func TestEscapeLike(t *testing.T) {
+	for in, want := range map[string]string{"": "", "plain": "plain", "a%b_c": `a\%b\_c`, `x\y`: `x\\y`} {
+		if got := escapeLike(in); got != want {
+			t.Errorf("escapeLike(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

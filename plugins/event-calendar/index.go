@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"hatamoto.dev/sdk"
@@ -275,7 +276,7 @@ const queryEventsHead = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
  THEN COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.n), '[]'::jsonb) END FROM (
 SELECT e.entity_id AS id, e.schema_slug, e.slug, e.locale, e.name, o.starts_at, o.ends_at, e.all_day, e.time_zone,
  e.event_status, e.attendance_mode, e.venue_id, e.venue_name, e.venue_city, e.category_ids, e.series_id, e.price,
- e.price_amount, e.featured, e.image, e.source_kind, e.source_uid, e.source_url, e.updated_at,
+ e.price_amount, e.featured, e.image, e.source_kind, e.source_uid, e.source_url, e.url, e.updated_at,
  row_number() OVER (ORDER BY `
 const queryEventsFrom = `) AS n
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id
@@ -285,8 +286,8 @@ LIMIT $4::int) r`
 
 var errIndexNotReady = errors.New("event index not reconciled yet")
 
-// queryEvents reads events from the index. The index stores no URL, so the
-// returned events have none. Before the first complete reconcile the index is
+// queryEvents reads events from the index. Rows written before the url column
+// existed have an empty URL. Before the first complete reconcile the index is
 // not trusted and errIndexNotReady is returned.
 func queryEvents(q indexQuery) ([]Event, error) {
 	order, cond := `o.starts_at DESC, e.name, e.entity_id`, `o.ends_at <= $1::timestamptz`
@@ -337,6 +338,7 @@ func eventFromIndex(m map[string]any, loc *time.Location) (Event, bool) {
 		Price: attrString(m, "price"), PriceAmount: attrFloat(m, "price_amount"), Featured: attrBool(m, "featured"),
 		Image: attrString(m, "image"), SourceKind: attrString(m, "source_kind"),
 		SourceUID: attrString(m, "source_uid"), SourceURL: attrString(m, "source_url"),
+		URL: attrString(m, "url"),
 	}
 	if t, err := time.Parse(time.RFC3339, attrString(m, "updated_at")); err == nil {
 		e.Updated = t
@@ -352,4 +354,88 @@ func eventFromIndex(m map[string]any, loc *time.Location) (Event, bool) {
 		e.End, e.HasEnd = end, true
 	}
 	return e, true
+}
+
+// rangeQuery selects the occurrences that overlap [From, To), narrowed by the
+// filters. Slug and Language are exact and optional.
+type rangeQuery struct {
+	From, To                        time.Time
+	Q, Category, Venue, City, Price string // Price: "", "free" or "paid"
+	Slug, Language                  string
+	Limit                           int
+}
+
+// apiRow is one occurrence as the range query returns it.
+type apiRow struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Slug          string    `json:"slug"`
+	URL           string    `json:"url"`
+	StartsAt      time.Time `json:"starts_at"`
+	EndsAt        time.Time `json:"ends_at"`
+	AllDay        bool      `json:"all_day"`
+	TimeZone      string    `json:"time_zone"`
+	EventStatus   string    `json:"event_status"`
+	VenueName     string    `json:"venue_name"`
+	VenueSlug     string    `json:"venue_slug"`
+	VenueCity     string    `json:"venue_city"`
+	VenueAddress  string    `json:"venue_address"`
+	Lat           *float64  `json:"lat"`
+	Lon           *float64  `json:"lon"`
+	CategoryNames []string  `json:"category_names"`
+	Price         string    `json:"price"`
+	PriceAmount   *float64  `json:"price_amount"`
+	Featured      bool      `json:"featured"`
+	Image         string    `json:"image"`
+}
+
+// freeSQL is the free rule of priceText: an amount of 0 or the text "free".
+const freeSQL = `(COALESCE(e.price_amount = 0, false) OR lower(btrim(e.price)) = 'free')`
+
+// queryRangeSQL overlaps on o.starts_at < to and o.ends_at > from: an all-day
+// row ends at the midnight after its last day. Every filter is a bound
+// argument; an empty one matches all. Coordinates come from the venue, else
+// from the geocode cache.
+const queryRangeSQL = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
+ THEN COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.n), '[]'::jsonb) END FROM (
+SELECT e.entity_id AS id, e.name, e.slug, e.url, o.starts_at, o.ends_at, e.all_day, e.time_zone, e.event_status,
+ e.venue_name, e.venue_slug, e.venue_city, e.venue_address,
+ COALESCE(e.venue_lat, g.latitude) AS lat, COALESCE(e.venue_lon, g.longitude) AS lon,
+ e.category_names, e.price, e.price_amount, e.featured, e.image,
+ row_number() OVER (ORDER BY o.starts_at, e.name, e.entity_id) AS n
+FROM events e JOIN occurrences o ON o.event_id = e.entity_id
+LEFT JOIN geocode_cache g ON g.address = e.venue_address AND g.status = 'ok'
+WHERE o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz
+ AND ($3::text = '' OR e.name ILIKE '%' || $3::text || '%' OR e.venue_name ILIKE '%' || $3::text || '%')
+ AND ($4::text = '' OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(e.category_names) c WHERE lower(c) = lower($4::text))
+  OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(e.category_slugs) c WHERE lower(c) = lower($4::text)))
+ AND ($5::text = '' OR lower(e.venue_name) = lower($5::text) OR e.venue_slug = lower($5::text))
+ AND ($6::text = '' OR lower(e.venue_city) = lower($6::text))
+ AND ($7::text = '' OR ($7::text = 'free' AND ` + freeSQL + `)
+  OR ($7::text = 'paid' AND NOT ` + freeSQL + ` AND (COALESCE(e.price_amount > 0, false) OR btrim(e.price) <> '')))
+ AND ($8::text = '' OR e.slug = $8::text)
+ AND ($9::text = '' OR e.locale IN ('', 'und', $9::text))
+LIMIT $10::int) r`
+
+// escapeLike makes s literal inside an ILIKE pattern.
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// queryRange reads the occurrences in a range from the index, in start order.
+// Before the first complete reconcile it returns errIndexNotReady.
+func queryRange(r rangeQuery) ([]apiRow, error) {
+	limit := r.Limit
+	if limit <= 0 || limit > maxIndexRows {
+		limit = maxIndexRows
+	}
+	var rows *[]apiRow
+	if err := dbJSON(queryRangeSQL, &rows, utcText(r.From), utcText(r.To), escapeLike(r.Q), r.Category, r.Venue,
+		r.City, r.Price, r.Slug, r.Language, limit); err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		return nil, errIndexNotReady
+	}
+	return *rows, nil
 }
