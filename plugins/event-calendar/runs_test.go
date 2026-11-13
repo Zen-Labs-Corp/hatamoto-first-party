@@ -318,3 +318,33 @@ func TestOwnedKey(t *testing.T) {
 		}
 	}
 }
+
+// The event input is optional in the manifest (approve and import_url have no
+// event), so each action that needs one must ask for it itself.
+func TestRunActionsWithoutEvent(t *testing.T) {
+	for _, action := range []string{"skip", "change", "restore", "duplicate"} {
+		h := &runHost{name: runEditDates, runID: "r1", params: map[string]any{
+			"action": action, "date": "2027-03-03", "start_at": "18:30",
+		}}
+		h.install(t)
+		h.step(t)
+		if !strings.Contains(h.failed, "slug of an event") || len(h.upserts) != 0 {
+			t.Errorf("%s: failed %q, %d upserts", action, h.failed, len(h.upserts))
+		}
+	}
+
+	h := &runHost{name: runEditDates, runID: "r2", params: approveParams(), created: true}
+	h.install(t)
+	h.step(t)
+	if h.failed != "" || len(h.upserts) != 1 {
+		t.Errorf("approve: failed %q, %d upserts", h.failed, len(h.upserts))
+	}
+
+	h = &runHost{name: runEditDates, runID: "r3", params: map[string]any{"action": "import_url", "url": gcalURL, "kind": "google"},
+		pages: map[string]fakePage{gcalURL: {status: 200, body: feedOf(2, "g")}}}
+	h.install(t)
+	h.runFetch(t)
+	if h.failed != "" || len(h.records(t)) != 2 {
+		t.Errorf("import_url: failed %q, %d records", h.failed, len(h.records(t)))
+	}
+}

@@ -218,7 +218,7 @@ func TestManifest(t *testing.T) {
 	}
 	exists(t, "ui/"+m.UI.Entry)
 	wantRuns := map[string]string{
-		"edit_dates": "event:text:true action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false " +
+		"edit_dates": "event:text:false action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false " +
 			"url:url:false kind:select:false name:text:false title:text:false venue_name:text:false description:text:false submission:text:false",
 	}
 	if len(m.Runs) != len(wantRuns) {

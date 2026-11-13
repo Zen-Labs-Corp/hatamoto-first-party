@@ -193,9 +193,8 @@
       "inputs": [
         {
           "name": "event",
-          "label": "Event (slug)",
-          "type": "text",
-          "required": true
+          "label": "Event (slug, for skip, change, restore and duplicate)",
+          "type": "text"
         },
         {
           "name": "action",
