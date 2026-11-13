@@ -168,3 +168,40 @@ func TestEventCardNamesTheTimeZone(t *testing.T) {
 		t.Errorf("when = %q", got)
 	}
 }
+
+func TestEventCardLinksToThePluginPages(t *testing.T) {
+	venue := strings.Replace(venueDoc, `"name":"Old Mill"`, `"slug":"old-mill","name":"Old Mill"`, 1)
+	org := strings.Replace(orgDoc, `"name":"Jazz Society"`, `"slug":"jazz-society","name":"Jazz Society"`, 1)
+	series := strings.Replace(cardRefs[2], `"name":"Winter season"`, `"slug":"winter","name":"Winter season"`, 1)
+	cardHost(t, `{}`, cardEvent, venue, org, series, cardRefs[3])
+	a := runCard(t, "c1").Items[0].Attrs
+	for k, want := range map[string]string{
+		"venue_page": "/p/event-calendar/venue/old-mill", "organizer_page": "/p/event-calendar/organizer/jazz-society",
+		"series_page": "/p/event-calendar/series/winter", "series_url": "https://example.org/series/winter",
+	} {
+		if a[k] != want {
+			t.Errorf("attrs[%s] = %q, want %q", k, a[k], want)
+		}
+	}
+
+	// Entities without a slug get no link, and a slug that is not one is not linked.
+	cardHost(t, `{}`, append([]string{cardEvent}, cardRefs...)...)
+	for _, k := range []string{"venue_page", "organizer_page", "series_page"} {
+		if v, ok := runCard(t, "c1").Items[0].Attrs[k]; ok {
+			t.Errorf("attrs[%s] = %q without a slug", k, v)
+		}
+	}
+	bad := strings.Replace(venue, `"slug":"old-mill"`, `"slug":"../x"`, 1)
+	cardHost(t, `{}`, cardEvent, bad, org, series, cardRefs[3])
+	if v, ok := runCard(t, "c1").Items[0].Attrs["venue_page"]; ok {
+		t.Errorf("venue_page = %q for a bad slug", v)
+	}
+
+	// A card that is full already keeps its keys and never grows past the limit.
+	full := strings.Replace(venue, `"status":"published"`, `"url":"https://example.org/venues/mill","status":"published"`, 1)
+	cardHost(t, `{"show_map":true}`, cardEvent, full, org, series, cardRefs[3])
+	a = runCard(t, "c1").Items[0].Attrs
+	if len(a) != sdk.MaxBuilderDataAttrs || a["map_url"] == "" || a["venue_url"] == "" || a["yahoo_url"] == "" {
+		t.Errorf("full card: %d attrs %v", len(a), a)
+	}
+}
