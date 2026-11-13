@@ -79,7 +79,7 @@ func (h *runHost) step(t *testing.T) {
 }
 
 const ownedEvent = `{"id":"e1","schema_slug":"calendar-event","slug":"yoga","name":"Yoga","locale":"en","status":"published","attributes":{
-"start_at":"2026-02-17T18:00","repeat":"weekly","source_uid":"dup-run-1","source_kind":"manual","page_sections":[{"k":1}],
+"start_at":"2026-02-17T18:00","repeat":"weekly","source_uid":"dup-run-1/yoga","source_kind":"manual","page_sections":[{"k":1}],
 "repeat_skip_dates":["2026-03-10"],"repeat_overrides":["2026-03-03|2026-03-03T19:00"],"venue":["v1"]}}`
 
 func attrsOf(t *testing.T, up sdk.EntityUpsert) map[string]json.RawMessage {
@@ -121,7 +121,7 @@ func TestSkipRestoreChangeStages(t *testing.T) {
 				t.Fatalf("failed = %q, upserts = %d", h.failed, len(h.upserts))
 			}
 			up := h.upserts[0]
-			if up.SourceKey != "dup-run-1" || up.Schema != "calendar-event" || up.Slug != "yoga" || up.Name != "Yoga" || up.Locale != "en" {
+			if up.SourceKey != "dup-run-1/yoga" || up.Schema != "calendar-event" || up.Slug != "yoga" || up.Name != "Yoga" || up.Locale != "en" {
 				t.Errorf("upsert = %+v", up)
 			}
 			got := attrsOf(t, up)
@@ -159,7 +159,7 @@ func TestEditDatesFailures(t *testing.T) {
 		{"missing event", map[string]any{"event": "nope", "action": "skip", "date": "2026-02-24"}, ownedEvent, nil, nil, "No published event"},
 		{"draft event", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, strings.Replace(ownedEvent, `"published"`, `"draft"`, 1), nil, nil, "No published event"},
 		{"parent", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, strings.Replace(ownedEvent, `"status"`, `"parent_id":"p","status"`, 1), nil, nil, "parent"},
-		{"no key", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, strings.Replace(ownedEvent, `dup-run-1`, `abc`, 1), nil, nil, "Who owns this page"},
+		{"no key", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, strings.Replace(ownedEvent, `dup-run-1/yoga`, `abc`, 1), nil, nil, "Who owns this page"},
 		{"host read error", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, ownedEvent, &sdk.HostError{Code: "internal", Message: "secret detail"}, nil, "could not be read"},
 		{"not owned", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, ownedEvent, nil, &sdk.HostError{Code: sdk.ErrNotOwned}, "Who owns this page"},
 		{"other upsert error", map[string]any{"event": "yoga", "action": "skip", "date": "2026-02-24"}, ownedEvent, nil, &sdk.HostError{Code: "internal", Message: "secret detail"}, "could not be staged"},
@@ -208,9 +208,19 @@ func TestRunFetchPhaseFinishes(t *testing.T) {
 }
 
 func TestOwnedKey(t *testing.T) {
-	for in, want := range map[string]string{"dup-r1": "dup-r1", " dup-r1 ": "dup-r1", "dup-": "", "": "", "abc-1": ""} {
-		if k, ok := ownedKey(in); k != want && ok || ok != (want != "") {
-			t.Errorf("ownedKey(%q) = %q, %v", in, k, ok)
+	for _, c := range []struct{ uid, slug, want string }{
+		{"dup-r1/yoga", "yoga", "dup-r1/yoga"},
+		{" dup-r1/yoga ", "yoga", "dup-r1/yoga"},
+		{"dup-r1/yoga-copy", "yoga", ""}, // made for another slug
+		{"dup-r1/yoga", "yoga-copy", ""},
+		{"dup-/yoga", "yoga", ""},
+		{"dup-r1/", "", ""},
+		{"dup-r1", "yoga", ""}, // the 0.4.0 shape is not accepted
+		{"dup-r1/a/yoga", "yoga", "dup-r1/a/yoga"},
+		{"dup-", "", ""}, {"", "yoga", ""}, {"abc-1/yoga", "yoga", ""},
+	} {
+		if k, ok := ownedKey(c.uid, c.slug); k != c.want || ok != (c.want != "") {
+			t.Errorf("ownedKey(%q, %q) = %q, %v", c.uid, c.slug, k, ok)
 		}
 	}
 }

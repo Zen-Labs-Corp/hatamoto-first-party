@@ -26,14 +26,14 @@ func callAdmin(t *testing.T, method string, user *sdk.HTTPUser) sdk.HTTPResponse
 const (
 	yogaEntity = `{"id":"y1","schema_slug":"calendar-event","slug":"yoga","name":"Yoga in the park","status":"published","attributes":{
 "start_at":"2026-06-02T18:00","end_at":"2026-06-02T19:00","repeat":"weekly","repeat_weekdays":["tu"],
-"repeat_skip_dates":["2026-06-09"],"repeat_overrides":["2026-06-16|2026-06-17T19:00"],"source_uid":"dup-r1"}}`
+"repeat_skip_dates":["2026-06-09"],"repeat_overrides":["2026-06-16|2026-06-17T19:00"],"source_uid":"dup-r1/yoga"}}`
 	bookEntity = `{"id":"b1","schema_slug":"calendar-event","slug":"book-club","name":"Book club","status":"published","attributes":{
 "start_at":"2026-06-11T18:30","repeat":"monthly","repeat_by":"nth_weekday","repeat_nth":2,"repeat_count":12}}`
 )
 
 func TestRepeatingList(t *testing.T) {
 	h := &fakeHost{entities: []string{yogaEntity, bookEntity},
-		dbRows: `[{"id":"y1","slug":"yoga","name":"Yoga in the park","source_uid":"dup-r1","uid_count":1},{"id":"b1","slug":"book-club","name":"Book club","source_uid":""},{"id":"gone","slug":"gone","name":"Gone"}]`}
+		dbRows: `[{"id":"y1","slug":"yoga","name":"Yoga in the park","source_uid":"dup-r1/yoga","uid_count":1},{"id":"b1","slug":"book-club","name":"Book club","source_uid":"dup-r1/yoga","uid_count":1},{"id":"gone","slug":"gone","name":"Gone"}]`}
 	h.install(t)
 
 	r := callAdmin(t, "GET", &sdk.HTTPUser{ID: "u", Role: "editor"})
@@ -79,7 +79,7 @@ func TestRepeatingList(t *testing.T) {
 // A dup- key that two events carry (core's Duplicate copies source_uid) owns neither.
 func TestRepeatingListSharedKeyNotOwned(t *testing.T) {
 	h := &fakeHost{entities: []string{yogaEntity},
-		dbRows: `[{"id":"y1","slug":"yoga","name":"Yoga","source_uid":"dup-r1","uid_count":2},{"id":"y2","slug":"yoga-2","name":"Yoga 2","source_uid":"dup-r1"}]`}
+		dbRows: `[{"id":"y1","slug":"yoga","name":"Yoga","source_uid":"dup-r1/yoga","uid_count":2},{"id":"y2","slug":"yoga-2","name":"Yoga 2","source_uid":"dup-r1/yoga"}]`}
 	h.install(t)
 	r := callAdmin(t, "GET", &sdk.HTTPUser{ID: "u", Role: "owner"})
 	var got adminList
