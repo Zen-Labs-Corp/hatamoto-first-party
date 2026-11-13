@@ -225,3 +225,12 @@ func TestEnrichUsesTheEventZoneOffset(t *testing.T) {
 		t.Errorf("dates = %v, %v", got.Doc["startDate"], got.Doc["endDate"])
 	}
 }
+
+func TestLocationOfTextVenueKeepsTheCity(t *testing.T) {
+	(&fakeHost{}).install(t)
+	got := locationOf(Event{Venue: "Town hall", Address: "1 High St", VenueCity: "Leeds"})
+	want := map[string]any{"@type": "Place", "name": "Town hall", "address": "1 High St, Leeds"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("location = %v", got)
+	}
+}

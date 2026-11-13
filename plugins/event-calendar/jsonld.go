@@ -131,7 +131,7 @@ func attendanceModeURL(mode string) string {
 // has neither.
 func locationOf(e Event) any {
 	var places []any
-	name, address, _, v := venueOrText(e)
+	name, address, city, v := venueOrText(e)
 	if name != "" {
 		place := map[string]any{"@type": "Place", "name": name}
 		if v != nil {
@@ -148,8 +148,8 @@ func locationOf(e Event) any {
 			if v.Lat != nil && v.Lon != nil {
 				place["geo"] = map[string]any{"@type": "GeoCoordinates", "latitude": *v.Lat, "longitude": *v.Lon}
 			}
-		} else if address != "" {
-			place["address"] = address
+		} else if a := joinNonEmpty(address, city); a != "" {
+			place["address"] = a
 		}
 		places = append(places, place)
 	}

@@ -125,3 +125,13 @@ func TestWriteCalendarVenueRef(t *testing.T) {
 		t.Errorf("locations: %q", out)
 	}
 }
+
+func TestWriteCalendarTextVenueKeepsTheCity(t *testing.T) {
+	(&fakeHost{}).install(t)
+	out := writeCalendar([]Event{
+		{ID: "a", Name: "A", Start: time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC), Venue: "Town hall", Address: "1 High St", VenueCity: "Leeds"},
+	}, time.Now(), time.UTC)
+	if !strings.Contains(out, `LOCATION:Town hall\, 1 High St\, Leeds`) {
+		t.Errorf("location: %q", out)
+	}
+}

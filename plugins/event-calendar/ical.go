@@ -84,7 +84,7 @@ func writeCalendarWith(evs []Event, stamp time.Time, loc *time.Location, venues 
 				}
 			}
 		}
-		return joinNonEmpty(e.Venue, e.Address)
+		return joinNonEmpty(e.Venue, e.Address, e.VenueCity)
 	}
 	for _, e := range evs {
 		writeEvent(line, e, where(e), stamp, loc)
