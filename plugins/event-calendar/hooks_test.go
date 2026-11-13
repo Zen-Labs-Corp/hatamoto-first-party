@@ -538,3 +538,102 @@ func TestReconcileKeepsRowsWrittenAfterItStarted(t *testing.T) {
 		t.Errorf("deleted = %q, want only gone", got)
 	}
 }
+
+// occurrenceSets returns the dates sent per event by the occurrence statements.
+func (h *hookHost) occurrenceSets() map[string][]string {
+	out := map[string][]string{}
+	for _, c := range h.execs {
+		if !strings.HasPrefix(c.sql, "WITH d AS (DELETE FROM occurrences") {
+			continue
+		}
+		var rows []struct{ S string }
+		_ = json.Unmarshal([]byte(c.args[1].(string)), &rows)
+		var starts []string
+		for _, r := range rows {
+			starts = append(starts, r.S)
+		}
+		out[c.args[0].(string)] = starts
+	}
+	return out
+}
+
+func weeklyHookDoc(id string) string {
+	return `{"id":"` + id + `","schema_slug":"calendar-event","slug":"` + id + `","name":"` + id + `","status":"published",` +
+		`"attributes":{"start_at":"2026-01-06T18:00","time_zone":"UTC","repeat":"weekly","repeat_every":1}}`
+}
+
+func TestRollingWindowCron(t *testing.T) {
+	defer func(f func() time.Time) { now = f }(now)
+	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	t1 := t0.AddDate(0, 0, 60)
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"w": weeklyHookDoc("w")},
+		order:    []string{"w"},
+	}
+	h.install(t)
+	runAt := func(at time.Time) []string {
+		t.Helper()
+		now = func() time.Time { return at }
+		h.resetCalls()
+		fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
+		return h.occurrenceSets()["w"]
+	}
+	first := runAt(t0)
+	if len(first) == 0 || first[len(first)-1] > "2027-12-01T18:00:00Z" || first[len(first)-1] < "2027-11-24T18:00:00Z" {
+		t.Fatalf("first window ends at %v", first[len(first)-1])
+	}
+	// 60 days later the window reaches 60 days further and still keeps the
+	// rows of the 90 days before it.
+	second := runAt(t1)
+	last := second[len(second)-1]
+	if last <= first[len(first)-1] || last > "2028-01-31T18:00:00Z" || last < "2028-01-24T18:00:00Z" {
+		t.Errorf("second window ends at %v", last)
+	}
+	if second[0] < "2026-05-02T00:00:00Z" || second[0] > "2026-05-09T00:00:00Z" {
+		t.Errorf("second window starts at %v, 90 days before is 2 May", second[0])
+	}
+	// Running again at the same time writes the same set.
+	if again := runAt(t1); strings.Join(again, ",") != strings.Join(second, ",") {
+		t.Errorf("a repeated run changed the set")
+	}
+}
+
+// A reconcile that runs out of time leaves what it wrote and touches nothing
+// of the events it did not reach.
+func TestRollingWindowCronPartialRunLeavesRowsIntact(t *testing.T) {
+	defer func(f func() time.Time) { now = f }(now)
+	now = func() time.Time { return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC) }
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"a": weeklyHookDoc("a"), "b": weeklyHookDoc("b")},
+		order:    []string{"a", "b"},
+	}
+	h.install(t)
+	start := time.Now()
+	elapsed := time.Duration(0)
+	clock = func() time.Time { return start.Add(elapsed) }
+	t.Cleanup(func() { clock = time.Now })
+	base := callHost
+	callHost = func(fn string, args, out any) error {
+		err := base(fn, args, out)
+		if fn == "db.exec" && strings.HasPrefix(args.(map[string]any)["sql"].(string), "WITH d AS (DELETE FROM occurrences") {
+			elapsed = time.Minute // the budget is gone after the first event
+		}
+		return err
+	}
+	t.Cleanup(func() { callHost = base })
+	fire(t, guest.CronExport("reconcile"), sdk.CronEvent{Name: "reconcile"})
+	sets := h.occurrenceSets()
+	if len(sets["a"]) == 0 {
+		t.Errorf("the reached event was not written: %v", sets)
+	}
+	if _, ok := sets["b"]; ok {
+		t.Errorf("an event that was not reached was touched")
+	}
+	for _, c := range h.execs {
+		if c.args[0] == "b" || strings.Contains(c.sql, "DELETE FROM events WHERE entity_id") {
+			t.Errorf("unexpected statement for an unreached event or a delete: %s %v", c.sql, c.args[0])
+		}
+	}
+}
