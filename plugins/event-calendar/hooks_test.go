@@ -811,3 +811,28 @@ func TestPruneCron(t *testing.T) {
 		}
 	})
 }
+
+func TestReconcileMarksPublishedSubmissions(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs: map[string]string{
+			"s1": submissionDoc("published", "submission", "sub-42"),
+			"s2": submissionDoc("published", "ical", "sub-43"),
+		},
+		order:   []string{"s1", "s2"},
+		indexed: map[string]string{"s1": "x", "s2": "x"},
+	}
+	h.install(t)
+	if _, err := reconcileOnce(loadSettings(), clock().Add(reconcileBudget)); err != nil {
+		t.Fatal(err)
+	}
+	var got []dbCall
+	for _, c := range h.execs {
+		if strings.HasPrefix(c.sql, "UPDATE submissions SET status") {
+			got = append(got, c)
+		}
+	}
+	if len(got) != 1 || got[0].args[0] != int64(42) || got[0].args[1] != "published" {
+		t.Fatalf("status updates = %+v", got)
+	}
+}

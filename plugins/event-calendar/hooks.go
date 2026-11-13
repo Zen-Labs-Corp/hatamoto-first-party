@@ -199,6 +199,8 @@ listing:
 					continue
 				}
 				seen[raw.ID] = true
+				// a changeset fires no per-entity hook: catch up here
+				markSubmissionPublished(raw)
 				if !clock().Before(until) {
 					complete = false
 					break listing
