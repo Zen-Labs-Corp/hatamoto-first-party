@@ -259,6 +259,14 @@ function labelled(text, input) {
   return l;
 }
 
+// latest numbers the loads of a view: only the newest one may draw, so a slow
+// answer for a view the visitor has left (even one served from the cache since)
+// never overwrites the current one.
+function latest() {
+  let n = 0;
+  return { next: () => ++n, current: (t) => t === n };
+}
+
 function init(box) {
   const api = box.getAttribute("data-api") || "";
   if (!api.startsWith("/") || api.startsWith(SLASHES)) return;
@@ -273,6 +281,7 @@ function init(box) {
   let ws = "monday";
   let shown = false;
   let ctl = null;
+  const seq = latest();
 
   const fallback = Array.from(box.childNodes);
   const app = el("div", "app");
@@ -511,12 +520,13 @@ function init(box) {
   }
 
   async function load() {
+    const token = seq.next();
     const used = ws;
     const range = rangeFor(st.view, st.date, used);
     const key = cacheKey(range, st, used);
     let res = cache.get(key);
+    if (ctl) ctl.abort();
     if (!res) {
-      if (ctl) ctl.abort();
       const mine = (ctl = new AbortController());
       if (shown) status.textContent = "Loading events...";
       try {
@@ -524,9 +534,10 @@ function init(box) {
         if (!r.ok) throw new Error("status " + r.status);
         res = await r.json();
       } catch (e) {
-        if (!mine.signal.aborted && shown) fail();
+        if (seq.current(token) && shown) fail();
         return;
       }
+      if (!seq.current(token)) return;
       if (!res || !Array.isArray(res.events)) {
         if (shown) fail();
         return;
@@ -563,7 +574,7 @@ if (typeof document !== "undefined") {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    validDay, addDays, shiftMonth, monthGrid, weekRange, dayRange, shiftDate, rangeFor, eventsByDay,
+    validDay, latest, addDays, shiftMonth, monthGrid, weekRange, dayRange, shiftDate, rangeFor, eventsByDay,
     cellEvents, stateFromSearch, searchFromState, apiQuery, cacheKey, debounce, subscribeLinks, safeUrl,
   };
 }

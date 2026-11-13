@@ -129,9 +129,19 @@ assert.equal(c.safeUrl("//evil.test/x"), "");
 assert.equal(c.safeUrl("https:evil"), "");
 assert.equal(c.safeUrl(5), "");
 
+// only the newest load may draw: February, Next (slow March), Prev (February
+// from the cache); the March answer arrives last and is dropped
+const seq = c.latest();
+const march = seq.next();
+const febAgain = seq.next();
+assert.equal(seq.current(march), false);
+assert.equal(seq.current(febAgain), true);
+
 // the island file itself
 const src = fs.readFileSync(path.join(__dirname, "../widgets/calendar/island.js"), "utf8");
 assert.ok(Buffer.byteLength(src) <= 32768, "island.js over 32768 bytes");
+assert.match(src, /if \(!seq\.current\(token\)\) return;\n\s+if \(!res \|\|/, "load must drop a stale response before it draws");
+assert.match(src, /let res = cache\.get\(key\);\n\s+if \(ctl\) ctl\.abort\(\);/, "a cache hit must abort the pending request");
 assert.doesNotMatch(src, /https?:\/\//i);
 assert.doesNotMatch(src, /["'`]\/\/[A-Za-z0-9]/);
 assert.doesNotMatch(src, /\beval\s*\(|\bnew\s+Function\b|\bdocument\s*\.\s*write|\bimport\s*\(|\bimportScripts\b/);
