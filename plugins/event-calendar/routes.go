@@ -19,7 +19,7 @@ var fileSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 func init() { guest.OnHTTP(serve) }
 
-// serve answers the two public routes. It never returns a Go error and never
+// serve answers the public routes. It never returns a Go error and never
 // puts host error text in a body.
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	// Core mounts GET routes, which also match HEAD; it drops the body of a
@@ -30,6 +30,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveFeed(), nil
 		case "/event/{file}":
 			return serveEvent(r.PathValues["file"]), nil
+		case "/api/events":
+			return serveAPI(r.Query), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil
