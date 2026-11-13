@@ -286,7 +286,7 @@
     "repeat_overrides": {
       "type": "array",
       "title": "Changed dates",
-      "description": "Managed by the repeating events page. Format: date|start|end.",
+      "description": "Managed by the repeating events page. Format: date|start|end, for example 2026-12-01|19:00|20:00 (end optional).",
       "items": {
         "type": "string"
       },

@@ -429,18 +429,29 @@ func repeatFromAttrs(attrs map[string]any, loc *time.Location) Repeat {
 			continue
 		}
 		o := Override{}
+		dayKey := startOfDay(day, loc).Format("2006-01-02")
 		if len(parts) > 1 {
-			o.Start = strings.TrimSpace(parts[1])
+			o.Start = overrideTime(parts[1], dayKey)
 		}
 		if len(parts) > 2 {
-			o.End = strings.TrimSpace(parts[2])
+			o.End = overrideTime(parts[2], dayKey)
 		}
 		if r.Over == nil {
 			r.Over = map[string]Override{}
 		}
-		r.Over[startOfDay(day, loc).Format("2006-01-02")] = o
+		r.Over[dayKey] = o
 	}
 	return r
+}
+
+// overrideTime reads one time of a repeat_overrides line: 19:00 (on the line's
+// day) or 2026-03-03T19:00. Anything else is kept as typed.
+func overrideTime(s, day string) string {
+	s = strings.TrimSpace(s)
+	if t, ok := dateTimeInput(s, day); ok {
+		return t
+	}
+	return s
 }
 
 // attrDates reads a list of dates as midnights in loc, dropping bad entries.
