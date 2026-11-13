@@ -338,7 +338,7 @@ func TestUpcomingFiltersReachTheIndexQuery(t *testing.T) {
 		{ID: "u:p0123456789abcdef", Source: sourceUpcoming, Limit: 2, Params: map[string]any{"category": "Music", "venue": "Hall", "city": "Bonn", "free": true}},
 	}})
 	// the filters are bound, and the list is cut to the limit after them
-	if len(args) != 12 || args[3] != "Music" || args[4] != "Hall" || args[5] != "Bonn" || args[6] != "free" || args[10] != false {
+	if len(args) != 15 || args[3] != "Music" || args[4] != "Hall" || args[5] != "Bonn" || args[6] != "free" || args[10] != false {
 		t.Errorf("query args = %v", args)
 	}
 	if got.Results[0].ID != "u:p0123456789abcdef" || strings.Join(titles(got.Results[0]), "|") != "Jazz Night|Rock Gig" {
@@ -363,6 +363,21 @@ func TestBuilderWithoutParamsIsUnchanged(t *testing.T) {
 		}
 		if out[0] != out[1] || out[0] != out[2] || !strings.Contains(out[0], "u:p0123456789abcdef") || !strings.Contains(out[0], "Future, show") {
 			t.Errorf("db=%v: results differ: %v", db != "", out)
+		}
+	}
+}
+
+func TestBuilderReadsARepeatingEventOnceAndKeepsEachDate(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: repeatingRows}
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	items := got.Results[0].Items
+	if len(items) != 3 || venueGets(h, "f1") != 1 {
+		t.Fatalf("items = %d, entity reads = %d", len(items), venueGets(h, "f1"))
+	}
+	for i, want := range []string{"2026-07-01T17:00:00Z", "2026-07-08T17:00:00Z", "2026-07-15T17:00:00Z"} {
+		if items[i].PublishedAt != want || items[i].URL != "https://example.com/e/future" {
+			t.Errorf("item %d = %+v", i, items[i])
 		}
 	}
 }

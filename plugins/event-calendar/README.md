@@ -54,6 +54,39 @@ It covers what The Events Calendar, Events Manager and Google Calendar Events do
 
 12. Optional: make the feed reachable at `/events.ics` by adding a redirect from `/events.ics` to `/p/event-calendar/events.ics`.
 
+### Repeating events
+
+An event repeats when its **Repeats** field is set (daily, weekly, monthly or yearly). The other fields refine it:
+
+- **Every** (`repeat_every`): every N days, weeks, months or years. The default is 1.
+- **On** (`repeat_weekdays`, weekly): the days of the week. Empty means the weekday of the event's start.
+- **Monthly by** (`repeat_by`): `day_of_month` (the start's day; day 31 in a shorter month falls on that month's last day) or `nth_weekday` (**Nth** (`repeat_nth`) is 1 to 5, or -1 for the last; empty means the start's own position, such as the second Thursday). A fifth weekday that a month does not have skips that month. A yearly 29 February happens in leap years only.
+- **Ends**: **Until** (`repeat_until`, the last day) or **Count** (`repeat_count`, the number of generated dates, counted before skipping); neither means never. An until date before the first start leaves the event as a single date.
+- **Extra dates** (`repeat_extra_dates`): more days with the same time of day. A date listed both as extra and as skipped is skipped.
+- **Skipped dates** and **Changed dates** (`repeat_skip_dates`, `repeat_overrides` as `date|start|end`): managed by the Repeating events page below, though you can also edit them by hand. A changed date may move to another day; it then appears on the new day only.
+
+Every date keeps the event's local time of day, also across a daylight saving change. The start and end you enter are the first date; the plugin works out the rest and keeps the dates from 90 days ago to 18 months ahead, at most 800 per event. The lists, the calendar, the JSON route and the feeds show one entry per date. In the feed each date is its own event: the first keeps the event's usual id, later dates add `-YYYYMMDD` to it, and there is no RRULE, so subscribers see the exact dates with skipped and changed dates applied. The file of one event (`/p/event-calendar/event/<slug>.ics`) holds its next 12 dates. The event page, its structured data and the add-to-calendar links describe the first date.
+
+New dates appear as the hourly check (`reconcile`) rolls the window forward, and right away when you save the event.
+
+### Repeating events page
+
+The plugin adds a **Repeating events** page to the admin. It lists every repeating event with a summary of its rule and its next 10 dates, each normal, skipped or changed. **Skip**, **Change time** and **Restore** and the **Duplicate event...** button fill in the inputs of a run. Two limits of the admin shape this:
+
+- A page can only fill in a run's inputs; it cannot start the run. Where the admin has no run form for the page, the page shows what to enter instead: open the Runs tab, pick **Edit repeat dates or duplicate**, enter the values shown and press Start.
+- Nothing is written directly. The run stages the change in **Changes**, and the dates change once you review and publish it. Only the site owner can start a run.
+
+The admin can start only the first run a plugin declares, so there is one run, `edit_dates` (**Edit repeat dates or duplicate**). Its `action` says what it does:
+
+- `skip`, `change` or `restore` a single date. Inputs: `event` (the event's slug), `date` (`2026-03-03`), and for `change` a `start_at` and optional `end_at` (`18:30` or `2026-03-03T18:30`).
+- `duplicate`: inputs `event` and `shift_days` (0 by default); `date` is not used. It stages a copy named "<name> (copy)" with its dates moved, as a draft you publish in Changes. Where the original came from (source fields) is not copied.
+
+A run can only change an event that the plugin itself created, and the plugin cannot see who owns an event. So the page can change single dates of events made by the `duplicate` action; for any other event (made by hand in the editor, imported, or handed back) the page shows "Hand this event back in the editor (Who owns this page) to change single dates here, or edit the dates in the event itself." If an event is edited in a way that takes it over, the run fails with a message and changes nothing. The same happens when the event's Source ID points at no event the plugin made. The page offers the buttons only for an event whose `dup-` Source ID no other event carries, so an event copied with core's Duplicate is not treated as the plugin's.
+
+### Series, venue and organizer pages
+
+The plugin serves a page for each of these, at `/p/event-calendar/series/<slug>`, `/p/event-calendar/venue/<slug>` and `/p/event-calendar/organizer/<slug>`. A page shows the details of the series, venue or organizer and the upcoming dates of its events (skipped dates are not listed). The pages are plain HTML, cached for 5 minutes, and answer 404 for an unknown or unpublished slug. The event card links to them.
+
 ### Settings
 
 | Setting | Default | Meaning |
@@ -73,6 +106,7 @@ The map is off by default, and nothing is requested from OpenStreetMap until you
 
 ### Upgrading
 
+- Version 0.4.0 adds a database migration (003) and the repeating events, pages and runs above. The index is cleared and rebuilt, so until the next hourly check the lists read your events directly and a repeating event shows only its first date; its other dates appear after that check. The new admin page and runs need no new permission. No action is needed.
 - Version 0.3.0 adds a database migration (002) with new index columns. After the update, the lists and the feed read your events directly until the next hourly check (`reconcile`) rebuilds the index, which then fills the new columns; they may be slightly slower until that check has run. The JSON route behind the calendar, mini calendar, countdown, venue card and map has no such fallback: until the index is ready it answers with no events, so those widgets show only their no-JavaScript content. No action is needed.
 
 ### Upgrading from 0.1
@@ -94,7 +128,7 @@ Nothing else: no mail, no scripts added to every page, no other hosts.
 
 ## Data kept
 
-The plugin keeps three things in its own database schema: the event index (one row per event with its time, name, venue, categories and status, plus a marker for when it was last checked in full and a short list of recently removed event ids), and the address lookup cache (address text, position, when it was looked up). Events themselves stay in your content. Both tables are removed with the plugin's data; the index is rebuilt from your events if it is lost.
+The plugin keeps three things in its own database schema: the event index (one row per event with its time, name, venue, categories and status, and one row per date of a repeating event, plus a marker for when it was last checked in full and a short list of recently removed event ids), and the address lookup cache (address text, position, when it was looked up). Events themselves stay in your content. Both tables are removed with the plugin's data; the index is rebuilt from your events if it is lost.
 
 ## Build
 
@@ -105,7 +139,8 @@ From the repository root: `scripts/build-plugin.sh plugins/event-calendar`.
 - Lists and the feed read the plugin's index, so they do not depend on how many events the site has; the feed holds at most 500 upcoming events. Until the first complete hourly check of the index has run (or if the plugin has no database access), the plugin reads the events themselves, at most 1000 per request.
 - At most 48 items per builder source; at most 500 events per call of the JSON route, which looks at most 400 days ahead in one call.
 - Core gives the page builder 500 ms in total for external data. The plugin stops looking up venues, organizers and series after 300 ms; the card then shows what the event itself holds.
-- No recurring events yet: the content type has the repeat fields, but events are not expanded into dates until a later release. No ticketing or payments: only a ticket link. The map is off by default.
+- A repeating event keeps its dates from 90 days ago to 18 months ahead, at most 800 per event; older dates drop out of the lists when the event is next saved or checked. The feed holds at most 500 entries, so a daily event can fill it; the dates are read from the index but the details of each event are read once per event. Until the first complete check, a repeating event shows only its first date. The Repeating events page reads up to 50 events and the details of up to 30 of them, and shows 10 dates each.
+- No ticketing or payments: only a ticket link. The map is off by default.
 - The calendar feeds are cached for 15 minutes.
 - The feed holds upcoming events only; past events are available one by one.
 - The feed is not filtered by language.

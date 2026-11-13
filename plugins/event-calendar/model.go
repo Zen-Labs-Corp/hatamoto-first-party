@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,7 +43,29 @@ type Event struct {
 	PriceAmount                      *float64
 	Featured                         bool
 	SourceKind, SourceUID, SourceURL string
+
+	Repeat    Repeat
+	BaseStart time.Time // start of the series' first date; zero until read from the index
 }
+
+// Repeat is the recurrence rule of an event. The zero value (Kind "none") is
+// a single date.
+type Repeat struct {
+	Kind     string         // none, daily, weekly, monthly, yearly
+	Every    int            // at least 1
+	Weekdays []time.Weekday // weekly: days of the week; empty = the start's weekday
+	By       string         // monthly: day_of_month or nth_weekday
+	Nth      int            // nth_weekday: 1 to 5, -1 last; 0 = the start's own
+	Until    time.Time      // last day (midnight in the event zone); zero = never
+	Count    int            // number of generated dates; 0 = no limit
+	Extra    []time.Time    // additional days (midnight in the event zone)
+	Skip     []time.Time    // days that do not happen (midnight in the event zone)
+	Over     map[string]Override
+}
+
+// Override moves one generated date, keyed by its day (YYYY-MM-DD). Start and
+// End are the stored text; an empty End keeps the event's length.
+type Override struct{ Start, End string }
 
 // entityDTO is the part of the host's entity JSON this plugin reads.
 type entityDTO struct {
@@ -103,6 +126,29 @@ func attrIDs(m map[string]any, key string) []string {
 		}
 	}
 	return out
+}
+
+// attrStrings reads an array of strings: trimmed, empty entries dropped, no
+// cap (dates may be many).
+func attrStrings(m map[string]any, key string) []string {
+	list, _ := m[key].([]any)
+	var out []string
+	for _, v := range list {
+		if s, _ := v.(string); strings.TrimSpace(s) != "" {
+			out = append(out, strings.TrimSpace(s))
+		}
+	}
+	return out
+}
+
+// attrInt reads a whole-number attribute, also accepting a numeric string;
+// 0 when missing or not a whole number.
+func attrInt(m map[string]any, key string) int {
+	f := attrFloat(m, key)
+	if f == nil || *f != math.Trunc(*f) || math.Abs(*f) > 1e6 {
+		return 0
+	}
+	return int(*f)
 }
 
 // attrFloat reads a number attribute, also accepting a numeric string; nil
@@ -204,6 +250,7 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 			e.End = startOfDay(e.End, loc)
 		}
 	}
+	e.Repeat = repeatFromAttrs(attrs, loc)
 	if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
 		e.Updated = t
 	}
@@ -336,4 +383,84 @@ func eachEvent(s settings, until time.Time, visit func(Event) bool) error {
 		}
 	}
 	return nil
+}
+
+var weekdayCodes = map[string]time.Weekday{
+	"su": time.Sunday, "mo": time.Monday, "tu": time.Tuesday, "we": time.Wednesday,
+	"th": time.Thursday, "fr": time.Friday, "sa": time.Saturday,
+}
+
+// repeatFromAttrs reads the recurrence fields. Anything unusable is ignored
+// (an unknown kind is "none"), never an error: a bad rule must not hide the
+// event.
+func repeatFromAttrs(attrs map[string]any, loc *time.Location) Repeat {
+	r := Repeat{Kind: strings.ToLower(attrString(attrs, "repeat")), Every: 1}
+	switch r.Kind {
+	case "daily", "weekly", "monthly", "yearly":
+	default:
+		return Repeat{Kind: "none", Every: 1}
+	}
+	if n := attrInt(attrs, "repeat_every"); n >= 1 {
+		r.Every = n
+	}
+	seen := map[time.Weekday]bool{}
+	for _, c := range attrStrings(attrs, "repeat_weekdays") {
+		if d, ok := weekdayCodes[strings.ToLower(c)]; ok && !seen[d] {
+			seen[d] = true
+			r.Weekdays = append(r.Weekdays, d)
+		}
+	}
+	r.By = oneOf(attrString(attrs, "repeat_by"), "day_of_month", "nth_weekday")
+	if n := attrInt(attrs, "repeat_nth"); n == -1 || n >= 1 && n <= 5 {
+		r.Nth = n
+	}
+	if t, ok := parseTime(attrString(attrs, "repeat_until"), loc); ok {
+		r.Until = startOfDay(t, loc)
+	}
+	if n := attrInt(attrs, "repeat_count"); n >= 1 {
+		r.Count = n
+	}
+	r.Extra = attrDates(attrs, "repeat_extra_dates", loc)
+	r.Skip = attrDates(attrs, "repeat_skip_dates", loc)
+	for _, line := range attrStrings(attrs, "repeat_overrides") {
+		parts := strings.Split(line, "|")
+		day, ok := parseTime(parts[0], loc)
+		if !ok {
+			continue
+		}
+		o := Override{}
+		dayKey := startOfDay(day, loc).Format("2006-01-02")
+		if len(parts) > 1 {
+			o.Start = overrideTime(parts[1], dayKey)
+		}
+		if len(parts) > 2 {
+			o.End = overrideTime(parts[2], dayKey)
+		}
+		if r.Over == nil {
+			r.Over = map[string]Override{}
+		}
+		r.Over[dayKey] = o
+	}
+	return r
+}
+
+// overrideTime reads one time of a repeat_overrides line: 19:00 (on the line's
+// day) or 2026-03-03T19:00. Anything else is kept as typed.
+func overrideTime(s, day string) string {
+	s = strings.TrimSpace(s)
+	if t, ok := dateTimeInput(s, day); ok {
+		return t
+	}
+	return s
+}
+
+// attrDates reads a list of dates as midnights in loc, dropping bad entries.
+func attrDates(attrs map[string]any, key string, loc *time.Location) []time.Time {
+	var out []time.Time
+	for _, s := range attrStrings(attrs, key) {
+		if t, ok := parseTime(s, loc); ok {
+			out = append(out, startOfDay(t, loc))
+		}
+	}
+	return out
 }

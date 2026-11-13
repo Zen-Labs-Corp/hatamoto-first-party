@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,10 +30,25 @@ type manifestFile struct {
 		Every string `json:"every"`
 	} `json:"cron"`
 	Routes []struct {
-		Method string `json:"method"`
-		Path   string `json:"path"`
-		Public bool   `json:"public"`
+		Method string   `json:"method"`
+		Path   string   `json:"path"`
+		Public bool     `json:"public"`
+		Roles  []string `json:"roles"`
 	} `json:"routes"`
+	UI struct {
+		Title string   `json:"title"`
+		Entry string   `json:"entry"`
+		Roles []string `json:"roles"`
+	} `json:"ui"`
+	Runs []struct {
+		Name   string   `json:"name"`
+		Stages []string `json:"stages"`
+		Inputs []struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			Required bool   `json:"required"`
+		} `json:"inputs"`
+	} `json:"runs"`
 	Limits struct {
 		HookTimeouts map[string]int `json:"hook_timeouts_ms"`
 	} `json:"limits"`
@@ -71,8 +87,8 @@ func exists(t *testing.T, path string) {
 }
 
 func TestManifest(t *testing.T) {
-	m, keys := loadManifest(t)
-	if m.Name != "event-calendar" || m.Version != "0.3.0" {
+	m, _ := loadManifest(t)
+	if m.Name != "event-calendar" || m.Version != "0.4.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 	if icsProdID != "-//Hatamoto//event-calendar "+m.Version+"//EN" {
@@ -123,7 +139,7 @@ func TestManifest(t *testing.T) {
 		t.Errorf("builder_sources = %v", sources)
 	}
 
-	known := []string{"builder.data", "jsonld.enrich", "entity.created", "entity.updated", "entity.published", "entity.deleted", "import.completed"}
+	known := []string{"builder.data", "jsonld.enrich", "entity.created", "entity.updated", "entity.published", "entity.deleted", "import.completed", "on_run_step"}
 	for _, f := range m.Funcs {
 		known = append(known, "func_"+f)
 	}
@@ -156,19 +172,51 @@ func TestManifest(t *testing.T) {
 		t.Errorf("week_starts_on = %+v", week)
 	}
 
-	wantRoutes := [][2]string{{"GET", "/events.ics"}, {"GET", "/event/{file}"}, {"GET", "/api/events"}}
+	wantRoutes := []struct {
+		method, path string
+		public       bool
+	}{
+		{"GET", "/events.ics", true}, {"GET", "/event/{file}", true}, {"GET", "/api/events", true},
+		{"GET", "/series/{slug}", true}, {"GET", "/venue/{slug}", true}, {"GET", "/organizer/{slug}", true},
+		{"GET", "/admin/repeating", false},
+	}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
 	}
 	for i, r := range m.Routes {
-		if r.Method != wantRoutes[i][0] || r.Path != wantRoutes[i][1] || !r.Public {
+		w := wantRoutes[i]
+		if r.Method != w.method || r.Path != w.path || r.Public != w.public {
 			t.Errorf("route %d = %+v", i, r)
 		}
-	}
-	for _, k := range []string{"ui", "runs"} {
-		if _, ok := keys[k]; ok {
-			t.Errorf("manifest has a %q key", k)
+		if wantRoles := []string{"owner", "editor"}; !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {
+			t.Errorf("route %s roles = %v", r.Path, r.Roles)
 		}
+	}
+
+	if m.UI.Title != "Repeating events" || m.UI.Entry != "index.html" || !slices.Equal(m.UI.Roles, []string{"owner", "editor"}) {
+		t.Errorf("ui = %+v", m.UI)
+	}
+	exists(t, "ui/"+m.UI.Entry)
+	wantRuns := map[string]string{
+		"edit_dates": "event:text:true action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false",
+	}
+	if len(m.Runs) != len(wantRuns) {
+		t.Fatalf("runs = %+v", m.Runs)
+	}
+	for _, r := range m.Runs {
+		if !slices.Equal(r.Stages, []string{"fetch", "transform"}) {
+			t.Errorf("run %s stages = %v", r.Name, r.Stages)
+		}
+		var in []string
+		for _, i := range r.Inputs {
+			in = append(in, fmt.Sprintf("%s:%s:%t", i.Name, i.Type, i.Required))
+		}
+		if got := strings.Join(in, " "); got != wantRuns[r.Name] {
+			t.Errorf("run %s inputs = %q, want %q", r.Name, got, wantRuns[r.Name])
+		}
+	}
+	if m.Limits.HookTimeouts["on_run_step"] != 10000 {
+		t.Errorf("on_run_step timeout = %d", m.Limits.HookTimeouts["on_run_step"])
 	}
 }
 

@@ -56,6 +56,8 @@ type indexRow struct {
 	Featured                                 bool
 	Image                                    string
 	SourceKind, SourceUID, SourceURL         string
+	Repeating                                bool
+	OrganizerIDs                             []string
 }
 
 // rowFromEvent is the index row of an event. loc is the zone an all-day event
@@ -79,6 +81,7 @@ func rowFromEvent(e Event, v *Venue, cats categoryRefs, loc *time.Location) inde
 		SeriesID: e.SeriesID, Price: e.Price, PriceAmount: e.PriceAmount,
 		Featured: e.Featured, Image: e.Image,
 		SourceKind: e.SourceKind, SourceUID: e.SourceUID, SourceURL: e.SourceURL,
+		Repeating: e.Repeat.Kind != "" && e.Repeat.Kind != "none", OrganizerIDs: nonNil(e.OrganizerIDs),
 	}
 }
 
@@ -99,10 +102,10 @@ func utcText(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 const upsertEventSQL = `INSERT INTO events (entity_id, schema_slug, slug, locale, name, starts_at, ends_at, all_day, time_zone,
  event_status, attendance_mode, venue_id, venue_name, venue_city, category_ids, category_names, series_id,
  price, price_amount, featured, image, source_kind, source_uid, source_url,
- url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs)
+ url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs, repeating, organizer_ids)
 SELECT $1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8::boolean, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
  $18, $19::double precision, $20::boolean, $21, $22, $23, $24,
- $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb
+ $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb, $32::boolean, $33::jsonb
 WHERE $25::timestamptz IS NULL OR NOT EXISTS (SELECT 1 FROM deleted_events WHERE entity_id = $1 AND deleted_at >= $25::timestamptz)
 ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug = EXCLUDED.slug, locale = EXCLUDED.locale,
  name = EXCLUDED.name, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, all_day = EXCLUDED.all_day,
@@ -112,19 +115,36 @@ ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug =
  price = EXCLUDED.price, price_amount = EXCLUDED.price_amount, featured = EXCLUDED.featured, image = EXCLUDED.image,
  source_kind = EXCLUDED.source_kind, source_uid = EXCLUDED.source_uid, source_url = EXCLUDED.source_url,
  url = EXCLUDED.url, venue_slug = EXCLUDED.venue_slug, venue_address = EXCLUDED.venue_address,
- venue_lat = EXCLUDED.venue_lat, venue_lon = EXCLUDED.venue_lon, category_slugs = EXCLUDED.category_slugs, updated_at = now()`
+ venue_lat = EXCLUDED.venue_lat, venue_lon = EXCLUDED.venue_lon, category_slugs = EXCLUDED.category_slugs,
+ repeating = EXCLUDED.repeating, organizer_ids = EXCLUDED.organizer_ids, updated_at = now()`
 
-// The delete skips the row the insert writes, so the two halves never touch
-// one key. One occurrence per event for now; recurrence will write many.
-const upsertOccurrenceSQL = `WITH d AS (DELETE FROM occurrences WHERE event_id = $1 AND starts_at <> $2::timestamptz)
-INSERT INTO occurrences (event_id, starts_at, ends_at) SELECT $1, $2::timestamptz, $3::timestamptz
+// One statement writes every date of the event from a jsonb array of
+// {"s": start, "e": end}. The delete skips the rows the insert writes, so the
+// two halves never touch one key; dates no longer in the array are removed.
+const upsertOccurrencesSQL = `WITH d AS (DELETE FROM occurrences WHERE event_id = $1 AND starts_at NOT IN
+ (SELECT (x->>'s')::timestamptz FROM jsonb_array_elements($2::jsonb) x))
+INSERT INTO occurrences (event_id, starts_at, ends_at)
+SELECT $1, (x->>'s')::timestamptz, (x->>'e')::timestamptz FROM jsonb_array_elements($2::jsonb) x
 WHERE EXISTS (SELECT 1 FROM events WHERE entity_id = $1)
 ON CONFLICT (event_id, starts_at) DO UPDATE SET ends_at = EXCLUDED.ends_at`
 
-// upsertEvent writes the event row, then its occurrence. A reconcile passes
+// occurrencesJSON is the array upsertOccurrencesSQL reads.
+func occurrencesJSON(occs []occ) string {
+	type row struct {
+		S string `json:"s"`
+		E string `json:"e"`
+	}
+	rows := make([]row, 0, len(occs))
+	for _, o := range occs {
+		rows = append(rows, row{utcText(o.Start), utcText(o.End)})
+	}
+	return jsonText(rows)
+}
+
+// upsertEvent writes the event row, then its dates (occs). A reconcile passes
 // the moment it started as notDeletedSince: an event a hook dropped after that
 // is not written back. Hooks pass nil.
-func upsertEvent(r indexRow, notDeletedSince *time.Time) error {
+func upsertEvent(r indexRow, occs []occ, notDeletedSince *time.Time) error {
 	var guard any
 	if notDeletedSince != nil {
 		guard = utcText(*notDeletedSince)
@@ -134,10 +154,10 @@ func upsertEvent(r indexRow, notDeletedSince *time.Time) error {
 		utcText(r.StartsAt), utcText(r.EndsAt), r.AllDay, r.TimeZone, r.EventStatus, r.AttendanceMode,
 		r.VenueID, r.VenueName, r.VenueCity, jsonText(r.CategoryIDs), jsonText(r.CategoryNames), r.SeriesID,
 		r.Price, amount, r.Featured, r.Image, r.SourceKind, r.SourceUID, r.SourceURL, guard,
-		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs)); err != nil {
+		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs), r.Repeating, jsonText(r.OrganizerIDs)); err != nil {
 		return err
 	}
-	return dbExec(upsertOccurrenceSQL, r.EntityID, utcText(r.StartsAt), utcText(r.EndsAt))
+	return dbExec(upsertOccurrencesSQL, r.EntityID, occurrencesJSON(occs))
 }
 
 // floatArg is a SQL argument: NULL for nil.
@@ -253,7 +273,10 @@ func reindexDTO(raw entityDTO, s settings, notDeletedSince *time.Time) (indexed 
 		return false, "", deleteEvent(raw.ID)
 	}
 	_, _, _, v := venueOrText(e)
-	if err := upsertEvent(rowFromEvent(e, v, categoriesOf(e.CategoryIDs), eventLocation(e, s)), notDeletedSince); err != nil {
+	loc := eventLocation(e, s)
+	from, to := windowFor(now())
+	occs := expand(e, loc, from, to, maxOccurrences)
+	if err := upsertEvent(rowFromEvent(e, v, categoriesOf(e.CategoryIDs), loc), occs, notDeletedSince); err != nil {
 		return false, "", err
 	}
 	venue := Venue{}
@@ -285,6 +308,7 @@ const queryEventsHead = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
 SELECT e.entity_id AS id, e.schema_slug, e.slug, e.locale, e.name, o.starts_at, o.ends_at, e.all_day, e.time_zone,
  e.event_status, e.attendance_mode, e.venue_id, e.venue_name, e.venue_city, e.category_ids, e.series_id, e.price,
  e.price_amount, e.featured, e.image, e.source_kind, e.source_uid, e.source_url, e.url, e.updated_at,
+ e.starts_at AS base_starts_at,
  row_number() OVER (ORDER BY `
 const queryEventsFrom = `) AS n
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id
@@ -351,6 +375,9 @@ func eventFromIndex(m map[string]any, loc *time.Location) (Event, bool) {
 	if t, err := time.Parse(time.RFC3339, attrString(m, "updated_at")); err == nil {
 		e.Updated = t
 	}
+	if t, ok := parseTime(attrString(m, "base_starts_at"), time.UTC); ok {
+		e.BaseStart = t
+	}
 	e.Start, e.End, e.HasEnd = indexTimes(start, end, e.AllDay, e.TimeZone, loc)
 	return e, true
 }
@@ -383,6 +410,9 @@ func (r apiRow) event(loc *time.Location) Event {
 		Price: r.Price, PriceAmount: r.PriceAmount, Featured: r.Featured, Image: r.Image,
 	}
 	e.Start, e.End, e.HasEnd = indexTimes(r.StartsAt.UTC(), r.EndsAt.UTC(), r.AllDay, r.TimeZone, loc)
+	if !r.BaseStartsAt.IsZero() {
+		e.BaseStart = r.BaseStartsAt.UTC()
+	}
 	return e
 }
 
@@ -395,6 +425,8 @@ type rangeQuery struct {
 	Limit                           int
 	Desc                            bool // latest first, for a list of past events
 	StartsAfter                     bool // only events that start at or after From, not ones in progress
+	// Entity ids of the page the events are listed for; empty matches all.
+	SeriesID, OrganizerID, VenueID string
 }
 
 // apiRow is one occurrence as the range query returns it.
@@ -420,6 +452,7 @@ type apiRow struct {
 	PriceAmount   *float64  `json:"price_amount"`
 	Featured      bool      `json:"featured"`
 	Image         string    `json:"image"`
+	BaseStartsAt  time.Time `json:"base_starts_at"`
 }
 
 // freeSQL is the free rule of priceText: an amount of 0 or the text "free".
@@ -434,7 +467,7 @@ const queryRangeSQL = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
 SELECT e.entity_id AS id, e.schema_slug, e.name, e.slug, e.url, o.starts_at, o.ends_at, e.all_day, e.time_zone, e.event_status,
  e.venue_name, e.venue_slug, e.venue_city, e.venue_address,
  COALESCE(e.venue_lat, g.latitude) AS lat, COALESCE(e.venue_lon, g.longitude) AS lon,
- e.category_names, e.price, e.price_amount, e.featured, e.image,
+ e.category_names, e.price, e.price_amount, e.featured, e.image, e.starts_at AS base_starts_at,
  row_number() OVER (ORDER BY CASE WHEN $11::boolean THEN -extract(epoch FROM o.starts_at) ELSE extract(epoch FROM o.starts_at) END,
   e.name, e.entity_id) AS n
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id
@@ -450,6 +483,9 @@ WHERE o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz
   OR ($7::text = 'paid' AND NOT ` + freeSQL + ` AND (COALESCE(e.price_amount > 0, false) OR btrim(e.price) <> '')))
  AND ($8::text = '' OR e.slug = $8::text)
  AND ($9::text = '' OR e.locale IN ('', 'und', $9::text))
+ AND ($13::text = '' OR e.series_id = $13::text)
+ AND ($14::text = '' OR e.organizer_ids @> to_jsonb($14::text))
+ AND ($15::text = '' OR e.venue_id = $15::text)
 LIMIT $10::int) r`
 
 // escapeLike makes s literal inside an ILIKE pattern.
@@ -466,7 +502,7 @@ func queryRange(r rangeQuery) ([]apiRow, error) {
 	}
 	var rows *[]apiRow
 	if err := dbJSON(queryRangeSQL, &rows, utcText(r.From), utcText(r.To), escapeLike(r.Q), r.Category, r.Venue,
-		r.City, r.Price, r.Slug, r.Language, limit, r.Desc, r.StartsAfter); err != nil {
+		r.City, r.Price, r.Slug, r.Language, limit, r.Desc, r.StartsAfter, r.SeriesID, r.OrganizerID, r.VenueID); err != nil {
 		return nil, err
 	}
 	if rows == nil {

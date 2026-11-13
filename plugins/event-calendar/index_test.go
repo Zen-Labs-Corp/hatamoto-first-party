@@ -105,10 +105,13 @@ func TestIndexUpsertOnEntityEvents(t *testing.T) {
 		ex[0].args[28] != 50.7 || ex[0].args[29] != 7.1 || ex[0].args[30] != `["music"]` {
 		t.Errorf("view args = %v", ex[0].args[23:])
 	}
-	if len(ex[0].args) != 31 || strings.Count(ex[0].sql, "$31") != 1 {
+	if ex[0].args[31] != false || ex[0].args[32] != `[]` {
+		t.Errorf("recurring args = %v", ex[0].args[31:])
+	}
+	if len(ex[0].args) != 33 || strings.Count(ex[0].sql, "$33") != 1 {
 		t.Errorf("args = %d", len(ex[0].args))
 	}
-	if ex[1].args[0] != "e1" || ex[1].args[1] != "2026-07-01T17:00:00Z" || ex[1].args[2] != "2026-07-01T19:00:00Z" {
+	if ex[1].args[0] != "e1" || len(ex[1].args) != 2 || ex[1].args[1] != `[{"s":"2026-07-01T17:00:00Z","e":"2026-07-01T19:00:00Z"}]` {
 		t.Errorf("occurrence args = %v", ex[1].args)
 	}
 	h.assertSingleStatements(t)
@@ -248,7 +251,7 @@ func TestIndexQueryRange(t *testing.T) {
 	if !strings.Contains(c.sql, "o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz") {
 		t.Errorf("no overlap test: %s", c.sql)
 	}
-	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false}
+	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false, "", "", ""}
 	if fmt.Sprint(c.args) != fmt.Sprint(want) {
 		t.Errorf("args = %v, want %v", c.args, want)
 	}
@@ -272,5 +275,86 @@ func TestEscapeLike(t *testing.T) {
 		if got := escapeLike(in); got != want {
 			t.Errorf("escapeLike(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+const weeklyDoc = `{"id":"w1","schema_slug":"calendar-event","slug":"class","name":"Class","status":"published",
+ "attributes":{"start_at":"2026-06-02T18:00","end_at":"2026-06-02T19:00","time_zone":"Europe/Berlin","organizers":["o1","o2"],
+ "repeat":"weekly","repeat_every":1,"repeat_count":%d}}`
+
+func occurrenceRows(t *testing.T, c dbCall) []struct{ S, E string } {
+	t.Helper()
+	var rows []struct{ S, E string }
+	if err := json.Unmarshal([]byte(c.args[1].(string)), &rows); err != nil {
+		t.Fatalf("occurrences arg: %v", err)
+	}
+	return rows
+}
+
+func TestIndexWritesOccurrences(t *testing.T) {
+	defer func(f func() time.Time) { now = f }(now)
+	now = func() time.Time { return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC) }
+	h := &indexHost{docs: map[string]string{"w1": fmt.Sprintf(weeklyDoc, 4)}}
+	h.install(t)
+	if ok, err := reindexEntity("w1", settings{TimeZone: "UTC"}); !ok || err != nil {
+		t.Fatalf("reindex = %v, %v", ok, err)
+	}
+	ex := h.execs()
+	if len(ex) != 2 || !strings.HasPrefix(ex[1].sql, "WITH d AS (DELETE FROM occurrences") {
+		t.Fatalf("statements = %+v", ex)
+	}
+	// The event row keeps the base date; the repeat flag and organizers follow.
+	if ex[0].args[5] != "2026-06-02T16:00:00Z" || ex[0].args[31] != true || ex[0].args[32] != `["o1","o2"]` {
+		t.Errorf("event args = %v", ex[0].args)
+	}
+	rows := occurrenceRows(t, ex[1])
+	want := []string{"2026-06-02T16:00:00Z", "2026-06-09T16:00:00Z", "2026-06-16T16:00:00Z", "2026-06-23T16:00:00Z"}
+	if len(rows) != len(want) {
+		t.Fatalf("rows = %+v", rows)
+	}
+	for i, r := range rows {
+		if r.S != want[i] || r.E[:10] != want[i][:10] || r.E[11:] != "17:00:00Z" {
+			t.Errorf("row %d = %+v", i, r)
+		}
+	}
+	if len(h.execs()) != 2 {
+		t.Errorf("execs = %d, the dates are one statement", len(h.execs()))
+	}
+	h.assertSingleStatements(t)
+}
+
+func TestEditEventReplacesOccurrences(t *testing.T) {
+	defer func(f func() time.Time) { now = f }(now)
+	now = func() time.Time { return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC) }
+	h := &indexHost{docs: map[string]string{"w1": fmt.Sprintf(weeklyDoc, 4)}}
+	h.install(t)
+	if _, err := reindexEntity("w1", settings{TimeZone: "UTC"}); err != nil {
+		t.Fatal(err)
+	}
+	h.docs["w1"] = fmt.Sprintf(weeklyDoc, 2)
+	h.calls = nil
+	if _, err := reindexEntity("w1", settings{TimeZone: "UTC"}); err != nil {
+		t.Fatal(err)
+	}
+	ex := h.execs()
+	if len(ex) != 2 {
+		t.Fatalf("statements = %+v", ex)
+	}
+	if rows := occurrenceRows(t, ex[1]); len(rows) != 2 || rows[1].S != "2026-06-09T16:00:00Z" {
+		t.Errorf("rows = %+v", rows)
+	}
+	// Dates that are no longer sent are deleted by the same statement.
+	if !strings.Contains(ex[1].sql, "starts_at NOT IN") || !strings.Contains(ex[1].sql, "jsonb_array_elements($2::jsonb)") {
+		t.Errorf("sql = %s", ex[1].sql)
+	}
+	// All dates skipped: an empty array still removes every row.
+	h.docs["w1"] = `{"id":"w1","schema_slug":"calendar-event","slug":"class","name":"Class","status":"published",
+	 "attributes":{"start_at":"2026-06-02T18:00","repeat":"weekly","repeat_count":1,"repeat_skip_dates":["2026-06-02"]}}`
+	h.calls = nil
+	if _, err := reindexEntity("w1", settings{TimeZone: "UTC"}); err != nil {
+		t.Fatal(err)
+	}
+	if ex := h.execs(); len(ex) != 2 || ex[1].args[1] != "[]" {
+		t.Errorf("all skipped = %+v", ex)
 	}
 }

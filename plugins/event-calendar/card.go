@@ -40,8 +40,10 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 	where := joinNonEmpty(name, address, city)
 
 	attrs := map[string]string{}
+	// An item holds at most sdk.MaxBuilderDataAttrs keys: a full card keeps
+	// the first ones set and leaves the rest out.
 	set := func(k, v string) {
-		if v = capString(v); v != "" {
+		if v = capString(v); v != "" && len(attrs) < sdk.MaxBuilderDataAttrs {
 			attrs[k] = v
 		}
 	}
@@ -52,8 +54,10 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 	set("when", when)
 	set("status", statusLabel(ev.EventStatus))
 	set("venue", where)
+	var venuePage, organizerPage, seriesPage string
 	if venue != nil {
 		set("venue_url", venue.URL)
+		venuePage = pagePath(pageVenue, venue.Slug)
 	}
 	set("price", priceText(ev))
 	if ev.AttendanceMode != "offline" && isAbsoluteURL(ev.OnlineURL) {
@@ -72,12 +76,14 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 		if o, ok := loadOrganizer(ev.OrganizerIDs[0]); ok {
 			item.Author, item.AuthorURL = capString(o.Name), capString(o.Website)
 			set("organizer_email", o.Email)
+			organizerPage = pagePath(pageOrganizer, o.Slug)
 		}
 	}
 	if ev.SeriesID != "" && inBudget() {
 		if sr, ok := loadSeries(ev.SeriesID); ok {
 			set("series", sr.Name)
 			set("series_url", sr.URL)
+			seriesPage = pagePath(pageSeries, sr.Slug)
 		}
 	}
 	if len(ev.CategoryIDs) > 0 && inBudget() {
@@ -93,6 +99,11 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 	if s.ShowMap && inBudget() {
 		set("map_url", mapURL(venue, ev))
 	}
+	// Links to this plugin's pages come last: on a card that is already full
+	// the pages go, never an existing key.
+	set("venue_page", venuePage)
+	set("organizer_page", organizerPage)
+	set("series_page", seriesPage)
 	item.Attrs = attrs
 	res.Items = []sdk.BuilderDataItem{item}
 	return res
@@ -152,4 +163,13 @@ func mapURL(v *Venue, e Event) string {
 	}
 	la, lo := strconv.FormatFloat(lat, 'f', 5, 64), strconv.FormatFloat(lon, 'f', 5, 64)
 	return "https://www.openstreetmap.org/?mlat=" + la + "&mlon=" + lo + "#map=16/" + la + "/" + lo
+}
+
+// pagePath is the path of a venue, organizer or series page; empty when the
+// entity has no usable slug.
+func pagePath(kind, slug string) string {
+	if !fileSlugRe.MatchString(slug) {
+		return ""
+	}
+	return "/p/event-calendar/" + kind + "/" + slug
 }

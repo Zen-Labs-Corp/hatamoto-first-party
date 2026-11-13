@@ -31,12 +31,7 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	loaded, started := false, false
 	var s settings
 	var at, deadline time.Time
-	type filledEvent struct {
-		Event
-		keep bool
-	}
-	filled := map[string]filledEvent{}
-	venues := venueMemo{}
+	venues, details := venueMemo{}, detailMemo{}
 	for _, q := range r.Requests {
 		if q.Source == sourceEvent {
 			r.Results = append(r.Results, answerEventCard(q, r.EntityID))
@@ -82,15 +77,10 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 		}
 		res := sdk.BuilderDataResult{ID: q.ID}
 		for _, e := range list {
-			f, ok := filled[e.ID]
-			if !ok {
-				f.Event, f.keep = fillDetails(e, s, deadline, venues)
-				filled[e.ID] = f
-			}
-			if !f.keep {
+			e, keep := fillDetails(e, s, deadline, venues, details)
+			if !keep {
 				continue
 			}
-			e = f.Event
 			res.Items = append(res.Items, toItem(e, s, at))
 		}
 		r.Results = append(r.Results, res)
@@ -279,13 +269,13 @@ func firstN(evs []Event, n int) []Event {
 // event stays as the index had it. Events of the entities path are complete
 // and returned unchanged. keep is false for an event whose entity is gone or
 // no longer published: it must not be listed, and its row is dropped.
-func fillDetails(e Event, s settings, deadline time.Time, venues venueMemo) (_ Event, keep bool) {
+func fillDetails(e Event, s settings, deadline time.Time, venues venueMemo, details detailMemo) (_ Event, keep bool) {
 	if e.ID == "" || !clock().Before(deadline) {
 		return e, true
 	}
 	if e.indexed {
 		var keep bool
-		if e, keep = fillFromEntity(e, s); !keep {
+		if e, keep = fillFromEntity(e, s, details); !keep {
 			return e, false
 		}
 	}
@@ -312,21 +302,33 @@ func withVenue(e Event, deadline time.Time, venues venueMemo) Event {
 	return e
 }
 
+// detail is what one entity read gave: its full event, when it could be read
+// as one, and whether the event is still to be listed.
+type detail struct {
+	full    Event
+	hasFull bool
+	keep    bool
+}
+
+// detailMemo remembers the entity reads of one request. An event that repeats
+// is many rows of one entity: it is read once, and what it gives is put on
+// every row without touching the row's own date. Make one per request.
+type detailMemo map[string]detail
+
 // fillFromEntity is the entity part of fillDetails.
-func fillFromEntity(e Event, s settings) (_ Event, keep bool) {
-	var raw entityDTO
-	err := callHost(sdk.FnEntitiesGet, map[string]any{"id": e.ID}, &raw)
-	if isNotFound(err) || (err == nil && raw.Status != "published") {
-		_ = deleteEvent(e.ID)
+func fillFromEntity(e Event, s settings, details detailMemo) (_ Event, keep bool) {
+	d, seen := details[e.ID]
+	if !seen {
+		d = readDetail(e.ID, s)
+		details[e.ID] = d
+	}
+	if !d.keep {
 		return e, false
 	}
-	if err != nil {
+	if !d.hasFull {
 		return e, true
 	}
-	full, ok := eventFromEntity(raw, s)
-	if !ok {
-		return e, true
-	}
+	full := d.full
 	e.URL, e.Description, e.TicketURL, e.Website = full.URL, full.Description, full.TicketURL, full.Website
 	if e.Address == "" {
 		e.Address = full.Address
@@ -335,4 +337,20 @@ func fillFromEntity(e Event, s settings) (_ Event, keep bool) {
 		e.Image = full.Image
 	}
 	return e, true
+}
+
+// readDetail reads the entity of an indexed event. An entity that is gone or
+// no longer published is dropped from the index.
+func readDetail(id string, s settings) detail {
+	var raw entityDTO
+	err := callHost(sdk.FnEntitiesGet, map[string]any{"id": id}, &raw)
+	if isNotFound(err) || (err == nil && raw.Status != "published") {
+		_ = deleteEvent(id)
+		return detail{}
+	}
+	if err != nil {
+		return detail{keep: true}
+	}
+	full, ok := eventFromEntity(raw, s)
+	return detail{full: full, hasFull: ok, keep: true}
 }

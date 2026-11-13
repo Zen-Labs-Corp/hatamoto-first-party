@@ -15,12 +15,12 @@ type Venue struct {
 
 // Organizer is a resolved organizer entity.
 type Organizer struct {
-	ID, Name, URL, Email, Phone, Website string
+	ID, Slug, Name, URL, Email, Phone, Website string
 }
 
 // Series is a resolved series entity.
 type Series struct {
-	ID, Name, URL string
+	ID, Slug, Name, URL string
 }
 
 // loadRef reads one published entity by id and its attributes. It is false
@@ -80,7 +80,7 @@ func loadOrganizer(id string) (Organizer, bool) {
 		return Organizer{}, false
 	}
 	return Organizer{
-		ID: id, Name: raw.Name, URL: raw.URL,
+		ID: id, Slug: raw.Slug, Name: raw.Name, URL: raw.URL,
 		Email: attrString(a, "email"), Phone: attrString(a, "phone"), Website: attrString(a, "website"),
 	}, true
 }
@@ -90,7 +90,7 @@ func loadSeries(id string) (Series, bool) {
 	if !ok {
 		return Series{}, false
 	}
-	return Series{ID: id, Name: raw.Name, URL: raw.URL}, true
+	return Series{ID: id, Slug: raw.Slug, Name: raw.Name, URL: raw.URL}, true
 }
 
 // joinNonEmpty joins the non-empty parts with ", ".

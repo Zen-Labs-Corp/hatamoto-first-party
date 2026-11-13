@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -389,4 +390,81 @@ func TestEventStatusAndAttendanceModeAreNormalised(t *testing.T) {
 			t.Errorf("%s -> %q, %q", c.in, e.EventStatus, e.AttendanceMode)
 		}
 	}
+}
+
+func TestEventFromEntityRepeatFields(t *testing.T) {
+	s := settings{SchemaSlug: "event", TimeZone: "UTC", DateFormat: "short"}
+	parse := func(extra string) Repeat {
+		t.Helper()
+		e, ok := eventFromEntity(entity("r", "R", "published", `{"start_at":"2026-02-03T19:00",`+extra+`}`), s)
+		if !ok {
+			t.Fatalf("event rejected: %s", extra)
+		}
+		return e.Repeat
+	}
+	day := func(d string) time.Time {
+		return time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, mustAtoi(t, d)-1)
+	}
+
+	r := parse(`"repeat":"monthly","repeat_every":2,"repeat_weekdays":["mo","TU","mo","xx",""],` +
+		`"repeat_by":"nth_weekday","repeat_nth":-1,"repeat_until":"2026-12-31","repeat_count":5,` +
+		`"repeat_extra_dates":["2026-02-10","bad"],"repeat_skip_dates":["2026-02-17"],` +
+		`"repeat_overrides":["2026-02-24|2026-02-25T10:00|2026-02-25T11:00","2026-03-03|2026-03-03T08:00","nope|x","2026-03-10","2026-12-01|19:00|20:00","2026-12-08|9:00"]`)
+	if r.Kind != "monthly" || r.Every != 2 || r.By != "nth_weekday" || r.Nth != -1 || r.Count != 5 ||
+		len(r.Weekdays) != 2 || r.Weekdays[0] != time.Monday || r.Weekdays[1] != time.Tuesday ||
+		!r.Until.Equal(time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)) ||
+		len(r.Extra) != 1 || !r.Extra[0].Equal(day("10")) || len(r.Skip) != 1 || !r.Skip[0].Equal(day("17")) {
+		t.Fatalf("repeat = %+v", r)
+	}
+	if o := r.Over["2026-02-24"]; o.Start != "2026-02-25T10:00" || o.End != "2026-02-25T11:00" {
+		t.Errorf("override = %+v", o)
+	}
+	if o, ok := r.Over["2026-03-03"]; !ok || o.Start != "2026-03-03T08:00" || o.End != "" {
+		t.Errorf("override without end = %+v, %v", o, ok)
+	}
+	if o, ok := r.Over["2026-03-10"]; !ok || o.Start != "" {
+		t.Errorf("override with only a date = %+v, %v", o, ok)
+	}
+	if o := r.Over["2026-12-01"]; o.Start != "2026-12-01T19:00" || o.End != "2026-12-01T20:00" {
+		t.Errorf("short-form override = %+v", o)
+	}
+	if o := r.Over["2026-12-08"]; o.Start != "2026-12-08T09:00" || o.End != "" {
+		t.Errorf("short-form override, one-digit hour, no end = %+v", o)
+	}
+	if len(r.Over) != 5 {
+		t.Errorf("overrides = %v", r.Over)
+	}
+
+	// Numbers may arrive as strings; bad values fall back, never fail.
+	r = parse(`"repeat":"weekly","repeat_every":"3","repeat_count":"4","repeat_nth":"2"`)
+	if r.Kind != "weekly" || r.Every != 3 || r.Count != 4 || r.Nth != 2 {
+		t.Errorf("numeric strings = %+v", r)
+	}
+	r = parse(`"repeat":"daily","repeat_every":0,"repeat_count":-2,"repeat_nth":9,"repeat_until":"soon","repeat_by":"x"`)
+	if r.Kind != "daily" || r.Every != 1 || r.Count != 0 || r.Nth != 0 || !r.Until.IsZero() || r.By != "day_of_month" {
+		t.Errorf("bad values = %+v", r)
+	}
+	for _, kind := range []string{`"repeat":"hourly"`, `"repeat":"none"`, `"repeat":5`, `"other":1`} {
+		if r := parse(kind); r.Kind != "none" || r.Every != 1 {
+			t.Errorf("%s = %+v", kind, r)
+		}
+	}
+
+	// More than maxRefIDs dates are all kept.
+	var dates []string
+	for i := 0; i < 30; i++ {
+		dates = append(dates, fmt.Sprintf(`"2026-05-%02d"`, i+1))
+	}
+	if r := parse(`"repeat":"daily","repeat_skip_dates":[` + strings.Join(dates, ",") + `]`); len(r.Skip) != 30 {
+		t.Errorf("skip dates = %d", len(r.Skip))
+	}
+}
+
+func mustAtoi(t *testing.T, s string) int {
+	t.Helper()
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

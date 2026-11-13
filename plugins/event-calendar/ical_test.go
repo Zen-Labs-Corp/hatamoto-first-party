@@ -58,7 +58,7 @@ func TestWriteCalendarGolden(t *testing.T) {
 		},
 	}
 	want := strings.Join([]string{
-		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hatamoto//event-calendar 0.3.0//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hatamoto//event-calendar 0.4.0//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
 		"BEGIN:VEVENT", "UID:3f2a@event-calendar.hatamoto", "DTSTAMP:20261104T091500Z",
 		"DTSTART:20270214T190000Z", "DTEND:20270214T213000Z", "SUMMARY:Winter jazz night",
 		`LOCATION:The Blue Room\, 12 High St`, "URL:https://example.com/events/jazz",
@@ -133,5 +133,30 @@ func TestWriteCalendarTextVenueKeepsTheCity(t *testing.T) {
 	}, time.Now(), time.UTC)
 	if !strings.Contains(out, `LOCATION:Town hall\, 1 High St\, Leeds`) {
 		t.Errorf("location: %q", out)
+	}
+}
+
+func TestWriteCalendarOccurrenceUIDs(t *testing.T) {
+	base := time.Date(2027, 2, 14, 19, 0, 0, 0, time.UTC)
+	var evs []Event
+	for i := 0; i < 3; i++ {
+		start := base.AddDate(0, 0, 7*i)
+		evs = append(evs, Event{ID: "abc", Name: "Class", Start: start, BaseStart: base})
+	}
+	// An event the index never gave a base for keeps the bare UID.
+	evs = append(evs, Event{ID: "plain", Name: "Once", Start: base})
+	body := unfold(writeCalendar(evs, base, time.UTC))
+	if n := strings.Count(body, "BEGIN:VEVENT"); n != 4 {
+		t.Fatalf("VEVENTs = %d", n)
+	}
+	for _, uid := range []string{"abc@", "abc-20270221@", "abc-20270228@", "plain@"} {
+		if strings.Count(body, "UID:"+uid) != 1 {
+			t.Errorf("UID %s missing or repeated\n%s", uid, body)
+		}
+	}
+	// the date in the UID is the date in the event's zone
+	late := Event{ID: "z", Name: "Late", TimeZone: "Pacific/Auckland", Start: time.Date(2027, 3, 1, 22, 0, 0, 0, time.UTC), BaseStart: base}
+	if body := unfold(writeCalendar([]Event{late}, base, time.UTC)); !strings.Contains(body, "UID:z-20270302@") {
+		t.Errorf("zone date: %s", body)
 	}
 }
