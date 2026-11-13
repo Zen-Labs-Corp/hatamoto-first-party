@@ -116,3 +116,22 @@ func TestManifestTimeoutsFitCoreBudget(t *testing.T) {
 		t.Errorf("builder.data timeout = %d ms", v)
 	}
 }
+
+func TestSettingsWeekStartsOn(t *testing.T) {
+	for raw, want := range map[string]string{
+		`{}`:                          "monday",
+		`{"week_starts_on":"monday"}`: "monday",
+		`{"week_starts_on":"sunday"}`: "sunday",
+		`{"week_starts_on":"friday"}`: "monday",
+		`{"week_starts_on":7}`:        "monday",
+	} {
+		fakeSettings(t, raw, nil)
+		if got := loadSettings().WeekStartsOn; got != want {
+			t.Errorf("%s: %q, want %q", raw, got, want)
+		}
+	}
+	fakeSettings(t, "", errors.New("host down"))
+	if got := loadSettings().WeekStartsOn; got != "monday" {
+		t.Errorf("host failure: %q", got)
+	}
+}
