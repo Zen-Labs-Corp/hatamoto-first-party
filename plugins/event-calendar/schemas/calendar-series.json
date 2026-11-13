@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "title": "Series",
+  "description": "A group of related events.",
+  "properties": {
+    "page_sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "description": {
+      "type": "string",
+      "title": "Description",
+      "description": "Short text.",
+      "x-hm-field": "plaintext"
+    },
+    "image": {
+      "type": "string",
+      "title": "Image",
+      "description": "Picture.",
+      "x-hm-field": "image"
+    }
+  },
+  "x-hm-order": [
+    "description",
+    "image"
+  ]
+}

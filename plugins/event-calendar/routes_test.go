@@ -17,6 +17,9 @@ type fakeHost struct {
 	entities        []string
 	getErr, listErr error
 	getCalls        []map[string]any
+	dbRows          string // jsonb cell the index answers with; empty: no db
+	listCalls       int
+	missingType     string // entities.list of this type is not_found, as in core
 }
 
 func (h *fakeHost) install(t *testing.T) {
@@ -25,9 +28,20 @@ func (h *fakeHost) install(t *testing.T) {
 		switch fn {
 		case "settings.get":
 			return json.Unmarshal([]byte(`{}`), out)
+		case "db.exec":
+			return nil
+		case "db.query":
+			if h.dbRows == "" {
+				return errors.New("no db")
+			}
+			return json.Unmarshal([]byte(`{"rows":[[`+h.dbRows+`]]}`), out)
 		case "entities.list":
+			h.listCalls++
 			if h.listErr != nil {
 				return h.listErr
+			}
+			if h.missingType != "" && args.(map[string]any)["schema_slug"] == h.missingType {
+				return &sdk.HostError{Code: sdk.ErrNotFound}
 			}
 			var items []string
 			for _, e := range h.entities {
@@ -47,6 +61,9 @@ func (h *fakeHost) install(t *testing.T) {
 			for _, e := range h.entities {
 				var d entityDTO
 				_ = json.Unmarshal([]byte(e), &d)
+				if a["schema_slug"] != nil && a["schema_slug"] != d.SchemaSlug {
+					continue
+				}
 				if d.Slug == a["slug"] || (a["id"] != nil && d.ID == a["id"]) {
 					return json.Unmarshal([]byte(e), out)
 				}
@@ -81,6 +98,14 @@ func call(t *testing.T, method, pattern, file string) sdk.HTTPResponse {
 	return r
 }
 
+func TestFeedWithoutNewTypeStillServesLegacyEvents(t *testing.T) {
+	(&fakeHost{entities: []string{evFuture}, missingType: "calendar-event"}).install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") {
+		t.Errorf("status = %d, body = %q", r.Status, r.Body)
+	}
+}
+
 func TestFeedRoute(t *testing.T) {
 	(&fakeHost{entities: []string{evFuture, evPast, evDraft, evOther}}).install(t)
 	r := call(t, "GET", "/events.ics", "")
@@ -97,6 +122,74 @@ func TestFeedRoute(t *testing.T) {
 		if strings.Contains(r.Body, "SUMMARY:"+no) {
 			t.Errorf("feed contains %s", no)
 		}
+	}
+}
+
+const idxRows = `[{"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","starts_at":"2026-07-01T17:00:00+00:00","ends_at":"2026-07-01T19:00:00+00:00"},
+ {"id":"x9","schema_slug":"event","slug":"indexed","name":"Indexed only","starts_at":"2026-08-01T10:00:00+00:00","ends_at":"2026-08-01T10:00:00+00:00"},
+ {"id":"z0","schema_slug":"post","slug":"stale","name":"Stale type","starts_at":"2026-08-02T10:00:00+00:00","ends_at":"2026-08-02T10:00:00+00:00"}]`
+
+func TestFeedReadsIndex(t *testing.T) {
+	indexedOnly := `{"id":"x9","schema_slug":"event","slug":"indexed","name":"Indexed only","status":"published","attributes":{"start_at":"2026-08-01T10:00"}}`
+	h := &fakeHost{entities: []string{evFuture, indexedOnly}, dbRows: idxRows}
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Indexed only\r\n") || !strings.Contains(r.Body, "SUMMARY:Future\\, show\r\n") {
+		t.Fatalf("response = %+v", r)
+	}
+	if strings.Contains(r.Body, "Stale type") {
+		t.Error("an event of a type that is no longer accepted is listed")
+	}
+	if h.listCalls != 0 {
+		t.Errorf("entities.list calls = %d", h.listCalls)
+	}
+	// the index keeps no URL: it is read from the entity
+	if !strings.Contains(r.Body, "URL:https://example.com/e/future\r\n") {
+		t.Errorf("feed has no URL from the entity: %q", r.Body)
+	}
+}
+
+func TestEmptyReconciledIndexIsTrusted(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: `[]`}
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || strings.Contains(r.Body, "SUMMARY:Future") || h.listCalls != 0 {
+		t.Fatalf("status = %d, list calls = %d, body = %q", r.Status, h.listCalls, r.Body)
+	}
+}
+
+func TestIndexMissFallsBack(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: `null`} // NULL: no reconcile has completed
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") || h.listCalls == 0 {
+		t.Fatalf("status = %d, list calls = %d", r.Status, h.listCalls)
+	}
+}
+
+func TestFeedDropsRowsOfGoneEntities(t *testing.T) {
+	// f1 exists and is published; x9 is not known to the host (deleted), so its row must not be served
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	r := call(t, "GET", "/events.ics", "")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") || strings.Contains(r.Body, "Indexed only") {
+		t.Fatalf("response = %+v", r)
+	}
+	// an unpublished entity is dropped too
+	draft := strings.Replace(evFuture, `"status":"published"`, `"status":"draft"`, 1)
+	h = &fakeHost{entities: []string{draft}, dbRows: idxRows}
+	h.install(t)
+	if r := call(t, "GET", "/events.ics", ""); strings.Contains(r.Body, "SUMMARY:Future") {
+		t.Errorf("unpublished event in the feed: %q", r.Body)
+	}
+}
+
+func TestFindEventFromIndex(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	r := call(t, "GET", "/event/{file}", "future.ics")
+	if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") || h.listCalls != 0 || len(h.getCalls) != 1 || h.getCalls[0]["id"] != "f1" {
+		t.Fatalf("response = %+v, lists = %d, gets = %v", r, h.listCalls, h.getCalls)
 	}
 }
 
@@ -119,9 +212,19 @@ func TestSingleEventRoute(t *testing.T) {
 	if !strings.Contains(r.Body, "SUMMARY:Old\r\n") || strings.Count(r.Body, "BEGIN:VEVENT") != 1 {
 		t.Errorf("body = %q", r.Body)
 	}
-	g := h.getCalls[0]
-	if g["slug"] != "old" || g["schema_slug"] != "event" || g["parent_id"] != nil {
+	g := h.getCalls[len(h.getCalls)-1] // auto mode asks calendar-event first, then event
+	if len(h.getCalls) != 2 || h.getCalls[0]["schema_slug"] != "calendar-event" || g["slug"] != "old" || g["schema_slug"] != "event" || g["parent_id"] != nil {
 		t.Errorf("get args = %v", g)
+	}
+}
+
+func TestFindEventAutoMode(t *testing.T) {
+	newEv := evOnType("n1", "calendar-event", `{"start_at":"2026-07-01T19:00"}`)
+	(&fakeHost{entities: []string{newEv, evPast}}).install(t)
+	for _, file := range []string{"n1.ics", "old.ics"} {
+		if r := call(t, "GET", "/event/{file}", file); r.Status != 200 {
+			t.Errorf("%s: status = %d", file, r.Status)
+		}
 	}
 }
 

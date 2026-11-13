@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -157,6 +158,13 @@ func TestSplitOrderAndTies(t *testing.T) {
 	}
 }
 
+// legacySettings reads only the older event type.
+func legacySettings() settings {
+	s := defaultSettings()
+	s.SchemaSlug = legacySchemaSlug
+	return s
+}
+
 func pagedHost(t *testing.T, pages int, calls *int, failFrom int) {
 	t.Helper()
 	callHost = func(fn string, args, out any) error {
@@ -186,7 +194,7 @@ func pagedHost(t *testing.T, pages int, calls *int, failFrom int) {
 }
 
 func TestLoadEventsPaging(t *testing.T) {
-	s := defaultSettings()
+	s := legacySettings()
 	calls := 0
 	pagedHost(t, 3, &calls, 0)
 	evs, err := loadEvents(s)
@@ -202,7 +210,7 @@ func TestLoadEventsPaging(t *testing.T) {
 }
 
 func TestLoadEventsHostErrors(t *testing.T) {
-	s := defaultSettings()
+	s := legacySettings()
 	calls := 0
 	pagedHost(t, 9, &calls, 1)
 	if _, err := loadEvents(s); err == nil {
@@ -213,5 +221,172 @@ func TestLoadEventsHostErrors(t *testing.T) {
 	evs, err := loadEvents(s)
 	if err != nil || len(evs) != 2 {
 		t.Fatalf("partial: evs=%d err=%v", len(evs), err)
+	}
+}
+
+// evOnType is a published event entity of the given content type.
+func evOnType(id, slug, attrs string) string {
+	return `{"id":"` + id + `","schema_slug":"` + slug + `","slug":"` + id + `","name":"` + id + `","status":"published","attributes":` + attrs + `}`
+}
+
+func TestSchemaSlugAuto(t *testing.T) {
+	h := &fakeHost{entities: []string{
+		evOnType("new", "calendar-event", `{"start_at":"2026-07-01T19:00"}`),
+		evOnType("old", "event", `{"start_at":"2026-07-02T19:00"}`),
+		evOnType("ven", "venue_event", `{"start_at":"2026-07-03T19:00"}`),
+	}}
+	h.install(t)
+	var listed []any
+	inner := callHost
+	callHost = func(fn string, args, out any) error {
+		if fn == "entities.list" {
+			listed = append(listed, args.(map[string]any)["schema_slug"])
+		}
+		return inner(fn, args, out)
+	}
+	ids := func(s settings) string {
+		evs, err := loadEvents(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, e := range evs {
+			got = append(got, e.ID)
+		}
+		return fmt.Sprint(got)
+	}
+	if got := ids(settings{TimeZone: "UTC"}); got != "[new old]" {
+		t.Errorf("auto = %s", got)
+	}
+	if fmt.Sprint(listed) != "[calendar-event event]" {
+		t.Errorf("auto listed %v", listed)
+	}
+	listed = nil
+	if got := ids(settings{SchemaSlug: "venue_event", TimeZone: "UTC"}); got != "[ven]" {
+		t.Errorf("explicit = %s", got)
+	}
+	if fmt.Sprint(listed) != "[venue_event]" {
+		t.Errorf("explicit listed %v", listed)
+	}
+}
+
+func TestEachEventKeepsFirstSlugWhenSecondFails(t *testing.T) {
+	calls := 0
+	callHost = func(fn string, args, out any) error {
+		calls++
+		if args.(map[string]any)["schema_slug"] == "event" {
+			return errors.New("down")
+		}
+		return json.Unmarshal([]byte(`{"items":[`+evOnType("new", "calendar-event", `{"start_at":"2026-07-01T19:00"}`)+`]}`), out)
+	}
+	evs, err := loadEvents(settings{TimeZone: "UTC"})
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("events = %v, err = %v", evs, err)
+	}
+	callHost = func(string, any, any) error { return errors.New("down") }
+	if _, err := loadEvents(settings{TimeZone: "UTC"}); err == nil {
+		t.Error("first-page error swallowed")
+	}
+}
+
+func TestEachEventPageCapIsShared(t *testing.T) {
+	pages := 0
+	callHost = func(fn string, args, out any) error {
+		pages++
+		return json.Unmarshal([]byte(`{"items":[],"next_cursor":"more"}`), out)
+	}
+	if _, err := loadEvents(settings{TimeZone: "UTC"}); err != nil || pages != maxListPages {
+		t.Fatalf("pages = %d, err = %v", pages, err)
+	}
+}
+
+func TestEventFromEntityNewFields(t *testing.T) {
+	s := settings{TimeZone: "UTC"}
+	raw := entity("n", "Gala", "published", `{"start_at":"2026-02-14T19:00","end_at":"2026-02-14T21:00","time_zone":"Europe/Berlin",
+		"venue":[" v1 ","v2"],"organizers":["o1","","o2"],"category":["c1"],"series":["s1"],"venue_city":"Bonn",
+		"price":"Free","price_amount":"0","currency":"EUR","featured":true,"online_url":"https://example.org/join",
+		"website":"https://example.org","event_status":"cancelled","attendance_mode":"hybrid",
+		"source_kind":"ics","source_uid":"u1","source_url":"https://example.org/f.ics"}`)
+	raw.SchemaSlug = "calendar-event"
+	e, ok := eventFromEntity(raw, s)
+	if !ok {
+		t.Fatal("rejected")
+	}
+	if e.VenueID != "v1" || e.SeriesID != "s1" || fmt.Sprint(e.OrganizerIDs) != "[o1 o2]" || fmt.Sprint(e.CategoryIDs) != "[c1]" ||
+		e.VenueCity != "Bonn" || e.Price != "Free" || e.PriceAmount == nil || *e.PriceAmount != 0 || e.Currency != "EUR" ||
+		!e.Featured || e.OnlineURL == "" || e.Website == "" || e.EventStatus != "cancelled" || e.AttendanceMode != "hybrid" ||
+		e.SourceKind != "ics" || e.SourceUID != "u1" || e.SourceURL == "" || e.SchemaSlug != "calendar-event" || e.TimeZone != "Europe/Berlin" {
+		t.Fatalf("event = %+v", e)
+	}
+	// 19:00 in Berlin (UTC+1 in February) is 18:00 UTC, not 19:00.
+	if got := e.Start.UTC().Format(time.RFC3339); got != "2026-02-14T18:00:00Z" {
+		t.Errorf("start = %s", got)
+	}
+	plain, _ := eventFromEntity(entity("p", "Plain", "published", `{"start_at":"2026-02-14T19:00","time_zone":"No/Such"}`), s)
+	if plain.EventStatus != "scheduled" || plain.AttendanceMode != "offline" || plain.PriceAmount != nil ||
+		plain.VenueID != "" || plain.Start.UTC().Hour() != 19 {
+		t.Errorf("defaults = %+v", plain)
+	}
+}
+
+func TestAttrIDsCap(t *testing.T) {
+	var ids []any
+	for i := 0; i < 30; i++ {
+		ids = append(ids, fmt.Sprint("id", i))
+	}
+	if got := attrIDs(map[string]any{"k": ids}, "k"); len(got) != maxRefIDs {
+		t.Errorf("ids = %d", len(got))
+	}
+	if attrIDs(map[string]any{"k": "x"}, "k") != nil {
+		t.Error("non-array accepted")
+	}
+}
+
+// An all-day event keeps its calendar days in its own zone: on a site whose
+// zone is behind it, no renderer may show the previous day.
+func TestAllDayEventWithOwnZoneKeepsItsDay(t *testing.T) {
+	s := settings{TimeZone: "Europe/London"}
+	raw := entityDTO{ID: "a1", SchemaSlug: "calendar-event", Slug: "fest", Name: "Fest", Status: "published",
+		Attributes: []byte(`{"start_at":"2026-02-14","end_at":"2026-02-15","all_day":true,"time_zone":"Europe/Berlin"}`)}
+	e, ok := eventFromEntity(raw, s)
+	if !ok {
+		t.Fatal("not an event")
+	}
+	loc := s.location()
+	at := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
+
+	if got := toItem(e, s, at); got.Attrs["start_at"][:10] != "2026-02-14" || got.Attrs["end_at"][:10] != "2026-02-15" ||
+		!strings.Contains(got.Attrs["when"], "14") || strings.Contains(got.Attrs["when"], "13") {
+		t.Errorf("list item = %v", got.Attrs)
+	}
+	ics := writeCalendar([]Event{e}, at, loc)
+	if !strings.Contains(ics, "DTSTART;VALUE=DATE:20260214\r\n") || !strings.Contains(ics, "DTEND;VALUE=DATE:20260216\r\n") {
+		t.Errorf("ics = %q", ics)
+	}
+	if g := calendarLinks(e, dateLocation(e, loc), "", "").Google; !strings.Contains(g, "dates=20260214%2F20260216") {
+		t.Errorf("google link = %q", g)
+	}
+	if got := isoTime(e.Start, e.AllDay, dateLocation(e, loc)); got != "2026-02-14" {
+		t.Errorf("json-ld start = %q", got)
+	}
+	// over at the end of the 15th in Berlin
+	if !e.endsAt(loc).Equal(time.Date(2026, 2, 15, 23, 0, 0, 0, time.UTC)) {
+		t.Errorf("endsAt = %v", e.endsAt(loc))
+	}
+}
+
+// The events table has CHECKs on both fields: a value outside them must never
+// reach it, or the row cannot be written.
+func TestEventStatusAndAttendanceModeAreNormalised(t *testing.T) {
+	for _, c := range []struct{ in, status, mode string }{
+		{`"event_status":"Cancelled","attendance_mode":"HYBRID"`, "cancelled", "hybrid"},
+		{`"event_status":"rescheduled","attendance_mode":"mixed"`, "scheduled", "offline"},
+		{`"event_status":" postponed "`, "postponed", "offline"},
+	} {
+		raw := entityDTO{ID: "e", Status: "published", Attributes: []byte(`{"start_at":"2026-07-01",` + c.in + `}`)}
+		e, ok := eventFromEntity(raw, settings{})
+		if !ok || e.EventStatus != c.status || e.AttendanceMode != c.mode {
+			t.Errorf("%s -> %q, %q", c.in, e.EventStatus, e.AttendanceMode)
+		}
 	}
 }

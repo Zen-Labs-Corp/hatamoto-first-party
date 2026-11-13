@@ -54,7 +54,7 @@ fi
 rm -rf build && mkdir -p build
 CGO_ENABLED=0 GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o build/plugin.wasm .
 cp plugin.json build/plugin.json
-for d in migrations ui assets partials sections; do
+for d in migrations ui assets partials sections schemas widgets; do
   if [ -d "$d" ]; then cp -r "$d" "build/$d"; fi
 done
 [ -s build/plugin.wasm ] || die "$dir: empty build/plugin.wasm"

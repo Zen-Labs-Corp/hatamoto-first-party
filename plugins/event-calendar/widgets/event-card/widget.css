@@ -1,0 +1,16 @@
+.hm-event-calendar_event-card{display:block;margin:var(--hm-space-4,1rem) 0;padding:var(--hm-space-4,1rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-event-calendar_event-card h2{margin:0 0 var(--hm-space-3,.75rem);font-size:1.25rem}
+.hm-event-calendar_event-card .name{margin:0 0 var(--hm-space-3,.75rem);font-weight:600}
+.hm-event-calendar_event-card .badge{display:inline-block;margin-inline-start:var(--hm-space-2,.5rem);padding:0 var(--hm-space-2,.5rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:999px;font-size:.75rem;font-weight:600;vertical-align:middle}
+.hm-event-calendar_event-card .tickets{margin:var(--hm-space-4,1rem) 0 var(--hm-space-3,.75rem)}
+.hm-event-calendar_event-card dl{display:grid;grid-template-columns:max-content 1fr;gap:var(--hm-space-2,.5rem) var(--hm-space-4,1rem);margin:0}
+.hm-event-calendar_event-card dt{font-weight:600}
+.hm-event-calendar_event-card dd{margin:0}
+.hm-event-calendar_event-card .map{display:block;max-width:32rem;margin-bottom:var(--hm-space-2,.5rem)}
+.hm-event-calendar_event-card .tiles{display:grid;grid-template-columns:1fr 1fr}
+.hm-event-calendar_event-card .map img{display:block;max-width:100%;height:auto}
+.hm-event-calendar_event-card .pin{position:relative;display:block;width:100%;aspect-ratio:1/1;margin-top:-100%;pointer-events:none}
+.hm-event-calendar_event-card .attrib{margin:var(--hm-space-1,.25rem) 0 0;font-size:.75rem}
+.hm-event-calendar_event-card .btn{display:inline-block;padding:var(--hm-space-2,.5rem) var(--hm-space-4,1rem);border-radius:var(--hm-radius,.5rem);background:var(--hm-color-accent,#1a56db);color:var(--hm-color-on-accent,#fff);font-weight:600;text-decoration:none}
+.hm-event-calendar_event-card .cal a{margin-inline-start:var(--hm-space-2,.5rem)}
+@media (max-width:600px){.hm-event-calendar_event-card dl{grid-template-columns:1fr}.hm-event-calendar_event-card dd{margin-bottom:var(--hm-space-2,.5rem)}}

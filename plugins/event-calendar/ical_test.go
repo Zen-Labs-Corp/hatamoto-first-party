@@ -58,7 +58,7 @@ func TestWriteCalendarGolden(t *testing.T) {
 		},
 	}
 	want := strings.Join([]string{
-		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hatamoto//event-calendar 0.1.0//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hatamoto//event-calendar 0.2.0//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
 		"BEGIN:VEVENT", "UID:3f2a@event-calendar.hatamoto", "DTSTAMP:20261104T091500Z",
 		"DTSTART:20270214T190000Z", "DTEND:20270214T213000Z", "SUMMARY:Winter jazz night",
 		`LOCATION:The Blue Room\, 12 High St`, "URL:https://example.com/events/jazz",
@@ -99,5 +99,39 @@ func TestWriteCalendarEdgeCases(t *testing.T) {
 	}
 	if strings.Contains(out, "URL:") {
 		t.Error("URL emitted without a value")
+	}
+}
+
+func TestWriteCalendarStatus(t *testing.T) {
+	stamp := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	start := time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC)
+	out := writeCalendar([]Event{
+		{ID: "a", Name: "A", Start: start, EventStatus: "cancelled"},
+		{ID: "b", Name: "B", Start: start, EventStatus: "postponed"},
+		{ID: "c", Name: "C", Start: start, EventStatus: "scheduled"},
+	}, stamp, time.UTC)
+	if strings.Count(out, "STATUS:CANCELLED\r\n") != 1 || strings.Count(out, "STATUS:TENTATIVE\r\n") != 1 || strings.Count(out, "STATUS:") != 2 {
+		t.Errorf("status lines: %q", out)
+	}
+}
+
+func TestWriteCalendarVenueRef(t *testing.T) {
+	(&fakeHost{entities: []string{venueDoc}}).install(t)
+	out := writeCalendar([]Event{
+		{ID: "a", Name: "A", Start: time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC), VenueID: "v1"},
+		{ID: "b", Name: "B", Start: time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC), VenueID: "gone", Venue: "Text hall"},
+	}, time.Now(), time.UTC)
+	if !strings.Contains(out, `LOCATION:Old Mill\, 12 High St\, Leeds`) || !strings.Contains(out, "LOCATION:Text hall\r\n") {
+		t.Errorf("locations: %q", out)
+	}
+}
+
+func TestWriteCalendarTextVenueKeepsTheCity(t *testing.T) {
+	(&fakeHost{}).install(t)
+	out := writeCalendar([]Event{
+		{ID: "a", Name: "A", Start: time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC), Venue: "Town hall", Address: "1 High St", VenueCity: "Leeds"},
+	}, time.Now(), time.UTC)
+	if !strings.Contains(out, `LOCATION:Town hall\, 1 High St\, Leeds`) {
+		t.Errorf("location: %q", out)
 	}
 }

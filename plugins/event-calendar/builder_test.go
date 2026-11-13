@@ -123,6 +123,43 @@ func TestBuilderHostErrorIsEmptyResult(t *testing.T) {
 	}
 }
 
+func TestBuilderListsFromIndex(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}, {ID: "p", Source: sourcePast}}})
+	if h.listCalls != 0 || len(got.Results) != 2 {
+		t.Fatalf("list calls = %d, results = %+v", h.listCalls, got.Results)
+	}
+	if g := strings.Join(titles(got.Results[0]), "|"); g != "Future, show" { // the row of the entity the host no longer has is dropped
+		t.Errorf("upcoming = %s", g)
+	}
+	// the index has no URL: it comes from the entity, for the events the host knows
+	if it := got.Results[0].Items[0]; it.URL != "https://example.com/e/future" {
+		t.Errorf("item = %+v", it)
+	}
+}
+
+func TestBuilderFillStopsWhenBudgetIsUsed(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}, dbRows: idxRows}
+	h.install(t)
+	at := time.Now()
+	clock = func() time.Time { at = at.Add(builderBudget); return at } // every look at the clock burns the budget
+	t.Cleanup(func() { clock = time.Now })
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if len(got.Results[0].Items) == 0 || len(h.getCalls) != 0 {
+		t.Fatalf("items = %d, gets = %d", len(got.Results[0].Items), len(h.getCalls))
+	}
+}
+
+func TestIndexErrorFallsBackToEntities(t *testing.T) {
+	h := &fakeHost{entities: []string{evFuture}} // db.query fails
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if g := strings.Join(titles(got.Results[0]), "|"); g != "Future, show" || h.listCalls == 0 {
+		t.Fatalf("upcoming = %s, list calls = %d", g, h.listCalls)
+	}
+}
+
 func TestBuilderLoadsOncePerRequest(t *testing.T) {
 	calls := 0
 	(&fakeHost{entities: []string{evFuture}}).install(t)
@@ -134,7 +171,8 @@ func TestBuilderLoadsOncePerRequest(t *testing.T) {
 		return inner(fn, a, o)
 	}
 	runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}, {ID: "p", Source: sourcePast}}})
-	if calls != 1 {
+	// one listing per request: one call per accepted content type (auto mode)
+	if calls != len(settings{}.slugs()) {
 		t.Fatalf("entities.list calls = %d", calls)
 	}
 }
@@ -178,5 +216,60 @@ func TestBuilderStopsPagingAtDeadline(t *testing.T) {
 	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
 	if pages != 1 || len(got.Results[0].Items) != 1 {
 		t.Fatalf("pages = %d, items = %d", pages, len(got.Results[0].Items))
+	}
+}
+
+// An event that names a venue entity has no venue text of its own: the list
+// items must still carry the venue's name and address.
+func TestBuilderListResolvesVenueEntity(t *testing.T) {
+	(&fakeHost{entities: []string{
+		`{"id":"e1","schema_slug":"calendar-event","slug":"jazz","name":"Jazz","status":"published","attributes":{"start_at":"2099-07-01T19:00","venue":["v1"]}}`,
+		`{"id":"v1","schema_slug":"calendar-venue","slug":"mill","name":"The Old Mill","status":"published","attributes":{"address":"12 High Street","city":"Leeds"}}`,
+	}}).install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if len(got.Results[0].Items) != 1 {
+		t.Fatalf("items = %+v", got.Results[0].Items)
+	}
+	a := got.Results[0].Items[0].Attrs
+	if a["venue_name"] != "The Old Mill" || a["venue_address"] != "12 High Street, Leeds" {
+		t.Errorf("venue attrs = %v", a)
+	}
+}
+
+func venueGets(h *fakeHost, id string) (n int) {
+	for _, c := range h.getCalls {
+		if c["id"] == id {
+			n++
+		}
+	}
+	return n
+}
+
+// Events at one venue must not each read it again: the list and the feed share a
+// small time budget.
+func TestVenueIsReadOnceForManyEvents(t *testing.T) {
+	ev := func(id string) string {
+		return `{"id":"` + id + `","schema_slug":"calendar-event","slug":"` + id + `","name":"` + id + `","status":"published","attributes":{"start_at":"2099-07-01T19:00","venue":["v1"]}}`
+	}
+	venue := `{"id":"v1","schema_slug":"calendar-venue","slug":"mill","name":"The Old Mill","status":"published","attributes":{"address":"12 High Street","city":"Leeds"}}`
+	ents := []string{ev("e1"), ev("e2"), ev("e3"), venue}
+
+	h := &fakeHost{entities: ents}
+	h.install(t)
+	got := runBuilder(t, sdk.BuilderDataRequest{Requests: []sdk.BuilderDataQuery{{ID: "u", Source: sourceUpcoming}}})
+	if len(got.Results[0].Items) != 3 || got.Results[0].Items[2].Attrs["venue_name"] != "The Old Mill" {
+		t.Fatalf("items = %+v", got.Results[0].Items)
+	}
+	if n := venueGets(h, "v1"); n != 1 {
+		t.Errorf("list: venue read %d times, want 1", n)
+	}
+
+	h = &fakeHost{entities: ents}
+	h.install(t)
+	if r := call(t, "GET", "/events.ics", ""); r.Status != 200 {
+		t.Fatalf("feed status = %d", r.Status)
+	}
+	if n := venueGets(h, "v1"); n != 1 {
+		t.Errorf("feed: venue read %d times, want 1", n)
 	}
 }

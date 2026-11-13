@@ -11,6 +11,10 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
+// feedFillBudget is how long the feed may spend reading event details the
+// index does not keep.
+const feedFillBudget = 2 * time.Second
+
 var fileSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 func init() { guest.OnHTTP(serve) }
@@ -53,14 +57,20 @@ func calendar(body, filename string) sdk.HTTPResponse {
 // serveFeed is the upcoming events as one calendar.
 func serveFeed() sdk.HTTPResponse {
 	s := loadSettings()
-	evs, err := loadEvents(s)
+	at := now()
+	upcoming, _, err := eventsFor(s, "", at, true, false, maxIndexRows, time.Time{})
 	if err != nil {
 		return plain(http.StatusServiceUnavailable, "unavailable")
 	}
-	loc := s.location()
-	at := now()
-	upcoming, _ := split(evs, at, loc)
-	return calendar(writeCalendar(upcoming, at, loc), "")
+	deadline := clock().Add(feedFillBudget)
+	var kept []Event
+	venues := venueMemo{}
+	for _, e := range upcoming {
+		if e, keep := fillDetails(e, s, deadline, venues); keep {
+			kept = append(kept, e)
+		}
+	}
+	return calendar(writeCalendarWith(kept, at, s.location(), venues), "")
 }
 
 // serveEvent is one published event as a calendar, past ones included.
@@ -94,20 +104,31 @@ func notFound() sdk.HTTPResponse {
 // nested events are reached; the scan stops at the first match. hostFailed is
 // set when no answer could be had because the host failed.
 func findEvent(s settings, slug string) (e Event, found, hostFailed bool) {
-	var raw entityDTO
-	err := callHost(sdk.FnEntitiesGet, map[string]any{
-		"slug": slug, "parent_id": nil, "schema_slug": s.SchemaSlug,
-	}, &raw)
-	var he *sdk.HostError
-	switch {
-	case err == nil && raw.ID != "":
-		if raw.SchemaSlug != "" && raw.SchemaSlug != s.SchemaSlug {
-			return Event{}, false, false
+	if evs, err := queryEvents(indexQuery{Upcoming: true, Slug: slug, Limit: 1, Loc: s.location()}); err == nil && len(evs) > 0 && s.accepts(evs[0].SchemaSlug) {
+		// the index finds the event; the entity gives its full details
+		var raw entityDTO
+		if callHost(sdk.FnEntitiesGet, map[string]any{"id": evs[0].ID}, &raw) == nil {
+			if e, found = eventFromEntity(raw, s); found {
+				return e, true, false
+			}
 		}
-		e, found = eventFromEntity(raw, s)
-		return e, found, false
-	case err != nil && !(errors.As(err, &he) && he.Code == sdk.ErrNotFound):
-		return Event{}, false, true
+	}
+	for _, slugType := range s.slugs() {
+		var raw entityDTO
+		err := callHost(sdk.FnEntitiesGet, map[string]any{
+			"slug": slug, "parent_id": nil, "schema_slug": slugType,
+		}, &raw)
+		var he *sdk.HostError
+		switch {
+		case err == nil && raw.ID != "":
+			if raw.SchemaSlug != "" && !s.accepts(raw.SchemaSlug) {
+				return Event{}, false, false
+			}
+			e, found = eventFromEntity(raw, s)
+			return e, found, false
+		case err != nil && !(errors.As(err, &he) && he.Code == sdk.ErrNotFound):
+			return Event{}, false, true
+		}
 	}
 	lerr := eachEvent(s, time.Time{}, func(c Event) bool {
 		if c.Slug == slug {

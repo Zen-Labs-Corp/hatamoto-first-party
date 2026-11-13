@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "title": "Category",
+  "description": "A group for filtering events.",
+  "properties": {
+    "description": {
+      "type": "string",
+      "title": "Description",
+      "description": "Short text.",
+      "x-hm-field": "plaintext"
+    },
+    "color": {
+      "type": "string",
+      "title": "Color",
+      "description": "A CSS colour such as #3366aa."
+    }
+  },
+  "x-hm-order": [
+    "description",
+    "color"
+  ]
+}

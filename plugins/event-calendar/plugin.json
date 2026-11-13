@@ -1,17 +1,51 @@
 {
   "name": "event-calendar",
-  "version": "0.1.0",
-  "sdk": "^0.11",
+  "version": "0.2.0",
+  "sdk": "^0.21",
   "description": "Events with dates, venue and ticket link: upcoming and past lists for the page builder, an iCal feed and Event structured data.",
-  "permissions": ["entities.read", "builder.data", "settings"],
-  "builder_sources": [
-    { "name": "upcoming", "label": "Upcoming events", "kind": "items" },
-    { "name": "past", "label": "Past events", "kind": "items" }
+  "permissions": [
+    "entities.read",
+    "builder.data",
+    "settings",
+    "db",
+    "http.fetch",
+    "builder.island"
   ],
-  "funcs": ["when"],
+  "allowed_hosts": [
+    "nominatim.openstreetmap.org"
+  ],
+  "builder_sources": [
+    {
+      "name": "upcoming",
+      "label": "Upcoming events",
+      "kind": "items"
+    },
+    {
+      "name": "past",
+      "label": "Past events",
+      "kind": "items"
+    },
+    {
+      "name": "event",
+      "label": "This event",
+      "kind": "items"
+    }
+  ],
+  "funcs": [
+    "when",
+    "addlink"
+  ],
   "routes": [
-    { "method": "GET", "path": "/events.ics", "public": true },
-    { "method": "GET", "path": "/event/{file}", "public": true }
+    {
+      "method": "GET",
+      "path": "/events.ics",
+      "public": true
+    },
+    {
+      "method": "GET",
+      "path": "/event/{file}",
+      "public": true
+    }
   ],
   "limits": {
     "memory_pages": 256,
@@ -20,7 +54,14 @@
     "hook_timeouts_ms": {
       "builder.data": 450,
       "jsonld.enrich": 500,
-      "func_when": 250
+      "func_when": 250,
+      "func_addlink": 250,
+      "entity.created": 5000,
+      "entity.updated": 5000,
+      "entity.published": 5000,
+      "entity.deleted": 5000,
+      "import.completed": 10000,
+      "on_cron_reconcile": 10000
     }
   },
   "settings_schema": {
@@ -29,9 +70,9 @@
       "schema_slug": {
         "type": "string",
         "title": "Event content type",
-        "description": "Slug of the content type that holds your events.",
-        "default": "event",
-        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        "description": "Leave empty to use Calendar event and any older Event type. Or name one content type.",
+        "default": "",
+        "pattern": "^([a-z][a-z0-9_-]{0,63})?$"
       },
       "time_zone": {
         "type": "string",
@@ -43,9 +84,31 @@
         "type": "string",
         "title": "Date format",
         "description": "How dates read: Sat 14 Feb, Sat, Feb 14 or 2026-02-14.",
-        "enum": ["short", "us", "iso"],
+        "enum": [
+          "short",
+          "us",
+          "iso"
+        ],
         "default": "short"
+      },
+      "show_map": {
+        "type": "boolean",
+        "title": "Show map",
+        "description": "Show an OpenStreetMap map on event pages. Looks up venue addresses with Nominatim (cached, one request per second).",
+        "default": false
+      },
+      "geocode_contact": {
+        "type": "string",
+        "title": "Nominatim contact",
+        "description": "Email or web address added to the lookup User-Agent, as the Nominatim usage policy asks.",
+        "default": ""
       }
     }
-  }
+  },
+  "cron": [
+    {
+      "name": "reconcile",
+      "every": "1h"
+    }
+  ]
 }

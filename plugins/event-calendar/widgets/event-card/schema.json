@@ -1,0 +1,100 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Event card",
+    "hint": "Date, venue, organizer, price, tickets and add-to-calendar links of one event"
+  },
+  "properties": {
+    "title": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "when": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "status": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "venue": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "venue_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "organizer": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "organizer_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "organizer_email": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "price": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "online_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "series": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "series_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "ticket_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "ics_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "google_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "outlook_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "yahoo_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "map_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    }
+  }
+}

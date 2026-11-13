@@ -1,0 +1,366 @@
+{
+  "type": "object",
+  "title": "Calendar event",
+  "description": "An event with a date, place and optional repeat.",
+  "properties": {
+    "page_sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "start_at": {
+      "type": "string",
+      "title": "Starts",
+      "description": "When the event starts, in the site time zone unless a time zone is set below.",
+      "format": "date-time",
+      "x-hm-group": "Time"
+    },
+    "end_at": {
+      "type": "string",
+      "title": "Ends",
+      "description": "When the event ends. Leave empty for an event without an end time.",
+      "format": "date-time",
+      "x-hm-group": "Time"
+    },
+    "all_day": {
+      "type": "boolean",
+      "title": "All day",
+      "description": "The event lasts whole days and has no start time.",
+      "x-hm-group": "Time"
+    },
+    "time_zone": {
+      "type": "string",
+      "title": "Time zone",
+      "description": "Optional IANA name such as Europe/London that overrides the site time zone for this event.",
+      "x-hm-group": "Time"
+    },
+    "event_status": {
+      "type": "string",
+      "title": "Status",
+      "description": "Cancelled and postponed events stay listed and are marked as such.",
+      "enum": [
+        "scheduled",
+        "cancelled",
+        "postponed"
+      ],
+      "default": "scheduled",
+      "x-hm-group": "Time"
+    },
+    "attendance_mode": {
+      "type": "string",
+      "title": "Attendance",
+      "description": "Where people take part.",
+      "enum": [
+        "offline",
+        "online",
+        "hybrid"
+      ],
+      "default": "offline",
+      "x-hm-group": "Place"
+    },
+    "online_url": {
+      "type": "string",
+      "title": "Online link",
+      "description": "Link to join the event online.",
+      "format": "uri",
+      "x-hm-group": "Place"
+    },
+    "venue": {
+      "type": "array",
+      "title": "Venue",
+      "description": "Choose a venue. Its address is used for the map.",
+      "items": {
+        "type": "string"
+      },
+      "x-entity-schema": "calendar-venue",
+      "x-multiple": false,
+      "maxItems": 1,
+      "x-hm-group": "Place"
+    },
+    "venue_name": {
+      "type": "string",
+      "title": "Venue name",
+      "description": "Used when no venue is chosen.",
+      "x-hm-group": "Place"
+    },
+    "venue_address": {
+      "type": "string",
+      "title": "Venue address",
+      "description": "Street address, used when no venue is chosen.",
+      "x-hm-group": "Place"
+    },
+    "venue_city": {
+      "type": "string",
+      "title": "Venue city",
+      "description": "Used when no venue is chosen.",
+      "x-hm-group": "Place"
+    },
+    "organizers": {
+      "type": "array",
+      "title": "Organizers",
+      "description": "Who runs the event.",
+      "items": {
+        "type": "string"
+      },
+      "x-entity-schema": "calendar-organizer",
+      "x-hm-group": "People"
+    },
+    "category": {
+      "type": "array",
+      "title": "Categories",
+      "description": "Groups for filtering.",
+      "items": {
+        "type": "string"
+      },
+      "x-entity-schema": "calendar-category",
+      "x-hm-group": "People"
+    },
+    "series": {
+      "type": "array",
+      "title": "Series",
+      "description": "The series this event belongs to.",
+      "items": {
+        "type": "string"
+      },
+      "x-entity-schema": "calendar-series",
+      "x-multiple": false,
+      "maxItems": 1,
+      "x-hm-group": "People"
+    },
+    "ticket_url": {
+      "type": "string",
+      "title": "Ticket link",
+      "description": "Where to book or buy tickets.",
+      "format": "uri",
+      "x-hm-group": "Price and tickets"
+    },
+    "website": {
+      "type": "string",
+      "title": "Event website",
+      "description": "A page with more about the event.",
+      "format": "uri",
+      "x-hm-group": "Price and tickets"
+    },
+    "price": {
+      "type": "string",
+      "title": "Price",
+      "description": "Text shown to visitors, for example Free or From 12.",
+      "x-hm-group": "Price and tickets"
+    },
+    "price_amount": {
+      "type": "number",
+      "title": "Price amount",
+      "description": "Number used to tell free from paid events. Use 0 for free.",
+      "minimum": 0,
+      "x-hm-group": "Price and tickets"
+    },
+    "currency": {
+      "type": "string",
+      "title": "Currency",
+      "description": "Three letter code in capitals, for example EUR.",
+      "maxLength": 3,
+      "x-hm-group": "Price and tickets"
+    },
+    "featured": {
+      "type": "boolean",
+      "title": "Featured",
+      "description": "Show this event first where lists support it."
+    },
+    "image": {
+      "type": "string",
+      "title": "Image",
+      "description": "Picture for the event.",
+      "x-hm-field": "image"
+    },
+    "description": {
+      "type": "string",
+      "title": "Description",
+      "description": "Short text about the event.",
+      "x-hm-field": "plaintext"
+    },
+    "tags": {
+      "type": "array",
+      "title": "Tags",
+      "description": "Free words that describe the event.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "repeat": {
+      "type": "string",
+      "title": "Repeats",
+      "description": "How often the event repeats.",
+      "enum": [
+        "none",
+        "daily",
+        "weekly",
+        "monthly",
+        "yearly"
+      ],
+      "default": "none",
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_every": {
+      "type": "integer",
+      "title": "Every",
+      "description": "Repeat every this many days, weeks, months or years.",
+      "minimum": 1,
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_weekdays": {
+      "type": "array",
+      "title": "On",
+      "description": "Weekdays for a weekly repeat.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "mo",
+          "tu",
+          "we",
+          "th",
+          "fr",
+          "sa",
+          "su"
+        ]
+      },
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_by": {
+      "type": "string",
+      "title": "Monthly by",
+      "description": "Repeat on the same day of the month or on the same weekday.",
+      "enum": [
+        "day_of_month",
+        "nth_weekday"
+      ],
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_nth": {
+      "type": "integer",
+      "title": "Which weekday",
+      "description": "1 to 5 for the first to fifth, -1 for the last.",
+      "minimum": -1,
+      "maximum": 5,
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_until": {
+      "type": "string",
+      "title": "Ends on",
+      "description": "Last day the event can repeat.",
+      "format": "date",
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_count": {
+      "type": "integer",
+      "title": "Ends after",
+      "description": "Number of times the event happens.",
+      "minimum": 1,
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_extra_dates": {
+      "type": "array",
+      "title": "Extra dates",
+      "description": "Additional days the event happens.",
+      "items": {
+        "type": "string",
+        "format": "date"
+      },
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_skip_dates": {
+      "type": "array",
+      "title": "Skipped dates",
+      "description": "Days the event does not happen.",
+      "items": {
+        "type": "string",
+        "format": "date"
+      },
+      "x-hm-group": "Recurrence"
+    },
+    "repeat_overrides": {
+      "type": "array",
+      "title": "Changed dates",
+      "description": "Managed by the repeating events page. Format: date|start|end.",
+      "items": {
+        "type": "string"
+      },
+      "x-hm-group": "Recurrence"
+    },
+    "source_kind": {
+      "type": "string",
+      "title": "Source",
+      "description": "Where the event came from.",
+      "enum": [
+        "manual",
+        "google",
+        "outlook",
+        "eventbrite",
+        "meetup",
+        "ical",
+        "submission"
+      ],
+      "default": "manual",
+      "x-hm-group": "Source"
+    },
+    "source_uid": {
+      "type": "string",
+      "title": "Source ID",
+      "description": "The identifier of the event at its source, used to avoid duplicates.",
+      "x-hm-group": "Source"
+    },
+    "source_url": {
+      "type": "string",
+      "title": "Source link",
+      "description": "Page of the event at its source.",
+      "format": "uri",
+      "x-hm-group": "Source"
+    }
+  },
+  "required": [
+    "start_at"
+  ],
+  "x-hm-order": [
+    "start_at",
+    "end_at",
+    "all_day",
+    "time_zone",
+    "event_status",
+    "attendance_mode",
+    "online_url",
+    "venue",
+    "venue_name",
+    "venue_address",
+    "venue_city",
+    "organizers",
+    "category",
+    "series",
+    "ticket_url",
+    "website",
+    "price",
+    "price_amount",
+    "currency",
+    "featured",
+    "image",
+    "description",
+    "tags",
+    "repeat",
+    "repeat_every",
+    "repeat_weekdays",
+    "repeat_by",
+    "repeat_nth",
+    "repeat_until",
+    "repeat_count",
+    "repeat_extra_dates",
+    "repeat_skip_dates",
+    "repeat_overrides",
+    "source_kind",
+    "source_uid",
+    "source_url"
+  ]
+}

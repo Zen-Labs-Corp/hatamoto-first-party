@@ -1,0 +1,16 @@
+<section {{.Attrs}}>
+<h2>Event details</h2>
+{{if .P.title}}<p class="name">{{.P.title}}{{if .P.status}} <span class="badge">{{.P.status}}</span>{{end}}</p>{{end}}
+<dl>
+<dt>When</dt><dd>{{.P.when}}</dd>
+{{if .P.status}}<dt>Status</dt><dd>{{.P.status}}</dd>{{end}}
+{{if .P.venue}}<dt>Venue</dt><dd>{{.P.venue}} {{if .P.venue_url}}<a href="{{.P.venue_url}}">View venue</a>{{end}}</dd>{{end}}
+{{if .P.map_url}}<dt>Map</dt><dd><div class="map" data-map="{{.P.map_url}}" data-tiles="tile.openstreetmap.org"></div><a href="{{.P.map_url}}">View on OpenStreetMap</a></dd>{{end}}
+{{if .P.organizer}}<dt>Organizer</dt><dd>{{.P.organizer}} {{if .P.organizer_email}}{{.P.organizer_email}}{{end}} {{if .P.organizer_url}}<a href="{{.P.organizer_url}}">{{.P.organizer_url}}</a>{{end}}</dd>{{end}}
+{{if .P.price}}<dt>Price</dt><dd>{{.P.price}}</dd>{{end}}
+{{if .P.online_url}}<dt>Online</dt><dd><a href="{{.P.online_url}}">Join link</a></dd>{{end}}
+{{if .P.series}}<dt>Part of</dt><dd>{{if .P.series_url}}<a href="{{.P.series_url}}">{{.P.series}}</a>{{else}}{{.P.series}}{{end}}</dd>{{end}}
+</dl>
+{{if .P.ticket_url}}<p class="tickets"><a class="btn" href="{{.P.ticket_url}}">Get tickets</a></p>{{end}}
+<p class="cal">Add to calendar: {{if .P.google_url}}<a href="{{.P.google_url}}">Google</a>{{end}} {{if .P.outlook_url}}<a href="{{.P.outlook_url}}">Outlook</a>{{end}} {{if .P.ics_url}}<a href="{{.P.ics_url}}">Apple/iCal</a>{{end}} {{if .P.yahoo_url}}<a href="{{.P.yahoo_url}}">Yahoo</a>{{end}}</p>
+</section>
