@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Submit an event",
+    "hint": "A form for visitors to send in an event. Nothing goes live until you approve it on the plugin page",
+    "children": false
+  },
+  "properties": {
+    "heading": {
+      "type": "string",
+      "maxLength": 120
+    }
+  }
+}
