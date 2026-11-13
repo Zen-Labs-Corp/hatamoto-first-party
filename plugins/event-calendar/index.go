@@ -46,7 +46,10 @@ type indexRow struct {
 	AllDay                                   bool
 	TimeZone, EventStatus, AttendanceMode    string
 	VenueID, VenueName, VenueCity            string
+	URL, VenueSlug, VenueAddress             string
+	VenueLat, VenueLon                       *float64
 	CategoryIDs, CategoryNames               []string
+	CategorySlugs                            []string
 	SeriesID, Price                          string
 	PriceAmount                              *float64
 	Featured                                 bool
@@ -56,10 +59,13 @@ type indexRow struct {
 
 // rowFromEvent is the index row of an event. loc is the zone an all-day event
 // ends its last day in. Venue name and city come from the resolved venue, else
-// from the event's own text fields.
-func rowFromEvent(e Event, v *Venue, cats []string, loc *time.Location) indexRow {
-	name, _, city := e.Venue, e.Address, e.VenueCity
+// from the event's own text fields. The venue address is the line a map looks
+// up (addressOf), so it keys geocode_cache.
+func rowFromEvent(e Event, v *Venue, cats categoryRefs, loc *time.Location) indexRow {
+	name, city := e.Venue, e.VenueCity
+	var venue Venue
 	if v != nil {
+		venue = *v
 		name, city = v.Name, v.City
 	}
 	return indexRow{
@@ -67,7 +73,8 @@ func rowFromEvent(e Event, v *Venue, cats []string, loc *time.Location) indexRow
 		StartsAt: e.Start.UTC(), EndsAt: e.endsAt(loc).UTC(), AllDay: e.AllDay,
 		TimeZone: e.TimeZone, EventStatus: e.EventStatus, AttendanceMode: e.AttendanceMode,
 		VenueID: e.VenueID, VenueName: name, VenueCity: city,
-		CategoryIDs: nonNil(e.CategoryIDs), CategoryNames: nonNil(cats),
+		URL: e.URL, VenueSlug: venue.Slug, VenueAddress: addressOf(venue, e), VenueLat: venue.Lat, VenueLon: venue.Lon,
+		CategoryIDs: nonNil(e.CategoryIDs), CategoryNames: nonNil(cats.Names), CategorySlugs: nonNil(cats.Slugs),
 		SeriesID: e.SeriesID, Price: e.Price, PriceAmount: e.PriceAmount,
 		Featured: e.Featured, Image: e.Image,
 		SourceKind: e.SourceKind, SourceUID: e.SourceUID, SourceURL: e.SourceURL,
@@ -90,9 +97,11 @@ func utcText(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
 const upsertEventSQL = `INSERT INTO events (entity_id, schema_slug, slug, locale, name, starts_at, ends_at, all_day, time_zone,
  event_status, attendance_mode, venue_id, venue_name, venue_city, category_ids, category_names, series_id,
- price, price_amount, featured, image, source_kind, source_uid, source_url)
+ price, price_amount, featured, image, source_kind, source_uid, source_url,
+ url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs)
 SELECT $1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8::boolean, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
- $18, $19::double precision, $20::boolean, $21, $22, $23, $24
+ $18, $19::double precision, $20::boolean, $21, $22, $23, $24,
+ $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb
 WHERE $25::timestamptz IS NULL OR NOT EXISTS (SELECT 1 FROM deleted_events WHERE entity_id = $1 AND deleted_at >= $25::timestamptz)
 ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug = EXCLUDED.slug, locale = EXCLUDED.locale,
  name = EXCLUDED.name, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, all_day = EXCLUDED.all_day,
@@ -100,7 +109,9 @@ ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug =
  venue_id = EXCLUDED.venue_id, venue_name = EXCLUDED.venue_name, venue_city = EXCLUDED.venue_city,
  category_ids = EXCLUDED.category_ids, category_names = EXCLUDED.category_names, series_id = EXCLUDED.series_id,
  price = EXCLUDED.price, price_amount = EXCLUDED.price_amount, featured = EXCLUDED.featured, image = EXCLUDED.image,
- source_kind = EXCLUDED.source_kind, source_uid = EXCLUDED.source_uid, source_url = EXCLUDED.source_url, updated_at = now()`
+ source_kind = EXCLUDED.source_kind, source_uid = EXCLUDED.source_uid, source_url = EXCLUDED.source_url,
+ url = EXCLUDED.url, venue_slug = EXCLUDED.venue_slug, venue_address = EXCLUDED.venue_address,
+ venue_lat = EXCLUDED.venue_lat, venue_lon = EXCLUDED.venue_lon, category_slugs = EXCLUDED.category_slugs, updated_at = now()`
 
 // The delete skips the row the insert writes, so the two halves never touch
 // one key. One occurrence per event for now; recurrence will write many.
@@ -117,17 +128,23 @@ func upsertEvent(r indexRow, notDeletedSince *time.Time) error {
 	if notDeletedSince != nil {
 		guard = utcText(*notDeletedSince)
 	}
-	var amount any
-	if r.PriceAmount != nil {
-		amount = *r.PriceAmount
-	}
+	amount, lat, lon := floatArg(r.PriceAmount), floatArg(r.VenueLat), floatArg(r.VenueLon)
 	if err := dbExec(upsertEventSQL, r.EntityID, r.SchemaSlug, r.Slug, r.Locale, r.Name,
 		utcText(r.StartsAt), utcText(r.EndsAt), r.AllDay, r.TimeZone, r.EventStatus, r.AttendanceMode,
 		r.VenueID, r.VenueName, r.VenueCity, jsonText(r.CategoryIDs), jsonText(r.CategoryNames), r.SeriesID,
-		r.Price, amount, r.Featured, r.Image, r.SourceKind, r.SourceUID, r.SourceURL, guard); err != nil {
+		r.Price, amount, r.Featured, r.Image, r.SourceKind, r.SourceUID, r.SourceURL, guard,
+		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs)); err != nil {
 		return err
 	}
 	return dbExec(upsertOccurrenceSQL, r.EntityID, utcText(r.StartsAt), utcText(r.EndsAt))
+}
+
+// floatArg is a SQL argument: NULL for nil.
+func floatArg(f *float64) any {
+	if f == nil {
+		return nil
+	}
+	return *f
 }
 
 // deleteEvent removes an event from the index (its occurrences cascade) and
@@ -155,16 +172,22 @@ func indexedIDs() (map[string]string, error) {
 	return m, err
 }
 
-// categoryNames resolves category ids to their names; unresolved ids are
+// categoryRefs are the names and slugs of an event's categories.
+type categoryRefs struct{ Names, Slugs []string }
+
+// categoriesOf resolves category ids with one read each; unresolved ids are
 // skipped.
-func categoryNames(ids []string) []string {
-	var names []string
+func categoriesOf(ids []string) categoryRefs {
+	var c categoryRefs
 	for _, id := range ids {
 		if raw, _, ok := loadRef(id); ok && raw.Name != "" {
-			names = append(names, raw.Name)
+			c.Names = append(c.Names, raw.Name)
+			if raw.Slug != "" {
+				c.Slugs = append(c.Slugs, raw.Slug)
+			}
 		}
 	}
-	return names
+	return c
 }
 
 // eventLocation is the zone an event's local times are read in.
@@ -221,7 +244,7 @@ func reindexDTO(raw entityDTO, s settings, notDeletedSince *time.Time) (indexed 
 		return false, "", deleteEvent(raw.ID)
 	}
 	_, _, _, v := venueOrText(e)
-	if err := upsertEvent(rowFromEvent(e, v, categoryNames(e.CategoryIDs), eventLocation(e, s)), notDeletedSince); err != nil {
+	if err := upsertEvent(rowFromEvent(e, v, categoriesOf(e.CategoryIDs), eventLocation(e, s)), notDeletedSince); err != nil {
 		return false, "", err
 	}
 	venue := Venue{}

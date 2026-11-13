@@ -80,8 +80,8 @@ const idxDoc = `{"id":"e1","schema_slug":"calendar-event","slug":"gala","name":"
 func TestIndexUpsertOnEntityEvents(t *testing.T) {
 	h := &indexHost{docs: map[string]string{
 		"e1": idxDoc,
-		"v1": `{"name":"Blue Room","status":"published","attributes":{"city":"Bonn"}}`,
-		"c1": `{"name":"Music","status":"published"}`,
+		"v1": `{"name":"Blue Room","slug":"blue-room","status":"published","attributes":{"city":"Bonn","address":"1 Main St","latitude":50.7,"longitude":7.1}}`,
+		"c1": `{"name":"Music","slug":"music","status":"published"}`,
 	}}
 	h.install(t)
 	ok, err := reindexEntity("e1", settings{TimeZone: "UTC"})
@@ -99,6 +99,14 @@ func TestIndexUpsertOnEntityEvents(t *testing.T) {
 	}
 	if ex[0].args[12] != "Blue Room" || ex[0].args[13] != "Bonn" || ex[0].args[15] != `["Music"]` || ex[0].args[18] != 12.5 {
 		t.Errorf("event args = %v", ex[0].args)
+	}
+	// guard stays $25; url, venue slug, address, lat, lon, category slugs follow it
+	if ex[0].args[24] != nil || ex[0].args[26] != "blue-room" || ex[0].args[27] != "1 Main St, Bonn" ||
+		ex[0].args[28] != 50.7 || ex[0].args[29] != 7.1 || ex[0].args[30] != `["music"]` {
+		t.Errorf("view args = %v", ex[0].args[23:])
+	}
+	if len(ex[0].args) != 31 || strings.Count(ex[0].sql, "$31") != 1 {
+		t.Errorf("args = %d", len(ex[0].args))
 	}
 	if ex[1].args[0] != "e1" || ex[1].args[1] != "2026-07-01T17:00:00Z" || ex[1].args[2] != "2026-07-01T19:00:00Z" {
 		t.Errorf("occurrence args = %v", ex[1].args)
