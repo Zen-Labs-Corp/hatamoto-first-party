@@ -58,7 +58,7 @@ func TestWriteCalendarGolden(t *testing.T) {
 		},
 	}
 	want := strings.Join([]string{
-		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hatamoto//event-calendar 0.3.0//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hatamoto//event-calendar 0.4.0//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
 		"BEGIN:VEVENT", "UID:3f2a@event-calendar.hatamoto", "DTSTAMP:20261104T091500Z",
 		"DTSTART:20270214T190000Z", "DTEND:20270214T213000Z", "SUMMARY:Winter jazz night",
 		`LOCATION:The Blue Room\, 12 High St`, "URL:https://example.com/events/jazz",
