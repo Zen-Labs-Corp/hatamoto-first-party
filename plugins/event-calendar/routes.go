@@ -32,6 +32,12 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveEvent(r.PathValues["file"]), nil
 		case "/api/events":
 			return serveAPI(r.Query), nil
+		case "/series/{slug}":
+			return servePage(pageSeries, r.PathValues["slug"]), nil
+		case "/venue/{slug}":
+			return servePage(pageVenue, r.PathValues["slug"]), nil
+		case "/organizer/{slug}":
+			return servePage(pageOrganizer, r.PathValues["slug"]), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil

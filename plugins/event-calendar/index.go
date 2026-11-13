@@ -425,6 +425,8 @@ type rangeQuery struct {
 	Limit                           int
 	Desc                            bool // latest first, for a list of past events
 	StartsAfter                     bool // only events that start at or after From, not ones in progress
+	// Entity ids of the page the events are listed for; empty matches all.
+	SeriesID, OrganizerID, VenueID string
 }
 
 // apiRow is one occurrence as the range query returns it.
@@ -481,6 +483,9 @@ WHERE o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz
   OR ($7::text = 'paid' AND NOT ` + freeSQL + ` AND (COALESCE(e.price_amount > 0, false) OR btrim(e.price) <> '')))
  AND ($8::text = '' OR e.slug = $8::text)
  AND ($9::text = '' OR e.locale IN ('', 'und', $9::text))
+ AND ($13::text = '' OR e.series_id = $13::text)
+ AND ($14::text = '' OR e.organizer_ids @> to_jsonb($14::text))
+ AND ($15::text = '' OR e.venue_id = $15::text)
 LIMIT $10::int) r`
 
 // escapeLike makes s literal inside an ILIKE pattern.
@@ -497,7 +502,7 @@ func queryRange(r rangeQuery) ([]apiRow, error) {
 	}
 	var rows *[]apiRow
 	if err := dbJSON(queryRangeSQL, &rows, utcText(r.From), utcText(r.To), escapeLike(r.Q), r.Category, r.Venue,
-		r.City, r.Price, r.Slug, r.Language, limit, r.Desc, r.StartsAfter); err != nil {
+		r.City, r.Price, r.Slug, r.Language, limit, r.Desc, r.StartsAfter, r.SeriesID, r.OrganizerID, r.VenueID); err != nil {
 		return nil, err
 	}
 	if rows == nil {

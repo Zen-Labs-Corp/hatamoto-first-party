@@ -251,7 +251,7 @@ func TestIndexQueryRange(t *testing.T) {
 	if !strings.Contains(c.sql, "o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz") {
 		t.Errorf("no overlap test: %s", c.sql)
 	}
-	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false}
+	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false, "", "", ""}
 	if fmt.Sprint(c.args) != fmt.Sprint(want) {
 		t.Errorf("args = %v, want %v", c.args, want)
 	}
