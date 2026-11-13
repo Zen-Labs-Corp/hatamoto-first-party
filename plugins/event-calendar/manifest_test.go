@@ -18,7 +18,11 @@ type manifestFile struct {
 	AllowedHosts   []string `json:"allowed_hosts"`
 	Funcs          []string `json:"funcs"`
 	BuilderSources []struct {
-		Name string `json:"name"`
+		Name   string `json:"name"`
+		Params []struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+		} `json:"params"`
 	} `json:"builder_sources"`
 	Cron []struct {
 		Name  string `json:"name"`
@@ -34,9 +38,10 @@ type manifestFile struct {
 	} `json:"limits"`
 	Settings struct {
 		Properties map[string]struct {
-			Type    string `json:"type"`
-			Default any    `json:"default"`
-			Pattern string `json:"pattern"`
+			Type    string   `json:"type"`
+			Default any      `json:"default"`
+			Pattern string   `json:"pattern"`
+			Enum    []string `json:"enum"`
 		} `json:"properties"`
 	} `json:"settings_schema"`
 }
@@ -67,7 +72,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m, keys := loadManifest(t)
-	if m.Name != "event-calendar" || m.Version != "0.2.0" {
+	if m.Name != "event-calendar" || m.Version != "0.3.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 	if icsProdID != "-//Hatamoto//event-calendar "+m.Version+"//EN" {
@@ -99,8 +104,20 @@ func TestManifest(t *testing.T) {
 		t.Errorf("funcs = %v", m.Funcs)
 	}
 	var sources []string
+	wantParams := "category:text venue:text city:text free:bool"
 	for _, s := range m.BuilderSources {
 		sources = append(sources, s.Name)
+		var params []string
+		for _, p := range s.Params {
+			params = append(params, p.Name+":"+p.Type)
+		}
+		want := wantParams
+		if s.Name == "event" {
+			want = ""
+		}
+		if len(s.Params) > 8 || strings.Join(params, " ") != want {
+			t.Errorf("source %s params = %v, want %q", s.Name, params, want)
+		}
 	}
 	if !slices.Equal(sources, []string{"upcoming", "past", "event"}) || len(sources) > 8 {
 		t.Errorf("builder_sources = %v", sources)
@@ -134,7 +151,12 @@ func TestManifest(t *testing.T) {
 		t.Errorf("schema_slug = %+v", slug)
 	}
 
-	wantRoutes := [][2]string{{"GET", "/events.ics"}, {"GET", "/event/{file}"}}
+	week := m.Settings.Properties["week_starts_on"]
+	if week.Type != "string" || week.Default != "monday" || !slices.Equal(week.Enum, []string{"monday", "sunday"}) {
+		t.Errorf("week_starts_on = %+v", week)
+	}
+
+	wantRoutes := [][2]string{{"GET", "/events.ics"}, {"GET", "/event/{file}"}, {"GET", "/api/events"}}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
 	}
@@ -156,6 +178,7 @@ func TestShippedFiles(t *testing.T) {
 		t.Errorf("schemas = %v", schemas)
 	}
 	exists(t, "migrations/001_init.sql")
+	exists(t, "migrations/002_view_columns.sql")
 	exists(t, "widgets/event-details/widget.html")
 	exists(t, "widgets/event-card/widget.html")
 	exists(t, "partials/event_details.html")
