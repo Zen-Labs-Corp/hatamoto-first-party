@@ -53,3 +53,19 @@ func TestUIIndexLoadsOnlyBridgeAndApp(t *testing.T) {
 		t.Fatalf("scripts %v", srcs)
 	}
 }
+
+// Core creates what a run stages as a draft, so the pages must not promise that
+// publishing the change makes an event public.
+func TestUITellsEventsArriveAsDrafts(t *testing.T) {
+	html := readUI(t, "index.html")
+	if strings.Count(html, "draft") < 2 {
+		t.Error("the Submissions and Imports notes must say events arrive as drafts")
+	}
+	readme, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(readme), "drafts") < 2 {
+		t.Error("README must say imported and approved events arrive as drafts")
+	}
+}
