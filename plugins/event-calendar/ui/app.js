@@ -50,16 +50,17 @@ function whenText(d) {
 const state = { role: "", events: [], open: new Set(), editing: "" };
 
 // fillRun puts the inputs into the run form. Where the page has no run form
-// the admin refuses them; then the owner is told what to enter in the Runs tab.
+// the admin refuses them (the Settings screen); then the owner is told to use
+// the same button on the Runs tab, whose form cannot be typed into.
 // summary names what was filled in when the values themselves are too long to
 // list.
 async function fillRun(inputs, summary) {
   const entered = Object.entries(inputs).filter(([, v]) => v !== "").map(([k, v]) => `${k}=${v}`).join(", ");
   try {
     await hatamoto.runInputs(inputs);
-    say("#hint", `The run "${RUN}" is filled in (${summary || entered}). Open the Runs tab, press Start, then review the change in Changes.`);
+    say("#hint", `The run "${RUN}" is filled in (${summary || entered}). Press Start, then review the change in Changes.`);
   } catch {
-    say("#hint", `Open the Runs tab, type these into the "${RUN}" form and press Start: ${entered}`);
+    say("#hint", `This screen cannot fill in the run. Open the plugin's Runs tab and use the same button there, then press Start.`);
   }
 }
 

@@ -131,7 +131,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   await rows.buttons("Skip")[0].click();
   check(calls.length === 1 && calls[0].event === "yoga" && calls[0].action === "skip" && calls[0].date === "2026-02-17", "skip fills the run inputs");
   await next();
-  check(els["#hint"].textContent.includes("press Start") && !els["#hint"].hidden, "hint after a filled run");
+  check(els["#hint"].textContent.includes("Press Start") && !els["#hint"].textContent.includes("Open the Runs tab") && !els["#hint"].hidden, "hint after a filled run");
   await rows.buttons("Restore")[1].click();
   check(calls[1].action === "restore" && calls[1].date === "2026-03-03", "restore addresses the generated day, not the moved one");
 
@@ -161,7 +161,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   els["#rows"].buttons("v dates")[0].click();
   await els["#rows"].buttons("Skip")[0].click();
   await next();
-  check(els["#hint"].textContent === 'Open the Runs tab, type these into the "Edit repeat dates or duplicate" form and press Start: event=yoga, action=skip, date=2026-02-17', "instruction on rejection: " + els["#hint"].textContent);
+  check(els["#hint"].textContent === "This screen cannot fill in the run. Open the plugin's Runs tab and use the same button there, then press Start.", "instruction on rejection: " + els["#hint"].textContent);
 
   // an editor sees disabled buttons
   ({ els } = await load({ data: { ...DATA, role: "editor" } }));
@@ -211,7 +211,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   check(JSON.stringify(calls[0]).indexOf("@") === -1 && !("email" in calls[0]), "no email in the run inputs");
   await next();
   const hintText = els["#hint"].textContent;
-  check(hintText.includes("Runs tab") && hintText.includes("Start") && hintText.includes("Changes") && !hintText.includes("@"), "approve hint: " + hintText);
+  check(hintText.includes("Press Start") && hintText.includes("Changes") && !hintText.includes("@"), "approve hint: " + hintText);
 
   // reject posts and reloads
   routes.length = 0;
@@ -245,7 +245,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   ({ els, calls } = await load({ tab: "submissions", refuse: true }));
   await els["#sub-rows"].buttons("Approve")[0].click();
   await next();
-  check(els["#hint"].textContent.startsWith("Open the Runs tab, type these into the") && els["#hint"].textContent.includes("action=approve") && els["#hint"].textContent.includes("submission=7"), "refused approve shows the Runs-tab hint: " + els["#hint"].textContent);
+  check(els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && !els["#hint"].textContent.includes("type"), "refused approve shows the Runs-tab hint: " + els["#hint"].textContent);
 
   // empty and failing lists
   ({ els } = await load({ tab: "submissions", subs: { role: "owner", counts: {}, items: [] } }));
@@ -300,7 +300,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   ({ els, calls } = await load({ tab: "imports", refuse: true }));
   await els["#imp-rows"].buttons("Run now")[0].click();
   await next();
-  check(els["#hint"].textContent.startsWith("Open the Runs tab, type these into the") && els["#hint"].textContent.includes("action=import_url"), "refused import shows the Runs-tab hint");
+  check(els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && !els["#hint"].textContent.includes("type"), "refused import shows the Runs-tab hint");
   ({ els } = await load({ tab: "imports", imports: { role: "owner", sources: [] } }));
   check(els["#imp-table"].hidden && els["#imp-state"].textContent.includes("Settings tab"), "no sources");
 
