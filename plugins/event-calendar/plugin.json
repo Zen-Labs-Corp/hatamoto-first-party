@@ -94,6 +94,103 @@
       "method": "GET",
       "path": "/api/events",
       "public": true
+    },
+    {
+      "method": "GET",
+      "path": "/series/{slug}",
+      "public": true
+    },
+    {
+      "method": "GET",
+      "path": "/venue/{slug}",
+      "public": true
+    },
+    {
+      "method": "GET",
+      "path": "/organizer/{slug}",
+      "public": true
+    },
+    {
+      "method": "GET",
+      "path": "/admin/repeating",
+      "roles": [
+        "owner",
+        "editor"
+      ]
+    }
+  ],
+  "ui": {
+    "title": "Repeating events",
+    "entry": "index.html",
+    "roles": [
+      "owner",
+      "editor"
+    ]
+  },
+  "runs": [
+    {
+      "name": "edit_dates",
+      "title": "Edit repeat dates",
+      "inputs": [
+        {
+          "name": "event",
+          "label": "Event (slug)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "action",
+          "label": "Action",
+          "type": "select",
+          "options": [
+            "skip",
+            "change",
+            "restore"
+          ],
+          "required": true
+        },
+        {
+          "name": "date",
+          "label": "Date (YYYY-MM-DD)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "start_at",
+          "label": "New start (for change, like 18:30)",
+          "type": "text"
+        },
+        {
+          "name": "end_at",
+          "label": "New end (for change, like 20:00)",
+          "type": "text"
+        }
+      ],
+      "stages": [
+        "fetch",
+        "transform"
+      ]
+    },
+    {
+      "name": "duplicate",
+      "title": "Duplicate event",
+      "inputs": [
+        {
+          "name": "event",
+          "label": "Event (slug)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "shift_days",
+          "label": "Move dates by (days)",
+          "type": "number"
+        }
+      ],
+      "stages": [
+        "fetch",
+        "transform"
+      ]
     }
   ],
   "limits": {
@@ -110,7 +207,8 @@
       "entity.published": 5000,
       "entity.deleted": 5000,
       "import.completed": 10000,
-      "on_cron_reconcile": 10000
+      "on_cron_reconcile": 10000,
+      "on_run_step": 10000
     }
   },
   "settings_schema": {
