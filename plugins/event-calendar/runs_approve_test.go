@@ -89,3 +89,15 @@ func TestApproveRunAlreadyStaged(t *testing.T) {
 		t.Errorf("failed = %q", h.failed)
 	}
 }
+
+func TestApproveRunCapsTitleByCharacters(t *testing.T) {
+	p := approveParams()
+	title := strings.Repeat("祭", maxSubmitTitle) // 600 bytes, 200 characters
+	p["title"] = title + "x"
+	h := &runHost{name: runEditDates, runID: "run-9", params: p, created: true}
+	h.install(t)
+	h.step(t)
+	if len(h.upserts) != 1 || h.upserts[0].Name != title {
+		t.Fatalf("failed = %q, upserts = %+v", h.failed, h.upserts)
+	}
+}

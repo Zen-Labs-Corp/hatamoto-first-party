@@ -25,7 +25,7 @@ func approveSubmission(p map[string]any) (sdk.RunStepResult, error) {
 	if !submissionIDRe.MatchString(id) {
 		return failRun("The submission input must be the number of a submission.")
 	}
-	title := capBytes(paramString(p, "title"), maxSubmitTitle)
+	title := capRunes(paramString(p, "title"), maxSubmitTitle)
 	if title == "" {
 		return failRun("The title is missing.")
 	}

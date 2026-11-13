@@ -871,3 +871,45 @@ func TestReconcileLeavesPublishedSubmissionsAlone(t *testing.T) {
 		}
 	}
 }
+
+func TestReconcileMarksRetitledSubmission(t *testing.T) {
+	sub := strings.Replace(submissionDoc("published", "submission", "sub-42"), `"name":"s1"`, `"name":"Jazz Night at the Blue Room"`, 1)
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"s1": sub},
+		order:    []string{"s1"},
+		indexed:  map[string]string{"s1": "x"},
+		subs:     `[{"id":42,"title":"Jazz nite at Blue Room","status":"pending"}]`,
+	}
+	h.install(t)
+	if _, err := reconcileOnce(loadSettings(), clock().Add(reconcileBudget)); err != nil {
+		t.Fatal(err)
+	}
+	var got []dbCall
+	for _, c := range h.execs {
+		if strings.HasPrefix(c.sql, "UPDATE submissions SET status") {
+			got = append(got, c)
+		}
+	}
+	if len(got) != 1 || got[0].args[0] != int64(42) || got[0].args[1] != "published" {
+		t.Fatalf("status updates = %+v", got)
+	}
+}
+
+func TestMarkOpenSubmissionsSkipsBackslashTitles(t *testing.T) {
+	h := &hookHost{
+		settings: `{}`,
+		docs:     map[string]string{"s1": submissionDoc("published", "submission", "sub-42")},
+		subs:     `[{"id":42,"title":"Back\\","status":"pending"}]`,
+	}
+	h.install(t)
+	open := markOpenSubmissions(loadSettings(), clock().Add(reconcileBudget))
+	if !open[42] {
+		t.Errorf("open = %v", open)
+	}
+	for _, c := range h.calls {
+		if c == "entities.list" {
+			t.Fatal("searched for a title ending in a backslash")
+		}
+	}
+}

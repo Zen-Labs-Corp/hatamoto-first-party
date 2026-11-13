@@ -92,12 +92,24 @@ func publishedSubmissionID(raw entityDTO) (int64, bool) {
 // most maxSubmissionRows) whose event is published to published. It looks each
 // one up by its title, so it does not depend on how far the reconcile listing
 // reaches, and a published row costs nothing. A changeset fires no per-entity
-// hook, so the import and reconcile hooks call this. It stops at until.
-func markOpenSubmissions(s settings, until time.Time) {
+// hook, so the import and reconcile hooks call this. It stops at until. It
+// returns the ids of the open submissions it loaded.
+//
+// The search is a plain ILIKE, so a title with a backslash (a trailing one is
+// an error in Postgres) is not searched; the reconcile listing catches its
+// event when it is among the newest.
+func markOpenSubmissions(s settings, until time.Time) map[int64]bool {
 	rows, err := openSubmissions()
+	open := map[int64]bool{}
+	for _, r := range rows {
+		open[r.ID] = true
+	}
 	for _, r := range rows {
 		if err != nil || !clock().Before(until) {
-			return
+			return open
+		}
+		if strings.Contains(r.Title, `\`) {
+			continue
 		}
 		for _, slug := range s.slugs() {
 			var out struct {
@@ -118,6 +130,7 @@ func markOpenSubmissions(s settings, until time.Time) {
 			}
 		}
 	}
+	return open
 }
 
 // maxDigestTitles is how many titles the digest mail lists.
@@ -207,7 +220,7 @@ func onReconcile(sdk.CronEvent) error {
 // the same writes.
 func reconcileOnce(s settings, until time.Time) (addrs []string, err error) {
 	started := clock()
-	markOpenSubmissions(s, until)
+	open := markOpenSubmissions(s, until)
 	seen := map[string]bool{}
 	pages := 0
 	complete := true
@@ -239,6 +252,10 @@ listing:
 					continue
 				}
 				seen[raw.ID] = true
+				// a retitled event is not found by its submission's title
+				if id, ok := publishedSubmissionID(raw); ok && open[id] {
+					setSubmissionStatus(id, "published", "pending", "approved")
+				}
 				if !clock().Before(until) {
 					complete = false
 					break listing
