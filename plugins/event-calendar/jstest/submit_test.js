@@ -80,6 +80,7 @@ const GOOD = { title: " Open mic ", start: "2027-02-20T20:00", end: "", venue: "
   assert.equal(s.messageFor(422, { ok: false, error: "check the highlighted fields" }), "Please check the highlighted fields.");
   assert.equal(s.messageFor(503, { ok: false, error: "try again later" }), "Try again later.");
   assert.equal(s.messageFor(500, null), "Try again later.");
+  assert.equal(s.messageFor(404, null), s.CLOSED);
   assert.equal(s.safePath("/p/x"), "/p/x");
   assert.equal(s.safePath("//evil.test"), "");
   assert.equal(s.safePath("javascript:x"), "");
@@ -103,6 +104,15 @@ const GOOD = { title: " Open mic ", start: "2027-02-20T20:00", end: "", venue: "
     for (const l of b.all((n) => n.tag === "label")) assert.ok(b.all((n) => n.id === l.htmlFor).length === 1);
     // no form element, no markup from strings
     assert.equal(b.all((n) => n.tag === "form").length, 0);
+  }
+
+  // submissions off: the token route answers 404 and the form gives way to a note
+  {
+    const { b, calls } = setup({ token: answer(404, null) });
+    await tick();
+    assert.equal(calls.length, 1);
+    assert.equal(b.all((n) => n.tag === "input" || n.tag === "button").length, 0);
+    assert.equal(b.children[0].textContent, s.CLOSED);
   }
 
   // no heading, no unsafe address: nothing is built

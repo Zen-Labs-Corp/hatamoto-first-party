@@ -197,6 +197,8 @@ async function submissionAction(item, what) {
 
 function renderSubmissions(data) {
   sub.role = data.role || "";
+  $("#sub-off").hidden = data.enabled !== false;
+  $("#sub-reject-all").disabled = sub.role !== "owner";
   const rows = $("#sub-rows");
   rows.replaceChildren();
   for (const item of data.items || []) {
@@ -214,6 +216,27 @@ function renderSubmissions(data) {
   $("#tab-submissions").textContent = pending ? `Submissions (${pending})` : "Submissions";
   if (sub.role !== "owner" && n) $("#sub-state").textContent = "Ask the site owner to approve or delete a submission. You can reject one.";
 }
+
+// Reject all pending asks for a second click: the rows are not listed again.
+let rejectAllAsked = false;
+$("#sub-reject-all").addEventListener("click", async () => {
+  const b = $("#sub-reject-all");
+  if (!rejectAllAsked) {
+    rejectAllAsked = true;
+    b.textContent = "Click again to reject all pending";
+    return;
+  }
+  rejectAllAsked = false;
+  b.textContent = "Reject all pending";
+  try {
+    say("#notice", "");
+    const r = await api("POST", "/admin/submissions/reject-all");
+    await loadSubmissions();
+    say("#hint", `${r.rejected || 0} pending submissions rejected.`);
+  } catch (e) {
+    say("#notice", e.message, true);
+  }
+});
 
 async function loadSubmissions() {
   try {

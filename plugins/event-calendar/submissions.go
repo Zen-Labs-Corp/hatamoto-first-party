@@ -140,6 +140,15 @@ func setSubmissionStatus(id int64, to string, from ...string) bool {
 	return callHost(sdk.FnDBExec, map[string]any{"sql": sql, "args": args}, &res) == nil && res.RowsAffected > 0
 }
 
+// rejectAllPending rejects every pending submission and returns how many.
+func rejectAllPending() (int, error) {
+	var res struct {
+		RowsAffected int `json:"rows_affected"`
+	}
+	err := callHost(sdk.FnDBExec, map[string]any{"sql": `UPDATE submissions SET status = 'rejected', updated_at = now() WHERE status = 'pending'`, "args": []any{}}, &res)
+	return res.RowsAffected, err
+}
+
 func deleteSubmission(id int64) (bool, error) {
 	var res struct {
 		RowsAffected int `json:"rows_affected"`

@@ -40,6 +40,8 @@ type settings struct {
 	WeekStartsOn   string // monday or sunday
 	ShowMap        bool
 	GeocodeContact string
+	// SubmissionsEnabled opens the public submission routes; off by default.
+	SubmissionsEnabled bool
 }
 
 func defaultSettings() settings {
@@ -67,6 +69,7 @@ func loadSettings() settings {
 		WeekStarts string `json:"week_starts_on"`
 		ShowMap    bool   `json:"show_map"`
 		Contact    string `json:"geocode_contact"`
+		Submit     bool   `json:"submissions_enabled"`
 	}
 	if err := callHost(sdk.FnSettingsGet, struct{}{}, &raw); err != nil {
 		return s
@@ -78,6 +81,7 @@ func loadSettings() settings {
 		s.TimeZone = tz
 	}
 	s.ShowMap = raw.ShowMap
+	s.SubmissionsEnabled = raw.Submit
 	s.GeocodeContact = capBytes(strings.TrimSpace(raw.Contact), maxContactBytes)
 	switch raw.DateFormat {
 	case "short", "us", "iso":

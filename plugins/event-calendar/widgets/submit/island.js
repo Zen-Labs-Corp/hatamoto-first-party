@@ -14,6 +14,7 @@ const TOKEN_RENEW_MS = 50 * 60 * 1000;
 const THANKS = "Thank you. We will look at your event soon.";
 const CHECK = "Please check the highlighted fields.";
 const LATER = "Try again later.";
+const CLOSED = "Event submissions are not open right now.";
 
 const FIELDS = [
   { name: "title", label: "Title", type: "text", required: true, max: 200 },
@@ -43,6 +44,7 @@ function buildPayload(values, token, trap) {
 // dropped post is thanks, a rejected one asks for another look, anything else
 // (the route is busy or unreachable) asks to try later.
 function messageFor(status, body) {
+  if (status === 404) return CLOSED;
   if (status === 200 && body && body.ok === true) return THANKS;
   if ((status === 400 || status === 422) && body && body.ok === false) return CHECK;
   return LATER;
@@ -104,6 +106,9 @@ function mount(box, env) {
 
   let token = "";
   let issued = 0;
+  // The owner has submissions off: the token route answers 404. Leave a note
+  // instead of a form that cannot work.
+  const closeForm = () => box.replaceChildren(make(doc, "p", "note", CLOSED));
   const say = (text) => { status.textContent = text; };
   const mark = (names) => {
     for (const f of FIELDS) {
@@ -116,6 +121,10 @@ function mount(box, env) {
   async function getToken() {
     try {
       const r = await env.fetch(tokenApi, { headers: { Accept: "application/json" } });
+      if (r.status === 404) {
+        closeForm();
+        return false;
+      }
       if (!r.ok) return false;
       const body = await r.json();
       if (!body || typeof body.token !== "string" || !body.token) return false;
@@ -188,4 +197,4 @@ if (typeof document !== "undefined") {
   for (const box of document.querySelectorAll(".hm-event-calendar_submit")) mount(box, env);
 }
 
-if (typeof module !== "undefined") module.exports = { missingFields, buildPayload, messageFor, safePath, mount, FIELDS };
+if (typeof module !== "undefined") module.exports = { CLOSED, missingFields, buildPayload, messageFor, safePath, mount, FIELDS };

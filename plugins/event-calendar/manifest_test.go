@@ -177,6 +177,10 @@ func TestManifest(t *testing.T) {
 		t.Errorf("schema_slug = %+v", slug)
 	}
 
+	if sub := m.Settings.Properties["submissions_enabled"]; sub.Type != "boolean" || sub.Default != false {
+		t.Errorf("submissions_enabled = %+v", sub)
+	}
+
 	week := m.Settings.Properties["week_starts_on"]
 	if week.Type != "string" || week.Default != "monday" || !slices.Equal(week.Enum, []string{"monday", "sunday"}) {
 		t.Errorf("week_starts_on = %+v", week)
@@ -190,7 +194,8 @@ func TestManifest(t *testing.T) {
 		{"GET", "/series/{slug}", true}, {"GET", "/venue/{slug}", true}, {"GET", "/organizer/{slug}", true},
 		{"GET", "/submit/token", true}, {"POST", "/submit", true},
 		{"GET", "/admin/repeating", false}, {"GET", "/admin/submissions", false},
-		{"POST", "/admin/submissions/{id}/reject", false}, {"POST", "/admin/submissions/{id}/delete", false},
+		{"POST", "/admin/submissions/{id}/reject", false}, {"POST", "/admin/submissions/reject-all", false},
+		{"POST", "/admin/submissions/{id}/delete", false},
 		{"GET", "/admin/imports", false},
 	}
 	if len(m.Routes) != len(wantRoutes) {

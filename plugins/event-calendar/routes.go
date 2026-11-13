@@ -52,6 +52,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		switch r.Pattern {
 		case "/submit":
 			return serveSubmit(r), nil
+		case "/admin/submissions/reject-all":
+			return serveRejectAll(r.User), nil
 		case "/admin/submissions/{id}/reject":
 			return serveSubmissionAction(r.User, r.PathValues["id"], false), nil
 		case "/admin/submissions/{id}/delete":

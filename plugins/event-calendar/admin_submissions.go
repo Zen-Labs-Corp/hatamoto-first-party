@@ -29,9 +29,10 @@ type submissionItem struct {
 }
 
 type submissionList struct {
-	Role   string           `json:"role"`
-	Counts map[string]int   `json:"counts"`
-	Items  []submissionItem `json:"items"`
+	Role    string           `json:"role"`
+	Enabled bool             `json:"enabled"` // the public form is on
+	Counts  map[string]int   `json:"counts"`
+	Items   []submissionItem `json:"items"`
 }
 
 func unavailable() sdk.HTTPResponse { return plain(http.StatusServiceUnavailable, "unavailable") }
@@ -59,7 +60,7 @@ func serveSubmissions(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPRespon
 	for _, s := range submissionStatuses {
 		counts[s] += 0
 	}
-	out := submissionList{Role: u.Role, Counts: counts, Items: make([]submissionItem, 0, len(rows))}
+	out := submissionList{Role: u.Role, Enabled: loadSettings().SubmissionsEnabled, Counts: counts, Items: make([]submissionItem, 0, len(rows))}
 	for _, r := range rows {
 		out.Items = append(out.Items, submissionItem{
 			ID: r.ID, Title: r.Title, Start: r.Start, End: r.End, Venue: r.Venue,
@@ -99,6 +100,20 @@ func serveSubmissionAction(u *sdk.HTTPUser, rawID string, del bool) sdk.HTTPResp
 		return jsonReply(http.StatusNotFound, submitAnswer{Error: "not found"})
 	}
 	return submitOK()
+}
+
+// serveRejectAll answers POST /admin/submissions/reject-all: every pending
+// submission becomes rejected. It is the owner's, since one click clears the
+// queue.
+func serveRejectAll(u *sdk.HTTPUser) sdk.HTTPResponse {
+	if u == nil || u.Role != "owner" {
+		return jsonReply(http.StatusForbidden, submitAnswer{Error: "not allowed"})
+	}
+	n, err := rejectAllPending()
+	if err != nil {
+		return jsonReply(http.StatusServiceUnavailable, submitAnswer{Error: "try again"})
+	}
+	return jsonReply(http.StatusOK, map[string]any{"ok": true, "rejected": n})
 }
 
 // importRow is one source of the Imports tab. URL is set for the owner only:

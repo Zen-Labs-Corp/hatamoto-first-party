@@ -15,6 +15,7 @@ import (
 // the mail call. Any entity or changeset call fails the test.
 type submitHost struct {
 	notify    string
+	off       bool // submissions_enabled is left at its default
 	pending   int
 	dupe      bool
 	dbDown    bool
@@ -37,7 +38,7 @@ func (h *submitHost) install(t *testing.T) {
 		sql, _ := a["sql"].(string)
 		switch {
 		case fn == sdk.FnSettingsGet:
-			return json.Unmarshal([]byte(`{"notify_email":"`+h.notify+`","time_zone":"UTC"}`), out)
+			return json.Unmarshal([]byte(`{"notify_email":"`+h.notify+`","time_zone":"UTC","submissions_enabled":`+jsonText(!h.off)+`}`), out)
 		case fn == sdk.FnMailSend:
 			h.mails = append(h.mails, a)
 			return h.mailErr
@@ -363,5 +364,19 @@ func TestSubmitDatabaseDown(t *testing.T) {
 	r := serveSubmit(post(goodBody("1.ab")))
 	if r.Status != 503 || strings.Contains(r.Body, "down") || answer(t, r).Error != submitLaterError {
 		t.Errorf("answer %d %s", r.Status, r.Body)
+	}
+}
+
+func TestSubmitRoutesAre404WhileOff(t *testing.T) {
+	h := &submitHost{off: true}
+	h.install(t)
+	if r := serveSubmitToken(); r.Status != 404 {
+		t.Errorf("token: %d %s", r.Status, r.Body)
+	}
+	if r := serveSubmit(post(goodBody("1.ab"))); r.Status != 404 {
+		t.Errorf("submit: %d %s", r.Status, r.Body)
+	}
+	if h.key != "" || len(h.inserted) != 0 {
+		t.Errorf("work done while off: key %q, inserted %v", h.key, h.inserted)
 	}
 }

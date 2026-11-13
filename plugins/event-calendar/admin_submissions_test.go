@@ -297,3 +297,47 @@ func TestAdminImportsNoDatabase(t *testing.T) {
 		t.Errorf("empty: %s", r.Body)
 	}
 }
+
+func TestAdminRejectAll(t *testing.T) {
+	const pat = "/admin/submissions/reject-all"
+	t.Run("owner", func(t *testing.T) {
+		h := &adminHost{affected: 3}
+		h.install(t)
+		r := callRoute(t, "POST", pat, owner, nil, nil)
+		if r.Status != 200 || !strings.Contains(r.Body, `"rejected":3`) || len(h.execs) != 1 {
+			t.Fatalf("%d %s", r.Status, r.Body)
+		}
+		if sql := h.execs[0].sql; !strings.Contains(sql, "'rejected'") || !strings.Contains(sql, "status = 'pending'") {
+			t.Errorf("sql = %s", sql)
+		}
+	})
+	t.Run("editor and anonymous are refused", func(t *testing.T) {
+		h := &adminHost{affected: 3}
+		h.install(t)
+		for _, u := range []*sdk.HTTPUser{editor, nil} {
+			if r := callRoute(t, "POST", pat, u, nil, nil); r.Status != 403 {
+				t.Errorf("user %v: %d", u, r.Status)
+			}
+		}
+		if len(h.execs) != 0 {
+			t.Errorf("execs = %v", h.execs)
+		}
+	})
+	t.Run("db error", func(t *testing.T) {
+		h := &adminHost{dbErr: errors.New("boom")}
+		h.install(t)
+		if r := callRoute(t, "POST", pat, owner, nil, nil); r.Status != 503 || strings.Contains(r.Body, "boom") {
+			t.Errorf("%d %s", r.Status, r.Body)
+		}
+	})
+}
+
+func TestAdminSubmissionsReportsEnabled(t *testing.T) {
+	for setting, want := range map[string]string{`{}`: `"enabled":false`, `{"submissions_enabled":true}`: `"enabled":true`} {
+		h := &adminHost{settings: setting, rows: `[]`, counts: `{}`}
+		h.install(t)
+		if r := callRoute(t, "GET", "/admin/submissions", owner, nil, nil); !strings.Contains(r.Body, want) {
+			t.Errorf("%s: %s", setting, r.Body)
+		}
+	}
+}

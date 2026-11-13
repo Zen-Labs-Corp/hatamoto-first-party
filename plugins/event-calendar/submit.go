@@ -80,6 +80,9 @@ func tokenMAC(key []byte, issued string) string {
 // serveSubmitToken issues the time-trap token the form sends back: the time it
 // was issued, signed, so a post that comes too fast or too late is dropped.
 func serveSubmitToken() sdk.HTTPResponse {
+	if !loadSettings().SubmissionsEnabled {
+		return plain(http.StatusNotFound, "not found")
+	}
 	key, err := hmacSecret()
 	if err != nil {
 		return submitFail(http.StatusServiceUnavailable, submitLaterError)
@@ -111,6 +114,10 @@ func tokenFresh(key []byte, token string) bool {
 // serveSubmit takes one submitted event. Bots get the same answer as people
 // ("ok") and nothing is stored; only a malformed or invalid post is told so.
 func serveSubmit(r sdk.HTTPRequest) sdk.HTTPResponse {
+	s := loadSettings()
+	if !s.SubmissionsEnabled {
+		return plain(http.StatusNotFound, "not found")
+	}
 	if mt, _, err := mime.ParseMediaType(r.Headers["content-type"]); err != nil || mt != "application/json" {
 		return submitFail(http.StatusUnsupportedMediaType, submitFieldsError)
 	}
@@ -136,7 +143,7 @@ func serveSubmit(r sdk.HTTPRequest) sdk.HTTPResponse {
 	if !tokenFresh(key, b.Token) {
 		return submitOK()
 	}
-	sub, ok := cleanSubmission(b, loadSettings().location())
+	sub, ok := cleanSubmission(b, s.location())
 	if !ok {
 		return submitFail(http.StatusUnprocessableEntity, submitFieldsError)
 	}

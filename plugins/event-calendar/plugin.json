@@ -155,6 +155,14 @@
     },
     {
       "method": "POST",
+      "path": "/admin/submissions/reject-all",
+      "roles": [
+        "owner",
+        "editor"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/admin/submissions/{id}/delete",
       "roles": [
         "owner",
@@ -367,6 +375,12 @@
         "title": "Nominatim contact",
         "description": "Email or web address added to the lookup User-Agent, as the Nominatim usage policy asks.",
         "default": ""
+      },
+      "submissions_enabled": {
+        "type": "boolean",
+        "title": "Accept public event submissions",
+        "description": "Lets visitors send in events with the Submit an event widget. Off by default: while off, the submit routes answer 404.",
+        "default": false
       },
       "notify_email": {
         "type": "string",

@@ -77,7 +77,7 @@ const IMPORTS = {
 const IDS = [
   "#notice", "#hint", "#state", "#events", "#rows", "#duplicate", "#dup-event", "#dup-shift", "#dup-go",
   "#tab-submissions", "#tab-imports", "#tab-repeating", "#panel-submissions", "#panel-imports", "#panel-repeating",
-  "#sub-status", "#sub-state", "#sub-table", "#sub-rows", "#imp-state", "#imp-table", "#imp-rows", "#imp-detail", "#imp-url", "#imp-go", "#imp-confirm",
+  "#sub-status", "#sub-off", "#sub-reject-all", "#sub-state", "#sub-table", "#sub-rows", "#imp-state", "#imp-table", "#imp-rows", "#imp-detail", "#imp-url", "#imp-go", "#imp-confirm",
 ];
 
 // load runs the page and opens a tab (the repeating one unless told).
@@ -249,6 +249,22 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   // empty and failing lists
   ({ els } = await load({ tab: "submissions", subs: { role: "owner", counts: {}, items: [] } }));
   check(els["#sub-table"].hidden && els["#sub-state"].textContent === "No submissions here." && els["#tab-submissions"].textContent === "Submissions", "no submissions");
+  // the form is off: the tab says so; on, it does not
+  ({ els } = await load({ tab: "submissions", subs: { ...SUBS, enabled: false } }));
+  check(!els["#sub-off"].hidden, "a hint when submissions are off");
+  ({ els } = await load({ tab: "submissions", subs: { ...SUBS, enabled: true } }));
+  check(els["#sub-off"].hidden, "no hint when submissions are on");
+
+  // reject all pending: owner only, and only on the second click
+  ({ els, routes } = await load({ tab: "submissions" }));
+  check(!els["#sub-reject-all"].disabled, "owner can reject all");
+  await els["#sub-reject-all"].click();
+  check(routes.length === 1, "the first click only asks");
+  await els["#sub-reject-all"].click();
+  await next();
+  check(routes[1].method === "POST" && routes[1].p === "/admin/submissions/reject-all" && routes[2].p === "/admin/submissions", "second click posts, then reloads");
+  ({ els } = await load({ tab: "submissions", subs: { ...SUBS, role: "editor" } }));
+  check(els["#sub-reject-all"].disabled, "editor cannot reject all");
   ({ els } = await load({ tab: "submissions", status: 503, subs: { error: "unavailable" } }));
   check(els["#notice"].classes.has("error"), "a failing list shows an error");
 
