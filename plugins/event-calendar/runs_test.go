@@ -35,6 +35,7 @@ type runHost struct {
 	buffer   map[string][]byte
 	cursor   string // the last run.checkpoint
 	fetched  []string
+	lists    map[string][]string // entities.list answers by content type
 }
 
 // fakePage is the answer of a fake http.fetch.
@@ -80,6 +81,17 @@ func (h *runHost) install(t *testing.T) {
 			}
 			b, _ := json.Marshal(map[string]any{"status": page.status, "body": page.body, "truncated": page.truncated})
 			return json.Unmarshal(b, out)
+		case "entities.list":
+			// the whole list comes on the first page, whatever the cursor
+			schema := args.(map[string]any)["schema_slug"].(string)
+			if args.(map[string]any)["cursor"] != nil {
+				return json.Unmarshal([]byte(`{"items":[]}`), out)
+			}
+			items := h.lists[schema]
+			if items == nil {
+				items = []string{}
+			}
+			return json.Unmarshal([]byte(`{"items":[`+strings.Join(items, ",")+`]}`), out)
 		case "buffer.put":
 			a := args.(sdk.BufferPutArgs)
 			v, err := base64.StdEncoding.DecodeString(a.ValueB64)

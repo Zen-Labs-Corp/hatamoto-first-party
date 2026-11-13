@@ -52,7 +52,10 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 		}
 		var p map[string]any
 		_ = json.Unmarshal(info.Params, &p)
-		if info.Name == runEditDates {
+		switch {
+		case info.Name == runImportScheduled, info.Name == runEditDates && paramString(p, "action") == actionImportURL:
+			return importTransformStep()
+		case info.Name == runEditDates:
 			return editDates(info.RunID, p)
 		}
 		return failRun("Unknown run.")
