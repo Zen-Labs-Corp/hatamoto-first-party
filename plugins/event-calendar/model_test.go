@@ -409,7 +409,7 @@ func TestEventFromEntityRepeatFields(t *testing.T) {
 	r := parse(`"repeat":"monthly","repeat_every":2,"repeat_weekdays":["mo","TU","mo","xx",""],` +
 		`"repeat_by":"nth_weekday","repeat_nth":-1,"repeat_until":"2026-12-31","repeat_count":5,` +
 		`"repeat_extra_dates":["2026-02-10","bad"],"repeat_skip_dates":["2026-02-17"],` +
-		`"repeat_overrides":["2026-02-24|2026-02-25T10:00|2026-02-25T11:00","2026-03-03|2026-03-03T08:00","nope|x","2026-03-10"]`)
+		`"repeat_overrides":["2026-02-24|2026-02-25T10:00|2026-02-25T11:00","2026-03-03|2026-03-03T08:00","nope|x","2026-03-10","2026-12-01|19:00|20:00","2026-12-08|9:00"]`)
 	if r.Kind != "monthly" || r.Every != 2 || r.By != "nth_weekday" || r.Nth != -1 || r.Count != 5 ||
 		len(r.Weekdays) != 2 || r.Weekdays[0] != time.Monday || r.Weekdays[1] != time.Tuesday ||
 		!r.Until.Equal(time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)) ||
@@ -425,7 +425,13 @@ func TestEventFromEntityRepeatFields(t *testing.T) {
 	if o, ok := r.Over["2026-03-10"]; !ok || o.Start != "" {
 		t.Errorf("override with only a date = %+v, %v", o, ok)
 	}
-	if len(r.Over) != 3 {
+	if o := r.Over["2026-12-01"]; o.Start != "2026-12-01T19:00" || o.End != "2026-12-01T20:00" {
+		t.Errorf("short-form override = %+v", o)
+	}
+	if o := r.Over["2026-12-08"]; o.Start != "2026-12-08T09:00" || o.End != "" {
+		t.Errorf("short-form override, one-digit hour, no end = %+v", o)
+	}
+	if len(r.Over) != 5 {
 		t.Errorf("overrides = %v", r.Over)
 	}
 
