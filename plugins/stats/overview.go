@@ -30,10 +30,19 @@ type overview struct {
 	Themes            []themeUse   `json:"themes"`
 	Health            healthSums   `json:"health"`
 	Errors            errorsTable  `json:"errors"`
+	Sites             []siteRow    `json:"sites"`
 
 	// DetailedUnavailable is set when the Detailed queries failed; the Basic
 	// fields are still valid.
 	DetailedUnavailable bool `json:"detailed_unavailable"`
+}
+
+// siteRow is one install's newest report that carried a host; the install ID
+// is never sent to the page.
+type siteRow struct {
+	Host     string `json:"host"`
+	Version  string `json:"version"`
+	LastSeen string `json:"last_seen"`
 }
 
 // detailedInfo: installs with a Detailed report in the window, of the active ones.
@@ -235,8 +244,16 @@ func buildErrors(rows []errRow) errorsTable {
 	return out
 }
 
-// buildDetailed fills the Detailed fields of o for the window.
-func buildDetailed(o *overview, start, end string) error {
+// qSites: per install its newest report that carried a host in the window
+// ($1 exclusive, $2 inclusive), newest first, capped.
+const qSites = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.last_seen DESC, t.host), '[]'::jsonb) FROM (SELECT host, version, last_seen FROM (SELECT DISTINCT ON (install) host, core_version AS version, to_char(day, 'YYYY-MM-DD') AS last_seen FROM detail_daily WHERE host IS NOT NULL AND day > $1::date AND day <= $2::date ORDER BY install, day DESC) s ORDER BY last_seen DESC, host LIMIT 200) t`
+
+// sitesDays is the fixed Sites window, independent of the page's day selector.
+const sitesDays = 30
+
+// buildDetailed fills the Detailed fields of o for the window. The Sites list
+// uses its own fixed window ending at end.
+func buildDetailed(o *overview, start, end, sitesStart string) error {
 	var det struct {
 		Reports   int `json:"reports"`
 		SelfBuilt int `json:"self_built"`
@@ -268,8 +285,16 @@ func buildDetailed(o *overview, start, end string) error {
 		return err
 	}
 
+	var sites []siteRow
+	if err := dbJSON(qSites, &sites, sitesStart, end); err != nil {
+		return err
+	}
+
 	o.Detailed = detailedInfo{Reports: det.Reports, Active: o.Active}
 	o.SelfBuiltInstalls = det.SelfBuilt
+	if sites != nil {
+		o.Sites = sites
+	}
 	o.Errors = buildErrors(errRows)
 
 	errs, days := map[string]int{}, map[string]int{}
@@ -320,6 +345,7 @@ func buildOverview(days int) (overview, error) {
 		Trend:    []point{},
 		Plugins:  []pluginUse{},
 		Themes:   []themeUse{},
+		Sites:    []siteRow{},
 		Errors:   errorsTable{Cores: []string{}, Plugins: []pluginErrors{}},
 	}
 	trend, err := buildTrend(today)
@@ -330,7 +356,7 @@ func buildOverview(days int) (overview, error) {
 	if len(head) > 0 {
 		o.Active, o.Today, o.New = head[0].Active, head[0].Today, head[0].New
 	}
-	if err := buildDetailed(&o, start, end); err != nil {
+	if err := buildDetailed(&o, start, end, today.AddDate(0, 0, -sitesDays).Format("2006-01-02")); err != nil {
 		o.DetailedUnavailable = true
 	}
 	return o, nil

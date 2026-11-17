@@ -21,7 +21,7 @@ func fakeDB(t *testing.T, head, channels, versions string) *[]hostCall {
 // gets an empty result.
 func fakeDBWith(t *testing.T, cells map[string]string) *[]hostCall {
 	t.Helper()
-	canned := map[string]string{qHeadline: `[]`, qChannels: `[]`, qVersions: `[]`, qWeekly: `[]`, qPlugins: `[]`, qThemes: `[]`, qErrors: `[]`,
+	canned := map[string]string{qHeadline: `[]`, qChannels: `[]`, qVersions: `[]`, qWeekly: `[]`, qPlugins: `[]`, qThemes: `[]`, qErrors: `[]`, qSites: `[]`,
 		qDetailed: `{"reports":0,"self_built":0}`,
 		qHealth:   `{"days":0,"panics":0,"http_5xx":0,"render_errors":0,"update_failed":0,"update_rolled_back":0,"migration_failed":0}`}
 	for k, v := range cells {
@@ -61,7 +61,7 @@ func stubNow(t *testing.T) {
 }
 
 func TestOverviewQueriesPassGuard(t *testing.T) {
-	for _, q := range []string{qHeadline, qChannels, qVersions, qWeekly, qDetailed, qPlugins, qThemes, qHealth, qErrors, oldestMonthQuery("installs_daily"), oldestMonthQuery("detail_daily"), oldestMonthQuery("plugins_daily"), foldInstalls, foldDetail, foldPlugins} {
+	for _, q := range []string{qHeadline, qChannels, qVersions, qWeekly, qDetailed, qPlugins, qThemes, qHealth, qErrors, qSites, oldestMonthQuery("installs_daily"), oldestMonthQuery("detail_daily"), oldestMonthQuery("plugins_daily"), foldInstalls, foldDetail, foldPlugins} {
 		if !sqlGuardOK(q) {
 			t.Errorf("guard rejects %q", q)
 		}
@@ -82,10 +82,13 @@ func TestOverviewWindowAndShape(t *testing.T) {
 		if res.Status != 200 {
 			t.Fatalf("days=%s: %d", days, res.Status)
 		}
-		if len(*calls) != 9 { // headline, channels, versions, weekly trend, 5 detailed
+		if len(*calls) != 10 { // headline, channels, versions, weekly trend, 6 detailed
 			t.Fatalf("%d queries", len(*calls))
 		}
 		for _, c := range append((*calls)[:3:3], (*calls)[4:]...) {
+			if c.sql == qSites {
+				continue // fixed 30-day window, checked in TestOverviewSites
+			}
 			if c.fn != "db.query" || c.args[0] != start || c.args[1] != "2026-10-28" {
 				t.Fatalf("days=%s: args %v", days, c.args)
 			}
@@ -223,6 +226,47 @@ func TestOverviewEmptyDetailedIsEmptyArrays(t *testing.T) {
 	}
 	if o.Health != (healthSums{}) {
 		t.Errorf("health %+v", o.Health)
+	}
+	if string(raw["sites"]) != `[]` || len(o.Sites) != 0 {
+		t.Errorf("sites %s", raw["sites"])
+	}
+}
+
+func TestOverviewSites(t *testing.T) {
+	stubNow(t)
+	calls := fakeDBWith(t, map[string]string{
+		qSites: `[{"host":"example.com","version":"v1.4.2","last_seen":"2026-10-28"},{"host":"blog.example.org","version":"v1.4.1","last_seen":"2026-10-27"}]`,
+	})
+	res, o := overviewGet(t, map[string][]string{"days": {"7"}})
+	if res.Status != 200 || len(o.Sites) != 2 || o.Sites[0] != (siteRow{"example.com", "v1.4.2", "2026-10-28"}) || o.Sites[1].Host != "blog.example.org" {
+		t.Fatalf("%d %+v", res.Status, o.Sites)
+	}
+	if strings.Contains(res.Body, `"install"`) {
+		t.Errorf("install key in %s", res.Body)
+	}
+	// The window is fixed at 30 days whatever the selector says.
+	found := false
+	for _, c := range *calls {
+		if c.sql == qSites {
+			found = true
+			if c.args[0] != "2026-09-28" || c.args[1] != "2026-10-28" {
+				t.Errorf("sites args %v", c.args)
+			}
+		}
+	}
+	if !found {
+		t.Error("sites query not issued")
+	}
+}
+
+func TestSitesQueryShape(t *testing.T) {
+	for _, want := range []string{"LIMIT 200", "host IS NOT NULL", "ORDER BY last_seen DESC, host", "DISTINCT ON (install)", "ORDER BY install, day DESC", "'[]'::jsonb"} {
+		if !strings.Contains(qSites, want) {
+			t.Errorf("qSites lacks %q", want)
+		}
+	}
+	if !strings.Contains(qSites, "SELECT host, version, last_seen FROM (") {
+		t.Error("outer select must list only host, version and last_seen")
 	}
 }
 
