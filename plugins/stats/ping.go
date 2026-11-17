@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strconv"
@@ -12,6 +13,9 @@ import (
 )
 
 var (
+	// hostRe is a lowercase LDH domain name with at least two labels of 1-63
+	// characters; the migration's CHECK repeats it.
+	hostRe    = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
 	installRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	// versionRe is the release version form Hatamoto core accepts everywhere
 	// (core's release.canonicalVersion): vMAJOR.MINOR.PATCH with an optional
@@ -98,6 +102,8 @@ type detailedPing struct {
 	Plugins                 []pluginRow
 	OtherPlugins            int
 	Health                  health
+	Host                    string // the site's public domain name, when HostSet
+	HostSet                 bool
 }
 
 // pluginRow is one first-party-signed plugin; Errors is its plugin_errors count.
@@ -166,11 +172,13 @@ func parseDetailed(body string) (detailedPing, int) {
 			return readObject(dec, map[string]func() error{
 				"name":    func() (err error) { p.ThemeName, err = readString(dec); return },
 				"version": func() (err error) { p.ThemeVersion, err = readString(dec); return },
-			})
+			}, nil)
 		},
 		"plugins":       func() (err error) { p.Plugins, err = readPlugins(dec); return },
 		"other_plugins": func() (err error) { p.OtherPlugins, err = readInt(dec, 0, maxOtherPlugins); return },
 		"health":        func() (err error) { p.Health, errs, err = readHealth(dec); return },
+	}, map[string]func() error{
+		"host": func() (err error) { p.Host, err = readString(dec); p.HostSet = err == nil; return },
 	})
 	if err != nil {
 		return detailedPing{}, http.StatusUnprocessableEntity
@@ -180,7 +188,7 @@ func parseDetailed(body string) (detailedPing, int) {
 	}
 	if level != "detailed" || !installRe.MatchString(p.Install) || len(p.Version) > maxVersionLen || !versionRe.MatchString(p.Version) ||
 		!osArchRe.MatchString(p.OS) || !osArchRe.MatchString(p.Arch) ||
-		!nameRe.MatchString(p.ThemeName) || !validSemver(p.ThemeVersion) {
+		!nameRe.MatchString(p.ThemeName) || !validSemver(p.ThemeVersion) || (p.HostSet && !validHost(p.Host)) {
 		return detailedPing{}, http.StatusUnprocessableEntity
 	}
 	switch p.Channel {
@@ -211,25 +219,46 @@ func parseDetailed(body string) (detailedPing, int) {
 
 func validSemver(v string) bool { return len(v) <= maxVersionLen && semverRe.MatchString(v) }
 
-// readObject consumes one object whose keys are exactly those of fields, each
-// once, calling the key's reader to consume its value.
-func readObject(dec *json.Decoder, fields map[string]func() error) error {
+// validHost reports whether h is a lowercase LDH domain name with at least one
+// dot that is not an IP literal (a TLD is never all digits).
+func validHost(h string) bool {
+	if len(h) == 0 || len(h) > 253 || !hostRe.MatchString(h) {
+		return false
+	}
+	if _, err := netip.ParseAddr(h); err == nil {
+		return false
+	}
+	last := h[strings.LastIndexByte(h, '.')+1:]
+	return strings.Trim(last, "0123456789") != ""
+}
+
+// readObject consumes one object whose keys are each of fields (all required)
+// or of optional (may be absent), each at most once, calling the key's reader
+// to consume its value.
+func readObject(dec *json.Decoder, fields, optional map[string]func() error) error {
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
 		return errInvalid
 	}
 	seen := map[string]bool{}
+	required := 0
 	for dec.More() {
 		kt, err := dec.Token()
 		key, ok := kt.(string)
-		if err != nil || !ok || seen[key] || fields[key] == nil {
+		read := fields[key]
+		if read == nil {
+			read = optional[key]
+		} else {
+			required++
+		}
+		if err != nil || !ok || seen[key] || read == nil {
 			return errInvalid
 		}
 		seen[key] = true
-		if err := fields[key](); err != nil {
+		if err := read(); err != nil {
 			return err
 		}
 	}
-	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') || len(seen) != len(fields) {
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') || required != len(fields) {
 		return errInvalid
 	}
 	return nil
@@ -279,7 +308,7 @@ func readPlugins(dec *json.Decoder) ([]pluginRow, error) {
 			"name":    func() (err error) { r.Name, err = readString(dec); return },
 			"version": func() (err error) { r.Version, err = readString(dec); return },
 			"enabled": func() (err error) { r.Enabled, err = readBool(dec); return },
-		})
+		}, nil)
 		if err != nil || len(rows) == maxPlugins || !nameRe.MatchString(r.Name) || !validSemver(r.Version) ||
 			(len(rows) > 0 && rows[len(rows)-1].Name >= r.Name) {
 			return nil, errInvalid
@@ -308,7 +337,7 @@ func readHealth(dec *json.Decoder) (health, map[string]int, error) {
 		"update_rolled_back": count(&h.UpdateRolledBack),
 		"migration_failed":   count(&h.MigrationFailed),
 		"plugin_errors":      func() error { return readPluginErrors(dec, errs) },
-	})
+	}, nil)
 	return h, errs, err
 }
 
