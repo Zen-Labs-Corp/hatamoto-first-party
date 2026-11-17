@@ -178,6 +178,7 @@ func mutate(t *testing.T, from, to string) string {
 }
 
 func TestValidDetailedPing(t *testing.T) {
+	recordHost(t)
 	p, code := parseDetailed(detailedBody)
 	if code != 0 || p.Postgres != 16 || len(p.Plugins) != 2 || p.Plugins[1].Errors != 1 || p.Health.OtherErrors != 4 || p.Health.HTTP5xx != 3 || p.ThemeName != "hatamoto-dev" {
 		t.Fatalf("code %d, %+v", code, p)
@@ -189,6 +190,52 @@ func TestValidDetailedPing(t *testing.T) {
 	empty = strings.Replace(empty, `{"searchconsole":1,"other":4}`, `{}`, 1)
 	if _, code := parseDetailed(empty); code != 0 {
 		t.Fatalf("empty plugins: %d", code)
+	}
+}
+
+// withHost adds a host key with the given raw JSON value to the valid body.
+func withHost(raw string) string {
+	return strings.Replace(detailedBody, `"level":"detailed"`, `"level":"detailed","host":`+raw, 1)
+}
+
+// hostOfLen returns a valid-looking name of n characters: three 63-character
+// labels and a last label that takes the rest (n must be 252..253+).
+func hostOfLen(n int) string {
+	l := strings.Repeat("a", 63) + "."
+	return strings.Repeat(l, 3) + strings.Repeat("a", n-3*len(l))
+}
+
+func TestDetailedHost(t *testing.T) {
+	recordHost(t)
+	for _, h := range []string{"example.com", "blog.example.org", "xn--bcher-kva.example", "a.b-c.example.net", "2fa.example.com", strings.Repeat("a", 63) + ".com"} {
+		p, code := parseDetailed(withHost(`"` + h + `"`))
+		if code != 0 || !p.HostSet || p.Host != h {
+			t.Errorf("%s: code %d, %q set %v", h, code, p.Host, p.HostSet)
+		}
+		if res := send(t, jsonReq(withHost(`"`+h+`"`))); res.Status != 204 {
+			t.Errorf("%s: got %d", h, res.Status)
+		}
+	}
+	// 253 characters in total is the longest accepted name.
+	if h := hostOfLen(253); len(h) != 253 {
+		t.Fatalf("fixture is %d chars", len(h))
+	} else if _, code := parseDetailed(withHost(`"` + h + `"`)); code != 0 {
+		t.Errorf("253 chars: %d", code)
+	}
+	p, code := parseDetailed(detailedBody)
+	if code != 0 || p.HostSet || p.Host != "" {
+		t.Errorf("no host: code %d, %q set %v", code, p.Host, p.HostSet)
+	}
+	if res := send(t, jsonReq(detailedBody)); res.Status != 204 {
+		t.Errorf("no host: got %d", res.Status)
+	}
+}
+
+func TestBasicBodyRejectsHost(t *testing.T) {
+	b := `{"install":"` + goodID + `","version":"v1.2.3","channel":"stable","host":"example.com"}`
+	calls := recordHost(t)
+	if res := send(t, jsonReq(b)); res.Status != 400 || len(*calls) != 0 {
+		t.Fatalf("got %d, %d calls", res.Status, len(*calls))
 	}
 }
 
@@ -265,6 +312,26 @@ func TestRejectedDetailedPings(t *testing.T) {
 		{"plugin_errors over", mutate(t, `"searchconsole":1`, `"searchconsole":1000001`), 422},
 		{"plugin_errors string", mutate(t, `"searchconsole":1`, `"searchconsole":"1"`), 422},
 		{"plugin_errors array", mutate(t, errs, `[]`), 422},
+		{"host empty", withHost(`""`), 422},
+		{"host null", withHost(`null`), 422},
+		{"host number", withHost(`5`), 422},
+		{"host upper", withHost(`"Example.com"`), 422},
+		{"host no dot", withHost(`"localhost"`), 422},
+		{"host trailing dot", withHost(`"example.com."`), 422},
+		{"host port", withHost(`"example.com:8080"`), 422},
+		{"host path", withHost(`"example.com/x"`), 422},
+		{"host space", withHost(`"a b.com"`), 422},
+		{"host ipv4", withHost(`"1.2.3.4"`), 422},
+		{"host ipv4 private", withHost(`"10.0.0.1"`), 422},
+		{"host ipv4 leading zero", withHost(`"1.2.3.04"`), 422},
+		{"host ipv6 bracket", withHost(`"[::1]"`), 422},
+		{"host ipv6", withHost(`"::1"`), 422},
+		{"host label 64", withHost(`"` + strings.Repeat("a", 64) + `.com"`), 422},
+		{"host dash edge", withHost(`"-a.example.com"`), 422},
+		{"host empty label", withHost(`"a..example.com"`), 422},
+		{"host 254", withHost(`"` + hostOfLen(254) + `"`), 422},
+		{"host duplicate", mutate(t, `"level":"detailed"`, `"level":"detailed","host":"example.com","host":"example.org"`), 422},
+		{"extra key beside host", mutate(t, `"level":"detailed"`, `"level":"detailed","host":"example.com","ip":"x"`), 422},
 		{"not json", `{"level":"detailed"`, 400},
 		{"trailing data", detailedBody + ` {}`, 400},
 		{"trailing garbage", detailedBody + ` x`, 400},

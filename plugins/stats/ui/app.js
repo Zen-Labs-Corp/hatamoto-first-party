@@ -199,6 +199,9 @@ async function load() {
   barRows($("#channels"), o.active === 0 ? [] : o.channels);
   trend($("#trend"), o.trend);
   detailed(o);
+  renderTable($("#sites"), ["Host", "Version", "Last seen"],
+    (o.sites || []).map((s) => [s.host, s.version, s.last_seen]),
+    o.detailed_unavailable ? "Sites could not be loaded." : "No sites have reported an address yet.");
 }
 
 async function main() {

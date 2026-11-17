@@ -124,12 +124,32 @@ func TestDetailedPingIsOneStatement(t *testing.T) {
 	if c.fn != "db.exec" || c.sql != upsertDetailed || !sqlGuardOK(c.sql) {
 		t.Fatalf("call %+v", c)
 	}
-	if len(c.args) != 21 || c.args[0] != goodID || c.args[1] != "2026-11-09" || c.args[2] != "v1.1.0" || c.args[3] != "stable" {
+	if len(c.args) != 22 || c.args[0] != goodID || c.args[1] != "2026-11-09" || c.args[2] != "v1.1.0" || c.args[3] != "stable" {
 		t.Fatalf("args %v", c.args)
 	}
 	list, _ := c.args[20].(string)
 	if !strings.Contains(list, `{"name":"searchconsole","version":"1.0.0","enabled":true,"errors":1}`) {
 		t.Fatalf("plugin list %s", list)
+	}
+}
+
+func TestDetailedHostArg(t *testing.T) {
+	calls := recordHost(t)
+	if err := recordDetailed(detailedPing{}, "2026-11-09"); err != nil {
+		t.Fatal(err)
+	}
+	if got := (*calls)[0].args[21]; got != nil {
+		t.Fatalf("absent host sent %#v, want nil", got)
+	}
+	if err := recordDetailed(detailedPing{Host: "example.com", HostSet: true}, "2026-11-09"); err != nil {
+		t.Fatal(err)
+	}
+	c := (*calls)[1]
+	if len(c.args) != 22 || c.args[21] != "example.com" || !sqlGuardOK(c.sql) {
+		t.Fatalf("args %v", c.args)
+	}
+	if n := strings.Count(upsertDetailed, ";"); n != 0 {
+		t.Fatalf("%d semicolons", n)
 	}
 }
 
@@ -146,7 +166,7 @@ func TestDetailedWithoutPluginsSendsEmptyList(t *testing.T) {
 func TestDetailedSQLShape(t *testing.T) {
 	// A same-day report replaces that day's plugin rows, and no database clock
 	// is involved: the day is an argument.
-	for _, want := range []string{"NOT IN (SELECT name FROM jsonb_to_recordset($21::jsonb)", "ON CONFLICT (install, day, name) DO UPDATE"} {
+	for _, want := range []string{"NOT IN (SELECT name FROM jsonb_to_recordset($21::jsonb)", "ON CONFLICT (install, day, name) DO UPDATE", "host = COALESCE(EXCLUDED.host, detail_daily.host)", "migration_failed, host) ", "$20, $22)"} {
 		if !strings.Contains(upsertDetailed, want) {
 			t.Errorf("missing %q", want)
 		}
