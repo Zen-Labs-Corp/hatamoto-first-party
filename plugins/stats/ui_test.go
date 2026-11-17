@@ -54,7 +54,7 @@ func TestIndexLoadsOnlyBridgeAndApp(t *testing.T) {
 	if len(srcs) != 2 || srcs[0] != "/plugin-ui/_sdk/bridge.js" || srcs[1] != "app.js" {
 		t.Fatalf("scripts %v", srcs)
 	}
-	if !strings.Contains(html, "Stored: install ID, version, channel, day; with detailed reports also OS, architecture, plugin and theme names and versions, health counts. No IP addresses.") {
+	if !strings.Contains(html, "Stored: install ID, version, channel, day; with detailed reports also OS, architecture, plugin and theme names and versions, health counts, and the site address when sent. No IP addresses.") {
 		t.Fatal("storage footer missing")
 	}
 	if !strings.Contains(html, `<option value="30" selected>`) {
@@ -141,6 +141,27 @@ func TestUIDetailedPanels(t *testing.T) {
 		if !strings.Contains(html, `id="`+id+`"`) {
 			t.Errorf("index.html lacks #%s", id)
 		}
+	}
+	for _, id := range []string{"sites"} {
+		if !strings.Contains(html, `id="`+id+`"`) {
+			t.Errorf("index.html lacks #%s", id)
+		}
+	}
+	// Sites sits after the detailed section, so it shows without detailed reports.
+	body, sites := strings.Index(html, `id="detailed-body"`), strings.Index(html, `id="sites"`)
+	if end := strings.Index(html[body:], "</section>"); sites < body+end {
+		t.Error("#sites is inside the detailed section")
+	}
+	if !strings.Contains(html, "<h2>Sites (last 30 days)</h2>") {
+		t.Error("index.html lacks the Sites heading")
+	}
+	for _, want := range []string{"No sites have reported an address yet.", `$("#sites")`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("ui/app.js lacks %q", want)
+		}
+	}
+	if i, j := strings.Index(js, "  detailed(o);"), strings.Index(js, `$("#sites")`); j < i || strings.Contains(js[i:j], "return") {
+		t.Error("sites must render after detailed(o), unconditionally")
 	}
 	for _, want := range []string{"No detailed reports yet.", "Detailed reports could not be loaded.", "if (o.detailed_unavailable)", "! jump (", "(names not sent)", "function renderTable"} {
 		if !strings.Contains(js, want) {
