@@ -3,7 +3,9 @@
 // It accepts the opt-in ping Hatamoto sends once a day, keeps one row per
 // install and day (rolled up to one per month after 13 months) and shows the
 // owner the totals. It stores only the install ID, version, channel and the UTC
-// day; it logs nothing and reads no header except Content-Type.
+// day (a Detailed report adds environment, theme, plugin and health data, and
+// may carry the site's public domain name); it stores no IP address, logs
+// nothing and reads no header except Content-Type.
 package main
 
 import (
