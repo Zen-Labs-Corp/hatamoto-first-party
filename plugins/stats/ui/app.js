@@ -201,7 +201,7 @@ async function load() {
   detailed(o);
   renderTable($("#sites"), ["Host", "Version", "Last seen"],
     (o.sites || []).map((s) => [s.host, s.version, s.last_seen]),
-    "No sites have reported an address yet.");
+    o.detailed_unavailable ? "Sites could not be loaded." : "No sites have reported an address yet.");
 }
 
 async function main() {

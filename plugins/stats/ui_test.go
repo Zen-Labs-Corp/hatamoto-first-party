@@ -155,7 +155,7 @@ func TestUIDetailedPanels(t *testing.T) {
 	if !strings.Contains(html, "<h2>Sites (last 30 days)</h2>") {
 		t.Error("index.html lacks the Sites heading")
 	}
-	for _, want := range []string{"No sites have reported an address yet.", `$("#sites")`} {
+	for _, want := range []string{"No sites have reported an address yet.", "Sites could not be loaded.", `$("#sites")`} {
 		if !strings.Contains(js, want) {
 			t.Errorf("ui/app.js lacks %q", want)
 		}
