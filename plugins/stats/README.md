@@ -38,7 +38,10 @@ site that receives the pings (hatamoto.dev).
   with no end date.
 - **Who sees it**: only the site owner, as totals on the plugin's admin page, plus
   a Sites table listing the hosts that reported one in the last 30 days (host,
-  version, last seen; no install ID). There is no public stats page, no
+  version, last seen; no install ID). The Sites list is self-reported and
+  unverified: any install can send any valid name. It is display-only; the plugin
+  never fetches or links a host. `host` is the name the install reports, which may
+  be a private name. There is no public stats page, no
   per-install page, no export.
 - **Request log**: Hatamoto itself logs every request, including these. That log
   keeps method, path, time, status, size, duration, the address of the proxy in
