@@ -73,9 +73,13 @@ the anchor. Nothing else on the page is touched, and every other path is
 returned unchanged without a host call. The section type is `devportal`
 (`sections/devportal.html`).
 
-Cost: while a plugin handles `render.page`, the host serves every public page
-`private, no-store` and does not page-cache it. The hook timeout is 100 ms and
-the filter fails open: on any error the placeholder block stays.
+Cost: the manifest declares `page_paths: ["/developers"]`. A host with SDK 0.24
+or later calls the filter only for `/developers`, serves only that page
+`private, no-store`, and page-caches every other public page. An older host
+ignores `page_paths`, calls the filter on every page and serves every public
+page uncached; the filter still returns at once for any other path. The hook
+timeout is 100 ms and the filter fails open: on any error the placeholder
+block stays.
 
 Ship checks:
 

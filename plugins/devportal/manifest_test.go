@@ -59,6 +59,25 @@ func TestManifestPermissionsCookiesAndHosts(t *testing.T) {
 	}
 }
 
+// TestManifestPagePaths: a 0.24+ host calls the render.page filter only for
+// these paths and page-caches the rest, so they must be exactly the paths
+// pageFilter acts on. sdk v0.21's Manifest has no PagePaths field: read the raw JSON.
+func TestManifestPagePaths(t *testing.T) {
+	raw, err := os.ReadFile("plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		PagePaths []string `json:"page_paths"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{portalPath}; !slices.Equal(doc.PagePaths, want) {
+		t.Fatalf("page_paths %q, want %q", doc.PagePaths, want)
+	}
+}
+
 func TestManifestRoutes(t *testing.T) {
 	m := loadManifest(t)
 	public := map[string]bool{

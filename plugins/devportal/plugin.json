@@ -6,6 +6,7 @@
   "permissions": ["db", "kv", "http.fetch", "settings", "log", "packages.inspect", "mail.send"],
   "allowed_hosts": ["github.com", "api.github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"],
   "cookies": ["sid", "st", "fl"],
+  "page_paths": ["/developers"],
   "routes": [
     { "method": "GET", "path": "/auth/callback", "public": true },
     { "method": "POST", "path": "/account", "public": true },
