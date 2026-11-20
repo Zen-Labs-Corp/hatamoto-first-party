@@ -33,7 +33,7 @@ func TestManifestIsValidForTheSDK(t *testing.T) {
 	if ok, err := m.Compatible(); !ok || err != nil {
 		t.Fatalf("Compatible() = %v, %v", ok, err)
 	}
-	if m.Name != "devportal" || m.SDK != "^0.21" || m.Version != "0.2.0" {
+	if m.Name != "devportal" || m.SDK != "^0.21" || m.Version != "0.2.1" {
 		t.Fatalf("name %q sdk %q version %q", m.Name, m.SDK, m.Version)
 	}
 }
@@ -56,6 +56,25 @@ func TestManifestPermissionsCookiesAndHosts(t *testing.T) {
 		if strings.Contains(string(raw), bad) {
 			t.Errorf("plugin.json contains %q", bad)
 		}
+	}
+}
+
+// TestManifestPagePaths: a 0.24+ host calls the render.page filter only for
+// these paths and page-caches the rest, so they must be exactly the paths
+// pageFilter acts on. sdk v0.21's Manifest has no PagePaths field: read the raw JSON.
+func TestManifestPagePaths(t *testing.T) {
+	raw, err := os.ReadFile("plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		PagePaths []string `json:"page_paths"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{portalPath}; !slices.Equal(doc.PagePaths, want) {
+		t.Fatalf("page_paths %q, want %q", doc.PagePaths, want)
 	}
 }
 
