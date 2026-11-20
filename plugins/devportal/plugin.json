@@ -1,6 +1,6 @@
 {
   "name": "devportal",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "sdk": "^0.21",
   "description": "Developer accounts for hatamoto.dev: sign in with GitHub, accept the terms, register one signing key.",
   "permissions": ["db", "kv", "http.fetch", "settings", "log", "packages.inspect", "mail.send"],

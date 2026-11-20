@@ -33,7 +33,7 @@ func TestManifestIsValidForTheSDK(t *testing.T) {
 	if ok, err := m.Compatible(); !ok || err != nil {
 		t.Fatalf("Compatible() = %v, %v", ok, err)
 	}
-	if m.Name != "devportal" || m.SDK != "^0.21" || m.Version != "0.2.0" {
+	if m.Name != "devportal" || m.SDK != "^0.21" || m.Version != "0.2.1" {
 		t.Fatalf("name %q sdk %q version %q", m.Name, m.SDK, m.Version)
 	}
 }

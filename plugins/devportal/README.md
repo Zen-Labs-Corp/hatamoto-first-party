@@ -180,6 +180,10 @@ once it is set. A revoked developer key stays on the revocation list for good.
 
 ## Shipping this version
 
+0.2.1 only adds `page_paths` to the manifest: updating from 0.2.0 needs no
+new grant and runs no migration. The steps below are for a first install or
+an update from 0.1.x.
+
 1. Set the listing key from a file, so the secret never appears in a shell
    history or process list:
    `hatamoto plugin settings set devportal listing_key @/path/to/listing.key`
