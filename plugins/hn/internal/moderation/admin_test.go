@@ -282,3 +282,20 @@ func TestAdminViews(t *testing.T) {
 		t.Error("log is not newest first")
 	}
 }
+
+// The queue must rank live targets before dead ones inside the LIMIT and skip
+// targets whose story or comment row is gone.
+func TestQueueSQLShape(t *testing.T) {
+	inner := sqlQueue[strings.Index(sqlQueue, "FROM (SELECT f.kind"):]
+	order := strings.Index(inner, "ORDER BY (k.cause IS NOT NULL OR COALESCE(s.dead, false)), f.n DESC")
+	limit := strings.Index(inner, "LIMIT 100")
+	if order < 0 || limit < order {
+		t.Error("live targets are not ranked first inside the limited select")
+	}
+	if !strings.Contains(inner, "WHERE s.entity_id IS NOT NULL OR cm.comment_id IS NOT NULL") {
+		t.Error("orphaned flags are not excluded")
+	}
+	if !strings.Contains(sqlQueue, "ORDER BY x.dead, x.flags DESC") {
+		t.Error("outer order puts dead items first")
+	}
+}

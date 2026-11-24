@@ -96,3 +96,23 @@ func TestDeadMode(t *testing.T) {
 		noEntityCalls(t, h)
 	})
 }
+
+func TestStoryDeletedDropsModeration(t *testing.T) {
+	db := &fakeDB{}
+	install(t, db)
+	r := newRegistry(t)
+	r.Publish(core.StoryEvent{Kind: core.StoryDeleted, EntityID: storyUUID})
+	if len(db.Execs) != 1 || db.Execs[0].SQL != sqlStoryDrop || db.Execs[0].Args[0] != storyUUID {
+		t.Fatalf("execs = %+v", db.Execs)
+	}
+	for _, t2 := range []string{"flags", "vouches", "kills"} {
+		if !strings.Contains(sqlStoryDrop, "FROM "+t2+" ") {
+			t.Errorf("%s not cleaned", t2)
+		}
+	}
+	db.Execs = nil
+	r.Publish(core.StoryEvent{Kind: core.StoryDeleted})
+	if len(db.Execs) != 0 {
+		t.Fatalf("empty entity id ran %+v", db.Execs)
+	}
+}

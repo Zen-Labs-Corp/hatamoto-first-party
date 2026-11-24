@@ -9,6 +9,7 @@ import (
 const (
 	sqlDeadBan    = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'dead') AS dead) x`
 	sqlKillInsert = `INSERT INTO kills (kind, target_id, cause, created_at) VALUES ($1, $2::uuid, $3, $4::timestamptz) ON CONFLICT (kind, target_id) DO NOTHING`
+	sqlStoryDrop  = `WITH f AS (DELETE FROM flags WHERE kind = 'story' AND target_id = $1::uuid), v AS (DELETE FROM vouches WHERE kind = 'story' AND target_id = $1::uuid) DELETE FROM kills WHERE kind = 'story' AND target_id = $1::uuid`
 	sqlLogInsert  = `INSERT INTO mod_log (actor, action, target, detail, created_at) VALUES ($1, $2, $3, $4, $5::timestamptz)`
 	// sqlStoryDeadMode kills a just-saved story of a dead-mode author. It only
 	// flips story_meta.dead: the entry itself is never touched.
@@ -18,6 +19,17 @@ const (
 func registerDeadMode(r *core.Registry) {
 	r.Comment(core.OnCreated, deadModeComment)
 	r.Subscribe(core.StorySaved, deadModeStory)
+	r.Subscribe(core.StoryDeleted, dropStoryModeration)
+}
+
+// dropStoryModeration removes the flags, vouches and kills of a deleted story,
+// which have no foreign key to it. Failures are ignored; the queue skips
+// targets without a meta row anyway.
+func dropStoryModeration(ev core.StoryEvent) {
+	if ev.EntityID == "" {
+		return
+	}
+	_, _ = core.Exec(sqlStoryDrop, ev.EntityID)
 }
 
 // deadModeComment kills the new comment of a member under a dead-mode ban.
