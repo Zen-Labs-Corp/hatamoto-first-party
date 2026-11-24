@@ -1,11 +1,46 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>News moderation</title>
+  <meta charset="utf-8">
+  <title>News moderation</title>
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<p>The moderation page arrives in a later version.</p>
+  <main>
+    <nav class="tabs" role="tablist">
+      <button id="tab-queue" type="button" role="tab" aria-selected="true">Queue</button>
+      <button id="tab-users" type="button" role="tab" aria-selected="false">Users</button>
+      <button id="tab-domains" type="button" role="tab" aria-selected="false">Domains</button>
+      <button id="tab-nets" type="button" role="tab" aria-selected="false">Networks</button>
+      <button id="tab-jobs" type="button" role="tab" aria-selected="false">Jobs</button>
+      <button id="tab-log" type="button" role="tab" aria-selected="false">Log</button>
+    </nav>
+    <p id="notice" class="notice" hidden></p>
+    <section id="panel-queue">
+      <div id="body-queue"></div>
+      <footer class="muted">Items are listed by the number of flags. Killing hides an item and only you can bring it back; a dead item killed by flags can also be vouched for by members.</footer>
+    </section>
+    <section id="panel-users" hidden>
+      <div id="body-users"></div>
+      <footer class="muted">A dead ban hides everything the member posts from then on. A blocked member can still read but cannot post, vote or flag.</footer>
+    </section>
+    <section id="panel-domains" hidden>
+      <div id="body-domains"></div>
+      <footer class="muted">A blocked site also blocks its subdomains. Existing stories are not touched.</footer>
+    </section>
+    <section id="panel-nets" hidden>
+      <div id="body-nets"></div>
+      <footer class="muted">Network keys come from the queue, never an address. A key hides the address it was made from.</footer>
+    </section>
+    <section id="panel-jobs" hidden>
+      <div id="body-jobs"></div>
+      <footer class="muted">Jobs skip the duplicate check and the hourly limit. Leave the member empty to post as the first member.</footer>
+    </section>
+    <section id="panel-log" hidden>
+      <div id="body-log"></div>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
