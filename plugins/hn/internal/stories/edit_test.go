@@ -2,6 +2,7 @@ package stories
 
 import (
 	"encoding/json"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -193,5 +194,38 @@ func TestStoryEditClearsURLWithNull(t *testing.T) {
 	}
 	if a := string((*updates)[0]["attributes"]); !strings.Contains(a, `"url":null`) || strings.Contains(a, `"text":null`) {
 		t.Errorf("attributes %s", a)
+	}
+}
+
+func TestStoryEditRunsSubmitGate(t *testing.T) {
+	pinNow(t, voteNow)
+	var seen []*core.GateReq
+	setup := func() (*core.Registry, *[]map[string]json.RawMessage) {
+		db, updates := editDB(nil)
+		install(t, db)
+		return newRegistry(t, map[string]func(*core.Registry){"moderation": func(r *core.Registry) {
+			r.Gate(core.GateSubmit, func(g *core.GateReq) error {
+				seen = append(seen, g)
+				if g.Domain == "spam.example" {
+					return errors.New("banned domain")
+				}
+				return nil
+			})
+		}}), updates
+	}
+	r, updates := setup()
+	_, loc := edit(t, r, url.Values{"title": {"T"}, "url": {"https://spam.example/x"}}, "k1")
+	if loc != "/submit?id=42&m=story-refused" || len(*updates) != 0 {
+		t.Errorf("banned: %q updates %v", loc, *updates)
+	}
+	if len(seen) != 1 || seen[0].Target == "" || seen[0].User == nil || seen[0].User.ID != 1 {
+		t.Errorf("gate request %+v", seen)
+	}
+	resp := post(t, r, "POST /story/{id}/edit", map[string]string{"id": "42"}, url.Values{"title": {"T"}, "url": {"https://spam.example/x"}}, "k1", true)
+	if resp.Status != 403 || !strings.Contains(resp.Body, "banned domain") || len(*updates) != 0 {
+		t.Errorf("json: %d %s", resp.Status, resp.Body)
+	}
+	if _, loc := edit(t, r, url.Values{"title": {"T"}, "url": {"https://example.com/ok"}}, "k1"); loc != "/item/42?m=story-saved" || len(*updates) != 1 {
+		t.Errorf("allowed: %q", loc)
 	}
 }

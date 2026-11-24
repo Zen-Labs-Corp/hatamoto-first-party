@@ -58,7 +58,7 @@ func itemPath(no int64) string { return "/item/" + strconv.FormatInt(no, 10) }
 // handleEdit is POST /story/{id}/edit: title, url and text of the author's own story.
 func handleEdit(r *core.Registry, q *core.Request) (sdk.HTTPResponse, error) {
 	back := func(no int64) string { return "/submit?id=" + strconv.FormatInt(no, 10) }
-	_, ref, resp := ownStory(q, back)
+	u, ref, resp := ownStory(q, back)
 	if resp != nil {
 		return *resp, nil
 	}
@@ -85,6 +85,15 @@ func handleEdit(r *core.Registry, q *core.Request) (sdk.HTTPResponse, error) {
 		if canon, key, domain, err = core.NormalizeURL(rawURL); err != nil {
 			return refuse(nURL)
 		}
+	}
+	// The same gates as a new submission: banned domains and members apply to edits too.
+	if err := r.RunGates(core.GateSubmit, &core.GateReq{Kind: core.GateSubmit, User: u, Req: q, Target: key, Domain: domain}); err != nil {
+		if q.WantsJSON() {
+			return core.JSONError(403, err.Error()), nil
+		}
+		return refuse(noticeOf(err))
+	}
+	if rawURL != "" {
 		if _, oldKey, _, _ := core.NormalizeURL(ref.URL); oldKey != key {
 			var dupNo int64
 			err := core.QueryJSON("SELECT to_jsonb(item_no) FROM story_meta WHERE url_key = $1 AND created_at > $2::timestamptz - interval '30 days' AND entity_id <> $3::uuid ORDER BY created_at DESC LIMIT 1", &dupNo, key, nowArg(), ref.EntityID)
