@@ -1,6 +1,8 @@
 # Vets, tests and builds every plugin a change touches (a change outside
 # plugins/ touches all of them), with the same script developers run:
-# scripts/build-plugin.sh. Also proves the template still scaffolds and builds.
+# scripts/build-plugin.sh. Checks every kit a change touches with
+# scripts/check-kit.sh against the core pinned in .hatamoto-core. Also proves the
+# template still scaffolds and builds.
 # Needs the public Hatamoto SDK (hatamoto.dev/sdk) to be fetchable.
 name: ci
 
@@ -22,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       plugins: ${{ steps.list.outputs.plugins }}
+      kits: ${{ steps.list.outputs.kits }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -35,11 +38,15 @@ jobs:
           set -euo pipefail
           if [ "$EVENT" = pull_request ]; then
             plugins=$(scripts/changed-plugins.sh --json "$BASE_SHA" HEAD)
+            kits=$(scripts/changed-kits.sh --json "$BASE_SHA" HEAD)
           else
             plugins=$(scripts/changed-plugins.sh --json)
+            kits=$(scripts/changed-kits.sh --json)
           fi
           echo "plugins=$plugins" >>"$GITHUB_OUTPUT"
           echo "plugins: $plugins"
+          echo "kits=$kits" >>"$GITHUB_OUTPUT"
+          echo "kits: $kits"
 
   build:
     needs: changed
@@ -62,6 +69,35 @@ jobs:
           PLUGIN: ${{ matrix.plugin }}
         run: scripts/build-plugin.sh "$PLUGIN"
 
+  kits:
+    needs: changed
+    if: needs.changed.outputs.kits != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kit: ${{ fromJSON(needs.changed.outputs.kits) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Core CLI (commit pinned in .hatamoto-core)
+        run: |
+          bin=$(scripts/hatamoto-bin.sh)
+          echo "HATAMOTO_BIN=$bin" >>"$GITHUB_ENV"
+      - name: Check ${{ matrix.kit }}
+        env:
+          KIT: ${{ matrix.kit }}
+        run: scripts/check-kit.sh "$KIT"
+      - name: check-kit.sh refuses broken kits
+        run: scripts/test-check-kit.sh
+      - name: changed-kits.sh lists the right kits
+        run: scripts/test-changed-kits.sh
+
   template:
     runs-on: ubuntu-latest
     steps:
@@ -79,7 +115,7 @@ jobs:
   # GitHub auto-merge waits for the whole workflow. A skipped job (nothing changed) counts as passed.
   ci-ok:
     if: always()
-    needs: [changed, build, template]
+    needs: [changed, build, kits, template]
     runs-on: ubuntu-latest
     steps:
       - name: Every job passed or was skipped

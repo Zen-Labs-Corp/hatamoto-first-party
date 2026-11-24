@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # changed-plugins.sh [BASE [HEAD]] - print the plugin folders (plugins/<name>)
 # touched between BASE and HEAD, one per line, as a JSON array with --json.
-# A change outside plugins/ (scripts/, template/, .github/, ...) counts as a
-# change to every plugin. No BASE: every plugin.
+# A change outside plugins/ and kits/ (scripts/, template/, .github/, ...) counts
+# as a change to every plugin; kits/ changes are checked by changed-kits.sh.
+# No BASE: every plugin.
 #
 # Usage: scripts/changed-plugins.sh [--json] [BASE [HEAD]]
 set -euo pipefail
@@ -16,7 +17,7 @@ if [ $# -eq 0 ]; then
 else
   base=$1 head=${2:-HEAD}
   files=$(git diff --name-only "$base...$head")
-  if grep -qv '^plugins/' <<<"$files"; then
+  if grep -qvE '^(plugins|kits)/' <<<"$files"; then
     list=$(all)
   else
     list=$(sed -n 's#^\(plugins/[^/]*\)/.*#\1#p' <<<"$files" | sort -u | while read -r d; do

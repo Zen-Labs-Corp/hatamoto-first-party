@@ -1,0 +1,306 @@
+{
+  "name": "hn",
+  "version": "1.0.0",
+  "kit": 1,
+  "sdk": "^0.27",
+  "title": "Hacker News style community",
+  "description": "A link and discussion community: submit stories, vote, comment in threads, with a classic look.",
+  "requires": [
+    "comment.policy",
+    "comment.rank",
+    "plugin.entity-write",
+    "comment.signin"
+  ],
+  "plugins": [
+    {
+      "name": "hn",
+      "range": "^1",
+      "grant": "all"
+    }
+  ],
+  "themes": [
+    {
+      "name": "hn-classic",
+      "range": "^1",
+      "activate": true
+    }
+  ],
+  "schemas": [
+    {
+      "slug": "hn-story",
+      "name": "Stories",
+      "schema": {
+        "type": "object",
+        "title": "Story",
+        "description": "A submitted link or text post.",
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "URL",
+            "description": "The link, empty for a text post.",
+            "format": "uri"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Body of an Ask, Show or text post.",
+            "x-hm-field": "plaintext"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "story, ask, show or job.",
+            "enum": [
+              "story",
+              "ask",
+              "show",
+              "job"
+            ]
+          }
+        },
+        "x-hm-order": [
+          "url",
+          "text",
+          "kind"
+        ]
+      },
+      "settings": {
+        "url_pattern": "/item/{slug}",
+        "comments": {
+          "mode": "open",
+          "order": "rank",
+          "policy": {
+            "enabled": true,
+            "max_depth": 32,
+            "edit_window_minutes": 120,
+            "slow_mode_seconds": 30
+          }
+        }
+      }
+    }
+  ],
+  "pages": [
+    {
+      "slug": "news",
+      "name": "News",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_feed",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "newest",
+      "name": "Newest",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_feed",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "front",
+      "name": "Past",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_feed",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "best",
+      "name": "Best",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_feed",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "ask",
+      "name": "Ask",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_feed",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "show",
+      "name": "Show",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_feed",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "jobs",
+      "name": "Jobs",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_feed",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "from",
+      "name": "From",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_feed",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "submit",
+      "name": "Submit",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_submit",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "newcomments",
+      "name": "Comments",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_threads",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "threads",
+      "name": "Threads",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_threads",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "login",
+      "name": "Login",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_login",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "user",
+      "name": "User",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_user",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "favorites",
+      "name": "Favorites",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_saved",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "search",
+      "name": "Search",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_search",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "guidelines",
+      "name": "Guidelines",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "content",
+          "props": {
+            "headline": "Guidelines",
+            "body": "<p>This is a place for curious people to share and discuss good links. Keep it worth reading:</p><ul><li>Stay on topic: share what a thoughtful reader would find interesting.</li><li>Be kind and substantive in replies; argue with ideas, not people.</li><li>No self-promotion spam: share your own work sparingly and join the discussion.</li><li>Use the original title of a link; do not editorialise it.</li><li>If you see abuse, flag it instead of replying to it.</li><li>One account per person.</li></ul>"
+          }
+        }
+      ]
+    }
+  ],
+  "menus": [
+    {
+      "location": "header",
+      "name": "Header",
+      "items": [
+        {
+          "label": "new",
+          "url": "/newest"
+        },
+        {
+          "label": "past",
+          "url": "/front"
+        },
+        {
+          "label": "comments",
+          "url": "/newcomments"
+        },
+        {
+          "label": "ask",
+          "url": "/ask"
+        },
+        {
+          "label": "show",
+          "url": "/show"
+        },
+        {
+          "label": "jobs",
+          "url": "/jobs"
+        },
+        {
+          "label": "submit",
+          "url": "/submit"
+        }
+      ]
+    }
+  ],
+  "switches": {
+    "comments": true,
+    "comment_policy": [
+      "hn-story"
+    ],
+    "homepage": "news"
+  }
+}

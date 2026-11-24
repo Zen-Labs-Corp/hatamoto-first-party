@@ -4,9 +4,14 @@
   Origin, checked on every pull request by the `dco` workflow.
 - **One plugin per folder.** `plugins/<name>/` holds one Go module; the folder
   name, `plugin.json` `"name"` and the route prefix `/p/<name>/` are the same.
+- **One kit per `kits/<name>/`**; the folder is the `kit.json` name. A kit holds
+  only `kit.json`, `README.md`, `LICENSE` and `CHANGELOG.md`.
 - **A new plugin** starts from `scripts/new-plugin.sh <name> "<description>"`.
 - **Before a pull request**, run `scripts/build-plugin.sh plugins/<name>` for
   every plugin you touched. CI runs the same script.
+- **Before a pull request that touches a kit** or a plugin a kit names, run
+  `scripts/check-kit.sh kits/<name>`. A kit's schema must equal the plugin's
+  `schemas/<slug>.json`, and it has one page per plugin page path.
 - **Keep permissions minimal.** A new permission in `plugin.json` needs a
   reason in the pull request.
 - **Migrations** (`migrations/*.sql`) are append-only once released.

@@ -1,6 +1,6 @@
 # hatamoto-first-party
 
-The first-party plugins for [Hatamoto](https://hatamoto.dev), one folder each.
+The first-party plugins and kits for [Hatamoto](https://hatamoto.dev), one folder each.
 They are built from source, signed with the Hatamoto first-party key and
 listed in the plugin directory at hatamoto.dev/plugins.
 
@@ -19,6 +19,15 @@ plugin contract is
 [PLUGIN_API.md](https://github.com/Zen-Labs-Corp/hatamoto/blob/main/docs/PLUGIN_API.md)
 in the core repository.
 
+## Kits
+
+A kit sets a site up in one step: plugins, a theme, content types, pages, menus and
+comment settings, reviewed and ticked by the owner.
+
+| Kit | Folder | What it sets up |
+|---|---|---|
+| `hn` | [kits/hn](kits/hn) | Hacker News style community: the hn plugin, the hn-classic theme, pages, menu and comment settings |
+
 ## Layout
 
 ```
@@ -27,6 +36,13 @@ template/              what scripts/new-plugin.sh copies
 scripts/build-plugin.sh   vet, test and build one plugin exactly as CI and the registry do
 scripts/new-plugin.sh     create plugins/<name> from the template
 scripts/changed-plugins.sh  which plugins a change touches (CI)
+kits/<name>/           one kit: kit.json (+ README.md)
+scripts/check-kit.sh      check a kit (core's checker + parity with the plugins)
+scripts/build-kit.sh      check a kit and pack it for local tests
+scripts/test-check-kit.sh prove check-kit.sh refuses broken kits
+scripts/changed-kits.sh   which kits a change touches (CI)
+scripts/hatamoto-bin.sh   the hatamoto CLI built from the core commit in .hatamoto-core
+.hatamoto-core         the core commit whose CLI checks kits
 ```
 
 ## Build
@@ -39,6 +55,14 @@ Needs Go (the `toolchain` line of each `go.mod` pins it) and `jq`; `node` runs
 any `*_test.js`. No `go.work`: every plugin builds alone with `GOWORK=off`, as
 the registry build does.
 
+```sh
+scripts/check-kit.sh kits/hn             # core's checker, plugin parity, pack round trip
+scripts/build-kit.sh kits/hn             # -> kits/hn/build/hn-<version>.kit.hmp
+```
+
+The first kit run builds the pinned core CLI with Go and caches it; `HATAMOTO_BIN`
+overrides it.
+
 ## Releases
 
 A release of one plugin is the tag `<name>/v<version>` on the commit that sets
@@ -46,6 +70,10 @@ that version in `plugins/<name>/plugin.json`. The registry lists it once
 `manifests/<name>.json` in
 [hatamoto-plugins](https://github.com/Zen-Labs-Corp/hatamoto-plugins) pins that
 commit with `"subdir": "plugins/<name>"`.
+
+A kit is tagged `kit-<name>/v<version>` and listed in the registry under
+`manifests/kits/<name>.json` with `"subdir": "kits/<name>"`. It is never mirrored to
+a per-name repository.
 
 ## History
 
