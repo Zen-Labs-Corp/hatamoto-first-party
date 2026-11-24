@@ -12,7 +12,8 @@ A phase that needs a column or table adds `011_..` to `019_..` (its own block nu
 plus 1 to 9) before the first release; nobody edits another phase's block.
 
 Cross-reads (read only, the tables exist from day one): stories read `users`, `hidden`
-and `bans`; comments read `story_meta`; parity reads `comment_meta` and `story_meta`.
+and `bans`; comments read `story_meta`; moderation reads `users`, `story_meta` (and
+writes its `dead`) and `comment_meta`; parity reads `comment_meta` and `story_meta`.
 
 Every table has `created_at timestamptz NOT NULL DEFAULT now()` unless noted.
 
@@ -33,6 +34,7 @@ Every table has `created_at timestamptz NOT NULL DEFAULT now()` unless noted.
 | `net_bans` | `040_moderation.sql` | moderation |
 | `rate_events` | `040_moderation.sql` | moderation |
 | `mod_log` | `040_moderation.sql` | moderation |
+| `kills` | `041_moderation_kills.sql` | moderation |
 | `favorites` | `050_parity.sql` | parity |
 | `hidden` | `050_parity.sql` | parity |
 | `search_docs` | `050_parity.sql` | parity |
@@ -79,6 +81,7 @@ Written by moderation.
 | `net_bans` | `net_key` primary key, `reason`, `expires_at` null |
 | `rate_events` | `id` identity, `kind`, `key`; index `(kind, key, created_at)` |
 | `mod_log` | `id` identity, `actor`, `action`, `target`, `detail` |
+| `kills` (041) | `kind` story or comment, `target_id` uuid, `cause` flags, owner or ban, primary key `(kind, target_id)` |
 
 ## 050_parity
 
