@@ -245,6 +245,16 @@ func (f *fake) query(sql string, a []json.RawMessage) any {
 		return coretest.Rows(ids)
 	case sql == sqlDirty:
 		return coretest.Rows(f.dirtyRows())
+	case sql == sqlNewest:
+		return coretest.Rows(f.newest(int(argInt(a, 0))))
+	case sql == sqlMyVotes:
+		mine := map[string]int{}
+		for _, id := range argStrings(a, 1) {
+			if v := f.votes[id][argInt(a, 0)]; v != nil {
+				mine[id] = v.Value
+			}
+		}
+		return coretest.Rows(mine)
 	case sql == sqlVoteTarget:
 		m := f.meta[argStr(a, 0)]
 		if m == nil {
@@ -554,5 +564,32 @@ func (f *fake) gone(entity string, listed []string, cutoff time.Time) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// newest models sqlNewest: live comments of live stories, newest first, 31 rows from offset.
+func (f *fake) newest(offset int) []map[string]any {
+	var ms []*metaRow
+	for _, m := range f.meta {
+		if s := f.stories[m.Entity]; m.Live && s != nil && !s.Dead {
+			ms = append(ms, m)
+		}
+	}
+	sort.Slice(ms, func(i, j int) bool {
+		if !ms[i].Created.Equal(ms[j].Created) {
+			return ms[i].Created.After(ms[j].Created)
+		}
+		return ms[i].ID < ms[j].ID
+	})
+	out := []map[string]any{}
+	for i := min(offset, len(ms)); i < min(offset+31, len(ms)); i++ {
+		m, s := ms[i], f.stories[ms[i].Entity]
+		row := map[string]any{"comment_id": m.ID, "author_id": m.Author, "author_name": m.Name, "body_html": m.Body,
+			"points": m.Points, "created_at": m.Created, "item_no": s.ItemNo, "title": s.Title}
+		if m.Parent != "" {
+			row["parent_id"] = m.Parent
+		}
+		out = append(out, row)
+	}
 	return out
 }
