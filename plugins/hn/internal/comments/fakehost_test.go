@@ -2,6 +2,7 @@ package comments
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -58,6 +59,11 @@ type fake struct {
 	failSQL map[string]error
 	// execs records every exec statement with its raw arguments.
 	execs []execRec
+
+	// setRank records every comments.set_rank batch; setRankHook runs on each
+	// call (0-based index) and may fail it or touch the model.
+	setRank     [][]sdk.CommentRankItem
+	setRankHook func(call int) error
 
 	nextUser int64
 }
@@ -172,6 +178,18 @@ func installFake(t *testing.T) *fake {
 			}
 			return rowsAffected(f.exec(sql, a)), nil
 		},
+		sdk.FnCommentsSetRank: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentRankArgs
+			_ = json.Unmarshal(raw, &a)
+			call := len(f.setRank)
+			f.setRank = append(f.setRank, a.Items)
+			if f.setRankHook != nil {
+				if err := f.setRankHook(call); err != nil {
+					return nil, err
+				}
+			}
+			return sdk.CommentsChanged{Changed: len(a.Items)}, nil
+		},
 		"settings.get": func(json.RawMessage) (any, error) { return f.settings, nil },
 	}}
 	coretest.Install(t, f.host)
@@ -181,6 +199,8 @@ func installFake(t *testing.T) *fake {
 func (f *fake) query(sql string, a []json.RawMessage) any {
 	var u *core.User
 	switch {
+	case sql == sqlDirty:
+		return coretest.Rows(f.dirtyRows())
 	case sql == sqlVoteTarget:
 		m := f.meta[argStr(a, 0)]
 		if m == nil {
@@ -220,6 +240,22 @@ func (f *fake) exec(sql string, a []json.RawMessage) int64 {
 		return f.upsert(a, false)
 	case sqlUpsertState:
 		return f.upsert(a, true)
+	case sqlClean:
+		var sent []struct {
+			ID     string `json:"id"`
+			Points int    `json:"points"`
+		}
+		var text string
+		_ = json.Unmarshal(a[0], &text)
+		_ = json.Unmarshal([]byte(text), &sent)
+		var n int64
+		for _, s := range sent {
+			if m := f.meta[s.ID]; m != nil && m.Points == s.Points && m.Dirty {
+				m.Dirty = false
+				n++
+			}
+		}
+		return n
 	case sqlVoteInsert:
 		id, uid := argStr(a, 0), argInt(a, 1)
 		if f.meta[id] == nil || f.votes[id][uid] != nil {
@@ -382,4 +418,25 @@ func (f *fake) removalInfo(ids []string) map[string]any {
 		ks = append(ks, karma{a, n})
 	}
 	return map[string]any{"entities": entities, "karma": ks}
+}
+
+// dirtyRows models sqlDirty: dirty rows by entity then id, at most 1000.
+func (f *fake) dirtyRows() []map[string]any {
+	var ms []*metaRow
+	for _, m := range f.meta {
+		if m.Dirty {
+			ms = append(ms, m)
+		}
+	}
+	sort.Slice(ms, func(i, j int) bool {
+		if ms[i].Entity != ms[j].Entity {
+			return ms[i].Entity < ms[j].Entity
+		}
+		return ms[i].ID < ms[j].ID
+	})
+	out := []map[string]any{}
+	for _, m := range ms[:min(len(ms), 1000)] {
+		out = append(out, map[string]any{"comment_id": m.ID, "entity_id": m.Entity, "points": m.Points})
+	}
+	return out
 }

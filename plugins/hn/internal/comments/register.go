@@ -6,5 +6,6 @@ import "github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 func Register(r *core.Registry) {
 	defineNotices()
 	registerEvents(r)
+	r.Cron("comment_rank", rankCron)
 	r.Route("POST /vote/comment/{id}", voteHandler(r))
 }
