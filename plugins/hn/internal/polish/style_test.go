@@ -67,7 +67,7 @@ func TestStyleTokens(t *testing.T) {
 	for _, want := range []string{
 		"--hn-accent:#c23b22", "--hn-bg:#f6f6ef", "--hn-muted:#6b6b6b", "--hn-dead:#bfbfbf",
 		"Verdana", "10pt", "7pt", "9pt", "--hn-indent:40px", "--hn-indent:14px",
-		"@media (max-width:750px)", "22px 14px 1fr", "inset:-7px",
+		"@media (max-width:750px)", "22px 14px 1fr",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("missing %q", want)
@@ -173,7 +173,8 @@ func TestStyleUserScope(t *testing.T) {
 }
 
 // The arrow button must not size itself: a theme draws its own 10x10 arrow and
-// sets none of these. The 24px tap target is an invisible ::after hit area.
+// sets none of these, so only a zero-specificity padding:0 is allowed. There is
+// no ::after hit area: it overlapped neighbouring controls.
 func TestStyleArrowNoBox(t *testing.T) {
 	src := styleSource(t)
 	css := src[strings.Index(src, "<style>")+len("<style>") : strings.Index(src, "</style>")]
@@ -181,13 +182,16 @@ func TestStyleArrowNoBox(t *testing.T) {
 	if len(m) == 0 {
 		t.Fatal("no arrow button rule")
 	}
-	box := regexp.MustCompile(`(^|;)\s*(min-width|min-height|width|height|margin(-[a-z]+)?|padding(-[a-z]+)?)\s*:`)
+	box := regexp.MustCompile(`(^|;)\s*(min-width|min-height|width|height|margin(-[a-z]+)?|padding-[a-z]+)\s*:|(^|;)\s*padding\s*:\s*[^0;][^;]*`)
 	for _, r := range m {
 		if box.MatchString(r[1]) {
 			t.Errorf("arrow button rule sets a box property: %s", r[1])
 		}
 	}
-	if !strings.Contains(css, ":where(.hn-vote-form button)::after{") {
-		t.Error("no ::after hit area")
+	if strings.Contains(css, ".hn-vote-form button)::after") || strings.Contains(css, "inset:") {
+		t.Error("arrow button has an ::after hit area")
+	}
+	if !strings.Contains(css, ":where(.hn-vote-form button){padding:0}") {
+		t.Error("no overridable padding:0 on the arrow button")
 	}
 }
