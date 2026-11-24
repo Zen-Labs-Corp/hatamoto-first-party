@@ -42,7 +42,7 @@ func TestDeadMode(t *testing.T) {
 		if len(marked) != 1 || marked[0] != sdk.FnCommentsMarkDead+":"+commentID {
 			t.Fatalf("marked = %v", marked)
 		}
-		if len(db.Execs) != 2 || db.Execs[0].SQL != sqlKillInsert || db.Execs[0].Args[2] != "ban" || db.Execs[1].SQL != sqlLogInsert {
+		if len(db.Execs) != 2 || db.Execs[0].SQL != sqlKillInsert || db.Execs[0].Args[2] != "ban" || !strings.Contains(db.Execs[0].SQL, "SET live = false") || db.Execs[1].SQL != sqlLogInsert {
 			t.Fatalf("execs = %+v", db.Execs)
 		}
 		noEntityCalls(t, h)

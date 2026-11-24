@@ -15,10 +15,11 @@ const (
 	sqlResolveStoryID = `SELECT to_jsonb(x) FROM (SELECT s.entity_id AS id, s.item_no, s.author_id, s.dead, COALESCE(k.cause, '') AS cause FROM story_meta s LEFT JOIN kills k ON k.kind = 'story' AND k.target_id = s.entity_id WHERE s.entity_id = $1::uuid) x`
 	sqlResolveComment = `SELECT to_jsonb(x) FROM (SELECT c.comment_id AS id, COALESCE(s.item_no, 0) AS item_no, COALESCE(c.author_id, 0) AS author_id, (k.cause IS NOT NULL) AS dead, COALESCE(k.cause, '') AS cause FROM comment_meta c LEFT JOIN story_meta s ON s.entity_id = c.entity_id LEFT JOIN kills k ON k.kind = 'comment' AND k.target_id = c.comment_id WHERE c.comment_id = $1::uuid) x`
 
-	sqlKillOwner    = `INSERT INTO kills (kind, target_id, cause, created_at) VALUES ($1, $2::uuid, 'owner', $3::timestamptz) ON CONFLICT (kind, target_id) DO UPDATE SET cause = 'owner'`
-	sqlStoryDead    = `UPDATE story_meta SET dead = $2 WHERE entity_id = $1::uuid`
-	sqlFlagsDelete  = `DELETE FROM flags WHERE kind = $1 AND target_id = $2::uuid`
-	sqlKillsDelete  = `DELETE FROM kills WHERE kind = $1 AND target_id = $2::uuid`
+	sqlKillOwner   = `WITH c AS (UPDATE comment_meta SET live = false WHERE $1::text = 'comment' AND comment_id = $2::uuid) INSERT INTO kills (kind, target_id, cause, created_at) VALUES ($1, $2::uuid, 'owner', $3::timestamptz) ON CONFLICT (kind, target_id) DO UPDATE SET cause = 'owner'`
+	sqlStoryDead   = `UPDATE story_meta SET dead = $2 WHERE entity_id = $1::uuid`
+	sqlFlagsDelete = `DELETE FROM flags WHERE kind = $1 AND target_id = $2::uuid`
+	// A restored comment is live again only when the host changed it: a held or deleted comment is not touched by the host, so it stays out of search.
+	sqlKillsDelete  = `WITH c AS (UPDATE comment_meta SET live = true WHERE $1::text = 'comment' AND $3::int > 0 AND comment_id = $2::uuid) DELETE FROM kills WHERE kind = $1 AND target_id = $2::uuid`
 	causeFlags      = "flags"
 	causeOwner      = "owner"
 	causeBan        = "ban"
@@ -155,18 +156,18 @@ func kill(t *target, cause, actor string) (bool, core.Notice) {
 // restore makes the item alive again whatever killed it and forgets its flags.
 // When the host cannot restore a comment nothing else changes.
 func restore(t *target, actor string) core.Notice {
+	var changed sdk.CommentsChanged
 	if t.Kind == kindStory {
 		if _, err := core.Exec(sqlStoryDead, t.ID, false); err != nil {
 			return nError
 		}
 	} else {
-		var changed sdk.CommentsChanged
 		if err := core.Call(sdk.FnCommentsRestore, sdk.CommentIDsArgs{IDs: []string{t.ID}}, &changed); err != nil {
 			return nOff
 		}
 	}
 	_, _ = core.Exec(sqlFlagsDelete, t.Kind, t.ID)
-	_, _ = core.Exec(sqlKillsDelete, t.Kind, t.ID)
+	_, _ = core.Exec(sqlKillsDelete, t.Kind, t.ID, changed.Changed)
 	writeLog(actor, "restore", t.logTarget(), "")
 	t.Dead, t.Cause = false, ""
 	return ""

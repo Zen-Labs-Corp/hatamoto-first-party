@@ -66,10 +66,10 @@ func flagPost(t *testing.T, kind, id string, form url.Values, key string, wantJS
 
 func loc(resp sdk.HTTPResponse) string { return resp.Headers["Location"] }
 
-func execs(db *fakeDB, prefix string) []sqlCall {
+func execs(db *fakeDB, part string) []sqlCall {
 	var out []sqlCall
 	for _, c := range db.Execs {
-		if strings.HasPrefix(c.SQL, prefix) {
+		if strings.Contains(c.SQL, part) {
 			out = append(out, c)
 		}
 	}
@@ -178,7 +178,7 @@ func TestFlag(t *testing.T) {
 		if len(marked) != 1 || marked[0] != sdk.FnCommentsMarkDead+":"+commentID {
 			t.Fatalf("marked = %v", marked)
 		}
-		if k := execs(db, "INSERT INTO kills"); len(k) != 1 || k[0].Args[0] != "comment" || k[0].Args[2] != "flags" {
+		if k := execs(db, "INSERT INTO kills"); len(k) != 1 || k[0].Args[0] != "comment" || k[0].Args[2] != "flags" || !strings.Contains(k[0].SQL, "SET live = false") {
 			t.Fatalf("kills = %+v", k)
 		}
 		noEntityCalls(t, h)

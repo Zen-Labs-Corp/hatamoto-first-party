@@ -8,7 +8,7 @@ import (
 
 const (
 	sqlDeadBan    = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'dead') AS dead) x`
-	sqlKillInsert = `INSERT INTO kills (kind, target_id, cause, created_at) VALUES ($1, $2::uuid, $3, $4::timestamptz) ON CONFLICT (kind, target_id) DO NOTHING`
+	sqlKillInsert = `WITH c AS (UPDATE comment_meta SET live = false WHERE $1::text = 'comment' AND comment_id = $2::uuid) INSERT INTO kills (kind, target_id, cause, created_at) VALUES ($1, $2::uuid, $3, $4::timestamptz) ON CONFLICT (kind, target_id) DO NOTHING`
 	sqlStoryDrop  = `WITH f AS (DELETE FROM flags WHERE kind = 'story' AND target_id = $1::uuid), v AS (DELETE FROM vouches WHERE kind = 'story' AND target_id = $1::uuid) DELETE FROM kills WHERE kind = 'story' AND target_id = $1::uuid`
 	sqlLogInsert  = `INSERT INTO mod_log (actor, action, target, detail, created_at) VALUES ($1, $2, $3, $4, $5::timestamptz)`
 	// sqlStoryDeadMode kills a just-saved story of a dead-mode author. It only

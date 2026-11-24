@@ -80,6 +80,16 @@ func TestVouch(t *testing.T) {
 		noEntityCalls(t, h)
 	})
 
+	t.Run("comment the host did not change stays out of search", func(t *testing.T) {
+		db := modDB(50, item(commentID, 7, 2, true, "flags"), 0)
+		db.Comments = func(fn string, ids []string) (any, error) { return map[string]any{"changed": 0}, nil }
+		install(t, db)
+		vouchPost(t, "comment", commentID, "k1")
+		if k := execs(db, "DELETE FROM kills"); len(k) != 1 || k[0].Args[2] != float64(0) {
+			t.Fatalf("execs = %+v", db.Execs)
+		}
+	})
+
 	t.Run("comment brought back", func(t *testing.T) {
 		db := modDB(50, item(commentID, 7, 2, true, "flags"), 0)
 		var restored []string
@@ -95,7 +105,7 @@ func TestVouch(t *testing.T) {
 		if len(restored) != 1 || restored[0] != sdk.FnCommentsRestore+":"+commentID {
 			t.Fatalf("restored = %v", restored)
 		}
-		if len(execs(db, "DELETE FROM kills")) != 1 {
+		if k := execs(db, "DELETE FROM kills"); len(k) != 1 || !strings.Contains(k[0].SQL, "SET live = true") || k[0].Args[2] != float64(1) {
 			t.Fatalf("execs = %+v", db.Execs)
 		}
 		noEntityCalls(t, h)
