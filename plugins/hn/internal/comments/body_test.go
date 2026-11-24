@@ -79,3 +79,21 @@ func TestBodyBlocks(t *testing.T) {
 		}
 	})
 }
+
+func TestPageBodyBudget(t *testing.T) {
+	heavy := strings.Repeat("<em>a</em>", maxParts)
+	r := newRegistry(nil)
+	vv := newVoteView(nil, nil)
+	total, last := 0, 0
+	for i := range 20 {
+		out := row(r, rowIn{ID: cid(i + 1), Author: "ann", Body: heavy}, vv, "/")
+		last = 0
+		for _, b := range out["body"].([]map[string]any) {
+			last += len(b["parts"].([]map[string]any))
+		}
+		total += last
+	}
+	if total > pageParts || total < pageParts-maxParts || last != 0 {
+		t.Fatalf("total parts %d (last row %d), want just under %d with the late rows cut", total, last, pageParts)
+	}
+}

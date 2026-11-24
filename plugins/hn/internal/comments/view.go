@@ -27,11 +27,13 @@ type voteView struct {
 	viewer *core.User
 	voted  map[string]int
 	downOK bool
+	parts  *int // body parts the page may still print
 }
 
 // newVoteView reads the viewer's votes on ids and the downvote bar once for the page.
 func newVoteView(viewer *core.User, ids []string) voteView {
-	vv := voteView{viewer: viewer, voted: myVotes(viewer, ids)}
+	left := pageParts
+	vv := voteView{viewer: viewer, voted: myVotes(viewer, ids), parts: &left}
 	if viewer != nil {
 		vv.downOK = viewer.Karma >= core.LoadSettings().DownvoteKarma
 	}
@@ -98,7 +100,7 @@ func row(r *core.Registry, in rowIn, vv voteView, next string) map[string]any {
 		"ago":          ago(in.Created),
 		"context_href": context, "parent_href": focusHref(in.ItemNo, in.ParentID),
 		"item_href": itemHref(in.ItemNo), "title": in.Title, "reply_href": context,
-		"body": bodyBlocks(in.Body), "row_class": class, "indent": strconv.Itoa(40 * in.Depth),
+		"body": bodyBlocksIn(in.Body, vv.parts), "row_class": class, "indent": strconv.Itoa(40 * in.Depth),
 		"replies": []map[string]any{}, "actions": acts,
 		"vote": vote, "vote_cell": cell,
 		"can_up": canUp, "can_down": canUp && vv.downOK, "can_un": vote && voted,

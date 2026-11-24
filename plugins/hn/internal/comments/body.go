@@ -14,6 +14,9 @@ import (
 const (
 	maxBlocks = 200
 	maxParts  = 2000
+	// pageParts is the parts one page may spend on all its comment bodies: every
+	// part is one iteration of a template range, and a render has 100000.
+	pageParts = 30000
 )
 
 var (
@@ -37,6 +40,7 @@ type bodyScan struct {
 	out              []map[string]any
 	cur              map[string]any
 	parts            int
+	budget           *int // parts left for the page, shared by its comments; nil is unlimited
 	em, strong, code int
 	href             string
 	inQuote, inPre   bool
@@ -67,9 +71,12 @@ func (s *bodyScan) close() {
 }
 
 func (s *bodyScan) add(p map[string]any) {
-	if s.parts >= maxParts {
+	if s.parts >= maxParts || (s.budget != nil && *s.budget <= 0) {
 		s.done = true
 		return
+	}
+	if s.budget != nil {
+		*s.budget--
 	}
 	if s.cur == nil {
 		s.open("p")
@@ -160,8 +167,11 @@ func safeHref(h string) string {
 // Unknown tags are dropped and their text kept; links keep only http(s) hrefs,
 // else the link text becomes plain text. Text outside any block goes into an
 // implicit paragraph. At most 200 blocks and 2000 parts are produced.
-func bodyBlocks(h string) []map[string]any {
-	s := &bodyScan{out: []map[string]any{}}
+func bodyBlocks(h string) []map[string]any { return bodyBlocksIn(h, nil) }
+
+// bodyBlocksIn is bodyBlocks drawing its parts from the page budget as well.
+func bodyBlocksIn(h string, budget *int) []map[string]any {
+	s := &bodyScan{out: []map[string]any{}, budget: budget}
 	last := 0
 	for _, m := range tagRe.FindAllStringSubmatchIndex(h, -1) {
 		s.text(h[last:m[0]])
