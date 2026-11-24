@@ -12,6 +12,9 @@ import (
 // addDirty adds n dirty rows (points 1) for an entity.
 func addDirty(f *fake, entity string, n int) []string {
 	var ids []string
+	if f.stories[entity] == nil {
+		f.stories[entity] = &storyRow{ItemNo: 1, Title: "S"}
+	}
 	for i := range n {
 		id := fmt.Sprintf("%s%s%010d", entity[:24], entity[34:], i) // keeps the uuid shape, unique per entity
 		f.meta[id] = &metaRow{ID: id, Entity: entity, Live: true, Points: 1, Dirty: true}
@@ -115,8 +118,55 @@ func TestCommentRank(t *testing.T) {
 		if fmt.Sprint(batchSizes(f)) != "[200 2]" {
 			t.Fatalf("batches = %v", batchSizes(f))
 		}
-		if dirtyCount(f) != 450 {
-			t.Fatalf("dirty = %d, want entity A's 450", dirtyCount(f))
+		if dirtyCount(f) != 0 {
+			t.Fatalf("dirty = %d, a refused entity must be given up", dirtyCount(f))
+		}
+	})
+
+	t.Run("a retryable error keeps the entity dirty", func(t *testing.T) {
+		f := installFake(t)
+		addDirty(f, entA, 3)
+		addDirty(f, entB, 2)
+		f.setRankHook = func(call int) error {
+			if call == 0 {
+				return &sdk.HostError{Code: sdk.ErrTimeout}
+			}
+			return nil
+		}
+		if err := rankCron(cron); err != nil {
+			t.Fatal(err)
+		}
+		if dirtyCount(f) != 3 {
+			t.Fatalf("dirty = %d, want entity A's 3", dirtyCount(f))
+		}
+	})
+
+	t.Run("refused foreign entities cannot starve stories", func(t *testing.T) {
+		f := installFake(t)
+		base := time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC)
+		const hn = "10000000-0000-4000-8000-0000000fffff"
+		addDirty(f, hn, 1)
+		for _, m := range f.meta {
+			m.Created = base // newer than the foreign rows below
+		}
+		// 20 entities that are not stories sort before the story and are older.
+		for i := range 20 {
+			id := fmt.Sprintf("20000000-0000-4000-8000-0000000004%02d", i)
+			f.meta[id] = &metaRow{ID: id, Entity: fmt.Sprintf("10000000-0000-4000-8000-0000000004%02d", i), Live: true, Points: 1, Dirty: true, Created: base.Add(-time.Hour)}
+		}
+		f.setRankHook = func(int) error {
+			for _, it := range f.setRank[len(f.setRank)-1] {
+				if f.meta[it.ID].Entity != hn {
+					return &sdk.HostError{Code: sdk.ErrNotFound}
+				}
+			}
+			return nil
+		}
+		if err := rankCron(cron); err != nil {
+			t.Fatal(err)
+		}
+		if len(f.setRank) != 1 || f.setRank[0][0].ID != addDirtyID(hn) {
+			t.Fatalf("batches %v", batchSizes(f))
 		}
 	})
 
@@ -172,4 +222,8 @@ func TestCommentRank(t *testing.T) {
 			t.Fatalf("err %v calls %d", err, len(f.setRank))
 		}
 	})
+}
+
+func addDirtyID(entity string) string {
+	return fmt.Sprintf("%s%s%010d", entity[:24], entity[34:], 0)
 }

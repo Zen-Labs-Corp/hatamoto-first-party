@@ -8,7 +8,11 @@ import (
 	"hatamoto.dev/sdk"
 )
 
-const sqlDirty = `SELECT coalesce(jsonb_agg(x ORDER BY x.entity_id, x.comment_id), '[]') FROM (SELECT comment_id, entity_id, points FROM comment_meta WHERE dirty ORDER BY entity_id, comment_id LIMIT 1000) x`
+// sqlDirty takes the oldest dirty rows of HN stories, whole entity groups together.
+const sqlDirty = `SELECT coalesce(jsonb_agg(x ORDER BY x.entity_id, x.comment_id), '[]') FROM (SELECT m.comment_id, m.entity_id, m.points FROM comment_meta m JOIN story_meta s ON s.entity_id = m.entity_id WHERE m.dirty ORDER BY m.created_at, m.comment_id LIMIT 1000) x`
+
+// sqlGiveUp clears dirty for an entity core refused for good, so it cannot starve the others.
+const sqlGiveUp = `UPDATE comment_meta SET dirty = false WHERE entity_id = $1::uuid AND dirty`
 
 // sqlClean clears dirty for the rows that were sent, unless a vote moved their points meanwhile.
 const sqlClean = `UPDATE comment_meta m SET dirty = false FROM jsonb_to_recordset($1::jsonb) AS s(id uuid, points int) WHERE m.comment_id = s.id AND m.points = s.points AND m.dirty`
@@ -71,11 +75,19 @@ func rankCron(sdk.CronEvent) error {
 				return nil
 			}
 			if err != nil {
-				break // leave this entity dirty (reconcile removes stale ids), go on with the next
+				if !retryable(err) {
+					_, _ = core.Exec(sqlGiveUp, chunk[0].Entity)
+				}
+				break // go on with the next entity; a retryable error leaves this one dirty
 			}
 			list, _ := json.Marshal(sent)
 			_, _ = core.Exec(sqlClean, string(list))
 		}
 	}
 	return nil
+}
+
+// retryable reports a set_rank failure that may pass on its own.
+func retryable(err error) bool {
+	return hostCode(err, sdk.ErrUnavailable) || hostCode(err, sdk.ErrRateLimited) || hostCode(err, sdk.ErrTimeout) || hostCode(err, sdk.ErrInternal)
 }

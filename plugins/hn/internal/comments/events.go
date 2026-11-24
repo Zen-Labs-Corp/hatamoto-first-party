@@ -7,10 +7,12 @@ import (
 	"hatamoto.dev/sdk"
 )
 
-// The commenter key only ever travels as the SQL argument $4 of the upserts;
+// Only comments of HN stories are mirrored (core sends events for every entity
+// of the site). The commenter key only ever travels as the SQL argument $4 of the upserts;
 // it is never logged or stored beside the comment.
 const sqlInsertComment = `INSERT INTO comment_meta (comment_id, entity_id, parent_id, author_id, author_name, body_html, live, created_at, dirty)
- VALUES ($1::uuid, $2::uuid, NULLIF($3,'')::uuid, (SELECT id FROM users WHERE commenter_key = NULLIF($4,'')), $5, $6, $7, $8, true)
+ SELECT $1::uuid, $2::uuid, NULLIF($3,'')::uuid, (SELECT id FROM users WHERE commenter_key = NULLIF($4,'')), $5, $6, $7, $8, true
+ WHERE EXISTS (SELECT 1 FROM story_meta WHERE entity_id = $2::uuid)
  ON CONFLICT (comment_id) DO UPDATE SET `
 
 const sqlKeepFields = `author_id = COALESCE(comment_meta.author_id, EXCLUDED.author_id),

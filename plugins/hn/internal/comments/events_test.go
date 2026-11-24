@@ -216,3 +216,18 @@ func TestEvents(t *testing.T) {
 		}
 	})
 }
+
+func TestOnlyStoryCommentsAreMirrored(t *testing.T) {
+	// the fake models the guard; pin it in the statements it stands for
+	if !strings.Contains(sqlUpsertCreated, "FROM story_meta") || !strings.Contains(sqlUpsertState, "FROM story_meta") || !strings.Contains(sqlDirty, "JOIN story_meta") {
+		t.Fatal("statements lost their story_meta guard")
+	}
+	f, r := eventFake(t)
+	deliver(t, r, core.OnCreated, event(cid1, "approved"))
+	foreign := event(cid2, "approved")
+	foreign.EntityID = eid2
+	deliver(t, r, core.OnCreated, foreign)
+	if f.meta[cid1] == nil || f.meta[cid2] != nil {
+		t.Fatalf("meta = %v", f.meta)
+	}
+}

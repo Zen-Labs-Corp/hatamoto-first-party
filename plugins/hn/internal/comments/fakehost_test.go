@@ -420,6 +420,15 @@ func (f *fake) exec(sql string, a []json.RawMessage) int64 {
 		}
 		m.Dirty = true
 		return 1
+	case sqlGiveUp:
+		var n int64
+		for _, m := range f.meta {
+			if m.Entity == argStr(a, 0) && m.Dirty {
+				m.Dirty = false
+				n++
+			}
+		}
+		return n
 	case sqlRecount:
 		return f.recount(argStr(a, 0))
 	case sqlDeleteMeta:
@@ -473,6 +482,9 @@ func (f *fake) upsert(a []json.RawMessage, state bool) int64 {
 	id, name, body, live := argStr(a, 0), argStr(a, 4), argStr(a, 5), argBool(a, 6)
 	m := f.meta[id]
 	if m == nil {
+		if f.stories[argStr(a, 1)] == nil {
+			return 0 // the insert is guarded by story_meta
+		}
 		f.meta[id] = &metaRow{ID: id, Entity: argStr(a, 1), Parent: argStr(a, 2), Author: author, Name: name, Body: body,
 			Live: live, Points: 1, Dirty: true, Created: argTime(a, 7)}
 		return 1
@@ -556,14 +568,21 @@ func (f *fake) removalInfo(ids []string) map[string]any {
 	return map[string]any{"entities": entities, "karma": ks}
 }
 
-// dirtyRows models sqlDirty: dirty rows by entity then id, at most 1000.
+// dirtyRows models sqlDirty: the 1000 oldest dirty rows of known stories, listed by entity then id.
 func (f *fake) dirtyRows() []map[string]any {
 	var ms []*metaRow
 	for _, m := range f.meta {
-		if m.Dirty {
+		if m.Dirty && f.stories[m.Entity] != nil {
 			ms = append(ms, m)
 		}
 	}
+	sort.Slice(ms, func(i, j int) bool {
+		if !ms[i].Created.Equal(ms[j].Created) {
+			return ms[i].Created.Before(ms[j].Created)
+		}
+		return ms[i].ID < ms[j].ID
+	})
+	ms = ms[:min(len(ms), 1000)]
 	sort.Slice(ms, func(i, j int) bool {
 		if ms[i].Entity != ms[j].Entity {
 			return ms[i].Entity < ms[j].Entity
@@ -571,7 +590,7 @@ func (f *fake) dirtyRows() []map[string]any {
 		return ms[i].ID < ms[j].ID
 	})
 	out := []map[string]any{}
-	for _, m := range ms[:min(len(ms), 1000)] {
+	for _, m := range ms {
 		out = append(out, map[string]any{"comment_id": m.ID, "entity_id": m.Entity, "points": m.Points})
 	}
 	return out
