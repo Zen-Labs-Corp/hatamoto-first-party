@@ -1,0 +1,4 @@
+{{define "section-hn_item"}}{{template "plugin/hn/style" .}}{{$c := .Content}}
+{{with $c.notice}}<p class="hn-notice" role="status">{{.}}</p>{{end}}
+{{if $c.gone}}<p class="hn-note">This story is dead.</p>{{else}}{{with $c.row}}<div class="hn-item-head"><div class="hn-story">{{template "plugin/hn/story-row" .}}</div></div>{{end}}{{with $c.paras}}<div class="hn-item-text">{{range .}}<p>{{.}}</p>{{end}}</div>{{end}}{{end}}
+{{end}}
