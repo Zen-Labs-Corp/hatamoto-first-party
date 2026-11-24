@@ -33,17 +33,17 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 
 | Page path | Section the page holds | Phase | Query keys used |
 |---|---|---|---|
-| `/` `/news` `/newest` `/front` `/ask` `/show` `/jobs` `/best` `/from` | `hn-feed` (the feed is the path) | P2 | `p`, `next`, `day` (front), `site` (from), `id` (newest by author) |
-| `/submit` | `hn-submit` (edit mode with `?id=<story>`) | P2 | `id` |
-| `/item/<number>` | `hn-item`, injected by the filter | P2 | `id` (a comment id: focus view) |
-| `/threads` `/newcomments` | `hn-threads` | P3 | `id` (user), `p` |
+| `/` `/news` `/newest` `/front` `/ask` `/show` `/jobs` `/best` `/from` | `hn_feed` (the feed is the path) | P2 | `p`, `next`, `day` (front), `site` (from), `id` (newest by author) |
+| `/submit` | `hn_submit` (edit mode with `?id=<story>`) | P2 | `id` |
+| `/item/<number>` | `hn_item`, injected by the filter | P2 | `id` (a comment id: focus view) |
+| `/threads` `/newcomments` | `hn_threads` | P3 | `id` (user), `p` |
 | `/user` | `hn_user` | P1 | `id` |
 | `/login` | `hn_login` | P1 | none |
 | `/favorites` | `hn_saved` (favorites; `view=hidden` is the member's hidden stories) | P5 | `id`, `view`, `p` |
 | `/search` | `hn_search` | P5 | `q`, `p` |
 | every filtered page | `hn_userbar`, injected first | P1 | |
 
-Sections: `hn-feed hn-submit hn-item hn-threads hn_user hn_login hn_saved hn_search hn_userbar` (`hn-item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
+Sections: `hn_feed hn_submit hn_item hn_threads hn_user hn_login hn_saved hn_search hn_userbar` (`hn_item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
 
 The noprocrast notice is rendered by `hn_saved` as well: a member with the flag on who is past their visit window sees the account bar and that notice instead of the page (no extra section to place).
 
