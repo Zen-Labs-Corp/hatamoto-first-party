@@ -2,6 +2,10 @@
 
 package main
 
-import "hatamoto.dev/sdk/guest"
+import (
+	"hatamoto.dev/sdk/guest"
 
-func init() { callHost = guest.Call }
+	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
+)
+
+func init() { core.Call = guest.Call }
