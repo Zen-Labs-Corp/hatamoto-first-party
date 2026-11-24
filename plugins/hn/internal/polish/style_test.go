@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -209,5 +210,27 @@ func TestThreadIndentFromDepth(t *testing.T) {
 	}
 	if !strings.Contains(styleSource(t), ":where(.hn-threads .hn-c){margin-left:calc(var(--hn-d,0) * var(--hn-indent))}") {
 		t.Error("the partial does not compute the margin from --hn-d")
+	}
+}
+
+// Sections carry no inline <style> and no hard-coded colour: the shared
+// partial (static, so strict CSP is unaffected) holds every rule, on tokens.
+func TestSectionsHaveNoInlineStyleOrColour(t *testing.T) {
+	files, err := filepath.Glob("../../sections/*.html")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no sections: %v", err)
+	}
+	hex := regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b`)
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(strings.ToLower(string(raw)), "<style") {
+			t.Errorf("%s holds a <style> block", f)
+		}
+		if m := hex.FindString(string(raw)); m != "" {
+			t.Errorf("%s holds the colour %s", f, m)
+		}
 	}
 }

@@ -2,7 +2,7 @@
 /* hn base. Contrast (WCAG AA): muted #6b6b6b on #f6f6ef 4.91:1 (#828282 was 3.54:1), white on #c23b22 5.33:1 */
 :where(:root){--hn-accent:#c23b22;--hn-bg:#f6f6ef;--hn-text:#000;--hn-muted:#6b6b6b;--hn-dead:#bfbfbf;--hn-font:Verdana,Geneva,"DejaVu Sans",sans-serif;--hn-mono:"Courier New",Courier,monospace;--hn-size:10pt;--hn-size-sub:7pt;--hn-size-comment:9pt;--hn-indent:40px}
 :where(.hn-stories){list-style:none;margin:0;padding:0}
-:where(.hn-stories,.hn-item-head,.hn-form-tbl,div.hn-user,.hn-login,.hn-threads,.hn-note,.hn-notice){font-family:var(--hn-font);font-size:var(--hn-size);color:var(--hn-text)}
+:where(.hn-stories,.hn-item-head,.hn-form-tbl,div.hn-user,.hn-login,.hn-threads,.hn-note,.hn-notice,.hn-ub){font-family:var(--hn-font);font-size:var(--hn-size);color:var(--hn-text)}
 :where(.hn-story){display:grid;grid-template-columns:28px 14px 1fr;column-gap:2px;padding:2px 0}
 :where(.hn-rank){color:var(--hn-muted);text-align:right;padding-right:2px}
 :where(.hn-vote-cell){text-align:center}
@@ -21,13 +21,15 @@
 :where(.hn-lbl){color:var(--hn-muted);text-align:right;white-space:nowrap}
 :where(.hn-form-tbl input,.hn-form-tbl textarea,div.hn-user input,div.hn-user textarea){font:10pt var(--hn-mono);border:1px solid #888;padding:1px 2px}
 :where(.hn-form-tbl textarea){width:500px;max-width:calc(100vw - 110px);height:110px}
-:where(div.hn-user table){margin:8px 0 0 10px}:where(div.hn-user td,div.hn-user th){padding:2px 8px 2px 0;text-align:left;vertical-align:top}:where(div.hn-user th){color:var(--hn-muted);font-weight:normal}
-:where(.hn-login){padding:12px 10px}
+:where(div.hn-user input[type=text]){width:30em;max-width:100%}:where(div.hn-user table){margin:8px 0 0 10px}:where(div.hn-user td,div.hn-user th){padding:2px 8px 2px 0;text-align:left;vertical-align:top}:where(div.hn-user th){color:var(--hn-muted);font-weight:normal}
+:where(.hn-login){padding:12px 10px}:where(.hn-login input){font:inherit}:where(.hn-login .hn-note){font-size:8pt}
+:where(.hn-ub){text-align:right;padding:2px 4px}:where(.hn-ub a){color:inherit}
 :where(.hn-threads .hn-head){font-size:8pt;color:var(--hn-muted)}:where(.hn-threads .hn-head a){color:var(--hn-muted)}
 :where(.hn-threads .hn-text){font-size:var(--hn-size-comment);line-height:1.35;margin:3px 0 2px;max-width:800px}
 :where(.hn-threads .hn-text p){margin:6px 0 0}:where(.hn-threads pre){font-family:var(--hn-mono);white-space:pre-wrap}
 :where(.hn-reply){font-size:var(--hn-size-sub)}:where(.hn-reply a){text-decoration:underline}
 :where(.hn-threads .hn-dead .hn-text){color:var(--hn-dead)}:where(.hn-threads .hn-faint .hn-text){color:#5a5a5a}
+:where(.hn-threads){padding:4px}:where(.hn-threads .hn-c){margin-bottom:12px}:where(.hn-threads form){display:inline;margin:0}
 :where(.hn-threads .hn-c){margin-left:calc(var(--hn-d,0) * var(--hn-indent))}
 :where(.hn-title,.hn-text,.hn-item-text){overflow-wrap:anywhere}
 @media (max-width:750px){:where(:root){--hn-indent:14px}:where(.hn-story){grid-template-columns:22px 14px 1fr}:where(.hn-form-tbl,.hn-form-tbl tbody,.hn-form-tbl tr,.hn-form-tbl td){display:block}:where(.hn-lbl){text-align:left}:where(.hn-form-tbl textarea,.hn-form-tbl input[type=text],div.hn-user input[type=text],div.hn-user textarea){width:100%;max-width:100%;box-sizing:border-box}:where(.hn-item-text){margin-left:0}:where(div.hn-more){padding-left:24px}}

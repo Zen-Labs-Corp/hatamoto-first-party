@@ -1,5 +1,4 @@
 {{define "section-hn_threads"}}{{template "plugin/hn/style" .}}{{$c := .Content}}<div class="hn-threads">
-<style>.hn-threads{font:10pt Verdana,Geneva,sans-serif;padding:4px}.hn-threads .hn-c{margin:0 0 12px}.hn-threads .hn-head{color:#828282;font-size:8pt}.hn-threads .hn-head a{color:#828282}.hn-threads .hn-dead .hn-text,.hn-threads .hn-faint .hn-text{color:#aaa}.hn-threads .hn-notice{color:#c23b22}.hn-threads form{display:inline;margin:0}@media(max-width:750px){.hn-threads .hn-c{margin-left:0}}</style>
 {{if $c.heading}}<h2>{{$c.heading}}</h2>
 {{end}}{{if $c.notice}}<p class="hn-notice" role="status">{{$c.notice}}</p>
 {{end}}{{if $c.empty}}<p>No comments yet.</p>
