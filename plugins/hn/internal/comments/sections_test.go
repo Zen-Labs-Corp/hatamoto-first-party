@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"html/template"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -12,7 +15,7 @@ import (
 
 func parseSections(t *testing.T) *template.Template {
 	t.Helper()
-	return template.Must(template.ParseFiles("../../partials/style.html", "../../sections/hn_threads.html"))
+	return template.Must(template.ParseFiles("../../partials/style.html", "../../partials/comment-vote.html", "../../sections/hn_threads.html"))
 }
 
 // renderBlock renders a block like the host: its content goes through JSON first.
@@ -142,4 +145,147 @@ func TestThreadsPageSections(t *testing.T) {
 			t.Errorf("only %d escaped scripts (author, title, notice, heading): %s", n, out)
 		}
 	})
+}
+
+func voteForms(out, id string) int {
+	return strings.Count(out, `<form class="hn-vote-form" method="post" action="/p/hn/vote/comment/`+id+`">`)
+}
+
+func TestCommentVotePartial(t *testing.T) {
+	t.Run("not voted shows the up arrow only", func(t *testing.T) {
+		f, _, bob := newcommentsFake(t)
+		f.comment(1, bob, 1)
+		out := threadsHTML(t, page(t, "/newcomments", "k1", nil))
+		for _, want := range []string{
+			`<span class="hn-vote" data-hn-comment="` + cid(1) + `">`,
+			`<input type="hidden" name="how" value="up">`, `<input type="hidden" name="next" value="/newcomments">`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("missing %s in %s", want, out)
+			}
+		}
+		if voteForms(out, cid(1)) != 1 || strings.Contains(out, `value="down"`) || strings.Contains(out, `value="un"`) {
+			t.Errorf("forms: %s", out)
+		}
+	})
+
+	t.Run("karma bar opens the down arrow", func(t *testing.T) {
+		f, ann, bob := newcommentsFake(t)
+		f.comment(1, bob, 1)
+		ann.Karma = 500
+		out := threadsHTML(t, page(t, "/newcomments", "k1", nil))
+		if voteForms(out, cid(1)) != 2 || !strings.Contains(out, `name="how" value="down"`) {
+			t.Errorf("forms: %s", out)
+		}
+	})
+
+	t.Run("voted shows unvote only", func(t *testing.T) {
+		f, ann, bob := newcommentsFake(t)
+		f.comment(1, bob, 1)
+		f.votes[cid(1)] = map[int64]*voteRow{ann.ID: {Value: 1}}
+		out := threadsHTML(t, page(t, "/newcomments", "k1", nil))
+		if !strings.Contains(out, `class="hn-vote hn-voted" data-hn-comment="`+cid(1)+`"`) || voteForms(out, cid(1)) != 1 ||
+			!strings.Contains(out, `name="how" value="un"`) || strings.Contains(out, `value="up"`) {
+			t.Errorf("voted: %s", out)
+		}
+	})
+
+	t.Run("dead and own rows print nothing", func(t *testing.T) {
+		f := threadsFake(t, 1)
+		reply := cid(1011)
+		f.subtrees[cid(1)].Items[1].Status = "dead"
+		out := threadsHTML(t, page(t, "/threads", "k2", map[string]string{"id": "bob"}))
+		for _, id := range []string{reply, cid(1)} {
+			if strings.Contains(out, `data-hn-comment="`+id+`"`) || strings.Contains(out, "/p/hn/vote/comment/"+id) {
+				t.Errorf("vote markup for %s: %s", id, out)
+			}
+		}
+		if !strings.Contains(out, `data-hn-comment="`+cid(1012)+`"`) {
+			t.Errorf("the live reply of another member should be votable: %s", out)
+		}
+	})
+
+	t.Run("next is escaped", func(t *testing.T) {
+		threadsFake(t, 20)
+		out := threadsHTML(t, page(t, "/threads", "k1", map[string]string{"id": "bob", "p": "2"}))
+		if !strings.Contains(out, `name="next" value="/threads?id=bob&amp;p=2"`) {
+			t.Errorf("next: %s", out)
+		}
+	})
+}
+
+var (
+	tagSpanRe = regexp.MustCompile(`<[a-zA-Z/][^<>]*>`)
+	actionRe  = regexp.MustCompile(`\{\{.*?\}\}`)
+	badTagRe  = regexp.MustCompile(`(?i)<(script|iframe|object|embed|base|meta|link|svg|math|template|noscript|dialog|textarea|title)\b`)
+	onAttrRe  = regexp.MustCompile(`(?i)\son[a-z]+\s*=`)
+	badURLRe  = regexp.MustCompile(`(?i)(javascript|vbscript|data):`)
+	urlAttrRe = regexp.MustCompile(`(?i)\b(?:action|href)="([^"]*)"`)
+	styleRe   = regexp.MustCompile(`(?s)<style>.*?</style>`)
+	commentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+	// every action a plugin template here may use: printing a field, control
+	// flow over a field, template calls and definitions; no function calls.
+	okActionRe = regexp.MustCompile(`^\{\{\s*(?:[.$][\w.]*|(?:if|else if|range|with)\s+[.$][\w.]*|else|end|define "[^"]+"|template "[^"]+" [.$]\w*|\$c := \.Content)\s*\}\}$`)
+	printRe    = regexp.MustCompile(`^\{\{\s*[.$][\w.]*\s*\}\}$`)
+)
+
+// TestCommentVotePartialMarkupRules checks the template source against the
+// plugin markup rules the host enforces at load time.
+func TestCommentVotePartialMarkupRules(t *testing.T) {
+	for _, file := range []string{"../../partials/comment-vote.html", "../../sections/hn_threads.html"} {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(raw)
+		name := filepath.Base(file)
+		if badTagRe.MatchString(src) || onAttrRe.MatchString(src) || badURLRe.MatchString(src) {
+			t.Errorf("%s: script-capable markup", name)
+		}
+		for _, a := range actionRe.FindAllString(src, -1) {
+			if !okActionRe.MatchString(a) {
+				t.Errorf("%s: action %s is not a plain field, control or template call", name, a)
+			}
+		}
+		for _, m := range urlAttrRe.FindAllStringSubmatch(src, -1) {
+			if !strings.HasPrefix(m[1], "/") && !strings.HasPrefix(m[1], "{{") {
+				t.Errorf("%s: URL attribute %q must start with / or an action", name, m[1])
+			}
+		}
+		for _, re := range []*regexp.Regexp{styleRe, commentRe} {
+			for _, m := range re.FindAllString(src, -1) {
+				if strings.Contains(m, "{{") {
+					t.Errorf("%s: action inside %.20s...", name, m)
+				}
+			}
+		}
+		for _, span := range tagSpanRe.FindAllString(src, -1) {
+			if err := actionsInQuotes(span); err != "" {
+				t.Errorf("%s: %s in %s", name, err, span)
+			}
+		}
+	}
+}
+
+// actionsInQuotes reports the first action of a tag that is not a printing
+// action wholly inside a quoted attribute value.
+func actionsInQuotes(tag string) string {
+	quote := false
+	for i := 0; i < len(tag); i++ {
+		switch {
+		case strings.HasPrefix(tag[i:], "{{"):
+			end := strings.Index(tag[i:], "}}")
+			if end < 0 {
+				return "unterminated action"
+			}
+			a := tag[i : i+end+2]
+			if !quote || !printRe.MatchString(a) {
+				return "action " + a + " outside a quoted value or not a print"
+			}
+			i += end + 1
+		case tag[i] == '"':
+			quote = !quote
+		}
+	}
+	return ""
 }

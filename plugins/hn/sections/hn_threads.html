@@ -7,7 +7,7 @@
 {{if $c.more_href}}<p><a class="hn-more" href="{{$c.more_href}}">More</a></p>
 {{end}}</div>{{end}}
 {{define "plugin/hn/comment-row"}}<div class="{{.row_class}}" id="{{.anchor}}" style="margin-left:{{.indent}}px">
-<div class="hn-head"><!-- vote cell: added with the vote partial --><a href="{{.author_href}}">{{.author}}</a> <a href="{{.context_href}}">{{.ago}}</a>{{if .parent_href}} | <a href="{{.parent_href}}">parent</a>{{end}}{{range .actions}} | {{if .post}}<form method="post" action="{{.href}}"><button type="submit" class="{{.class}}">{{.label}}</button></form>{{else}}<a class="{{.class}}" href="{{.href}}">{{.label}}</a>{{end}}{{end}}{{if .item_href}} | on: <a href="{{.item_href}}">{{.title}}</a>{{end}}</div>
+<div class="hn-head">{{template "plugin/hn/comment-vote" .}}<a href="{{.author_href}}">{{.author}}</a> <a href="{{.context_href}}">{{.ago}}</a>{{if .parent_href}} | <a href="{{.parent_href}}">parent</a>{{end}}{{range .actions}} | {{if .post}}<form method="post" action="{{.href}}"><button type="submit" class="{{.class}}">{{.label}}</button></form>{{else}}<a class="{{.class}}" href="{{.href}}">{{.label}}</a>{{end}}{{end}}{{if .item_href}} | on: <a href="{{.item_href}}">{{.title}}</a>{{end}}</div>
 <div class="hn-text">{{range .body}}{{if .pre}}<pre><code>{{range .parts}}{{.text}}{{end}}</code></pre>{{else if .quote}}<blockquote>{{template "plugin/hn/comment-parts" .}}</blockquote>{{else}}<p>{{template "plugin/hn/comment-parts" .}}</p>{{end}}{{end}}</div>
 {{if .reply_href}}<p class="hn-reply"><a href="{{.reply_href}}">reply</a></p>{{end}}
 </div>
