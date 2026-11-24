@@ -13,16 +13,22 @@ var (
 	errDraftFailed = errors.New("core: draft handler failed")
 )
 
-// ServeHTTP is the one http_handle handler. An unknown route answers 404; a
-// public (no signed-in user) non-GET request that is not same-origin, see
-// SameSite, answers 403 before any handler runs; a handler error or panic
-// answers 500 without the error text.
+// adminPrefix marks the routes plugin.json declares non-public: the host
+// authenticates them (session + CSRF, or the admin iframe bridge) and sets User.
+const adminPrefix = "/admin/"
+
+// ServeHTTP is the one http_handle handler. An unknown route answers 404. A
+// non-GET request to a public route (every pattern outside /admin/) that is not
+// same-origin, see SameSite, answers 403 before any handler runs, whoever is
+// signed in. Admin routes carrying a host user keep the host's CSRF check only.
+// A handler error or panic answers 500 without the error text.
 func (r *Registry) ServeHTTP(req sdk.HTTPRequest) (resp sdk.HTTPResponse, err error) {
 	e, ok := r.routes[req.Method+" "+req.Pattern]
 	if !ok {
 		return JSONError(404, "not found"), nil
 	}
-	if req.Method != "GET" && req.User == nil && !SameSite(NewRequest(req)) {
+	admin := strings.HasPrefix(req.Pattern, adminPrefix)
+	if req.Method != "GET" && !(admin && req.User != nil) && !SameSite(NewRequest(req)) {
 		return JSONError(403, "cross-site request refused"), nil
 	}
 	defer func() {

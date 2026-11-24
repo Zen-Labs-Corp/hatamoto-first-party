@@ -1,7 +1,9 @@
 package core_test
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -396,9 +398,14 @@ func TestRegistryServeRefusesCrossSitePublicPost(t *testing.T) {
 		h := func(*core.Request) (sdk.HTTPResponse, error) { ran++; return sdk.HTTPResponse{Status: 204}, nil }
 		r.Route("POST /p", h)
 		r.Route("GET /g", h)
+		r.Route("POST /admin/x", h)
 	}})
+	var serveKey func(method, pat, site string, user *sdk.HTTPUser, key string) sdk.HTTPResponse
 	serve := func(method, pat, site string, user *sdk.HTTPUser) sdk.HTTPResponse {
-		req := sdk.HTTPRequest{Method: method, Pattern: pat, User: user}
+		return serveKey(method, pat, site, user, "")
+	}
+	serveKey = func(method, pat, site string, user *sdk.HTTPUser, key string) sdk.HTTPResponse {
+		req := sdk.HTTPRequest{Method: method, Pattern: pat, User: user, CommenterKey: key}
 		if site != "" {
 			req.Headers = map[string]string{"sec-fetch-site": site}
 		}
@@ -422,7 +429,43 @@ func TestRegistryServeRefusesCrossSitePublicPost(t *testing.T) {
 	if resp := serve("GET", "/g", "cross-site", nil); resp.Status != 204 {
 		t.Errorf("GET cross-site: status %d", resp.Status)
 	}
-	if resp := serve("POST", "/p", "cross-site", &sdk.HTTPUser{}); resp.Status != 204 {
-		t.Errorf("admin POST: status %d", resp.Status)
+	before := ran
+	if resp := serveKey("POST", "/p", "cross-site", nil, "k1"); resp.Status != 403 || ran != before {
+		t.Errorf("commenter key: status %d, ran %d", resp.Status, ran-before)
+	}
+	if resp := serve("POST", "/p", "cross-site", &sdk.HTTPUser{}); resp.Status != 403 || ran != before {
+		t.Errorf("public POST with user: status %d, ran %d", resp.Status, ran-before)
+	}
+	if resp := serve("POST", "/admin/x", "cross-site", &sdk.HTTPUser{}); resp.Status != 204 {
+		t.Errorf("admin POST with user: status %d", resp.Status)
+	}
+	if resp := serve("POST", "/admin/x", "cross-site", nil); resp.Status != 403 {
+		t.Errorf("admin POST without user: status %d", resp.Status)
+	}
+}
+
+// TestAdminPrefixMatchesManifest pins the dispatcher's rule (non-public means
+// under /admin/) to plugin.json, so a new non-public route elsewhere fails here.
+func TestAdminPrefixMatchesManifest(t *testing.T) {
+	raw, err := os.ReadFile("../../plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Routes []struct {
+			Method, Path string
+			Public       bool
+		}
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Routes) == 0 {
+		t.Fatal("no routes in plugin.json")
+	}
+	for _, rt := range m.Routes {
+		if strings.HasPrefix(rt.Path, "/admin/") == rt.Public {
+			t.Errorf("%s %s: public=%v does not match the /admin/ prefix rule", rt.Method, rt.Path, rt.Public)
+		}
 	}
 }
