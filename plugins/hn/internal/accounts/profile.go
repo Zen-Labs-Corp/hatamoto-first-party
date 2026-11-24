@@ -12,10 +12,10 @@ import (
 
 const maxAbout = 2000
 
-// capAbout drops NUL bytes (Postgres refuses them) and cuts the text to
-// maxAbout bytes on a rune boundary.
+// capAbout drops NUL bytes (Postgres refuses them) and invalid UTF-8, then
+// cuts the text to maxAbout bytes on a rune boundary.
 func capAbout(s string) string {
-	s = strings.ReplaceAll(s, "\x00", "")
+	s = strings.ToValidUTF8(strings.ReplaceAll(s, "\x00", ""), "")
 	if len(s) <= maxAbout {
 		return s
 	}

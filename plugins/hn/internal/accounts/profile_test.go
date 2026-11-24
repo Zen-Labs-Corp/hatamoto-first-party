@@ -95,3 +95,14 @@ func TestProfile(t *testing.T) {
 		})
 	}
 }
+
+func TestCapAboutInvalidUTF8(t *testing.T) {
+	long := "\xff" + strings.Repeat("a", 3000)
+	if got := capAbout(long); len(got) != maxAbout || !utf8.ValidString(got) {
+		t.Fatalf("long: len %d valid %v", len(got), utf8.ValidString(got))
+	}
+	short := strings.Repeat("\xff", 900) + "ok"
+	if got := capAbout(short); got != "ok" {
+		t.Fatalf("short: %q", got)
+	}
+}
