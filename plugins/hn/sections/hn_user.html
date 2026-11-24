@@ -1,0 +1,26 @@
+{{define "section-hn_user"}}{{template "plugin/hn/style" .}}{{$c := .Content}}<div class="hn-user">
+<style>.hn-user{font:10pt Verdana,Geneva,sans-serif;padding:8px 4px}.hn-user th{text-align:left;vertical-align:top;padding-right:12px}.hn-user input[type=text]{width:30em;max-width:100%;font:inherit}.hn-user .hn-notice{color:#c23b22}</style>
+{{if $c.notice}}<p class="hn-notice" role="status">{{$c.notice}}</p>
+{{end}}{{if not $c.found}}<p>No such user.</p>
+{{else if $c.own}}<form method="post" action="/p/hn/profile">
+<table>
+<tr><th>user:</th><td>{{$c.name}}</td></tr>
+<tr><th>created:</th><td>{{$c.created}}</td></tr>
+<tr><th>karma:</th><td>{{$c.karma}}</td></tr>
+<tr><th>about:</th><td><input type="text" name="about" maxlength="2000" value="{{$c.about_raw}}"></td></tr>
+<tr><th>showdead:</th><td><select name="showdead">{{if $c.showdead}}<option value="no">no</option><option value="yes" selected>yes</option>{{else}}<option value="no" selected>no</option><option value="yes">yes</option>{{end}}</select></td></tr>
+<tr><th>noprocrast:</th><td><select name="noprocrast">{{if $c.noprocrast}}<option value="no">no</option><option value="yes" selected>yes</option>{{else}}<option value="no" selected>no</option><option value="yes">yes</option>{{end}}</select></td></tr>
+<tr><th>maxvisit:</th><td><input type="number" name="maxvisit" min="1" max="120" value="{{$c.maxvisit}}"></td></tr>
+<tr><th>minaway:</th><td><input type="number" name="minaway" min="1" max="1440" value="{{$c.minaway}}"></td></tr>
+</table>
+<input type="hidden" name="next" value="{{$c.next}}">
+<p><button type="submit">update</button></p>
+</form>
+<p><a href="{{$c.submissions_href}}">submissions</a> | <a href="{{$c.comments_href}}">comments</a> | <a href="{{$c.favorites_href}}">favorites</a></p>
+{{else}}<table>
+<tr><th>user:</th><td>{{$c.name}}</td></tr>
+<tr><th>created:</th><td>{{$c.created}}</td></tr>
+<tr><th>karma:</th><td>{{$c.karma}}</td></tr>
+<tr><th>about:</th><td>{{range $c.about}}{{if .br}}<br>{{else if .href}}<a href="{{.href}}" rel="nofollow noopener">{{.text}}</a>{{else}}{{.text}}{{end}}{{end}}</td></tr>
+</table>
+{{end}}</div>{{end}}
