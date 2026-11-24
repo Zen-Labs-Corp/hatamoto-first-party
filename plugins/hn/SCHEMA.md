@@ -88,5 +88,5 @@ Written by parity.
 |---|---|
 | `favorites` | `user_id` references `users` (cascade), `kind` story or comment, `target_id` uuid, primary key all three |
 | `hidden` | `user_id` references `users` (cascade), `story_id` references `story_meta` (cascade), primary key both |
-| `search_docs` | `kind`, `target_id`, `entity_id`, `title`, `body`, `tsv` tsvector (plain column written by parity), primary key `(kind, target_id)`, gin index on `tsv` |
+| `search_docs` | `kind`, `target_id`, `entity_id`, `title`, `body`, `tsv` tsvector (plain column written by parity), `src_hash` md5 of the comment HTML the document was built from (`051_parity_src_hash.sql`), primary key `(kind, target_id)`, gin index on `tsv` |
 | `visits` | `user_id` primary key references `users` (cascade), `window_start`, `last_seen` |

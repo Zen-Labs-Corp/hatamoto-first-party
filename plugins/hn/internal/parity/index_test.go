@@ -111,7 +111,7 @@ func TestSearchIndexCron(t *testing.T) {
 		t.Fatalf("no host: %v", err)
 	}
 
-	missing := `[{"id":"` + commentUUID + `","entity_id":"` + storyUUID + `","body_html":"<p>Hi &amp; <b>there</b></p>","created_at":"2026-11-25T10:00:00Z"}]`
+	missing := `[{"id":"` + commentUUID + `","entity_id":"` + storyUUID + `","body_html":"<p>Hi &amp; <b>there</b></p>","src_hash":"abc123","created_at":"2026-11-25T10:00:00Z"}]`
 	db := &fakeDB{Query: func(sql string, _ []any) (any, error) {
 		if sql == sqlMissingComment {
 			return map[string]any{"rows": [][]any{{missing}}}, nil
@@ -137,7 +137,7 @@ func TestSearchIndexCron(t *testing.T) {
 	if len(docs) != 1 {
 		t.Fatalf("comment arg %v", db.Execs[4].Args)
 	}
-	if d, _ := docs[0].(map[string]any); d["id"] != commentUUID || d["entity_id"] != storyUUID || d["body"] != "Hi & there" || d["created_at"] != "2026-11-25T10:00:00Z" {
+	if d, _ := docs[0].(map[string]any); d["id"] != commentUUID || d["entity_id"] != storyUUID || d["body"] != "Hi & there" || d["created_at"] != "2026-11-25T10:00:00Z" || d["src_hash"] != "abc123" {
 		t.Errorf("comment doc %v", d)
 	}
 
@@ -164,5 +164,29 @@ func TestSearchIndexSQLIsSafe(t *testing.T) {
 				t.Errorf("%q in %s", bad, sql)
 			}
 		}
+	}
+}
+
+// Edited or anonymised comments must be re-indexed: the event stores md5 of the
+// HTML and the cron selects live comments whose md5 differs from the stored hash.
+func TestSearchIndexRefreshesChangedComments(t *testing.T) {
+	db := &fakeDB{}
+	install(t, db)
+	r := newRegistry(t, nil)
+	ev := sdk.CommentEvent{ID: commentUUID, EntityID: storyUUID, Status: "approved", BodyHTML: "<p>hi</p>"}
+	_ = r.CommentAction(core.OnUpdated)(ev)
+	if len(db.Execs) != 1 || db.Execs[0].Args[4] != "343fc7b27c1b966b623aa483c880210c" {
+		t.Fatalf("execs %v", db.Execs)
+	}
+	if got := srcHash(""); got != "d41d8cd98f00b204e9800998ecf8427e" {
+		t.Errorf("md5 of empty: %s", got)
+	}
+	for _, want := range []string{"d.src_hash <> md5(c.body_html)", "d.target_id IS NULL", "c.live", "LIMIT 25"} {
+		if !strings.Contains(sqlMissingComment, want) {
+			t.Errorf("sqlMissingComment lacks %q", want)
+		}
+	}
+	if !strings.Contains(sqlUpsertComment, "src_hash = EXCLUDED.src_hash") || !strings.Contains(sqlAddComments, "src_hash = EXCLUDED.src_hash") {
+		t.Error("an upsert does not refresh src_hash")
 	}
 }
