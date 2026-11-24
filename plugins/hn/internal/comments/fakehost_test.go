@@ -76,6 +76,17 @@ type fake struct {
 	threadHook func(call int) error
 	threadCall []string // "entity#page" of every call
 
+	// byAuthor is what comments.by_author lists per commenter key (newest first,
+	// 50 per page); subtrees is what comments.subtree answers per comment.
+	// byAuthorErr and subtreeErr fail every call; subtreeErrFor fails one comment.
+	byAuthor      map[string][]sdk.CommentItem
+	byAuthorErr   error
+	byAuthorCalls []string // "key#page"
+	subtrees      map[string]sdk.CommentSubtree
+	subtreeErr    error
+	subtreeErrFor map[string]error
+	subtreeCalls  []string
+
 	nextUser int64
 }
 
@@ -175,6 +186,10 @@ func installFake(t *testing.T) *fake {
 
 		threads:    map[string][]sdk.CommentItem{},
 		threadPage: 2,
+
+		byAuthor:      map[string][]sdk.CommentItem{},
+		subtrees:      map[string]sdk.CommentSubtree{},
+		subtreeErrFor: map[string]error{},
 	}
 	f.host = &coretest.Host{Fns: map[string]func(json.RawMessage) (any, error){
 		"db.query": func(raw json.RawMessage) (any, error) {
@@ -221,6 +236,29 @@ func installFake(t *testing.T) *fake {
 			lo, hi := min((a.Page-1)*f.threadPage, len(all)), min(a.Page*f.threadPage, len(all))
 			return sdk.CommentThread{Items: all[lo:hi], Page: a.Page, HasMore: hi < len(all) || f.threadMore}, nil
 		},
+		sdk.FnCommentsByAuthor: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentsByAuthorArgs
+			_ = json.Unmarshal(raw, &a)
+			f.byAuthorCalls = append(f.byAuthorCalls, fmt.Sprintf("%s#%d", a.CommenterKey, a.Page))
+			if f.byAuthorErr != nil {
+				return nil, f.byAuthorErr
+			}
+			all := f.byAuthor[a.CommenterKey]
+			lo, hi := min((a.Page-1)*50, len(all)), min(a.Page*50, len(all))
+			return sdk.CommentThread{Items: all[lo:hi], Page: a.Page, HasMore: hi < len(all)}, nil
+		},
+		sdk.FnCommentsSubtree: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentSubtreeArgs
+			_ = json.Unmarshal(raw, &a)
+			f.subtreeCalls = append(f.subtreeCalls, a.CommentID)
+			if f.subtreeErr != nil {
+				return nil, f.subtreeErr
+			}
+			if err := f.subtreeErrFor[a.CommentID]; err != nil {
+				return nil, err
+			}
+			return f.subtrees[a.CommentID], nil
+		},
 		"settings.get": func(json.RawMessage) (any, error) { return f.settings, nil },
 	}}
 	coretest.Install(t, f.host)
@@ -247,6 +285,15 @@ func (f *fake) query(sql string, a []json.RawMessage) any {
 		return coretest.Rows(f.dirtyRows())
 	case sql == sqlNewest:
 		return coretest.Rows(f.newest(int(argInt(a, 0))))
+	case sql == sqlCommentStories:
+		refs := map[string]any{}
+		for _, id := range argStrings(a, 0) {
+			if m := f.meta[id]; m != nil && f.stories[m.Entity] != nil {
+				s := f.stories[m.Entity]
+				refs[id] = map[string]any{"item_no": s.ItemNo, "title": s.Title, "author_id": m.Author}
+			}
+		}
+		return coretest.Rows(refs)
 	case sql == sqlMyVotes:
 		mine := map[string]int{}
 		for _, id := range argStrings(a, 1) {

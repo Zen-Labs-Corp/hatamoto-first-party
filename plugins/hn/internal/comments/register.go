@@ -10,5 +10,6 @@ func Register(r *core.Registry) {
 	r.Cron("reconcile", reconcileCron)
 	r.Subscribe(core.StoryDeleted, onStoryDeleted)
 	r.Page("/newcomments", newcommentsPage(r))
+	r.Page("/threads", threadsPage(r))
 	r.Route("POST /vote/comment/{id}", voteHandler(r))
 }
