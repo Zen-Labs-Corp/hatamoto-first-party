@@ -1,0 +1,202 @@
+package stories
+
+import (
+	"encoding/json"
+	"net/url"
+	"strings"
+	"testing"
+
+	"hatamoto.dev/sdk"
+
+	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
+)
+
+var voteNow = mustTime("2026-01-02T12:00:00Z")
+
+// voteDB has alice (id 1, key k1) and a story by author 2 with the given overrides.
+func voteDB(story map[string]any) *fakeDB {
+	row := map[string]any{"entity_id": entityID, "item_no": 42, "author_id": 2, "kind": "story", "dead": false, "points": 5, "comment_count": 0,
+		"created_at": "2026-01-02T10:00:00Z", "title": "T", "url": "", "body": "", "voted_at": nil}
+	for k, v := range story {
+		row[k] = v
+	}
+	b, _ := json.Marshal(row)
+	return &fakeDB{
+		Users: map[string]map[string]any{"k1": user(1, "alice")},
+		Query: func(sql string, _ []any) (any, error) {
+			if strings.Contains(sql, "FROM story_meta s LEFT JOIN story_votes") {
+				return map[string]any{"rows": [][]any{{string(b)}}}, nil
+			}
+			return map[string]any{"rows": [][]any{}}, nil
+		},
+	}
+}
+
+func vote(t *testing.T, r *core.Registry, id string, form url.Values, key string, wantJSON bool) sdk.HTTPResponse {
+	t.Helper()
+	return post(t, r, "POST /vote/story/{id}", map[string]string{"id": id}, form, key, wantJSON)
+}
+
+func TestStoryVoteUp(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(nil)
+	install(t, db)
+	r := newRegistry(t, nil)
+	resp := vote(t, r, "42", url.Values{"next": {"/news?p=2"}}, "k1", false)
+	if resp.Status != 303 || location(resp) != "/news?p=2" {
+		t.Fatalf("resp %d %q", resp.Status, location(resp))
+	}
+	if len(db.Execs) != 2 {
+		t.Fatalf("execs %v", execSQL(db))
+	}
+	if s := db.Execs[0].SQL; !strings.Contains(s, "INSERT INTO story_votes") || !strings.Contains(s, "UPDATE story_meta SET points = points + 1, score =") {
+		t.Errorf("vote must be one statement: %s", s)
+	}
+	if k := db.Execs[1]; !strings.Contains(k.SQL, "UPDATE users SET karma") || k.Args[0] != float64(1) || k.Args[1] != float64(2) {
+		t.Errorf("karma exec %+v", k)
+	}
+}
+
+func TestStoryVoteUpJSON(t *testing.T) {
+	pinNow(t, voteNow)
+	install(t, voteDB(nil))
+	r := newRegistry(t, nil)
+	resp := vote(t, r, "42", nil, "k1", true)
+	if resp.Status != 200 || resp.Body != `{"points":6,"voted":true}` {
+		t.Errorf("resp %d %s", resp.Status, resp.Body)
+	}
+}
+
+func TestStoryVoteRepeatIsNoop(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(map[string]any{"voted_at": "2026-01-02T11:00:00Z"})
+	install(t, db)
+	r := newRegistry(t, nil)
+	resp := vote(t, r, "42", nil, "k1", true)
+	if len(db.Execs) != 0 || resp.Body != `{"points":5,"voted":true}` {
+		t.Errorf("execs %v body %s", execSQL(db), resp.Body)
+	}
+}
+
+func TestStoryVoteLostRaceDoesNotMoveKarma(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(nil)
+	db.Exec = func(string, []any) (int64, error) { return 0, nil }
+	install(t, db)
+	r := newRegistry(t, nil)
+	vote(t, r, "42", nil, "k1", false)
+	if len(db.Execs) != 1 {
+		t.Errorf("execs %v", execSQL(db))
+	}
+}
+
+func TestStoryVoteUnWithinHour(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(map[string]any{"voted_at": "2026-01-02T11:01:00Z"}) // 59 minutes ago
+	install(t, db)
+	r := newRegistry(t, nil)
+	resp := vote(t, r, "42", url.Values{"how": {"un"}}, "k1", true)
+	if resp.Body != `{"points":4,"voted":false}` {
+		t.Errorf("body %s", resp.Body)
+	}
+	if len(db.Execs) != 2 || !strings.Contains(db.Execs[0].SQL, "DELETE FROM story_votes") || !strings.Contains(db.Execs[0].SQL, "points = points - 1") || db.Execs[1].Args[0] != float64(-1) {
+		t.Errorf("execs %+v", db.Execs)
+	}
+}
+
+func TestStoryVoteUnTooLate(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(map[string]any{"voted_at": "2026-01-02T10:59:00Z"}) // 61 minutes ago
+	install(t, db)
+	r := newRegistry(t, nil)
+	resp := vote(t, r, "42", url.Values{"how": {"un"}, "next": {"/news"}}, "k1", false)
+	if location(resp) != "/news?m=story-unvote-late" || len(db.Execs) != 0 {
+		t.Errorf("location %q execs %v", location(resp), execSQL(db))
+	}
+}
+
+func TestStoryVoteUnWithoutVoteIsNoop(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(nil)
+	install(t, db)
+	r := newRegistry(t, nil)
+	resp := vote(t, r, "42", url.Values{"how": {"un"}}, "k1", true)
+	if len(db.Execs) != 0 || resp.Body != `{"points":5,"voted":false}` {
+		t.Errorf("execs %v body %s", execSQL(db), resp.Body)
+	}
+}
+
+func TestStoryVoteRefusals(t *testing.T) {
+	pinNow(t, voteNow)
+	for name, c := range map[string]struct {
+		story map[string]any
+		want  string
+	}{
+		"own":  {map[string]any{"author_id": 1}, "story-vote-own"},
+		"job":  {map[string]any{"kind": "job"}, "story-vote-job"},
+		"dead": {map[string]any{"dead": true}, "story-vote-dead"},
+	} {
+		db := voteDB(c.story)
+		install(t, db)
+		r := newRegistry(t, nil)
+		resp := vote(t, r, "42", url.Values{"next": {"/news"}}, "k1", false)
+		if location(resp) != "/news?m="+c.want || len(db.Execs) != 0 {
+			t.Errorf("%s: location %q execs %v", name, location(resp), execSQL(db))
+		}
+	}
+}
+
+func TestStoryVoteSignedOut(t *testing.T) {
+	db := voteDB(nil)
+	install(t, db)
+	r := newRegistry(t, nil)
+	resp := vote(t, r, "42", nil, "", false)
+	if location(resp) != "/login?m=story-login" || len(db.Execs) != 0 {
+		t.Errorf("location %q execs %v", location(resp), execSQL(db))
+	}
+	if resp := vote(t, r, "42", nil, "", true); resp.Status != 401 {
+		t.Errorf("json status %d", resp.Status)
+	}
+}
+
+type plainErr struct{}
+
+func (plainErr) Error() string { return "no votes today" }
+
+func TestStoryVoteGateRefusal(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(nil)
+	install(t, db)
+	r := newRegistry(t, map[string]func(*core.Registry){"moderation": func(r *core.Registry) {
+		r.Gate(core.GateVote, func(*core.GateReq) error { return plainErr{} })
+	}})
+	resp := vote(t, r, "42", url.Values{"next": {"/news"}}, "k1", false)
+	if location(resp) != "/news?m=story-refused" || len(db.Execs) != 0 {
+		t.Errorf("location %q execs %v", location(resp), execSQL(db))
+	}
+	if resp := vote(t, r, "42", nil, "k1", true); resp.Status != 403 || !strings.Contains(resp.Body, "no votes today") {
+		t.Errorf("json %d %s", resp.Status, resp.Body)
+	}
+}
+
+func TestStoryVoteMissing(t *testing.T) {
+	db := voteDB(nil)
+	db.Query = func(string, []any) (any, error) { return map[string]any{"rows": [][]any{}}, nil }
+	install(t, db)
+	r := newRegistry(t, nil)
+	for _, id := range []string{"999", "abc"} {
+		resp := vote(t, r, id, url.Values{"next": {"/news"}}, "k1", false)
+		if location(resp) != "/news?m=story-missing" {
+			t.Errorf("id %q: location %q", id, location(resp))
+		}
+	}
+}
+
+func TestStoryVoteNextIsSafe(t *testing.T) {
+	pinNow(t, voteNow)
+	install(t, voteDB(nil))
+	r := newRegistry(t, nil)
+	if loc := location(vote(t, r, "42", url.Values{"next": {"//evil.example"}}, "k1", false)); loc != "/" {
+		t.Errorf("location %q", loc)
+	}
+}
