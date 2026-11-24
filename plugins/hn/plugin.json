@@ -1,0 +1,67 @@
+{
+  "name": "hn",
+  "version": "0.1.0",
+  "sdk": "^0.27",
+  "description": "A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation on top of Hatamoto's core comments.",
+  "permissions": ["db", "settings", "site.scripts", "entities.write.own", "comments.read", "comments.moderate", "client.key"],
+  "entity_schema": "hn-story",
+  "entity_fields": ["url", "text", "kind"],
+  "request_headers": ["sec-fetch-site"],
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "render.page": 2000, "comment.check": 2000, "comment.draft": 2000 }
+  },
+  "page_paths": ["/", "/news", "/newest", "/front", "/newcomments", "/ask", "/show", "/jobs", "/best", "/submit", "/threads", "/user", "/from", "/favorites", "/login", "/search"],
+  "page_path_prefixes": ["/item/"],
+  "page_query": ["p", "id", "day", "site", "kind", "next", "view", "q", "m"],
+  "routes": [
+    { "method": "POST", "path": "/username", "public": true },
+    { "method": "POST", "path": "/profile", "public": true },
+    { "method": "POST", "path": "/submit", "public": true },
+    { "method": "POST", "path": "/story/{id}/edit", "public": true },
+    { "method": "POST", "path": "/story/{id}/delete", "public": true },
+    { "method": "POST", "path": "/vote/story/{id}", "public": true },
+    { "method": "POST", "path": "/admin/jobs" },
+    { "method": "POST", "path": "/vote/comment/{id}", "public": true },
+    { "method": "POST", "path": "/flag/{kind}/{id}", "public": true },
+    { "method": "POST", "path": "/vouch/{kind}/{id}", "public": true },
+    { "method": "GET", "path": "/admin/queue" },
+    { "method": "POST", "path": "/admin/users/{name}/ban" },
+    { "method": "POST", "path": "/admin/users/{name}/unban" },
+    { "method": "POST", "path": "/admin/domains" },
+    { "method": "POST", "path": "/admin/domains/remove" },
+    { "method": "POST", "path": "/admin/nets/ban" },
+    { "method": "POST", "path": "/admin/nets/unban" },
+    { "method": "GET", "path": "/admin/log" },
+    { "method": "POST", "path": "/favorite/{kind}/{id}", "public": true },
+    { "method": "POST", "path": "/unfavorite/{kind}/{id}", "public": true },
+    { "method": "POST", "path": "/hide/{id}", "public": true },
+    { "method": "POST", "path": "/unhide/{id}", "public": true },
+    { "method": "GET", "path": "/rss", "public": true },
+    { "method": "GET", "path": "/api/feed/{name}", "public": true },
+    { "method": "GET", "path": "/api/item/{id}", "public": true },
+    { "method": "GET", "path": "/api/user/{name}", "public": true },
+    { "method": "GET", "path": "/state/{entity_id}", "public": true }
+  ],
+  "cron": [
+    { "name": "rank", "every": "1m" },
+    { "name": "comment_rank", "every": "1m" },
+    { "name": "reconcile", "every": "1h" },
+    { "name": "sweep", "every": "1h" },
+    { "name": "search", "every": "5m" }
+  ],
+  "ui": { "title": "News moderation", "entry": "index.html", "roles": ["owner"] },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "flag_karma": { "type": "integer", "title": "Karma to flag", "description": "Minimum karma a member needs to flag a story or comment.", "default": 30, "minimum": 0 },
+      "downvote_karma": { "type": "integer", "title": "Karma to downvote", "description": "Minimum karma a member needs to downvote a comment.", "default": 500, "minimum": 0 },
+      "vouch_karma": { "type": "integer", "title": "Karma to vouch", "description": "Minimum karma a member needs to vouch for a dead story or comment.", "default": 31, "minimum": 0 },
+      "edit_window_minutes": { "type": "integer", "title": "Edit window (minutes)", "description": "How long an author may edit or delete a story after posting it.", "default": 120, "minimum": 0 },
+      "submit_per_hour": { "type": "integer", "title": "Submissions per hour", "description": "Stories one member may submit per hour. 0 means no limit.", "default": 6, "minimum": 0 },
+      "flags_to_dead": { "type": "integer", "title": "Flags until dead", "description": "Flags after which a story or comment is marked dead.", "default": 5, "minimum": 1 },
+      "page_size": { "type": "integer", "title": "Stories per page", "description": "Stories listed on one page of a feed.", "default": 30, "minimum": 1, "maximum": 100 }
+    }
+  }
+}

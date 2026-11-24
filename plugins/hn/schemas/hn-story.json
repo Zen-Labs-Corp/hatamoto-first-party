@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "title": "Story",
+  "description": "A submitted link or text post.",
+  "properties": {
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "description": "The link, empty for a text post.",
+      "format": "uri"
+    },
+    "text": {
+      "type": "string",
+      "title": "Text",
+      "description": "Body of an Ask, Show or text post.",
+      "x-hm-field": "plaintext"
+    },
+    "kind": {
+      "type": "string",
+      "title": "Kind",
+      "description": "story, ask, show or job.",
+      "enum": ["story", "ask", "show", "job"]
+    }
+  },
+  "x-hm-order": ["url", "text", "kind"]
+}
