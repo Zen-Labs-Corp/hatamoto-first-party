@@ -11,9 +11,6 @@ import (
 // sqlDirty takes the oldest dirty rows of HN stories, whole entity groups together.
 const sqlDirty = `SELECT coalesce(jsonb_agg(x ORDER BY x.entity_id, x.comment_id), '[]') FROM (SELECT m.comment_id, m.entity_id, m.points FROM comment_meta m JOIN story_meta s ON s.entity_id = m.entity_id WHERE m.dirty ORDER BY m.created_at, m.comment_id LIMIT 1000) x`
 
-// sqlGiveUp clears dirty for an entity core refused for good, so it cannot starve the others.
-const sqlGiveUp = `UPDATE comment_meta SET dirty = false WHERE entity_id = $1::uuid AND dirty`
-
 // sqlClean clears dirty for the rows that were sent, unless a vote moved their points meanwhile.
 const sqlClean = `UPDATE comment_meta m SET dirty = false FROM jsonb_to_recordset($1::jsonb) AS s(id uuid, points int) WHERE m.comment_id = s.id AND m.points = s.points AND m.dirty`
 
@@ -71,23 +68,29 @@ func rankCron(sdk.CronEvent) error {
 			var out sdk.CommentsChanged
 			err := core.Call(sdk.FnCommentsSetRank, sdk.CommentRankArgs{Items: items}, &out)
 			calls++
-			if isUnavailable(err) || isRateLimited(err) {
-				return nil
-			}
-			if err != nil {
-				if !retryable(err) {
-					_, _ = core.Exec(sqlGiveUp, chunk[0].Entity)
+			if err != nil && !aboutEntity(err) {
+				if passesOnItsOwn(err) {
+					break // next entity; this one stays dirty
 				}
-				break // go on with the next entity; a retryable error leaves this one dirty
+				return nil // not about this entity (grant, policy, transport): keep everything dirty
 			}
+			// Sent, or refused for good: either way these rows (with these points) are done.
 			list, _ := json.Marshal(sent)
 			_, _ = core.Exec(sqlClean, string(list))
+			if err != nil {
+				break // the rest of this entity is tried again next run
+			}
 		}
 	}
 	return nil
 }
 
-// retryable reports a set_rank failure that may pass on its own.
-func retryable(err error) bool {
-	return hostCode(err, sdk.ErrUnavailable) || hostCode(err, sdk.ErrRateLimited) || hostCode(err, sdk.ErrTimeout) || hostCode(err, sdk.ErrInternal)
+// aboutEntity reports a refusal that concerns the comments sent, not the plugin.
+func aboutEntity(err error) bool {
+	return hostCode(err, sdk.ErrNotFound) || hostCode(err, sdk.ErrNotOwned) || hostCode(err, sdk.ErrInvalidArgument)
+}
+
+// passesOnItsOwn reports a failure that may pass by the next run and says nothing about the plugin.
+func passesOnItsOwn(err error) bool {
+	return hostCode(err, sdk.ErrTimeout) || hostCode(err, sdk.ErrInternal)
 }

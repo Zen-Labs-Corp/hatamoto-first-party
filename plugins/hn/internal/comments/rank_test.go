@@ -1,6 +1,7 @@
 package comments
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -118,8 +119,43 @@ func TestCommentRank(t *testing.T) {
 		if fmt.Sprint(batchSizes(f)) != "[200 2]" {
 			t.Fatalf("batches = %v", batchSizes(f))
 		}
-		if dirtyCount(f) != 0 {
-			t.Fatalf("dirty = %d, a refused entity must be given up", dirtyCount(f))
+		if dirtyCount(f) != 250 {
+			t.Fatalf("dirty = %d, want 250: only the refused chunk is given up", dirtyCount(f))
+		}
+	})
+
+	for name, e := range map[string]error{
+		"capability denied": &sdk.HostError{Code: sdk.ErrCapabilityDenied},
+		"blocked":           &sdk.HostError{Code: sdk.ErrBlocked},
+		"reentrant":         &sdk.HostError{Code: sdk.ErrReentrant},
+		"plain error":       errors.New("boom"),
+	} {
+		t.Run(name+" keeps everything dirty and stops", func(t *testing.T) {
+			f := installFake(t)
+			addDirty(f, entA, 3)
+			addDirty(f, entB, 3)
+			f.setRankHook = func(int) error { return e }
+			if err := rankCron(cron); err != nil {
+				t.Fatal(err)
+			}
+			if len(f.setRank) != 1 || dirtyCount(f) != 6 {
+				t.Fatalf("calls %d dirty %d", len(f.setRank), dirtyCount(f))
+			}
+		})
+	}
+
+	t.Run("a refused chunk keeps rows whose points moved", func(t *testing.T) {
+		f := installFake(t)
+		ids := addDirty(f, entA, 2)
+		f.setRankHook = func(int) error {
+			f.meta[ids[1]].Points = 7 // a vote lands while the call runs
+			return &sdk.HostError{Code: sdk.ErrNotOwned}
+		}
+		if err := rankCron(cron); err != nil {
+			t.Fatal(err)
+		}
+		if f.meta[ids[0]].Dirty || !f.meta[ids[1]].Dirty {
+			t.Fatalf("dirty %v %v", f.meta[ids[0]].Dirty, f.meta[ids[1]].Dirty)
 		}
 	})
 

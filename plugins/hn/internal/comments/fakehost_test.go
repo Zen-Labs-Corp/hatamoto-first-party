@@ -433,15 +433,6 @@ func (f *fake) exec(sql string, a []json.RawMessage) int64 {
 		}
 		m.Dirty = true
 		return 1
-	case sqlGiveUp:
-		var n int64
-		for _, m := range f.meta {
-			if m.Entity == argStr(a, 0) && m.Dirty {
-				m.Dirty = false
-				n++
-			}
-		}
-		return n
 	case sqlRecount:
 		return f.recount(argStr(a, 0))
 	case sqlDeleteMeta:
