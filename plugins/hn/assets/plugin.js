@@ -58,7 +58,61 @@
     } catch (e) {}
   }
 
+  function idOf(action, kind) {
+    var p = '/p/hn/' + kind + '/comment/';
+    return (action || '').indexOf(p) === 0 ? action.slice(p.length) : '';
+  }
+  function how(f) {
+    var e = f.elements || [], i;
+    for (i = 0; i < e.length; i++) if (e[i].name === 'how') return e[i].value;
+    return 'up';
+  }
+  // The theme prints " | " before the inline forms; drop it with the form.
+  function dropForm(f) {
+    var t = f.previousSibling;
+    if (t && t.nodeType === 3 && /^\s*\|\s*$/.test(t.nodeValue)) drop(t);
+    drop(f);
+  }
+
+  // Hides the controls the viewer cannot use. {} (signed out) prunes nothing.
+  function prune(s) {
+    var v = s && s.viewer, cs = (s && s.comments) || {}, cells, forms, i, j, c;
+    if (!v) return;
+    cells = d.querySelectorAll('[data-hn-comment]');
+    for (i = 0; i < cells.length; i++) {
+      c = cs[cells[i].getAttribute('data-hn-comment')];
+      forms = cells[i].querySelectorAll('form.hn-vote-form');
+      for (j = forms.length - 1; j >= 0; j--) {
+        if ((c && (c.voted || c.own || c.dead)) || (!v.downvote && how(forms[j]) === 'down')) drop(forms[j]);
+      }
+      if (c && c.voted && !has(cells[i], 'hn-voted')) cells[i].className += ' hn-voted';
+    }
+    forms = d.querySelectorAll('form[action^="/p/hn/flag/comment/"]');
+    for (i = forms.length - 1; i >= 0; i--) {
+      c = cs[idOf(forms[i].getAttribute('action'), 'flag')];
+      if (!v.flag || (c && c.own)) dropForm(forms[i]);
+    }
+    forms = d.querySelectorAll('form[action^="/p/hn/vouch/comment/"]');
+    for (i = forms.length - 1; i >= 0; i--) {
+      c = cs[idOf(forms[i].getAttribute('action'), 'vouch')];
+      if (!v.vouch || !c || !c.dead) dropForm(forms[i]);
+    }
+  }
+
+  function state() {
+    try {
+      var m = d.querySelector('main[data-hm-entity]'), id = m && m.getAttribute('data-hm-entity');
+      if (!d.querySelector('[data-hn-comment]') || !/^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id || '')) return;
+      w.fetch('/p/hn/state/' + id, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function (r) {
+          if (!r || !r.ok) throw 0;
+          return r.json();
+        }).then(prune).then(null, function () {});
+    } catch (e) {}
+  }
+
   if (w.fetch) d.addEventListener('submit', vote, true);
   userbar();
+  if (w.fetch) state();
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', userbar);
 })();

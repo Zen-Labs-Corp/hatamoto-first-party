@@ -15,6 +15,9 @@ function check(name, cond) {
 
 // ---- fake DOM -------------------------------------------------------------
 
+function Text(v) { this.nodeType = 3; this.nodeValue = v; this.parentNode = null; this.children = []; }
+Text.prototype.matches = function () { return false; };
+
 function El(tag, cls, attrs, kids) {
   this.tagName = tag;
   this.className = cls || '';
@@ -42,6 +45,13 @@ El.prototype.removeChild = function (k) {
   k.parentNode = null;
   return k;
 };
+Object.defineProperty(El.prototype, 'previousSibling', {
+  get: function () {
+    if (!this.parentNode) return null;
+    var sib = this.parentNode.children, i = sib.indexOf(this);
+    return i > 0 ? sib[i - 1] : null;
+  }
+});
 El.prototype.submit = function () { this.submitted++; };
 El.prototype.matches = function (sel) {
   var m = /^([a-z]*)(?:\.([\w-]+))?(?:\[([\w-]+)(?:([\^*]?)="([^"]*)")?\])?$/.exec(sel);
@@ -230,6 +240,104 @@ async function main() {
   root = el('main', '', {}, [slot]);
   b = boot(root, mkFetch(function () { return ok({}); }));
   check('userbar: no bar, unchanged', slot.children.length === 0);
+
+  // 16-21. viewer state
+  var EID = '10000000-0000-4000-8000-000000000001';
+  function page(entity, withCells) {
+    var p = { cells: {}, flags: {}, vouches: {} };
+    var kids = [];
+    ['c1', 'c2', 'c3', 'c4', 'c5'].forEach(function (id) {
+      var up = form('hn-vote-form', '/p/hn/vote/comment/' + id, [['how', 'up']]);
+      var down = form('hn-vote-form', '/p/hn/vote/comment/' + id, [['how', 'down']]);
+      var cell = el('span', 'hn-vote', { 'data-hn-comment': id }, [up, down]);
+      var head = el('div', 'hn-head', {}, [cell]);
+      p.cells[id] = { cell: cell, up: up, down: down, head: head };
+      if (id !== 'c5') {
+        var fl = form('hn-inline', '/p/hn/flag/comment/' + id, [['next', '/']]);
+        head.appendChild(new Text(' | '));
+        head.appendChild(fl);
+        p.flags[id] = fl;
+      }
+      if (id === 'c3' || id === 'c1') {
+        var vo = form('hn-inline', '/p/hn/vouch/comment/' + id, [['next', '/']]);
+        head.appendChild(new Text(' | '));
+        head.appendChild(vo);
+        p.vouches[id] = vo;
+      }
+      kids.push(head);
+    });
+    var attrs = entity === null ? {} : { 'data-hm-entity': entity };
+    p.root = el('main', '', attrs, withCells === false ? [] : kids);
+    return p;
+  }
+  var STATE = {
+    viewer: { karma: 40, flag: true, downvote: false, vouch: true },
+    story: { voted: false },
+    comments: {
+      c1: { voted: 'up', own: false, dead: false },
+      c2: { voted: '', own: true, dead: false },
+      c3: { voted: '', own: false, dead: true },
+      c4: { voted: '', own: false, dead: false }
+    }
+  };
+  function stateFetch(json) { return mkFetch(function () { return ok(JSON.parse(JSON.stringify(json))); }); }
+  function texts(head) { return head.children.filter(function (k) { return k.nodeType === 3; }).length; }
+
+  var pg = page(EID);
+  b = boot(pg.root, stateFetch(STATE));
+  await flush();
+  call = b.win.fetch.calls[0];
+  check('state: one fetch to the state route', b.win.fetch.calls.length === 1 && call.url === '/p/hn/state/' + EID);
+  check('state: Accept json, same-origin, GET', call.init.headers.Accept === 'application/json' && call.init.credentials === 'same-origin' && !call.init.method);
+  check('state: voted/own/dead cells lose their vote forms', ['c1', 'c2', 'c3'].every(function (id) { return pg.cells[id].cell.children.length === 0; }));
+  check('state: voted cell marked', pg.cells.c1.cell.className.indexOf('hn-voted') >= 0 && pg.cells.c2.cell.className.indexOf('hn-voted') < 0);
+  check('state: live and unknown keep up, lose down', ['c4', 'c5'].every(function (id) {
+    return pg.cells[id].up.parentNode === pg.cells[id].cell && pg.cells[id].down.parentNode === null;
+  }));
+  check('state: own flag and its separator removed', pg.flags.c2.parentNode === null && texts(pg.cells.c2.head) === 0);
+  check('state: other flags kept', ['c1', 'c3', 'c4'].every(function (id) { return pg.flags[id].parentNode === pg.cells[id].head && texts(pg.cells[id].head) >= 1; }));
+  check('state: vouch of a live comment removed, dead kept', pg.vouches.c1.parentNode === null && pg.vouches.c3.parentNode === pg.cells.c3.head);
+
+  pg = page(EID);
+  var noRights = JSON.parse(JSON.stringify(STATE));
+  noRights.viewer.flag = false;
+  noRights.viewer.vouch = false;
+  noRights.viewer.downvote = true;
+  b = boot(pg.root, stateFetch(noRights));
+  await flush();
+  check('state: no flag or vouch right removes every form', Object.keys(pg.flags).every(function (id) { return pg.flags[id].parentNode === null; }) &&
+    Object.keys(pg.vouches).every(function (id) { return pg.vouches[id].parentNode === null; }));
+  check('state: downvote right keeps down forms', pg.cells.c4.down.parentNode === pg.cells.c4.cell);
+
+  pg = page(EID);
+  b = boot(pg.root, stateFetch({}));
+  await flush();
+  check('state {}: nothing removed', pg.cells.c1.up.parentNode === pg.cells.c1.cell && pg.flags.c2.parentNode !== null && pg.vouches.c1.parentNode !== null && texts(pg.cells.c2.head) === 1);
+
+  var failing = [
+    ['500', function () { return status(500); }],
+    ['network error', function () { return Promise.reject(new Error('net')); }],
+    ['non-JSON', function () { return Promise.resolve({ ok: true, json: function () { return Promise.reject(new Error('json')); } }); }],
+    ['sync throw', function () { throw new Error('boom'); }]
+  ];
+  for (i = 0; i < failing.length; i++) {
+    pg = page(EID);
+    threw = false;
+    try { b = boot(pg.root, mkFetch(failing[i][1])); } catch (e) { threw = true; }
+    await flush();
+    check('state ' + failing[i][0] + ': nothing removed, no throw, no submit()',
+      !threw && pg.cells.c1.up.parentNode === pg.cells.c1.cell && pg.flags.c2.parentNode !== null && pg.cells.c1.up.submitted === 0);
+  }
+
+  pg = page(EID, false);
+  b = boot(pg.root, stateFetch(STATE));
+  await flush();
+  check('state: no comment cells, no fetch', b.win.fetch.calls.length === 0);
+  ['', null, '../x', 'not-a-uuid'].forEach(function (bad) {
+    pg = page(bad);
+    b = boot(pg.root, stateFetch(STATE));
+    check('state: entity ' + JSON.stringify(bad) + ', no fetch', b.win.fetch.calls.length === 0);
+  });
 
   // 15. static checks on the source
   ['eval', 'Function(', 'innerHTML', 'cookie', 'localStorage', 'sessionStorage', 'http:', 'https:', '=>', 'let ', 'const ', 'document.write']
