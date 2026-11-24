@@ -388,3 +388,41 @@ func TestRegistryActionsAndEvents(t *testing.T) {
 		t.Errorf("events %v", seen)
 	}
 }
+
+func TestRegistryServeRefusesCrossSitePublicPost(t *testing.T) {
+	ran := 0
+	r := core.NewRegistry()
+	registerAll(r, map[string]func(*core.Registry){"accounts": func(r *core.Registry) {
+		h := func(*core.Request) (sdk.HTTPResponse, error) { ran++; return sdk.HTTPResponse{Status: 204}, nil }
+		r.Route("POST /p", h)
+		r.Route("GET /g", h)
+	}})
+	serve := func(method, pat, site string, user *sdk.HTTPUser) sdk.HTTPResponse {
+		req := sdk.HTTPRequest{Method: method, Pattern: pat, User: user}
+		if site != "" {
+			req.Headers = map[string]string{"sec-fetch-site": site}
+		}
+		resp, err := r.ServeHTTP(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	for _, site := range []string{"cross-site", "same-site"} {
+		resp := serve("POST", "/p", site, nil)
+		if resp.Status != 403 || resp.Headers["Cache-Control"] != "no-store" || ran != 0 {
+			t.Errorf("%s: %+v, handler ran %d times", site, resp, ran)
+		}
+	}
+	for _, site := range []string{"", "same-origin", "none"} {
+		if resp := serve("POST", "/p", site, nil); resp.Status != 204 {
+			t.Errorf("%q: status %d", site, resp.Status)
+		}
+	}
+	if resp := serve("GET", "/g", "cross-site", nil); resp.Status != 204 {
+		t.Errorf("GET cross-site: status %d", resp.Status)
+	}
+	if resp := serve("POST", "/p", "cross-site", &sdk.HTTPUser{}); resp.Status != 204 {
+		t.Errorf("admin POST: status %d", resp.Status)
+	}
+}

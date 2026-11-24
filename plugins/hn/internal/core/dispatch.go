@@ -14,11 +14,16 @@ var (
 )
 
 // ServeHTTP is the one http_handle handler. An unknown route answers 404; a
-// handler error or panic answers 500 without the error text.
+// public (no signed-in user) non-GET request that is not same-origin, see
+// SameSite, answers 403 before any handler runs; a handler error or panic
+// answers 500 without the error text.
 func (r *Registry) ServeHTTP(req sdk.HTTPRequest) (resp sdk.HTTPResponse, err error) {
 	e, ok := r.routes[req.Method+" "+req.Pattern]
 	if !ok {
 		return JSONError(404, "not found"), nil
+	}
+	if req.Method != "GET" && req.User == nil && !SameSite(NewRequest(req)) {
+		return JSONError(403, "cross-site request refused"), nil
 	}
 	defer func() {
 		if recover() != nil {

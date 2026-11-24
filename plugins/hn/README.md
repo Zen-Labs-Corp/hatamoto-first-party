@@ -62,7 +62,7 @@ Handler rules:
 - A visitor with no commenter key or no username gets a 303 to `/login` with a notice.
 - Karma gates, own comments, repeat votes and dead rules are enforced by the route; the theme shows the controls to everyone it cannot judge.
 - `Accept: application/json` answers `{points, voted}` instead of redirecting.
-- A cross-site post is refused (`Sec-Fetch-Site`).
+- A cross-site post is refused (`Sec-Fetch-Site`): the dispatcher answers 403 (JSON error, no-store) to any public non-GET request whose header is not absent, `same-origin` or `none`, before the route runs.
 
 ## Routes
 
