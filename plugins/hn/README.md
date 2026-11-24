@@ -37,13 +37,13 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 | `/submit` | `hn-submit` (edit mode with `?id=<story>`) | P2 | `id` |
 | `/item/<number>` | `hn-item`, injected by the filter | P2 | `id` (a comment id: focus view) |
 | `/threads` `/newcomments` | `hn-threads` | P3 | `id` (user), `p` |
-| `/user` | `hn-user` | P1 | `id` |
-| `/login` | `hn-login` | P1 | none |
+| `/user` | `hn_user` | P1 | `id` |
+| `/login` | `hn_login` | P1 | none |
 | `/favorites` | `hn-saved` (favorites; `view=hidden` is the member's hidden stories) | P5 | `id`, `view`, `p` |
 | `/search` | `hn-search` | P5 | `q`, `p` |
-| every filtered page | `hn-userbar`, injected first | P1 | |
+| every filtered page | `hn_userbar`, injected first | P1 | |
 
-Sections: `hn-feed hn-submit hn-item hn-threads hn-user hn-login hn-saved hn-search hn-userbar` (`hn-item` and `hn-userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
+Sections: `hn-feed hn-submit hn-item hn-threads hn_user hn_login hn-saved hn-search hn_userbar` (`hn-item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
 
 ## Theme-posted forms
 

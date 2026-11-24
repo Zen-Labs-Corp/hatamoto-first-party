@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"go/parser"
 	"go/token"
 	"html/template"
@@ -90,8 +91,11 @@ func TestExportsMatchRegisteredHandlers(t *testing.T) {
 				t.Errorf("http_handle on an unknown route: %s", out)
 			}
 		case sdk.RenderPage.Export():
-			if strings.Contains(string(out), `"blocks":[{`) {
-				t.Errorf("render.page added blocks: %s", out)
+			var page sdk.PageContext
+			if err := json.Unmarshal(out, &page); err != nil {
+				t.Errorf("render.page output: %v", err)
+			} else if len(page.Blocks) != 1 || page.Blocks[0].Type != "hn_userbar" || page.Blocks[0].ID != "hn_userbar" {
+				t.Errorf("render.page blocks, want only the user bar: %s", out)
 			}
 		}
 	}
