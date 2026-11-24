@@ -150,3 +150,12 @@ func hostErr(code string) error { return &sdk.HostError{Code: code, Message: "x"
 
 // location is the redirect target of a response.
 func location(resp sdk.HTTPResponse) string { return resp.Headers["Location"] }
+
+// mustTime parses an RFC 3339 time.
+func mustTime(s string) time.Time {
+	ts, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		panic(err)
+	}
+	return ts
+}
