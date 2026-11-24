@@ -76,8 +76,14 @@ func TestWithNoticeAndDefineNotice(t *testing.T) {
 	if got := core.WithNotice("/a", "bad title"); got != "/a?m=bad+title" {
 		t.Errorf("got %q", got)
 	}
-	if got := core.WithNotice("/a?p=2", "x"); got != "/a?p=2&m=x" {
+	if got := core.WithNotice("/a?p=2", "x"); got != "/a?m=x&p=2" {
 		t.Errorf("got %q", got)
+	}
+	if got := core.WithNotice("/a?m=old&p=2#top", "new"); got != "/a?m=new&p=2#top" {
+		t.Errorf("existing m and fragment: got %q", got)
+	}
+	if got := core.WithNotice("/a#top", "x"); got != "/a?m=x#top" {
+		t.Errorf("fragment: got %q", got)
 	}
 	if got := core.WithNotice("/a", ""); got != "/a" {
 		t.Errorf("got %q", got)

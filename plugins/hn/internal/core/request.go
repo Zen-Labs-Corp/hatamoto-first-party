@@ -123,16 +123,20 @@ func DefineNotice(code Notice, text string) {
 // NoticeText is the text of a code, or "" for an unknown one (never echo the raw code).
 func NoticeText(code string) string { return notices[code] }
 
-// WithNotice appends m=<code> to a path; an empty notice leaves it unchanged.
+// WithNotice sets m=<code> on a path's query, replacing an earlier m and
+// keeping the fragment; an empty notice leaves the path unchanged.
 func WithNotice(path string, n Notice) string {
 	if n == "" {
 		return path
 	}
-	sep := "?"
-	if strings.Contains(path, "?") {
-		sep = "&"
+	u, err := url.Parse(path)
+	if err != nil {
+		return path
 	}
-	return path + sep + "m=" + url.QueryEscape(string(n))
+	q := u.Query()
+	q.Set("m", string(n))
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // Respond answers a form post: the payload as JSON with 200 when the client
