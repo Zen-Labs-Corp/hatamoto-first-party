@@ -62,9 +62,9 @@ A plugin cannot print into the theme header, so `hn_userbar` is injected as the 
 
 Theme contract:
 
-- Put an empty element with the class `hn-userbar` in the header (for example `<span class="hn-userbar"></span>`).
-- With `site.scripts` on, `assets/plugin.js` moves the `.hn-ub` block into the first `.hn-userbar` element, once. Without the script, or without the slot, the block stays at the top of `main`; the theme should not hide it, and should keep an empty slot harmless (no border or padding of its own).
-- Style `.hn-ub` from the theme if wanted (`text-align`, colours); the plugin's rules are zero-specificity and use the `--hn-*` tokens.
+- Optionally put an empty element with the class `hn-userbar` in the header (for example `<span class="hn-userbar"></span>`).
+- With `site.scripts` on, `assets/plugin.js` moves the first `.hn-ub` block into the first `.hn-userbar` element, once, when that element exists. Without the script, or without the slot, the block stays at the top of `main`; the theme should not hide it.
+- The bar can therefore be in either place: in `main` without the script, in the slot with it. A theme that styles `.hn-ub` (spacing, background, alignment, colours) should make that styling work in both positions, for example by scoping the rules to each position. The plugin's own rules are zero-specificity, use the `--hn-*` tokens and set no text colour on `.hn-ub`, so it inherits the colour of its container.
 
 ## Theme-posted forms
 
