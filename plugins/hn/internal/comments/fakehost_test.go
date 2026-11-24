@@ -181,6 +181,18 @@ func installFake(t *testing.T) *fake {
 func (f *fake) query(sql string, a []json.RawMessage) any {
 	var u *core.User
 	switch {
+	case sql == sqlVoteTarget:
+		m := f.meta[argStr(a, 0)]
+		if m == nil {
+			return noRows
+		}
+		return coretest.Rows(map[string]any{"author_id": m.Author, "live": m.Live, "points": m.Points})
+	case sql == sqlVoteMine:
+		v := f.votes[argStr(a, 0)][argInt(a, 1)]
+		if v == nil {
+			return noRows
+		}
+		return coretest.Rows(map[string]any{"value": v.Value, "created_at": v.Created})
 	case sql == sqlRemovalInfo:
 		return coretest.Rows(f.removalInfo(argStrings(a, 0)))
 	case strings.Contains(sql, "u.commenter_key = $1"):
@@ -208,6 +220,34 @@ func (f *fake) exec(sql string, a []json.RawMessage) int64 {
 		return f.upsert(a, false)
 	case sqlUpsertState:
 		return f.upsert(a, true)
+	case sqlVoteInsert:
+		id, uid := argStr(a, 0), argInt(a, 1)
+		if f.meta[id] == nil || f.votes[id][uid] != nil {
+			return 0
+		}
+		if f.votes[id] == nil {
+			f.votes[id] = map[int64]*voteRow{}
+		}
+		f.votes[id][uid] = &voteRow{Value: int(argInt(a, 2)), Created: core.Now()}
+		return 1
+	case sqlVoteDelete:
+		id, uid := argStr(a, 0), argInt(a, 1)
+		if v := f.votes[id][uid]; v != nil && v.Value == int(argInt(a, 2)) {
+			delete(f.votes[id], uid)
+			return 1
+		}
+		return 0
+	case sqlPoints:
+		m := f.meta[argStr(a, 0)]
+		if m == nil {
+			return 0
+		}
+		m.Points = 1
+		for _, v := range f.votes[m.ID] {
+			m.Points += v.Value
+		}
+		m.Dirty = true
+		return 1
 	case sqlRecount:
 		return f.recount(argStr(a, 0))
 	case sqlDeleteMeta:
