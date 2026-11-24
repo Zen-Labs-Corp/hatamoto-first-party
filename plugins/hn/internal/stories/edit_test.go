@@ -23,6 +23,9 @@ func editDB(story map[string]any) (*fakeDB, *[]map[string]json.RawMessage) {
 		if strings.Contains(sql, "FROM story_actions") {
 			return coretest.Rows(0), nil
 		}
+		if strings.Contains(sql, "FROM comment_meta") {
+			return coretest.Rows(false), nil
+		}
 		return vote(sql, args)
 	}
 	var updates []map[string]json.RawMessage
@@ -167,6 +170,34 @@ func TestStoryEditDelete(t *testing.T) {
 	install(t, db)
 	if loc := remove(t, newRegistry(t, nil), "k1"); loc != "/item/42?m=story-has-comments" || len(db.Execs) != 0 {
 		t.Errorf("with comments: %q", loc)
+	}
+
+	// held or dead comments are not in comment_count but still block the delete
+	db, _ = editDB(nil)
+	query := db.Query
+	db.Query = func(sql string, args []any) (any, error) {
+		if strings.Contains(sql, "FROM comment_meta") {
+			return coretest.Rows(true), nil
+		}
+		return query(sql, args)
+	}
+	install(t, db)
+	if loc := remove(t, newRegistry(t, nil), "k1"); loc != "/item/42?m=story-has-comments" || len(db.Execs) != 0 {
+		t.Errorf("with held comments: %q", loc)
+	}
+
+	// a failing check refuses with the generic error
+	db, _ = editDB(nil)
+	query = db.Query
+	db.Query = func(sql string, args []any) (any, error) {
+		if strings.Contains(sql, "FROM comment_meta") {
+			return nil, hostErr("unavailable")
+		}
+		return query(sql, args)
+	}
+	install(t, db)
+	if loc := remove(t, newRegistry(t, nil), "k1"); !strings.Contains(loc, "?m=story-error") || len(db.Execs) != 0 {
+		t.Errorf("check failed: %q", loc)
 	}
 
 	db, _ = editDB(nil)

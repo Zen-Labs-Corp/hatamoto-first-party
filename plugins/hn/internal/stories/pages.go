@@ -80,7 +80,12 @@ func submitPage(p *core.Page) error {
 		}
 		n := strconv.FormatInt(no, 10)
 		c["state"], c["action"], c["delete_action"] = "edit", "/p/hn/story/"+n+"/edit", "/p/hn/story/"+n+"/delete"
-		c["title"], c["url"], c["text"], c["can_delete"] = ref.Title, ref.URL, ref.Body, ref.CommentCount == 0
+		c["title"], c["url"], c["text"] = ref.Title, ref.URL, ref.Body
+		c["can_delete"] = false
+		if ref.CommentCount == 0 {
+			has, err := hasComments(ref.EntityID)
+			c["can_delete"] = err == nil && !has // fail closed
+		}
 	}
 	place(p, "hn_submit", c, true)
 	return nil
