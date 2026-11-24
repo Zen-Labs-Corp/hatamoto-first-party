@@ -132,7 +132,7 @@ See [SCHEMA.md](SCHEMA.md). The plugin only touches its own database area.
 
 ## Failure handling
 
-Hooks fail open: a handler that errors or panics is skipped and never fails a render or a request (a route answers a generic 500 without the error text). `comment.check` never returns an error, because the host holds a comment on any error. `comment.draft` is the one hook that rejects on purpose (it sets `Reject`); any other failure there rejects the draft.
+Hooks fail open: a handler that errors or panics is skipped and never fails a render or a request (a route answers a generic 500 without the error text). `comment.check` never returns an error, because the host holds a comment on any error. `comment.draft` is the one hook that fails closed: handlers answer with a canonical `Name` or a `Reject`; any reject wins (text cut to 200 bytes), and a draft nobody named is rejected with a fixed text (`Pick a username first.`) without echoing the typed name. With no handler, or only pass-through handlers, every draft is rejected. Any handler error or panic rejects the draft too.
 
 ## Build
 

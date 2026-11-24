@@ -110,7 +110,7 @@ type Registry struct {
 	pages     []pageEntry
 	comments  [commentKinds][]func(sdk.CommentEvent) error
 	checks    []func(sdk.CommentCheck) (sdk.CommentCheck, error)
-	drafts    []func(sdk.CommentDraft) (sdk.CommentDraft, error)
+	drafts    []func(sdk.CommentDraft) (DraftAnswer, error)
 	crons     map[string]cronEntry
 	gates     map[GateKind][]func(*GateReq) error
 	rowActs   []func(*User, Item) []Action
@@ -184,8 +184,14 @@ func (r *Registry) Check(h func(sdk.CommentCheck) (sdk.CommentCheck, error)) {
 	r.checks = append(r.checks, h)
 }
 
-// Draft registers a comment.draft handler.
-func (r *Registry) Draft(h func(sdk.CommentDraft) (sdk.CommentDraft, error)) {
+// DraftAnswer is what a comment.draft handler decides: Name is the canonical
+// author name it vouches for, Reject a public refusal text. Both empty is a
+// pass-through, which is not an answer.
+type DraftAnswer struct{ Name, Reject string }
+
+// Draft registers a comment.draft handler. The draft is accepted only when a
+// handler returns a Name and none rejects (see DraftComment).
+func (r *Registry) Draft(h func(sdk.CommentDraft) (DraftAnswer, error)) {
 	r.drafts = append(r.drafts, h)
 }
 

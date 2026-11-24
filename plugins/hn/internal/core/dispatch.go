@@ -92,37 +92,52 @@ func runCheck(h func(sdk.CommentCheck) (sdk.CommentCheck, error), c sdk.CommentC
 	return h(c)
 }
 
+// errNoName is the public text of a draft nobody gave a name.
+const errNoName = "Pick a username first."
+
 // DraftComment is the one comment.draft filter, the only hook that rejects on
-// purpose. Handlers run in phase order: a Reject (or an error carrying the SDK
-// reject prefix) wins at once; the first non-empty AuthorName is returned when
-// nobody rejects; any other error is returned, so the host rejects the draft
-// (fail closed). With no handler the input is returned unchanged.
+// purpose, and it fails closed. Handlers run in phase order and answer with a
+// DraftAnswer: any Reject (or an error carrying the SDK reject prefix) wins at
+// once, whatever the phase order; otherwise the first non-empty Name becomes
+// the AuthorName. When no handler names the author the draft is rejected with
+// a fixed text, so a pass-through never counts as an answer and the typed name
+// is never echoed. Any other handler error is returned, so the host rejects
+// the draft too. A Reject text is cut to sdk.CommentDraftMaxReject bytes.
 func (r *Registry) DraftComment(d sdk.CommentDraft) (sdk.CommentDraft, error) {
-	var named *sdk.CommentDraft
+	name := ""
 	for _, h := range r.drafts {
-		out, err := runDraft(h, d)
+		ans, err := runDraft(h, d)
 		if err != nil {
 			if msg, ok := strings.CutPrefix(err.Error(), sdk.RejectPrefix); ok {
-				d.Reject = msg
-				return d, nil
+				ans = DraftAnswer{Reject: msg}
+			} else {
+				return d, err
 			}
-			return d, err
 		}
-		if out.Reject != "" {
-			d.Reject = out.Reject
-			return d, nil
+		if ans.Reject != "" {
+			return rejectDraft(d, ans.Reject), nil
 		}
-		if named == nil && out.AuthorName != "" {
-			named = &out
+		if name == "" {
+			name = ans.Name
 		}
 	}
-	if named != nil {
-		return *named, nil
+	if name == "" {
+		return rejectDraft(d, errNoName), nil
 	}
+	d.AuthorName, d.Reject = name, ""
 	return d, nil
 }
 
-func runDraft(h func(sdk.CommentDraft) (sdk.CommentDraft, error), d sdk.CommentDraft) (out sdk.CommentDraft, err error) {
+// rejectDraft answers a refusal: the capped text, and no author name.
+func rejectDraft(d sdk.CommentDraft, msg string) sdk.CommentDraft {
+	if len(msg) > sdk.CommentDraftMaxReject {
+		msg = strings.ToValidUTF8(msg[:sdk.CommentDraftMaxReject], "")
+	}
+	d.AuthorName, d.Reject = "", msg
+	return d
+}
+
+func runDraft(h func(sdk.CommentDraft) (DraftAnswer, error), d sdk.CommentDraft) (out DraftAnswer, err error) {
 	defer func() {
 		if recover() != nil {
 			err = errDraftFailed

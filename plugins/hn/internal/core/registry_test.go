@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 	"hatamoto.dev/sdk"
@@ -124,10 +125,6 @@ func TestRegistryEmptyReturnsInputUnchanged(t *testing.T) {
 	if out, err := r.CheckComment(chk); err != nil || !reflect.DeepEqual(out, chk) {
 		t.Errorf("CheckComment %+v, %v", out, err)
 	}
-	dr := sdk.CommentDraft{CommenterKey: "k", AuthorName: "n"}
-	if out, err := r.DraftComment(dr); err != nil || out != dr {
-		t.Errorf("DraftComment %+v, %v", out, err)
-	}
 	if resp, err := r.ServeHTTP(sdk.HTTPRequest{Method: "GET", Pattern: "/nope"}); err != nil || resp.Status != 404 {
 		t.Errorf("ServeHTTP %+v, %v", resp, err)
 	}
@@ -170,63 +167,92 @@ func TestRegistryCheckNeverErrors(t *testing.T) {
 	}
 }
 
-func TestRegistryDraftRejectWins(t *testing.T) {
-	name := func(n string) func(sdk.CommentDraft) (sdk.CommentDraft, error) {
-		return func(d sdk.CommentDraft) (sdk.CommentDraft, error) { d.AuthorName = n; return d, nil }
-	}
-	r := core.NewRegistry()
-	registerAll(r, map[string]func(*core.Registry){
-		"accounts": func(r *core.Registry) { r.Draft(name("ann")) },
-		"stories": func(r *core.Registry) {
-			r.Draft(func(d sdk.CommentDraft) (sdk.CommentDraft, error) { d.Reject = "Pick a username first."; return d, nil })
-		},
-		"comments": func(r *core.Registry) { r.Draft(name("later")) },
-	})
-	out, err := r.DraftComment(sdk.CommentDraft{CommenterKey: "k", AuthorName: "x"})
-	if err != nil || out.Reject != "Pick a username first." {
-		t.Errorf("got %+v, %v", out, err)
-	}
+type draftFn = func(sdk.CommentDraft) (core.DraftAnswer, error)
 
-	r = core.NewRegistry()
-	registerAll(r, map[string]func(*core.Registry){
-		"accounts": func(r *core.Registry) {
-			r.Draft(func(d sdk.CommentDraft) (sdk.CommentDraft, error) {
-				return d, errors.New(sdk.RejectPrefix + "No.")
-			})
-		},
-	})
-	out, err = r.DraftComment(sdk.CommentDraft{})
-	if err != nil || out.Reject != "No." {
+func answer(a core.DraftAnswer) draftFn {
+	return func(sdk.CommentDraft) (core.DraftAnswer, error) { return a, nil }
+}
+
+// draftWith registers one handler per phase named in hs.
+func draftWith(hs map[string]draftFn) *core.Registry {
+	r := core.NewRegistry()
+	fns := map[string]func(*core.Registry){}
+	for ph, h := range hs {
+		fns[ph] = func(r *core.Registry) { r.Draft(h) }
+	}
+	registerAll(r, fns)
+	return r
+}
+
+func TestRegistryDraftNoNameIsRejected(t *testing.T) {
+	typed := sdk.CommentDraft{CommenterKey: "k", AuthorName: "typed-name"}
+	for name, r := range map[string]*core.Registry{
+		"no handler":   draftWith(nil),
+		"pass-through": draftWith(map[string]draftFn{"accounts": answer(core.DraftAnswer{})}),
+	} {
+		out, err := r.DraftComment(typed)
+		if err != nil || out.Reject != "Pick a username first." || out.AuthorName != "" {
+			t.Errorf("%s: got %+v, %v", name, out, err)
+		}
+	}
+}
+
+func TestRegistryDraftRejectWinsInAnyOrder(t *testing.T) {
+	no := answer(core.DraftAnswer{Reject: "Banned."})
+	ann := answer(core.DraftAnswer{Name: "ann"})
+	for name, hs := range map[string]map[string]draftFn{
+		"name first":   {"accounts": ann, "stories": no},
+		"name last":    {"accounts": no, "stories": ann},
+		"name between": {"accounts": no, "stories": ann, "comments": no},
+	} {
+		out, err := draftWith(hs).DraftComment(sdk.CommentDraft{AuthorName: "x"})
+		if err != nil || out.Reject != "Banned." || out.AuthorName != "" {
+			t.Errorf("%s: got %+v, %v", name, out, err)
+		}
+	}
+	r := draftWith(map[string]draftFn{"accounts": func(sdk.CommentDraft) (core.DraftAnswer, error) {
+		return core.DraftAnswer{}, errors.New(sdk.RejectPrefix + "No.")
+	}})
+	if out, err := r.DraftComment(sdk.CommentDraft{}); err != nil || out.Reject != "No." {
 		t.Errorf("reject error: %+v, %v", out, err)
 	}
 }
 
-func TestRegistryDraftFirstNameWins(t *testing.T) {
-	name := func(n string) func(sdk.CommentDraft) (sdk.CommentDraft, error) {
-		return func(d sdk.CommentDraft) (sdk.CommentDraft, error) { d.AuthorName = n; return d, nil }
-	}
-	r := core.NewRegistry()
-	registerAll(r, map[string]func(*core.Registry){
-		"accounts": func(r *core.Registry) {
-			r.Draft(func(d sdk.CommentDraft) (sdk.CommentDraft, error) { return d, nil })
-			r.Draft(name("ann"))
+func TestRegistryDraftRejectIsCapped(t *testing.T) {
+	long := strings.Repeat("é", 300)
+	for name, h := range map[string]draftFn{
+		"reject": answer(core.DraftAnswer{Reject: long}),
+		"reject error": func(sdk.CommentDraft) (core.DraftAnswer, error) {
+			return core.DraftAnswer{}, errors.New(sdk.RejectPrefix + long)
 		},
-		"stories": func(r *core.Registry) { r.Draft(name("bob")) },
+	} {
+		out, _ := draftWith(map[string]draftFn{"accounts": h}).DraftComment(sdk.CommentDraft{})
+		if len(out.Reject) == 0 || len(out.Reject) > sdk.CommentDraftMaxReject || !utf8.ValidString(out.Reject) {
+			t.Errorf("%s: %d bytes, valid %v", name, len(out.Reject), utf8.ValidString(out.Reject))
+		}
+	}
+}
+
+func TestRegistryDraftFirstNameWins(t *testing.T) {
+	r := draftWith(map[string]draftFn{
+		"accounts": answer(core.DraftAnswer{}),
+		"stories":  answer(core.DraftAnswer{Name: "ann"}),
+		"comments": answer(core.DraftAnswer{Name: "bob"}),
 	})
-	out, err := r.DraftComment(sdk.CommentDraft{})
-	if err != nil || out.AuthorName != "ann" {
+	out, err := r.DraftComment(sdk.CommentDraft{AuthorName: "x"})
+	if err != nil || out.AuthorName != "ann" || out.Reject != "" {
 		t.Errorf("got %+v, %v", out, err)
 	}
 }
 
 func TestRegistryDraftErrorAndPanicFailClosed(t *testing.T) {
-	for name, h := range map[string]func(sdk.CommentDraft) (sdk.CommentDraft, error){
-		"error": func(d sdk.CommentDraft) (sdk.CommentDraft, error) { return d, errors.New("db down") },
-		"panic": func(sdk.CommentDraft) (sdk.CommentDraft, error) { panic("boom") },
+	for name, h := range map[string]draftFn{
+		"error": func(sdk.CommentDraft) (core.DraftAnswer, error) {
+			return core.DraftAnswer{Name: "ann"}, errors.New("db down")
+		},
+		"panic": func(sdk.CommentDraft) (core.DraftAnswer, error) { panic("boom") },
 	} {
-		r := core.NewRegistry()
-		registerAll(r, map[string]func(*core.Registry){"accounts": func(r *core.Registry) { r.Draft(h) }})
-		if _, err := r.DraftComment(sdk.CommentDraft{}); err == nil {
+		if _, err := draftWith(map[string]draftFn{"accounts": h}).DraftComment(sdk.CommentDraft{}); err == nil {
 			t.Errorf("%s: draft not refused", name)
 		}
 	}
