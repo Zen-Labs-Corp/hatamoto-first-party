@@ -174,7 +174,7 @@ func TestCommentVote(t *testing.T) {
 			Method: "POST", Pattern: votePattern, CommenterKey: "k1", PathValues: map[string]string{"id": cid1},
 			Headers: map[string]string{"sec-fetch-site": "same-origin", "accept": "application/json"},
 		})
-		if resp.Status != 200 || resp.Body != `{"points":2,"voted":true}` {
+		if resp.Status != 200 || resp.Body != `{"voted":true}` {
 			t.Fatalf("got %d %s", resp.Status, resp.Body)
 		}
 	})

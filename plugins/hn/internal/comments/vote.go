@@ -127,10 +127,7 @@ func voteHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, error)
 			_ = core.AddKarma(*target.AuthorID, value) // fail open: the vote itself stands
 		}
 
-		points := target.Points + value
-		if err := core.QueryJSON(sqlVoteTarget, &target, id); err == nil {
-			points = target.Points
-		}
-		return core.Respond(req, back, map[string]any{"points": points, "voted": how != "un"}), nil
+		// Scores are hidden, so the reply says only what the vote did.
+		return core.Respond(req, back, map[string]any{"voted": how != "un"}), nil
 	}
 }
