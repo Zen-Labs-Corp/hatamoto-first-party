@@ -6,4 +6,7 @@ import "github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 func Register(r *core.Registry) {
 	defineNotices()
 	registerGates(r)
+	r.Check(checkComment)
+	registerDeadMode(r)
+	r.Cron("sweep", sweep)
 }
