@@ -7,7 +7,8 @@
 :where(.hn-rank){color:var(--hn-muted);text-align:right;padding-right:2px}
 :where(.hn-vote-cell){text-align:center}
 :where(.hn-vote-form){display:inline;margin:0}
-:where(.hn-vote-form button){font-size:10px;line-height:10px;color:var(--hn-muted);background:none;border:0;padding:7px;margin:-7px;min-width:24px;min-height:24px;cursor:pointer}
+:where(.hn-vote-form button){font-size:10px;line-height:10px;color:var(--hn-muted);background:none;border:0;cursor:pointer}
+:where(.hn-vote-form button){position:relative}:where(.hn-vote-form button)::after{content:"";position:absolute;inset:-7px}
 :where(.hn-title){line-height:1.25}:where(.hn-title a){color:var(--hn-text);text-decoration:none}
 :where(.hn-site,.hn-site a){font-size:8pt;color:var(--hn-muted)}
 :where(.hn-sub){grid-column:3;font-size:var(--hn-size-sub);color:var(--hn-muted);padding:1px 0 5px}
