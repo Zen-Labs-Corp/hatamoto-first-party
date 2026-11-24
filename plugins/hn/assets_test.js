@@ -309,6 +309,13 @@ async function main() {
   check('state: vouch of a live comment removed, dead kept', pg.vouches.c1.parentNode === null && pg.vouches.c3.parentNode === pg.cells.c3.head);
 
   pg = page(EID);
+  var unvote = form('hn-vote-form', '/p/hn/vote/comment/c1', [['how', 'un']]);
+  pg.cells.c1.cell.appendChild(unvote);
+  b = boot(pg.root, stateFetch(STATE));
+  await flush();
+  check('state: unvote form kept in a voted cell, up/down removed', unvote.parentNode === pg.cells.c1.cell && pg.cells.c1.cell.children.length === 1);
+
+  pg = page(EID);
   var noRights = JSON.parse(JSON.stringify(STATE));
   noRights.viewer.flag = false;
   noRights.viewer.vouch = false;

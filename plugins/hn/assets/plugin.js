@@ -85,7 +85,7 @@
       c = cs[cells[i].getAttribute('data-hn-comment')];
       forms = cells[i].querySelectorAll('form.hn-vote-form');
       for (j = forms.length - 1; j >= 0; j--) {
-        if ((c && (c.voted || c.own || c.dead)) || (!v.downvote && how(forms[j]) === 'down')) drop(forms[j]);
+        if (how(forms[j]) !== 'un' && ((c && (c.voted || c.own || c.dead)) || !v.downvote && how(forms[j]) === 'down')) drop(forms[j]);
       }
       if (c && c.voted && !has(cells[i], 'hn-voted')) cells[i].className += ' hn-voted';
     }
