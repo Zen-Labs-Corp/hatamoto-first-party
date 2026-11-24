@@ -91,7 +91,7 @@ func TestFeedsShowdead(t *testing.T) {
 }
 
 func rowsJSON(n int, firstNo int64) string {
-	var rows []map[string]any
+	rows := []map[string]any{}
 	for i := 0; i < n; i++ {
 		rows = append(rows, map[string]any{"entity_id": entityID, "item_no": firstNo - int64(i), "author_id": 2, "by": "bob", "title": "T", "kind": "story",
 			"created_at": "2026-11-25T11:00:00Z"})
