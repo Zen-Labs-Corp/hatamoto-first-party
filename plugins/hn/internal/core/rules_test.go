@@ -34,7 +34,12 @@ func TestNormalizeURL(t *testing.T) {
 	if key != "example.com/a" {
 		t.Errorf("key %q", key)
 	}
-	for _, bad := range []string{"ftp://example.com/x", "https:///x", "example.com", "", "https://example.com/" + strings.Repeat("a", 2000)} {
+	for _, u := range []string{"https://example.com./a", "https://www.example.com./a", "https://EXAMPLE.com/a"} {
+		if _, key, domain, err := core.NormalizeURL(u); err != nil || domain != "example.com" || key != "example.com/a" {
+			t.Errorf("NormalizeURL(%q) = %q %q %v", u, key, domain, err)
+		}
+	}
+	for _, bad := range []string{"https://user@example.com/x", "https://user:pw@example.com/", "https://@example.com/", "https://./x", "ftp://example.com/x", "https:///x", "example.com", "", "https://example.com/" + strings.Repeat("a", 2000)} {
 		if _, _, _, err := core.NormalizeURL(bad); err == nil {
 			t.Errorf("NormalizeURL(%.30q) accepted", bad)
 		}

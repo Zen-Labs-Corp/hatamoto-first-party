@@ -20,21 +20,25 @@ func CleanTitle(s string) (string, error) {
 	return s, nil
 }
 
-// NormalizeURL checks a story link (http or https, a host, at most 2000 bytes)
-// and returns it without the fragment (canon), the key two links to the same
-// page share (key) and its host without a leading "www." (domain).
+// NormalizeURL checks a story link (http or https, a host, no userinfo, at most
+// 2000 bytes) and returns it without the fragment (canon), the key two links to
+// the same page share (key) and its host without a trailing "." or a leading
+// "www." (domain).
 func NormalizeURL(raw string) (canon, key, domain string, err error) {
 	raw = strings.TrimSpace(raw)
 	if len(raw) > 2000 {
 		return "", "", "", errors.New("url is too long")
 	}
 	u, perr := url.Parse(raw)
-	if perr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+	if perr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
 		return "", "", "", errors.New("url must be an http or https link")
 	}
 	u.Fragment = ""
 	u.RawFragment = ""
-	domain = strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	domain = strings.TrimPrefix(strings.TrimSuffix(strings.ToLower(u.Hostname()), "."), "www.")
+	if domain == "" {
+		return "", "", "", errors.New("url must be an http or https link")
+	}
 	key = domain + strings.TrimSuffix(u.EscapedPath(), "/")
 	if u.RawQuery != "" {
 		key += "?" + u.RawQuery
