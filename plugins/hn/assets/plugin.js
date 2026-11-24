@@ -32,12 +32,13 @@
 
   function vote(ev) {
     var f = ev && ev.target;
-    if (!f || !has(f, 'hn-vote-form')) return;
+    var a = f && f.getAttribute && f.getAttribute('action');
+    if (!f || !has(f, 'hn-vote-form') || (a || '').indexOf('/p/hn/vote/') !== 0) return;
     if (f.__hnBusy) { ev.preventDefault(); return; }
     try {
       ev.preventDefault();
       f.__hnBusy = 1;
-      w.fetch(f.getAttribute('action'), {
+      w.fetch(a, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },

@@ -211,6 +211,15 @@ async function main() {
   await flush();
   check('other form: no fetch, no preventDefault', b.win.fetch.calls.length === 0 && act.prevented === 0);
 
+  // 10b. only /p/hn/vote/ forms are intercepted
+  ['https://evil.example/p/hn/vote/story/7', '//evil.example/p/hn/vote/story/7', '/other/p/hn/vote/story/7', '/p/hn/votes/7', ''].forEach(function (action) {
+    s = storyRow();
+    s.form.attrs.action = action;
+    b = boot(s.root, mkFetch(function () { return ok({ voted: true }); }));
+    b.doc.fire('submit', s.form);
+    check('foreign action ' + JSON.stringify(action) + ': no fetch, no preventDefault', b.win.fetch.calls.length === 0 && s.form.prevented === 0 && s.form.parentNode === s.cell);
+  });
+
   // 11. double submit in flight
   s = storyRow();
   b = boot(s.root, mkFetch(function () { return ok({ points: 2, voted: true }); }));
