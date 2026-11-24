@@ -1,7 +1,9 @@
 package comments
 
 import (
+	"crypto/md5"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -64,6 +66,15 @@ type fake struct {
 	// call (0-based index) and may fail it or touch the model.
 	setRank     [][]sdk.CommentRankItem
 	setRankHook func(call int) error
+
+	// threads is what comments.thread lists per entity, threadPage items per
+	// page; threadMore forces has_more on every page; threadHook runs on each
+	// call (0-based) and may fail it.
+	threads    map[string][]sdk.CommentItem
+	threadPage int
+	threadMore bool
+	threadHook func(call int) error
+	threadCall []string // "entity#page" of every call
 
 	nextUser int64
 }
@@ -161,6 +172,9 @@ func installFake(t *testing.T) *fake {
 		stories:  map[string]*storyRow{},
 		settings: map[string]any{},
 		failSQL:  map[string]error{},
+
+		threads:    map[string][]sdk.CommentItem{},
+		threadPage: 2,
 	}
 	f.host = &coretest.Host{Fns: map[string]func(json.RawMessage) (any, error){
 		"db.query": func(raw json.RawMessage) (any, error) {
@@ -190,6 +204,23 @@ func installFake(t *testing.T) *fake {
 			}
 			return sdk.CommentsChanged{Changed: len(a.Items)}, nil
 		},
+		sdk.FnCommentsThread: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentsThreadArgs
+			_ = json.Unmarshal(raw, &a)
+			call := len(f.threadCall)
+			f.threadCall = append(f.threadCall, fmt.Sprintf("%s#%d", a.EntityID, a.Page))
+			if !a.IncludeDead {
+				f.t.Errorf("fake: comments.thread without include_dead")
+			}
+			if f.threadHook != nil {
+				if err := f.threadHook(call); err != nil {
+					return nil, err
+				}
+			}
+			all := f.threads[a.EntityID]
+			lo, hi := min((a.Page-1)*f.threadPage, len(all)), min(a.Page*f.threadPage, len(all))
+			return sdk.CommentThread{Items: all[lo:hi], Page: a.Page, HasMore: hi < len(all) || f.threadMore}, nil
+		},
 		"settings.get": func(json.RawMessage) (any, error) { return f.settings, nil },
 	}}
 	coretest.Install(t, f.host)
@@ -199,6 +230,19 @@ func installFake(t *testing.T) *fake {
 func (f *fake) query(sql string, a []json.RawMessage) any {
 	var u *core.User
 	switch {
+	case sql == sqlSample:
+		return coretest.Rows(f.sample(argStr(a, 0)))
+	case sql == sqlGone:
+		return coretest.Rows(f.gone(argStr(a, 0), argStrings(a, 1), argTime(a, 2)))
+	case sql == sqlEntityIDs:
+		ids := []string{}
+		for id, m := range f.meta {
+			if m.Entity == argStr(a, 0) {
+				ids = append(ids, id)
+			}
+		}
+		sort.Strings(ids)
+		return coretest.Rows(ids)
 	case sql == sqlDirty:
 		return coretest.Rows(f.dirtyRows())
 	case sql == sqlVoteTarget:
@@ -240,6 +284,41 @@ func (f *fake) exec(sql string, a []json.RawMessage) int64 {
 		return f.upsert(a, false)
 	case sqlUpsertState:
 		return f.upsert(a, true)
+	case sqlSync:
+		var recs []struct {
+			ID         string `json:"id"`
+			BodyHTML   string `json:"body_html"`
+			AuthorName string `json:"author_name"`
+			Live       bool   `json:"live"`
+		}
+		var text string
+		_ = json.Unmarshal(a[0], &text)
+		_ = json.Unmarshal([]byte(text), &recs)
+		var n int64
+		for _, r := range recs {
+			m := f.meta[r.ID]
+			if m != nil && (m.Body != r.BodyHTML || m.Name != r.AuthorName || m.Live != r.Live) {
+				m.Body, m.Name, m.Live = r.BodyHTML, r.AuthorName, r.Live
+				n++
+			}
+		}
+		return n
+	case sqlRepoint:
+		var n int64
+		for id, m := range f.meta {
+			if m.Entity != argStr(a, 0) {
+				continue
+			}
+			want := 1
+			for _, v := range f.votes[id] {
+				want += v.Value
+			}
+			if m.Points != want {
+				m.Points, m.Dirty = want, true
+				n++
+			}
+		}
+		return n
 	case sqlClean:
 		var sent []struct {
 			ID     string `json:"id"`
@@ -438,5 +517,42 @@ func (f *fake) dirtyRows() []map[string]any {
 	for _, m := range ms[:min(len(ms), 1000)] {
 		out = append(out, map[string]any{"comment_id": m.ID, "entity_id": m.Entity, "points": m.Points})
 	}
+	return out
+}
+
+// sample models sqlSample.
+func (f *fake) sample(hour string) []string {
+	seen := map[string]bool{}
+	var es []string
+	for _, m := range f.meta {
+		if !seen[m.Entity] {
+			seen[m.Entity] = true
+			es = append(es, m.Entity)
+		}
+	}
+	key := func(e string) string { return fmt.Sprintf("%x", md5.Sum([]byte(e+hour))) }
+	sort.Slice(es, func(i, j int) bool { return key(es[i]) < key(es[j]) })
+	if len(es) > 20 {
+		es = es[:20]
+	}
+	if es == nil {
+		es = []string{}
+	}
+	return es
+}
+
+// gone models sqlGone.
+func (f *fake) gone(entity string, listed []string, cutoff time.Time) []string {
+	in := map[string]bool{}
+	for _, id := range listed {
+		in[id] = true
+	}
+	out := []string{}
+	for id, m := range f.meta {
+		if m.Entity == entity && m.Created.Before(cutoff) && !in[id] {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
 	return out
 }

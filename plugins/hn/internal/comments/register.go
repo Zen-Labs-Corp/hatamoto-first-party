@@ -7,5 +7,7 @@ func Register(r *core.Registry) {
 	defineNotices()
 	registerEvents(r)
 	r.Cron("comment_rank", rankCron)
+	r.Cron("reconcile", reconcileCron)
+	r.Subscribe(core.StoryDeleted, onStoryDeleted)
 	r.Route("POST /vote/comment/{id}", voteHandler(r))
 }
