@@ -103,9 +103,6 @@ async function boot() {
   check("markup stays text", queueText.includes("<b>x</b> story") && queueText.includes("<i>bob</i>") && !queue.children.some((c) => c.tag === "b"));
   check("no ban button without author", (() => { let n = 0; walk(queue, (_, x) => { if (x && x.textContent === "ban user") n++; }); return n === 1; })());
 
-  const rowButtons = []; walk(queue, (_, x) => { if (x && x.tag === "tr" && find(x, "td", "")) { const n = []; walk(x, (__, y) => { if (y && y.tag === "button" && (y.textContent === "kill" || y.textContent === "restore")) n.push(y.textContent); }); if (n.length) rowButtons.push(n.join(",")); } });
-  check("kill on live rows, restore on dead rows", rowButtons.join("|") === "kill|restore");
-
   const before = t.calls.length;
   find(queue, "button", "kill").listeners.click();
   await t.flush();

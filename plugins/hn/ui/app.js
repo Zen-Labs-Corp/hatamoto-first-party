@@ -73,9 +73,9 @@ async function act(done, fn) {
 
 function queueRow(it) {
   const label = it.kind === "story" ? `#${it.item_no}` : "comment";
-  const buttons = [it.dead
-    ? button("restore", () => act("Restored.", () => api("POST", "/admin/items/restore", null, { kind: it.kind, id: it.id })))
-    : button("kill", () => act("Killed.", () => api("POST", "/admin/items/kill", null, { kind: it.kind, id: it.id }))),
+  const buttons = [
+    button("kill", () => act("Killed.", () => api("POST", "/admin/items/kill", null, { kind: it.kind, id: it.id }))),
+    button("restore", () => act("Restored.", () => api("POST", "/admin/items/restore", null, { kind: it.kind, id: it.id }))),
   ];
   if (it.by) {
     buttons.push(button("ban user", () => act("Banned.", () => api("POST", `/admin/users/${encodeURIComponent(it.by)}/ban`, null, { mode: "dead", reason: "flagged" }))));
