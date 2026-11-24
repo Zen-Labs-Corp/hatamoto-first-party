@@ -272,6 +272,14 @@ func (f *fake) query(sql string, a []json.RawMessage) any {
 		return coretest.Rows(f.sample(argStr(a, 0)))
 	case sql == sqlGone:
 		return coretest.Rows(f.gone(argStr(a, 0), argStrings(a, 1), argTime(a, 2)))
+	case sql == sqlMissing:
+		out := []string{}
+		for _, id := range argStrings(a, 0) {
+			if f.meta[id] == nil {
+				out = append(out, id)
+			}
+		}
+		return coretest.Rows(out)
 	case sql == sqlEntityIDs:
 		ids := []string{}
 		for id, m := range f.meta {
@@ -341,6 +349,11 @@ func (f *fake) exec(sql string, a []json.RawMessage) int64 {
 		return f.upsert(a, false)
 	case sqlUpsertState:
 		return f.upsert(a, true)
+	case sqlInsertListed:
+		if f.meta[argStr(a, 0)] != nil {
+			return 0
+		}
+		return f.upsert(a, false)
 	case sqlSync:
 		var recs []struct {
 			ID         string `json:"id"`
@@ -604,6 +617,12 @@ func (f *fake) sample(hour string) []string {
 		if !seen[m.Entity] {
 			seen[m.Entity] = true
 			es = append(es, m.Entity)
+		}
+	}
+	for e := range f.stories {
+		if !seen[e] {
+			seen[e] = true
+			es = append(es, e)
 		}
 	}
 	key := func(e string) string { return fmt.Sprintf("%x", md5.Sum([]byte(e+hour))) }
