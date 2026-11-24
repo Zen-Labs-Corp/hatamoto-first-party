@@ -82,6 +82,18 @@ func TestDeadMode(t *testing.T) {
 		noEntityCalls(t, h)
 	})
 
+	t.Run("not moved by core writes no kill", func(t *testing.T) {
+		db := deadModeDB(true)
+		db.Comments = func(string, []string) (any, error) { return map[string]any{"changed": 0}, nil }
+		install(t, db)
+		if err := deadModeComment(ev); err != nil {
+			t.Fatal(err)
+		}
+		if len(execs(db, "kills")) != 0 || len(execs(db, "comment_meta")) != 0 || len(execs(db, sqlLogInsert)) != 1 {
+			t.Fatalf("execs = %+v", db.Execs)
+		}
+	})
+
 	t.Run("story saved runs the dead CTE", func(t *testing.T) {
 		db := &fakeDB{}
 		h := install(t, db)

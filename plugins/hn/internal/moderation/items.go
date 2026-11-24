@@ -116,7 +116,8 @@ func writeLog(actor, action, target, detail string) {
 
 // kill makes the item dead and records why. A story only gets story_meta.dead
 // (the entry itself is never touched); a comment goes through the host. The
-// bool tells whether it is dead now. A failure is logged as "kill-unavailable";
+// bool tells whether it is dead now. A comment core did not move (held or
+// already dead) is not recorded as killed. A failure is logged as "kill-unavailable";
 // for the owner it also comes back as a notice, for the automatic causes
 // nothing is shown (the flag stays).
 func kill(t *target, cause, actor string) (bool, core.Notice) {
@@ -135,6 +136,10 @@ func kill(t *target, cause, actor string) (bool, core.Notice) {
 		var changed sdk.CommentsChanged
 		if err := core.Call(sdk.FnCommentsMarkDead, sdk.CommentIDsArgs{IDs: []string{t.ID}}, &changed); err != nil {
 			return failed(nOff)
+		}
+		if changed.Changed == 0 {
+			// held or already dead: core moved nothing, so there is no kill to record
+			return failed(nNotPublic)
 		}
 	}
 	sql := sqlKillInsert

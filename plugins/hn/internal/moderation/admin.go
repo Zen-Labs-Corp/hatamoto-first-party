@@ -328,6 +328,8 @@ func handleItem(q *core.Request, dying bool) sdk.HTTPResponse {
 		return ok(map[string]any{"dead": dying})
 	case nOff:
 		return core.JSONError(503, core.NoticeText(string(n)))
+	case nNotPublic:
+		return core.JSONError(409, core.NoticeText(string(n)))
 	}
 	return failed()
 }

@@ -2,6 +2,7 @@ package moderation
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -207,6 +208,18 @@ func TestAdminItems(t *testing.T) {
 			t.Fatalf("calls = %v", fns)
 		}
 		noEntityCalls(t, h)
+	})
+	t.Run("kill of a comment core did not move", func(t *testing.T) {
+		db := bobDB()
+		db.Comments = func(string, []string) (any, error) { return map[string]any{"changed": 0}, nil }
+		install(t, db)
+		out := wantStatus(t, asOwner(t, "POST", "/admin/items/kill", nil, `{"kind":"comment","id":"`+commentID+`"}`), 409)
+		if !strings.Contains(fmt.Sprint(out), "not public") {
+			t.Fatalf("out = %v", out)
+		}
+		if len(execs(db, "kills")) != 0 || len(execs(db, "comment_meta")) != 0 {
+			t.Fatalf("execs = %+v", db.Execs)
+		}
 	})
 	t.Run("comment host unavailable", func(t *testing.T) {
 		db := bobDB()

@@ -52,6 +52,11 @@ func deadModeComment(ev sdk.CommentEvent) error {
 		return nil
 	}
 	now := nowArg()
+	if changed.Changed == 0 {
+		// held or already dead: nothing was killed, so record no kill
+		_, _ = core.Exec(sqlLogInsert, "ban", "kill-unavailable", "comment:"+ev.ID, "", now)
+		return nil
+	}
 	_, _ = core.Exec(sqlKillInsert, "comment", ev.ID, "ban", now)
 	_, _ = core.Exec(sqlLogInsert, "ban", "kill", "comment:"+ev.ID, "", now)
 	return nil

@@ -21,6 +21,7 @@ const (
 	nNet         core.Notice = "mod-net"
 	nVoteRate    core.Notice = "mod-vote-rate"
 	nSignupRate  core.Notice = "mod-signup-rate"
+	nNotPublic   core.Notice = "mod-not-public"
 	nOff         core.Notice = "mod-off"
 	nError       core.Notice = "mod-error"
 )
@@ -43,6 +44,7 @@ var noticeTexts = map[core.Notice]string{
 	nNet:         "Your network can't do that right now.",
 	nVoteRate:    "You are voting too fast. Please try again later.",
 	nSignupRate:  "Too many sign-ups from your network. Please try again later.",
+	nNotPublic:   "That comment is not public, so it was not killed.",
 	nOff:         "That is not available yet.",
 	nError:       "Something went wrong, please try again.",
 }

@@ -202,6 +202,19 @@ func TestFlag(t *testing.T) {
 		noEntityCalls(t, h)
 	})
 
+	t.Run("mark_dead moving nothing keeps the flag and records no kill", func(t *testing.T) {
+		db := modDB(50, item(commentID, 7, 2, false, ""), 3)
+		db.Comments = func(string, []string) (any, error) { return map[string]any{"changed": 0}, nil }
+		install(t, db)
+		resp := flagPost(t, "comment", commentID, form, "k1", false)
+		if loc(resp) != "/news?m=mod-flagged" {
+			t.Fatalf("location %q", loc(resp))
+		}
+		if len(execs(db, "INSERT INTO kills")) != 0 || len(execs(db, "comment_meta")) != 0 || len(execs(db, "INSERT INTO flags")) != 1 {
+			t.Fatalf("execs = %+v", db.Execs)
+		}
+	})
+
 	t.Run("next from the query and unsafe next", func(t *testing.T) {
 		install(t, modDB(50, item(storyUUID, 42, 2, false, ""), 1))
 		resp := postTo(t, "/flag/{kind}/{id}", map[string]string{"kind": "story", "id": "42"}, nil, map[string][]string{"next": {"/item/42"}}, "k1", false)
