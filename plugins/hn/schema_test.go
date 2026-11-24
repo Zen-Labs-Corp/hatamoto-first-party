@@ -35,8 +35,8 @@ func TestSchemaDocMatchesMigrations(t *testing.T) {
 		}
 		want[m[1]] = m[2]
 	}
-	if len(want) != 17 {
-		t.Errorf("SCHEMA.md lists %d tables, want 17", len(want))
+	if len(want) != 18 {
+		t.Errorf("SCHEMA.md lists %d tables, want 18", len(want))
 	}
 
 	files, err := filepath.Glob("migrations/*.sql")

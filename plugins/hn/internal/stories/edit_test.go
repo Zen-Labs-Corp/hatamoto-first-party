@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
+	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core/coretest"
 )
 
 // editDB has alice (id 1) as author of story 42, created 10 minutes before voteNow.
@@ -17,6 +18,13 @@ func editDB(story map[string]any) (*fakeDB, *[]map[string]json.RawMessage) {
 		row[k] = v
 	}
 	db := voteDB(row)
+	vote := db.Query
+	db.Query = func(sql string, args []any) (any, error) {
+		if strings.Contains(sql, "FROM story_actions") {
+			return coretest.Rows(0), nil
+		}
+		return vote(sql, args)
+	}
 	var updates []map[string]json.RawMessage
 	db.Entities = map[string]func(json.RawMessage) (any, error){
 		"entities.update": func(a json.RawMessage) (any, error) {
@@ -64,7 +72,7 @@ func TestStoryEditAuthor(t *testing.T) {
 	if len(attrs) != 3 || attrs["url"] != "https://example.com/new" || attrs["text"] != "hi" || attrs["kind"] != "story" {
 		t.Errorf("attributes %v", attrs)
 	}
-	if len(db.Execs) != 1 || !strings.Contains(db.Execs[0].SQL, "UPDATE story_meta SET title") {
+	if len(db.Execs) != 2 || !strings.Contains(db.Execs[1].SQL, "UPDATE story_meta SET title") {
 		t.Errorf("execs %v", execSQL(db))
 	}
 	if len(saved) != 1 || saved[0].ItemNo != 42 || saved[0].Title != "New title" {
@@ -148,7 +156,7 @@ func TestStoryEditOff(t *testing.T) {
 	db.Entities["entities.update"] = func(json.RawMessage) (any, error) { return nil, hostErr("unavailable") }
 	install(t, db)
 	_, loc := edit(t, newRegistry(t, nil), url.Values{"title": {"T"}, "keep_text": {"1"}}, "k1")
-	if loc != "/submit?id=42&m=story-off" || len(db.Execs) != 0 {
+	if loc != "/submit?id=42&m=story-off" || len(db.Execs) != 1 { // only the story_actions row
 		t.Errorf("%q execs %v", loc, execSQL(db))
 	}
 }
@@ -227,5 +235,62 @@ func TestStoryEditRunsSubmitGate(t *testing.T) {
 	}
 	if _, loc := edit(t, r, url.Values{"title": {"T"}, "url": {"https://example.com/ok"}}, "k1"); loc != "/item/42?m=story-saved" || len(*updates) != 1 {
 		t.Errorf("allowed: %q", loc)
+	}
+}
+
+func TestStoryEditUnchangedWritesNothing(t *testing.T) {
+	pinNow(t, voteNow)
+	db, updates := editDB(map[string]any{"title": "Same", "kind": "story"})
+	install(t, db)
+	_, loc := edit(t, newRegistry(t, nil), url.Values{"title": {"Same"}, "url": {"https://example.com/old"}, "text": {"old text"}}, "k1")
+	if loc != "/item/42?m=story-saved" || len(*updates) != 0 || len(db.Execs) != 0 {
+		t.Errorf("%q updates %d execs %v", loc, len(*updates), execSQL(db))
+	}
+}
+
+func TestStoryEditRateLimited(t *testing.T) {
+	pinNow(t, voteNow)
+	form := url.Values{"title": {"T"}, "url": {"https://example.com/new"}}
+	db, updates := editDB(nil)
+	db.Settings = map[string]any{"submit_per_hour": 2}
+	query := db.Query
+	db.Query = func(sql string, args []any) (any, error) {
+		if strings.Contains(sql, "FROM story_actions") {
+			if args[1] != "edit" {
+				t.Errorf("edits must count their own kind: %v", args)
+			}
+			return coretest.Rows(2), nil
+		}
+		return query(sql, args)
+	}
+	install(t, db)
+	_, loc := edit(t, newRegistry(t, nil), form, "k1")
+	if loc != "/submit?id=42&m=story-rate" || len(*updates) != 0 || len(db.Execs) != 0 {
+		t.Errorf("limit: %q updates %d", loc, len(*updates))
+	}
+
+	db, updates = editDB(nil)
+	install(t, db)
+	if _, loc := edit(t, newRegistry(t, nil), form, "k1"); loc != "/item/42?m=story-saved" || len(*updates) != 1 {
+		t.Fatalf("under limit: %q", loc)
+	}
+	if sql := execSQL(db); len(sql) != 2 || !strings.Contains(sql[0], "INSERT INTO story_actions") {
+		t.Errorf("edit must be logged first: %v", sql)
+	}
+}
+
+func TestStoryEditRefusesControlCharacters(t *testing.T) {
+	pinNow(t, voteNow)
+	for name, form := range map[string]url.Values{
+		"title": {"title": {"a\x00b"}, "url": {"https://example.com/new"}},
+		"url":   {"title": {"T"}, "url": {"https://example.com/a\x00b"}},
+		"text":  {"title": {"T"}, "text": {"a\x00b"}},
+	} {
+		db, updates := editDB(nil)
+		install(t, db)
+		_, loc := edit(t, newRegistry(t, nil), form, "k1")
+		if !strings.HasPrefix(loc, "/submit?id=42&m=story-") || strings.HasSuffix(loc, "saved") || len(*updates) != 0 || len(db.Execs) != 0 {
+			t.Errorf("%s: %q", name, loc)
+		}
 	}
 }

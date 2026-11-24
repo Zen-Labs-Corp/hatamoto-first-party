@@ -13,6 +13,7 @@ const (
 	nURL         core.Notice = "story-url"
 	nEmpty       core.Notice = "story-empty"
 	nTextLong    core.Notice = "story-text-long"
+	nTextChars   core.Notice = "story-text-chars"
 	nRate        core.Notice = "story-rate"
 	nDup         core.Notice = "story-dup"
 	nOff         core.Notice = "story-off"
@@ -37,6 +38,7 @@ var noticeTexts = map[core.Notice]string{
 	nURL:         "That url is not a valid http or https link.",
 	nEmpty:       "Please submit a url or some text.",
 	nTextLong:    "The text is too long (10000 characters at most).",
+	nTextChars:   "The text contains characters that are not allowed.",
 	nRate:        "You are submitting too fast. Please try again later.",
 	nDup:         "That link was posted recently, here is the discussion.",
 	nOff:         "Submitting is not available yet.",

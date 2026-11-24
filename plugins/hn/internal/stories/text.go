@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/net/publicsuffix"
@@ -120,3 +121,17 @@ func nowArg() string { return core.Now().UTC().Format(time.RFC3339Nano) }
 
 // textOK reports whether a text post is within maxText characters.
 func textOK(s string) bool { return utf8.RuneCountInString(strings.TrimSpace(s)) <= maxText }
+
+// plainText reports whether s is valid UTF-8 without control characters (NUL
+// included). Tab, newline and carriage return pass when layout is true.
+func plainText(s string, layout bool) bool {
+	if !utf8.ValidString(s) {
+		return false
+	}
+	for _, c := range s {
+		if unicode.IsControl(c) && !(layout && (c == '\t' || c == '\n' || c == '\r')) {
+			return false
+		}
+	}
+	return true
+}

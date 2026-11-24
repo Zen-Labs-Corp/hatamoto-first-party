@@ -67,10 +67,16 @@ func handleEdit(r *core.Registry, q *core.Request) (sdk.HTTPResponse, error) {
 	}
 	f := q.Form()
 	title, err := core.CleanTitle(f.Get("title"))
-	if err != nil {
+	if err != nil || !plainText(title, false) {
 		return refuse(nTitle)
 	}
 	rawURL, text := strings.TrimSpace(f.Get("url")), strings.TrimSpace(f.Get("text"))
+	if !plainText(rawURL, false) {
+		return refuse(nURL)
+	}
+	if !plainText(text, true) {
+		return refuse(nTextChars)
+	}
 	if text == "" && f.Get("keep_text") == "1" {
 		text = ref.Body
 	}
@@ -107,6 +113,12 @@ func handleEdit(r *core.Registry, q *core.Request) (sdk.HTTPResponse, error) {
 		kind = "job"
 	}
 	// entities.update merges attributes: a key left out is kept, JSON null removes it.
+	if title == ref.Title && canon == ref.URL && text == ref.Body && kind == ref.Kind {
+		return core.Respond(q, core.WithNotice(itemPath(ref.ItemNo), nSaved), map[string]any{"item_no": ref.ItemNo}), nil
+	}
+	if n := spendAction(u.ID, "edit"); n != "" {
+		return refuse(n)
+	}
 	attrs := map[string]any{"kind": kind, "url": nil, "text": nil}
 	if canon != "" {
 		attrs["url"] = canon

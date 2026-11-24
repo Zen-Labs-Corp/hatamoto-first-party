@@ -252,3 +252,64 @@ func TestSubmitStoresSite(t *testing.T) {
 	}
 	t.Errorf("no story_meta insert: %v", execSQL(db))
 }
+
+// The hourly limit counts story_actions, which a delete never shrinks, and
+// every submit that reaches the host is recorded before it.
+func TestSubmitRateCountsAppendOnlyLog(t *testing.T) {
+	pinNow(t, voteNow)
+	db, _ := submitDB(0, nil)
+	install(t, db)
+	resp := submit(t, newRegistry(t, nil), url.Values{"title": {"T"}, "text": {"x"}}, "k1", false)
+	if resp.Loc != "/newest" {
+		t.Fatalf("%q", resp.Loc)
+	}
+	var counted bool
+	for _, c := range db.Queries {
+		if strings.Contains(c.SQL, "count(*)") {
+			counted = true
+			if !strings.Contains(c.SQL, "FROM story_actions") || strings.Contains(c.SQL, "story_meta") {
+				t.Errorf("limit must count story_actions: %s", c.SQL)
+			}
+		}
+	}
+	if !counted {
+		t.Error("no limit query")
+	}
+	var logged, deleted int
+	for _, sql := range execSQL(db) {
+		if strings.Contains(sql, "INSERT INTO story_actions") {
+			logged++
+		}
+		if strings.Contains(sql, "DELETE FROM story_actions") {
+			deleted++
+		}
+	}
+	if logged != 1 || deleted != 0 {
+		t.Errorf("log rows %d, deletes %d: %v", logged, deleted, execSQL(db))
+	}
+}
+
+func TestSubmitRefusesControlCharacters(t *testing.T) {
+	pinNow(t, voteNow)
+	for name, tc := range map[string]struct {
+		form url.Values
+		want string
+	}{
+		"title": {url.Values{"title": {"a\x00b"}, "text": {"x"}}, "/submit?m=story-title"},
+		"url":   {url.Values{"title": {"T"}, "url": {"https://example.com/a\x00b"}}, "/submit?m=story-url"},
+		"text":  {url.Values{"title": {"T"}, "text": {"a\x00b"}}, "/submit?m=story-text-chars"},
+		"bell":  {url.Values{"title": {"T"}, "text": {"a\x07b"}}, "/submit?m=story-text-chars"},
+	} {
+		db, created := submitDB(0, nil)
+		install(t, db)
+		resp := submit(t, newRegistry(t, nil), tc.form, "k1", false)
+		if resp.Loc != tc.want || len(*created) != 0 || queryCount(db, "INSERT INTO item_numbers") != 0 || len(db.Execs) != 0 {
+			t.Errorf("%s: %q created %d", name, resp.Loc, len(*created))
+		}
+	}
+	db, _ := submitDB(0, nil)
+	install(t, db)
+	if resp := submit(t, newRegistry(t, nil), url.Values{"title": {"T"}, "text": {"line one\r\n\tline two"}}, "k1", false); resp.Loc != "/newest" {
+		t.Errorf("layout characters: %q", resp.Loc)
+	}
+}
