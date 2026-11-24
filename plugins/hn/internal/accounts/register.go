@@ -35,4 +35,6 @@ func Register(r *core.Registry) {
 	core.DefineNotice(noticeProfileSaved, "Profile updated.")
 
 	r.Route("POST /username", claimHandler(r))
+	r.Route("POST /profile", profileHandler)
+	r.Draft(draftName)
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core/coretest"
+	"hatamoto.dev/sdk"
 )
 
 // fakeUsers is an in-memory users table behind the fake host.
@@ -16,7 +17,11 @@ type fakeUsers struct {
 	byKey    map[string]*core.User
 	nextID   int64
 	inserts  int
+	updates  int
 	queryErr error
+
+	setViewer    []sdk.CommentViewerArgs
+	setViewerErr error
 }
 
 var fakeCreated = time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC)
@@ -79,6 +84,12 @@ func installFake(t *testing.T) *fakeUsers {
 			}
 			return coretest.Rows(u), nil
 		},
+		sdk.FnCommentsSetViewer: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentViewerArgs
+			_ = json.Unmarshal(raw, &a)
+			f.setViewer = append(f.setViewer, a)
+			return nil, f.setViewerErr
+		},
 		"db.exec": func(raw json.RawMessage) (any, error) {
 			sql, a := args(raw)
 			switch {
@@ -89,6 +100,23 @@ func installFake(t *testing.T) *fakeUsers {
 					return map[string]any{"rows_affected": 0}, nil
 				}
 				f.add(key, name)
+				return map[string]any{"rows_affected": 1}, nil
+			case strings.HasPrefix(sql, "UPDATE users SET about"):
+				f.updates++
+				var (
+					about  string
+					sd, np bool
+					mv, ma int
+					id     int64
+				)
+				for i, dst := range []any{&about, &sd, &np, &mv, &ma, &id} {
+					_ = json.Unmarshal(a[i], dst)
+				}
+				u := f.find(func(x *core.User) bool { return x.ID == id })
+				if u == nil {
+					return map[string]any{"rows_affected": 0}, nil
+				}
+				u.About, u.Showdead, u.Noprocrast, u.Maxvisit, u.Minaway = about, sd, np, mv, ma
 				return map[string]any{"rows_affected": 1}, nil
 			default:
 				t.Errorf("fake: unexpected exec %q", sql)
