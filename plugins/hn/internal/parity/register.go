@@ -37,5 +37,5 @@ func Register(r *core.Registry) {
 	r.Comment(core.OnSpam, dropComment)
 	r.Comment(core.OnDeleted, dropComment)
 	r.Cron("search", searchCron)
-	// Later registrations go here; the noprocrast page filter stays last.
+	r.PageAll(noprocrast) // last: it sees the page after every other phase filled it
 }
