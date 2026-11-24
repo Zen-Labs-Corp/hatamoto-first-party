@@ -145,6 +145,8 @@ var routeOwners = map[string]struct {
 	"POST /admin/nets/ban":           {"moderation", false},
 	"POST /admin/nets/unban":         {"moderation", false},
 	"GET /admin/log":                 {"moderation", false},
+	"POST /admin/items/kill":         {"moderation", false},
+	"POST /admin/items/restore":      {"moderation", false},
 	"POST /favorite/{kind}/{id}":     {"parity", true},
 	"POST /unfavorite/{kind}/{id}":   {"parity", true},
 	"POST /hide/{id}":                {"parity", true},
@@ -158,8 +160,8 @@ var routeOwners = map[string]struct {
 
 func TestManifestRoutes(t *testing.T) {
 	m := loadManifest(t)
-	if len(m.Routes) != 27 || len(routeOwners) != 27 {
-		t.Fatalf("%d routes, %d owners, want 27", len(m.Routes), len(routeOwners))
+	if len(m.Routes) != 29 || len(routeOwners) != 29 {
+		t.Fatalf("%d routes, %d owners, want 29", len(m.Routes), len(routeOwners))
 	}
 	public, admin := http.NewServeMux(), http.NewServeMux()
 	register := func(mux *http.ServeMux, key string) {

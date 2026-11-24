@@ -34,6 +34,8 @@
     { "method": "POST", "path": "/admin/nets/ban" },
     { "method": "POST", "path": "/admin/nets/unban" },
     { "method": "GET", "path": "/admin/log" },
+    { "method": "POST", "path": "/admin/items/kill" },
+    { "method": "POST", "path": "/admin/items/restore" },
     { "method": "POST", "path": "/favorite/{kind}/{id}", "public": true },
     { "method": "POST", "path": "/unfavorite/{kind}/{id}", "public": true },
     { "method": "POST", "path": "/hide/{id}", "public": true },
