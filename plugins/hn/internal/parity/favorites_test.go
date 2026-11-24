@@ -183,3 +183,13 @@ func TestFavoritesPageUnknownUserAndErrors(t *testing.T) {
 		t.Errorf("query error changed the page: %+v", out.Blocks)
 	}
 }
+
+func TestFavoritesNoMoreAtPageCap(t *testing.T) {
+	pinNow(t, savedNow)
+	install(t, favDB(storyRowsJSON(31), false))
+	r := newRegistry(t, nil)
+	out := render(t, r, "/favorites", "", map[string]string{"id": "bob", "p": "500"}, sdk.Block{ID: "b7", Type: "hn_saved"})
+	if more := out.Blocks[0].Content["more"]; more != "" {
+		t.Errorf("more at the page cap: %v", more)
+	}
+}

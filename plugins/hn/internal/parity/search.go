@@ -79,7 +79,9 @@ func searchPage(r *core.Registry, p *core.Page) error {
 	c["empty"] = len(hits) == 0
 	if len(hits) > pageSize {
 		hits = hits[:pageSize]
-		c["more"] = base + "&p=" + strconv.Itoa(page+1)
+		if page < maxPage {
+			c["more"] = base + "&p=" + strconv.Itoa(page+1)
+		}
 	}
 	rows, comments := []map[string]any{}, []map[string]any{}
 	for i, h := range hits {

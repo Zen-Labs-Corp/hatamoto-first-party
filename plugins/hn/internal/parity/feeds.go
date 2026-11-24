@@ -56,7 +56,7 @@ func loadPub(name string, page int) (rows []pubStory, more, ok bool, err error) 
 		return nil, false, true, err
 	}
 	if len(rows) > pageSize {
-		rows, more = rows[:pageSize], true
+		rows, more = rows[:pageSize], page < maxPage
 	}
 	return rows, more, true, nil
 }

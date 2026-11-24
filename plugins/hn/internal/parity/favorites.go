@@ -109,7 +109,7 @@ func favoritesPage(r *core.Registry, p *core.Page) error {
 		c["rows"] = views
 	}
 	c["kind"], c["heading"], c["empty"] = kind, heading, n == 0
-	if n > pageSize {
+	if n > pageSize && page < maxPage {
 		c["more"] = base + "&p=" + strconv.Itoa(page+1)
 	}
 	place(p, "hn_saved", c, true)

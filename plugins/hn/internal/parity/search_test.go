@@ -181,3 +181,13 @@ func TestSearchQuerySection(t *testing.T) {
 		t.Errorf("empty: %s", h)
 	}
 }
+
+func TestSearchNoMoreAtPageCap(t *testing.T) {
+	pinNow(t, savedNow)
+	install(t, searchDB(hitsJSON(31, 0)))
+	r := newRegistry(t, nil)
+	out := render(t, r, "/search", "", map[string]string{"q": "a", "p": "500"}, sdk.Block{ID: "b9", Type: "hn_search"})
+	if more := out.Blocks[0].Content["more"]; more != "" {
+		t.Errorf("more at the page cap: %v", more)
+	}
+}

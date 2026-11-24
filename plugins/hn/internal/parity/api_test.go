@@ -129,3 +129,17 @@ func TestAPIUser(t *testing.T) {
 		t.Errorf("host error: %d", resp.Status)
 	}
 }
+
+func TestAPIFeedNoMoreAtPageCap(t *testing.T) {
+	pinNow(t, savedNow)
+	install(t, pubDB(31, ""))
+	r := newRegistry(t, nil)
+	resp := get(t, r, "/api/feed/{name}", map[string]string{"name": "ask"}, map[string][]string{"p": {"500"}})
+	var feed struct {
+		Page    int  `json:"page"`
+		HasMore bool `json:"has_more"`
+	}
+	if err := json.Unmarshal([]byte(resp.Body), &feed); err != nil || feed.Page != maxPage || feed.HasMore {
+		t.Errorf("page %d has_more %v err %v", feed.Page, feed.HasMore, err)
+	}
+}
