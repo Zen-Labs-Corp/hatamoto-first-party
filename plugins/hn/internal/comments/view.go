@@ -100,7 +100,7 @@ func row(r *core.Registry, in rowIn, vv voteView, next string) map[string]any {
 		"ago":          ago(in.Created),
 		"context_href": context, "parent_href": focusHref(in.ItemNo, in.ParentID),
 		"item_href": itemHref(in.ItemNo), "title": in.Title, "reply_href": context,
-		"body": bodyBlocksIn(in.Body, vv.parts), "row_class": class, "indent": strconv.Itoa(40 * in.Depth),
+		"body": bodyBlocksIn(in.Body, vv.parts), "row_class": class, "depth": strconv.Itoa(in.Depth),
 		"replies": []map[string]any{}, "actions": acts,
 		"vote": vote, "vote_cell": cell,
 		"can_up": canUp, "can_down": canUp && vv.downOK, "can_un": vote && voted,

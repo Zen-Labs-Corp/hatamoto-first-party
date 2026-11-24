@@ -160,7 +160,7 @@ func TestThreadsPageNewcomments(t *testing.T) {
 		}
 		c = newcomments(t, "", map[string]string{"p": "2"})
 		r := rowsOf(c)[0]
-		if r["row_class"] != "hn-c hn-faint" || r["indent"] != "0" || r["next"] != "/newcomments?p=2" {
+		if r["row_class"] != "hn-c hn-faint" || r["depth"] != "0" || r["next"] != "/newcomments?p=2" {
 			t.Errorf("row: %+v", r)
 		}
 	})

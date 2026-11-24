@@ -86,7 +86,7 @@ func TestThreadsPageSections(t *testing.T) {
 		if !(parent >= 0 && parent < reply && reply < next) {
 			t.Errorf("order: comment %d, reply %d, next comment %d", parent, reply, next)
 		}
-		for _, want := range []string{`<h2>bob&#39;s comments</h2>`, `style="margin-left:40px"`, `style="margin-left:0px"`} {
+		for _, want := range []string{`<h2>bob&#39;s comments</h2>`, `style="--hn-d:1"`, `style="--hn-d:0"`} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %s", want)
 			}
@@ -96,7 +96,7 @@ func TestThreadsPageSections(t *testing.T) {
 	t.Run("focus", func(t *testing.T) {
 		focusFake(t)
 		out := threadsHTML(t, page(t, "/item/7", "", map[string]string{"id": cid(3)}, sdk.Block{ID: "it", Type: "hn_item"}))
-		if !strings.Contains(out, `style="margin-left:160px"`) || strings.Contains(out, "on: ") {
+		if !strings.Contains(out, `style="--hn-d:4"`) || strings.Contains(out, "on: ") {
 			t.Errorf("focus: %s", out)
 		}
 	})

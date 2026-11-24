@@ -195,3 +195,19 @@ func TestStyleArrowNoBox(t *testing.T) {
 		t.Error("no overridable padding:0 on the arrow button")
 	}
 }
+
+// The thread row carries only its depth inline; the shared partial turns it
+// into the margin, so the narrow-screen --hn-indent applies.
+func TestThreadIndentFromDepth(t *testing.T) {
+	raw, err := os.ReadFile("../../sections/hn_threads.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`style="([^"]*)"`).FindAllStringSubmatch(string(raw), -1)
+	if len(m) != 1 || m[0][1] != "--hn-d:{{.depth}}" {
+		t.Errorf("inline styles %q, want only --hn-d:{{.depth}}", m)
+	}
+	if !strings.Contains(styleSource(t), ":where(.hn-threads .hn-c){margin-left:calc(var(--hn-d,0) * var(--hn-indent))}") {
+		t.Error("the partial does not compute the margin from --hn-d")
+	}
+}

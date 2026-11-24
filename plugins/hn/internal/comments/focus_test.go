@@ -86,9 +86,9 @@ func TestThreadsPageFocus(t *testing.T) {
 		if len(rows) != 5 || c["mode"] != "focus" {
 			t.Fatalf("content: %+v", c)
 		}
-		for i, want := range []string{"0", "40", "80", "120", "160"} {
-			if rows[i]["indent"] != want || rows[i]["id"] != cid(i+1) {
-				t.Errorf("row %d: indent %v id %v", i, rows[i]["indent"], rows[i]["id"])
+		for i, want := range []string{"0", "1", "2", "3", "4"} {
+			if rows[i]["depth"] != want || rows[i]["id"] != cid(i+1) {
+				t.Errorf("row %d: depth %v id %v", i, rows[i]["depth"], rows[i]["id"])
 			}
 		}
 		if r := rows[2]; r["context_href"] != "/item/7?id="+cid(3) || r["parent_href"] != "/item/7?id="+cid(2) || r["item_href"] != "" || r["next"] != "/item/7?id="+cid(3) {
