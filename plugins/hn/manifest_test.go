@@ -229,3 +229,13 @@ func TestManifestSettingsSchema(t *testing.T) {
 		}
 	}
 }
+
+// The hooks that run on every page view or comment get a short, explicit timeout.
+func TestManifestHookTimeouts(t *testing.T) {
+	m := loadManifest(t)
+	for _, hook := range []string{sdk.RenderPage.Name, sdk.CommentCheckF.Name, sdk.CommentDraftF.Name} {
+		if got := m.Limits.HookTimeoutsMS[hook]; got != 2000 {
+			t.Errorf("hook_timeouts_ms[%q] = %d, want 2000", hook, got)
+		}
+	}
+}

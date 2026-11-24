@@ -7,7 +7,11 @@
   "entity_schema": "hn-story",
   "entity_fields": ["url", "text", "kind"],
   "request_headers": ["sec-fetch-site"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "render.page": 2000, "comment.check": 2000, "comment.draft": 2000 }
+  },
   "page_paths": ["/", "/news", "/newest", "/front", "/newcomments", "/ask", "/show", "/jobs", "/best", "/submit", "/threads", "/user", "/from", "/favorites", "/login", "/search"],
   "page_path_prefixes": ["/item/"],
   "page_query": ["p", "id", "day", "site", "kind", "next", "view", "q", "m"],
