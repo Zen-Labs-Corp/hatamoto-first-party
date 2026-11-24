@@ -16,13 +16,17 @@ func pageDB(n int, story map[string]any) *fakeDB {
 	row := map[string]any{"entity_id": entityID, "item_no": 42, "author_id": 2, "by": "bob", "kind": "story", "dead": false, "points": 5, "comment_count": 0,
 		"created_at": "2026-11-25T11:00:00Z", "title": "T", "url": "https://example.com/a", "domain": "example.com", "body": "", "voted_at": nil}
 	for k, v := range story {
-		row[k] = v
+		if k != "held_comments" {
+			row[k] = v
+		}
 	}
 	b, _ := json.Marshal(row)
 	return &fakeDB{
 		Users: map[string]map[string]any{"k1": user(1, "alice"), "k2": user(2, "bob")},
 		Query: func(sql string, _ []any) (any, error) {
 			switch {
+			case strings.Contains(sql, "FROM comment_meta"):
+				return map[string]any{"rows": [][]any{{story["held_comments"] == true}}}, nil
 			case strings.Contains(sql, "jsonb_agg"):
 				return map[string]any{"rows": [][]any{{rowsJSON(n, 900)}}}, nil
 			case strings.Contains(sql, "WHERE s.item_no = $1"):
@@ -174,6 +178,10 @@ func TestSubmitPage(t *testing.T) {
 	if c["state"] != "edit" || c["title"] != "T" || c["url"] != "https://example.com/a" || c["text"] != "mine" || c["can_delete"] != true ||
 		c["action"] != "/p/hn/story/42/edit" || c["delete_action"] != "/p/hn/story/42/delete" {
 		t.Errorf("edit %v", c)
+	}
+	install(t, pageDB(0, map[string]any{"held_comments": true}))
+	if c = render(t, r, "/submit", "k2", map[string]string{"id": "42"}).Blocks[0].Content; c["state"] != "edit" || c["can_delete"] != false {
+		t.Errorf("held comments %v", c)
 	}
 	if c = render(t, r, "/submit", "k1", map[string]string{"id": "42"}).Blocks[0].Content; c["state"] != "denied" || c["reason"] != "Only the author can change this story." {
 		t.Errorf("other viewer %v", c)

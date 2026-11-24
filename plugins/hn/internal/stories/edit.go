@@ -141,6 +141,15 @@ func handleEdit(r *core.Registry, q *core.Request) (sdk.HTTPResponse, error) {
 	return core.Respond(q, core.WithNotice(itemPath(ref.ItemNo), nSaved), map[string]any{"item_no": ref.ItemNo}), nil
 }
 
+// hasComments reports any comment on the story, held and dead ones included:
+// story_meta.comment_count only counts the live ones, and deleting the entity
+// destroys the rest.
+func hasComments(entityID string) (bool, error) {
+	var has bool
+	err := core.QueryJSON("SELECT to_jsonb(EXISTS (SELECT 1 FROM comment_meta WHERE entity_id = $1::uuid))", &has, entityID)
+	return has, err
+}
+
 // handleDelete is POST /story/{id}/delete: the author's own story, inside the
 // edit window and while it has no comments. Karma is not touched.
 func handleDelete(r *core.Registry, q *core.Request) (sdk.HTTPResponse, error) {
@@ -152,6 +161,13 @@ func handleDelete(r *core.Registry, q *core.Request) (sdk.HTTPResponse, error) {
 		return core.Respond(q, core.WithNotice(itemPath(ref.ItemNo), n), map[string]any{"error": core.NoticeText(string(n))}), nil
 	}
 	if ref.CommentCount > 0 {
+		return refuse(nHasComments)
+	}
+	has, err := hasComments(ref.EntityID)
+	if err != nil {
+		return refuse(nError)
+	}
+	if has {
 		return refuse(nHasComments)
 	}
 	if err := core.Call(sdk.FnEntitiesDelete, sdk.EntityDeleteArgs{ID: ref.EntityID}, nil); err != nil {
