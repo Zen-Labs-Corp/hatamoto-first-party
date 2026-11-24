@@ -86,7 +86,9 @@ jobs:
           go-version: '1.27.3'
           cache: false
       - name: Core CLI (commit pinned in .hatamoto-core)
-        run: echo "HATAMOTO_BIN=$(scripts/hatamoto-bin.sh)" >>"$GITHUB_ENV"
+        run: |
+          bin=$(scripts/hatamoto-bin.sh)
+          echo "HATAMOTO_BIN=$bin" >>"$GITHUB_ENV"
       - name: Check ${{ matrix.kit }}
         env:
           KIT: ${{ matrix.kit }}
