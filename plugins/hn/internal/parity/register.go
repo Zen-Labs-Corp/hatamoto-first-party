@@ -23,5 +23,6 @@ func Register(r *core.Registry) {
 	r.Route("POST /hide/{id}", func(q *core.Request) (sdk.HTTPResponse, error) { return handleHide(q, true) })
 	r.Route("POST /unhide/{id}", func(q *core.Request) (sdk.HTTPResponse, error) { return handleHide(q, false) })
 	r.RowActions(rowActions)
+	r.Page("/favorites", func(p *core.Page) error { return favoritesPage(r, p) })
 	// Later registrations go here; the noprocrast page filter stays last.
 }

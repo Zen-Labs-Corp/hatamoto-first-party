@@ -1,0 +1,14 @@
+{{define "section-hn_saved"}}{{template "plugin/hn/style" .}}{{$c := .Content}}
+{{if $c.procrast}}<p class="hn-heading">Get back to work!</p>
+<p>Dear noprocrast user: you have used your {{$c.maxvisit}} minutes. Come back in {{$c.minaway}} minutes.</p>
+<p class="hn-note">(<a href="{{$c.profile_href}}">change this in your profile</a>)</p>
+{{else if eq $c.state "login"}}<p class="hn-note"><a href="{{$c.login_href}}">Log in</a> to see your favorites and hidden stories.</p>
+{{else if eq $c.state "nouser"}}<p class="hn-note">No such user.</p>
+{{else}}{{with $c.notice}}<p class="hn-notice" role="status">{{.}}</p>{{end}}
+<p class="hn-heading">{{$c.heading}}</p>
+{{if $c.stories_href}}<p class="hn-sub"><a href="{{$c.stories_href}}">stories</a> | <a href="{{$c.comments_href}}">comments</a></p>{{end}}
+<ol class="hn-stories">{{range $c.rows}}<li class="hn-story">{{template "plugin/hn/story-row" .}}</li>{{end}}</ol>
+{{range $c.comments}}<div class="hn-comment"><span class="hn-sub"><a href="{{.user_href}}">{{.by}}</a> {{.age}} | on: <a href="{{.item_href}}">{{.story_title}}</a></span><p>{{.excerpt}}</p></div>
+{{end}}{{if $c.empty}}<p class="hn-note">Nothing here yet.</p>{{end}}
+{{with $c.more}}<div class="hn-more"><a href="{{.}}" rel="next">More</a></div>{{end}}
+{{end}}{{end}}
