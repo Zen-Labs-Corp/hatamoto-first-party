@@ -142,3 +142,32 @@ func TestStyleRendersInSections(t *testing.T) {
 		t.Errorf("rendered style differs from the static text:\n%q\n%q", out.String()[:200], want[:200])
 	}
 }
+
+// A theme's same-class rule must win whatever the order, so every plugin rule
+// has zero specificity: each selector list sits inside :where(...).
+func TestStyleZeroSpecificity(t *testing.T) {
+	src := styleSource(t)
+	css := src[strings.Index(src, "<style>")+len("<style>") : strings.Index(src, "</style>")]
+	css = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(css, "")
+	css = strings.Replace(css, "@media (max-width:750px){", "", 1)
+	for _, r := range regexp.MustCompile(`([^{}]+)\{`).FindAllStringSubmatch(css, -1) {
+		if sel := strings.TrimSpace(r[1]); !strings.HasPrefix(sel, ":where(") {
+			t.Errorf("selector %q is not wrapped in :where()", sel)
+		}
+	}
+	if !strings.Contains(src, ":where(.hn-vote-form button){") {
+		t.Error("the vote arrow rule is not zero-specificity")
+	}
+}
+
+// The author link in a story row is a.hn-user; only the user page container
+// (div.hn-user) takes the page font.
+func TestStyleUserScope(t *testing.T) {
+	src := styleSource(t)
+	if regexp.MustCompile(`[,(\s]\.hn-user\b`).MatchString(src) {
+		t.Error("a bare .hn-user selector also hits the author link in story-row.html")
+	}
+	if !strings.Contains(src, "div.hn-user") {
+		t.Error("no div.hn-user rule")
+	}
+}
