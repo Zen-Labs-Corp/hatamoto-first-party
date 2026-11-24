@@ -113,8 +113,25 @@
     } catch (e) {}
   }
 
+  // The host refuses <textarea> in a section without site.scripts, so the
+  // submit text is a one-line input; this file loads only with that grant.
+  function textarea() {
+    try {
+      var i = d.querySelector('input[id="hn-text"]'), t;
+      if (!i) return;
+      t = d.createElement('textarea');
+      t.setAttribute('id', 'hn-text');
+      t.setAttribute('name', i.getAttribute('name') || 'text');
+      t.setAttribute('rows', '4');
+      t.setAttribute('cols', '49');
+      t.value = i.value || '';
+      i.parentNode.replaceChild(t, i);
+    } catch (e) {}
+  }
+
   if (w.fetch) d.addEventListener('submit', vote, true);
   userbar();
+  textarea();
   if (w.fetch) state();
-  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', userbar);
+  if (d.readyState === 'loading') { d.addEventListener('DOMContentLoaded', userbar); d.addEventListener('DOMContentLoaded', textarea); }
 })();

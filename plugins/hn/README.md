@@ -119,7 +119,7 @@ Declared once in 0.1.0: adding one later makes every install grant again.
 |---|---|---|
 | `db` | all | votes, karma, ranks, lists, flags and the search mirror, in the plugin's own database area |
 | `settings` | all | the thresholds below |
-| `site.scripts` | P6 | `assets/plugin.js`: votes without a reload; everything works without it |
+| `site.scripts` | P6 | `assets/plugin.js`: votes without a reload, a multi-line submit text box (without the grant the host refuses `<textarea>` in a section, so the text is a one-line input); everything works without it |
 | `entities.write.own` | P2 | creates, edits and deletes stories of the one content type `hn-story` |
 | `comments.read` | P1, P3, P4, P5 | comment events, a member's comments, the commenter key on pages and routes |
 | `comments.moderate` | P1, P3, P4 | marks comments dead or restores them, sets their order |

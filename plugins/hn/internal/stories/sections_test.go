@@ -29,17 +29,14 @@ func TestSectionsAvoidBannedMarkup(t *testing.T) {
 				t.Errorf("%s contains %q", file, bad)
 			}
 		}
-		if strings.Contains(low, "<textarea") != strings.HasSuffix(file, "hn_submit.html") {
-			t.Errorf("%s: <textarea only belongs in hn_submit.html", file)
+		if strings.Contains(low, "<textarea") { // refused by the host without site.scripts; plugin.js swaps it in
+			t.Errorf("%s: <textarea drops the section without site.scripts", file)
 		}
 		if regexp.MustCompile(`(?i)\son\w+\s*=`).MatchString(src) {
 			t.Errorf("%s has an on* attribute", file)
 		}
 		if regexp.MustCompile(`<[a-z][^>"']*\{\{`).MatchString(src) {
 			t.Errorf("%s: an action sits inside a tag outside quotes", file)
-		}
-		if regexp.MustCompile(`(?is)<textarea[^>]*\{\{|<textarea.*?\{\{.*?</textarea>`).MatchString(src) {
-			t.Errorf("%s: an action sits inside a textarea", file)
 		}
 		for _, f := range regexp.MustCompile(`<form[^>]*>`).FindAllString(src, -1) {
 			if !strings.Contains(f, `method="post"`) {
@@ -169,7 +166,7 @@ func TestSectionsRenderSubmit(t *testing.T) {
 	}
 	h = run(t, "section-hn_submit", map[string]any{"state": "edit", "action": "/p/hn/story/42/edit", "delete_action": "/p/hn/story/42/delete",
 		"title": `a "q"`, "url": "https://example.com/", "text": "old <i>text</i>", "can_delete": true})
-	for _, want := range []string{`action="/p/hn/story/42/edit"`, `action="/p/hn/story/42/delete"`, "old &lt;i&gt;text&lt;/i&gt;", `name="keep_text"`, `<textarea id="hn-text" name="text" rows="4" cols="49"></textarea>`} {
+	for _, want := range []string{`action="/p/hn/story/42/edit"`, `action="/p/hn/story/42/delete"`, "old &lt;i&gt;text&lt;/i&gt;", `name="keep_text"`, `<input id="hn-text" type="text" name="text" size="50">`} {
 		if !strings.Contains(h, want) {
 			t.Errorf("edit lacks %q: %s", want, h)
 		}

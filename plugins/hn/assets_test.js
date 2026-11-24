@@ -53,6 +53,16 @@ Object.defineProperty(El.prototype, 'previousSibling', {
   }
 });
 El.prototype.submit = function () { this.submitted++; };
+El.prototype.setAttribute = function (n, v) { this.attrs[n] = String(v); };
+El.prototype.replaceChild = function (k, old) {
+  var i = this.children.indexOf(old);
+  if (i < 0) throw new Error('not a child');
+  if (k.parentNode) k.parentNode.removeChild(k);
+  this.children[i] = k;
+  k.parentNode = this;
+  old.parentNode = null;
+  return old;
+};
 El.prototype.matches = function (sel) {
   var m = /^([a-z]*)(?:\.([\w-]+))?(?:\[([\w-]+)(?:([\^*]?)="([^"]*)")?\])?$/.exec(sel);
   if (!m || !(m[1] || m[2] || m[3])) throw new Error('unexpected selector: ' + sel);
@@ -90,6 +100,7 @@ function mkDoc(root) {
   doc.appendChild(root);
   doc.listeners = [];
   doc.readyState = 'complete';
+  doc.createElement = function (tag) { return el(tag); };
   doc.addEventListener = function (type, fn, cap) { doc.listeners.push({ type: type, fn: fn, cap: cap }); };
   doc.fire = function (type, target) {
     var ev = { target: target, preventDefault: function () { target.prevented++; } };
@@ -250,6 +261,18 @@ async function main() {
   root = el('main', '', {}, [slot]);
   b = boot(root, mkFetch(function () { return ok({}); }));
   check('userbar: no bar, unchanged', slot.children.length === 0);
+
+  // 14b. submit text: the one-line input becomes a textarea (this file loads only with site.scripts)
+  var input = el('input', '', { id: 'hn-text', type: 'text', name: 'text', size: '50' });
+  input.value = 'draft';
+  var td = el('td', '', {}, [input]);
+  b = boot(el('main', '', {}, [el('form', '', {}, [td])]), undefined);
+  var ta = td.children[0];
+  check('submit text: input replaced by a textarea', input.parentNode === null && td.children.length === 1 && ta.tagName === 'textarea');
+  check('submit text: id, name, rows, cols, value kept', ta.attrs.id === 'hn-text' && ta.attrs.name === 'text' && ta.attrs.rows === '4' && ta.attrs.cols === '49' && ta.value === 'draft');
+  td = el('td', '', {}, [el('input', '', { id: 'hn-title', type: 'text', name: 'title' })]);
+  b = boot(el('main', '', {}, [td]), undefined);
+  check('submit text: other inputs untouched', td.children[0].tagName === 'input');
 
   // 16-21. viewer state
   var EID = '10000000-0000-4000-8000-000000000001';
