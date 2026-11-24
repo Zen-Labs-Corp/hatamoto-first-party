@@ -71,8 +71,12 @@ func run(t *testing.T, name string, content map[string]any) string {
 	if err := sectionTemplates(t).ExecuteTemplate(&out, name, map[string]any{"Content": back}); err != nil {
 		t.Fatal(err)
 	}
-	return out.String()
+	return plainStyleRe.ReplaceAllString(out.String(), "")
 }
+
+// plainStyleRe drops the <style> blocks (the shared partial names classes the
+// assertions count in the markup).
+var plainStyleRe = regexp.MustCompile(`(?s)<style>.*?</style>`)
 
 func TestFavoritesSectionRenders(t *testing.T) {
 	pinNow(t, savedNow)

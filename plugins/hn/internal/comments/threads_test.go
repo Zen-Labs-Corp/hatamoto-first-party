@@ -60,7 +60,7 @@ func TestThreadsPageThreads(t *testing.T) {
 		}
 		for _, r := range rows {
 			kids := repliesOf(r)
-			if len(kids) != 2 || kids[0]["indent"] != "40" || kids[0]["author"] != "ann" || r["indent"] != "0" {
+			if len(kids) != 2 || kids[0]["depth"] != "1" || kids[0]["author"] != "ann" || r["depth"] != "0" {
 				t.Errorf("replies of %v: %+v", r["id"], kids)
 			}
 			if r["item_href"] != "/item/7" || r["title"] != "Seven" || kids[0]["item_href"] != "/item/7" {

@@ -1,5 +1,4 @@
 {{define "section-hn_userbar"}}{{template "plugin/hn/style" .}}{{$c := .Content}}<div class="hn-ub">
-<style>.hn-ub{text-align:right;font:10pt Verdana,Geneva,sans-serif;padding:2px 4px}.hn-ub a{color:inherit}</style>
 {{if eq $c.state "named"}}<a href="{{$c.user_href}}">{{$c.name}}</a> ({{$c.karma}}) | <a href="{{$c.logout_href}}">logout</a>
 {{else if eq $c.state "noname"}}<a href="{{$c.login_href}}">pick a username</a> | <a href="{{$c.logout_href}}">logout</a>
 {{else}}<a href="{{$c.login_href}}">login</a>

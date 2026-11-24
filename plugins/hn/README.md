@@ -33,17 +33,17 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 
 | Page path | Section the page holds | Phase | Query keys used |
 |---|---|---|---|
-| `/` `/news` `/newest` `/front` `/ask` `/show` `/jobs` `/best` `/from` | `hn-feed` (the feed is the path) | P2 | `p`, `next`, `day` (front), `site` (from), `id` (newest by author) |
-| `/submit` | `hn-submit` (edit mode with `?id=<story>`) | P2 | `id` |
-| `/item/<number>` | `hn-item`, injected by the filter | P2 | `id` (a comment id: focus view) |
-| `/threads` `/newcomments` | `hn-threads` | P3 | `id` (user), `p` |
+| `/` `/news` `/newest` `/front` `/ask` `/show` `/jobs` `/best` `/from` | `hn_feed` (the feed is the path) | P2 | `p`, `next`, `day` (front), `site` (from), `id` (newest by author) |
+| `/submit` | `hn_submit` (edit mode with `?id=<story>`) | P2 | `id` |
+| `/item/<number>` | `hn_item`, injected by the filter | P2 | `id` (a comment id: focus view) |
+| `/threads` `/newcomments` | `hn_threads` | P3 | `id` (user), `p` |
 | `/user` | `hn_user` | P1 | `id` |
 | `/login` | `hn_login` | P1 | none |
 | `/favorites` | `hn_saved` (favorites; `view=hidden` is the member's hidden stories) | P5 | `id`, `view`, `p` |
 | `/search` | `hn_search` | P5 | `q`, `p` |
 | every filtered page | `hn_userbar`, injected first | P1 | |
 
-Sections: `hn-feed hn-submit hn-item hn-threads hn_user hn_login hn_saved hn_search hn_userbar` (`hn-item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
+Sections: `hn_feed hn_submit hn_item hn_threads hn_user hn_login hn_saved hn_search hn_userbar` (`hn_item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
 
 The noprocrast notice is rendered by `hn_saved` as well: a member with the flag on who is past their visit window sees the account bar and that notice instead of the page (no extra section to place).
 
@@ -55,6 +55,16 @@ Public routes of the parity phase, served at `/p/hn/...`.
 - `GET /p/hn/api/feed/{name}?p=N` answers `{"items":[...],"page":N,"has_more":bool}`; `GET /p/hn/api/item/{number}` answers `{"id","type","title","url","text","by","points","comments","created_at"}` (`id` is the item number as a string); `GET /p/hn/api/user/{name}` answers `{"name","created_at","karma","about"}`. An unknown feed, item or user is a 404 `{"error":"not found"}`; success sends `Cache-Control: public, max-age=30`. The API is read-only and shows only what a signed-out visitor sees (no dead or hidden items, no keys, no emails). Field names are final once released.
 - Favorites and hide: `POST /p/hn/favorite/{story|comment}/{id}` and `POST /p/hn/unfavorite/{story|comment}/{id}` (a story id is the item number, a comment id is the core comment id), `POST /p/hn/hide/{number}` and `POST /p/hn/unhide/{number}`. Story rows get the hide and favorite actions through the row-action seam; a theme may print the comment favorite form itself.
 - Search: a full-text index of story titles and text and of comment text, kept by story and comment events and repaired by the `search` cron (every 5 minutes).
+
+## User bar and the theme header
+
+A plugin cannot print into the theme header, so `hn_userbar` is injected as the first section of `main`: a `<div class="hn-ub">` with the login link, or the name, karma and logout link. That is the no-script rendering and it must stay usable.
+
+Theme contract:
+
+- Optionally put an empty element with the class `hn-userbar` in the header (for example `<span class="hn-userbar"></span>`).
+- With `site.scripts` on, `assets/plugin.js` moves the first `.hn-ub` block into the first `.hn-userbar` element, once, when that element exists. Without the script, or without the slot, the block stays at the top of `main`; the theme should not hide it.
+- The bar can therefore be in either place: in `main` without the script, in the slot with it. A theme that styles `.hn-ub` (spacing, background, alignment, colours) should make that styling work in both positions, for example by scoping the rules to each position. The plugin's own rules are zero-specificity, use the `--hn-*` tokens and set no text colour on `.hn-ub`, so it inherits the colour of its container.
 
 ## Theme-posted forms
 
