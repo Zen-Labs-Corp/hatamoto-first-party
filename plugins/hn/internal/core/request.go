@@ -112,10 +112,14 @@ type Notice string
 var notices = map[string]string{}
 
 // DefineNotice registers the text of a notice code; phases call it from Register.
-// A duplicate code panics.
+// Defining a code again with the same text is a no-op (Register may run twice
+// in one process); a different text for a code panics.
 func DefineNotice(code Notice, text string) {
-	if _, dup := notices[string(code)]; dup {
-		panic(fmt.Sprintf("core: duplicate notice %q", code))
+	if prev, dup := notices[string(code)]; dup {
+		if prev != text {
+			panic(fmt.Sprintf("core: notice %q defined twice with different text", code))
+		}
+		return
 	}
 	notices[string(code)] = text
 }

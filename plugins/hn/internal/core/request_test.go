@@ -92,9 +92,13 @@ func TestWithNoticeAndDefineNotice(t *testing.T) {
 	if core.NoticeText("test-code") != "Text." || core.NoticeText("unknown") != "" {
 		t.Error("NoticeText")
 	}
+	core.DefineNotice("test-code", "Text.") // same text again: no-op
+	if core.NoticeText("test-code") != "Text." {
+		t.Error("NoticeText after a repeated definition")
+	}
 	defer func() {
 		if recover() == nil {
-			t.Error("duplicate DefineNotice did not panic")
+			t.Error("conflicting DefineNotice did not panic")
 		}
 	}()
 	core.DefineNotice("test-code", "Again.")
