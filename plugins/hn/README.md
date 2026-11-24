@@ -39,11 +39,22 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 | `/threads` `/newcomments` | `hn-threads` | P3 | `id` (user), `p` |
 | `/user` | `hn_user` | P1 | `id` |
 | `/login` | `hn_login` | P1 | none |
-| `/favorites` | `hn-saved` (favorites; `view=hidden` is the member's hidden stories) | P5 | `id`, `view`, `p` |
-| `/search` | `hn-search` | P5 | `q`, `p` |
+| `/favorites` | `hn_saved` (favorites; `view=hidden` is the member's hidden stories) | P5 | `id`, `view`, `p` |
+| `/search` | `hn_search` | P5 | `q`, `p` |
 | every filtered page | `hn_userbar`, injected first | P1 | |
 
-Sections: `hn-feed hn-submit hn-item hn-threads hn_user hn_login hn-saved hn-search hn_userbar` (`hn-item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
+Sections: `hn-feed hn-submit hn-item hn-threads hn_user hn_login hn_saved hn_search hn_userbar` (`hn-item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
+
+The noprocrast notice is rendered by `hn_saved` as well: a member with the flag on who is past their visit window sees the account bar and that notice instead of the page (no extra section to place).
+
+## Feeds and API
+
+Public routes of the parity phase, served at `/p/hn/...`.
+
+- `GET /p/hn/rss?feed=news|newest|ask|show|jobs|best` (default `news`): RSS 2.0, 30 items, root-relative links (the plugin does not know the site address), `Cache-Control: public, max-age=60`. An unknown feed is a 404.
+- `GET /p/hn/api/feed/{name}?p=N` answers `{"items":[...],"page":N,"has_more":bool}`; `GET /p/hn/api/item/{number}` answers `{"id","type","title","url","text","by","points","comments","created_at"}` (`id` is the item number as a string); `GET /p/hn/api/user/{name}` answers `{"name","created_at","karma","about"}`. An unknown feed, item or user is a 404 `{"error":"not found"}`; success sends `Cache-Control: public, max-age=30`. The API is read-only and shows only what a signed-out visitor sees (no dead or hidden items, no keys, no emails). Field names are final once released.
+- Favorites and hide: `POST /p/hn/favorite/{story|comment}/{id}` and `POST /p/hn/unfavorite/{story|comment}/{id}` (a story id is the item number, a comment id is the core comment id), `POST /p/hn/hide/{number}` and `POST /p/hn/unhide/{number}`. Story rows get the hide and favorite actions through the row-action seam; a theme may print the comment favorite form itself.
+- Search: a full-text index of story titles and text and of comment text, kept by story and comment events and repaired by the `search` cron (every 5 minutes).
 
 ## Theme-posted forms
 

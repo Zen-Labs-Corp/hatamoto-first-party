@@ -1,0 +1,8 @@
+{{define "section-hn_search"}}{{template "plugin/hn/style" .}}{{$c := .Content}}
+{{with $c.notice}}<p class="hn-notice" role="status">{{.}}</p>{{end}}
+<form class="hn-search-form" method="get" action="/search"><label>Search: <input type="text" name="q" value="{{$c.q}}" maxlength="100"></label> <button type="submit">Search</button></form>
+<ol class="hn-stories">{{range $c.rows}}<li class="hn-story">{{template "plugin/hn/story-row" .}}</li>{{end}}</ol>
+{{range $c.comments}}<div class="hn-comment"><span class="hn-sub">comment <a href="{{.user_href}}">{{.by}}</a> {{.age}} | on: <a href="{{.item_href}}">{{.story_title}}</a></span><p>{{.excerpt}}</p></div>
+{{end}}{{if $c.empty}}<p class="hn-note">No results.</p>{{end}}
+{{with $c.more}}<div class="hn-more"><a href="{{.}}" rel="next">More</a></div>{{end}}
+{{end}}
