@@ -1,7 +1,7 @@
 {
   "name": "hn",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.27",
   "description": "A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation on top of Hatamoto's core comments.",
   "permissions": ["settings"],
   "limits": { "memory_pages": 256, "max_instances": 4 },
