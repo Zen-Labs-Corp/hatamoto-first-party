@@ -181,6 +181,8 @@ func installFake(t *testing.T) *fake {
 func (f *fake) query(sql string, a []json.RawMessage) any {
 	var u *core.User
 	switch {
+	case sql == sqlRemovalInfo:
+		return coretest.Rows(f.removalInfo(argStrings(a, 0)))
 	case strings.Contains(sql, "u.commenter_key = $1"):
 		key := argStr(a, 0)
 		u = f.userBy(func(x *core.User) bool { return x.CommenterKey == key })
@@ -202,6 +204,14 @@ func (f *fake) query(sql string, a []json.RawMessage) any {
 
 func (f *fake) exec(sql string, a []json.RawMessage) int64 {
 	switch sql {
+	case sqlUpsertCreated:
+		return f.upsert(a, false)
+	case sqlUpsertState:
+		return f.upsert(a, true)
+	case sqlRecount:
+		return f.recount(argStr(a, 0))
+	case sqlDeleteMeta:
+		return f.deleteMeta(argStrings(a, 0))
 	case "UPDATE users SET karma = karma + $1 WHERE id = $2":
 		if u := f.users[argInt(a, 1)]; u != nil {
 			u.Karma += int(argInt(a, 0))
@@ -237,4 +247,99 @@ func post(r *core.Registry, pattern, key, id, body string) sdk.HTTPResponse {
 		Headers:    map[string]string{"sec-fetch-site": "same-origin"},
 	})
 	return resp
+}
+
+// upsert models sqlUpsertCreated (state false) and sqlUpsertState (state true).
+func (f *fake) upsert(a []json.RawMessage, state bool) int64 {
+	var author *int64
+	if key := argStr(a, 3); key != "" {
+		if u := f.userBy(func(x *core.User) bool { return x.CommenterKey == key }); u != nil {
+			id := u.ID
+			author = &id
+		}
+	}
+	id, name, body, live := argStr(a, 0), argStr(a, 4), argStr(a, 5), argBool(a, 6)
+	m := f.meta[id]
+	if m == nil {
+		f.meta[id] = &metaRow{ID: id, Entity: argStr(a, 1), Parent: argStr(a, 2), Author: author, Name: name, Body: body,
+			Live: live, Points: 1, Dirty: true, Created: argTime(a, 7)}
+		return 1
+	}
+	if state {
+		m.Live = live
+	} else {
+		m.Live = m.Live || live
+	}
+	if m.Author == nil {
+		m.Author = author
+	}
+	if name != "" {
+		m.Name = name
+	}
+	if body != "" {
+		m.Body = body
+	}
+	return 1
+}
+
+func (f *fake) recount(entity string) int64 {
+	s := f.stories[entity]
+	if s == nil {
+		return 0
+	}
+	n := 0
+	for _, m := range f.meta {
+		if m.Entity == entity && m.Live {
+			n++
+		}
+	}
+	if s.Count == n {
+		return 0
+	}
+	s.Count = n
+	return 1
+}
+
+func (f *fake) deleteMeta(ids []string) int64 {
+	var n int64
+	for _, id := range ids {
+		if f.meta[id] != nil {
+			delete(f.meta, id)
+			delete(f.votes, id)
+			n++
+		}
+	}
+	return n
+}
+
+// removalInfo models sqlRemovalInfo.
+func (f *fake) removalInfo(ids []string) map[string]any {
+	type karma struct {
+		AuthorID int64 `json:"author_id"`
+		Net      int   `json:"net"`
+	}
+	entities := []string{}
+	seen := map[string]bool{}
+	net := map[int64]int{}
+	for _, id := range ids {
+		m := f.meta[id]
+		if m == nil {
+			continue
+		}
+		if !seen[m.Entity] {
+			seen[m.Entity] = true
+			entities = append(entities, m.Entity)
+		}
+		if m.Author == nil {
+			continue
+		}
+		for _, v := range f.votes[id] {
+			net[*m.Author] += v.Value
+		}
+	}
+	ks := []karma{}
+	for a, n := range net {
+		ks = append(ks, karma{a, n})
+	}
+	return map[string]any{"entities": entities, "karma": ks}
 }
