@@ -14,4 +14,5 @@ func Register(r *core.Registry) {
 	r.Cron("rank", rankCron)
 	r.Route("POST /story/{id}/edit", func(q *core.Request) (sdk.HTTPResponse, error) { return handleEdit(r, q) })
 	r.Route("POST /story/{id}/delete", func(q *core.Request) (sdk.HTTPResponse, error) { return handleDelete(r, q) })
+	r.Route("POST /admin/jobs", func(q *core.Request) (sdk.HTTPResponse, error) { return handleJob(r, q) })
 }
