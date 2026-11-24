@@ -138,3 +138,23 @@ func TestClaimUsername(t *testing.T) {
 		}
 	})
 }
+
+type secretGateErr struct{}
+
+func (secretGateErr) Error() string { return "blocked by rule 7 for 10.0.0.9" }
+
+func TestClaimJSONGateRefusalIsGeneric(t *testing.T) {
+	f := installFake(t)
+	r := newRegistry(func(*core.GateReq) error { return secretGateErr{} })
+	resp, _ := r.ServeHTTP(sdk.HTTPRequest{
+		Method: "POST", Pattern: "/username", CommenterKey: "k1",
+		Body:    url.Values{"username": {"bob"}}.Encode(),
+		Headers: map[string]string{"sec-fetch-site": "same-origin", "accept": "application/json"},
+	})
+	if resp.Status != 403 || strings.Contains(resp.Body, "rule 7") || strings.Contains(resp.Body, "10.0.0.9") {
+		t.Fatalf("got %d %q", resp.Status, resp.Body)
+	}
+	if f.inserts != 0 {
+		t.Fatal("user inserted")
+	}
+}

@@ -54,7 +54,7 @@ func claimHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, error
 		}
 		if err := r.RunGates(core.GateSignup, &core.GateReq{Kind: core.GateSignup, Req: req, Target: name}); err != nil {
 			if req.WantsJSON() {
-				return core.JSONError(403, err.Error()), nil
+				return core.JSONError(403, "sign-up is not available"), nil
 			}
 			var n noticer
 			if errors.As(err, &n) && core.NoticeText(string(n.Notice())) != "" {
