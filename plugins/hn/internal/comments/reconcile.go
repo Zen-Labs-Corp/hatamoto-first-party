@@ -15,8 +15,10 @@ const sqlSample = `SELECT coalesce(jsonb_agg(e), '[]') FROM (SELECT e FROM (SELE
 
 // sqlGone lists mirrored comments of an entity that core no longer lists.
 // Rows newer than $3 (the start of the listing) are left alone: their event
-// may have arrived while the listing ran.
-const sqlGone = `SELECT coalesce(jsonb_agg(comment_id), '[]') FROM comment_meta WHERE entity_id = $1::uuid AND created_at < $3 AND comment_id NOT IN (SELECT jsonb_array_elements_text($2::jsonb)::uuid)`
+// may have arrived while the listing ran. Rows that are not live are left alone
+// too: the listing holds approved and dead comments, so a missing one is held
+// for moderation, and its removal comes from the spam and deleted events.
+const sqlGone = `SELECT coalesce(jsonb_agg(comment_id), '[]') FROM comment_meta WHERE entity_id = $1::uuid AND live AND created_at < $3 AND comment_id NOT IN (SELECT jsonb_array_elements_text($2::jsonb)::uuid)`
 
 // sqlMissing lists the listed ids that the mirror does not hold.
 const sqlMissing = `SELECT coalesce(jsonb_agg(i), '[]') FROM jsonb_array_elements_text($1::jsonb) AS t(i) WHERE NOT EXISTS (SELECT 1 FROM comment_meta WHERE comment_id = i::uuid)`

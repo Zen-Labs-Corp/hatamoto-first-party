@@ -58,6 +58,17 @@ func TestReconcile(t *testing.T) {
 		}
 	})
 
+	t.Run("a held comment missing from the listing is kept", func(t *testing.T) {
+		f := reconFake(t)
+		f.meta[cid2].Live = false // pending: the listing holds approved and dead comments only
+		listing(f, cid1, cid3)
+		notFound(f, cid2)
+		run(t)
+		if f.meta[cid2] == nil || len(f.subtreeCalls) != 0 {
+			t.Fatalf("meta %v calls %v", f.meta, f.subtreeCalls)
+		}
+	})
+
 	t.Run("a comment approved during the listing is kept", func(t *testing.T) {
 		f := reconFake(t)
 		f.votes[cid2] = map[int64]*voteRow{2: {Value: 1}}

@@ -635,7 +635,7 @@ func (f *fake) gone(entity string, listed []string, cutoff time.Time) []string {
 	}
 	out := []string{}
 	for id, m := range f.meta {
-		if m.Entity == entity && m.Created.Before(cutoff) && !in[id] {
+		if m.Entity == entity && m.Live && m.Created.Before(cutoff) && !in[id] {
 			out = append(out, id)
 		}
 	}
