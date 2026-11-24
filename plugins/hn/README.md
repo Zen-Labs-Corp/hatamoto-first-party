@@ -56,6 +56,16 @@ Public routes of the parity phase, served at `/p/hn/...`.
 - Favorites and hide: `POST /p/hn/favorite/{story|comment}/{id}` and `POST /p/hn/unfavorite/{story|comment}/{id}` (a story id is the item number, a comment id is the core comment id), `POST /p/hn/hide/{number}` and `POST /p/hn/unhide/{number}`. Story rows get the hide and favorite actions through the row-action seam; a theme may print the comment favorite form itself.
 - Search: a full-text index of story titles and text and of comment text, kept by story and comment events and repaired by the `search` cron (every 5 minutes).
 
+## User bar and the theme header
+
+A plugin cannot print into the theme header, so `hn_userbar` is injected as the first section of `main`: a `<div class="hn-ub">` with the login link, or the name, karma and logout link. That is the no-script rendering and it must stay usable.
+
+Theme contract:
+
+- Put an empty element with the class `hn-userbar` in the header (for example `<span class="hn-userbar"></span>`).
+- With `site.scripts` on, `assets/plugin.js` moves the `.hn-ub` block into the first `.hn-userbar` element, once. Without the script, or without the slot, the block stays at the top of `main`; the theme should not hide it, and should keep an empty slot harmless (no border or padding of its own).
+- Style `.hn-ub` from the theme if wanted (`text-align`, colours); the plugin's rules are zero-specificity and use the `--hn-*` tokens.
+
 ## Theme-posted forms
 
 A theme never calls plugin partials or functions (a theme template naming an undefined plugin template fails to parse on a site without the plugin). The theme prints these as plain forms; `{id}` is the core comment id. The routes are served at `/p/hn/...`.
