@@ -1,4 +1,4 @@
-package polish_test
+package polish
 
 import (
 	"encoding/json"
@@ -9,7 +9,6 @@ import (
 
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core/coretest"
-	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/polish"
 	"hatamoto.dev/sdk"
 )
 
@@ -74,7 +73,7 @@ func serve(t *testing.T, id, k string) sdk.HTTPResponse {
 	r := core.NewRegistry()
 	for _, p := range core.Phases {
 		if p == "polish" {
-			r.Register(p, polish.Register)
+			r.Register(p, Register)
 		} else {
 			r.Register(p, func(*core.Registry) {})
 		}
