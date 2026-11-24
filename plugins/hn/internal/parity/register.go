@@ -24,5 +24,13 @@ func Register(r *core.Registry) {
 	r.Route("POST /unhide/{id}", func(q *core.Request) (sdk.HTTPResponse, error) { return handleHide(q, false) })
 	r.RowActions(rowActions)
 	r.Page("/favorites", func(p *core.Page) error { return favoritesPage(r, p) })
+	r.Subscribe(core.StorySaved, indexStory)
+	r.Subscribe(core.StoryDeleted, dropStory)
+	for _, k := range []core.CommentKind{core.OnCreated, core.OnApproved, core.OnUpdated} {
+		r.Comment(k, indexComment)
+	}
+	r.Comment(core.OnSpam, dropComment)
+	r.Comment(core.OnDeleted, dropComment)
+	r.Cron("search", searchCron)
 	// Later registrations go here; the noprocrast page filter stays last.
 }
