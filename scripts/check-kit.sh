@@ -109,14 +109,14 @@ report "page parity" "${probs%$'\n'}" "every page path (except /) has a kit page
 # 6. comments: ranges core checks only at apply
 probs=$(jq -r '
   .schemas[]? | select(.settings.comments != null) | .slug as $s | .settings.comments as $c
-  | (if ($c.order // null) != null and (["newest","oldest","rank"] | index($c.order) | not)
+  | (if ($c.order // "") != "" and (["newest","oldest","rank"] | index($c.order) | not)
        then "schema \($s): comments order \($c.order) is not newest, oldest or rank" else empty end),
     ($c.policy // {}) as $p
-  | (if $p.max_depth != null and (($p.max_depth | type) != "number" or $p.max_depth < 1 or $p.max_depth > 32)
+  | (if $p.max_depth != null and (($p.max_depth | type) != "number" or ($p.max_depth | floor) != $p.max_depth or $p.max_depth < 1 or $p.max_depth > 32)
        then "schema \($s): policy max_depth \($p.max_depth) is not 1-32" else empty end),
-    (if $p.edit_window_minutes != null and (($p.edit_window_minutes | type) != "number" or $p.edit_window_minutes < 1 or $p.edit_window_minutes > 1440)
+    (if $p.edit_window_minutes != null and (($p.edit_window_minutes | type) != "number" or ($p.edit_window_minutes | floor) != $p.edit_window_minutes or $p.edit_window_minutes < 1 or $p.edit_window_minutes > 1440)
        then "schema \($s): policy edit_window_minutes \($p.edit_window_minutes) is not 1-1440" else empty end),
-    (if $p.slow_mode_seconds != null and (($p.slow_mode_seconds | type) != "number" or $p.slow_mode_seconds < 0 or $p.slow_mode_seconds > 86400)
+    (if $p.slow_mode_seconds != null and (($p.slow_mode_seconds | type) != "number" or ($p.slow_mode_seconds | floor) != $p.slow_mode_seconds or $p.slow_mode_seconds < 0 or $p.slow_mode_seconds > 86400)
        then "schema \($s): policy slow_mode_seconds \($p.slow_mode_seconds) is not 0-86400" else empty end)' "$k")
 report comments "$probs" "comment settings in range"
 

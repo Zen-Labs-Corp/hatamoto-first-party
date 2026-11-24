@@ -49,6 +49,8 @@ fixture; mutate '(.pages[] | select(.slug == "news").blocks[0].type) = "hn-feed"
 fixture; mutate 'del(.pages[] | select(.slug == "best"))'; expect_fail "missing page" 'FAIL  page parity'
 fixture; mutate '.pages += [{"slug":"extra","name":"Extra","schema":"page","blocks":[{"type":"hn_feed","props":{}}]}]'; expect_fail "extra plugin page" 'FAIL  page parity'
 fixture; mutate '.schemas[0].settings.comments.policy.max_depth = 33'; expect_fail "comment range" 'FAIL  comments'
+fixture; mutate '.schemas[0].settings.comments.policy.max_depth = 1.5'; expect_fail "fractional comment number" 'FAIL  comments'
+fixture; mutate '.schemas[0].settings.comments.order = ""'; (cd "$r" && scripts/check-kit.sh kits/hn >/dev/null) && echo "ok   empty comment order passes" || { echo "FAIL empty comment order was refused"; fails=$((fails + 1)); }
 fixture; mutate '.menus[0].items[0].url = "/nowhere"'; expect_fail "menu target" 'FAIL  menu targets'
 fixture; printf 'see /ho%s/someone/x\n' me >>"$r/kits/hn/README.md"; expect_fail "private path" 'FAIL  neutrality'
 fixture; mkdir "$r/kits/hn/sections"; touch "$r/kits/hn/sections/x.html"; expect_fail "extra file" 'FAIL  files'
