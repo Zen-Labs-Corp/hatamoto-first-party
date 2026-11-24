@@ -30,7 +30,7 @@ const (
 // GateKind names a check a phase may veto.
 type GateKind int
 
-// The gates: moderation registers them, the other phases run them.
+// The gates: moderation registers them; stories, accounts and moderation's own flag route run them.
 const (
 	GateSubmit GateKind = iota
 	GateVote
@@ -207,7 +207,7 @@ func (r *Registry) Cron(name string, h func(sdk.CronEvent) error) {
 	r.crons[name] = cronEntry{r.phase, h}
 }
 
-// Gate registers a check for a kind of action; its error text is shown to the member.
+// Gate registers a check for a kind of action. A refusal shows the member the notice of an error that implements Notice() core.Notice with a defined code (else the caller's generic refusal); JSON callers may get Error().
 func (r *Registry) Gate(k GateKind, h func(*GateReq) error) {
 	r.gates[k] = append(r.gates[k], h)
 }
