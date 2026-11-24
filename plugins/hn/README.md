@@ -53,7 +53,7 @@ Public routes of the parity phase, served at `/p/hn/...`.
 
 - `GET /p/hn/rss?feed=news|newest|ask|show|jobs|best` (default `news`): RSS 2.0, 30 items, root-relative links (the plugin does not know the site address), `Cache-Control: public, max-age=60`. An unknown feed is a 404.
 - `GET /p/hn/api/feed/{name}?p=N` answers `{"items":[...],"page":N,"has_more":bool}`; `GET /p/hn/api/item/{number}` answers `{"id","type","title","url","text","by","points","comments","created_at"}` (`id` is the item number as a string); `GET /p/hn/api/user/{name}` answers `{"name","created_at","karma","about"}`. An unknown feed, item or user is a 404 `{"error":"not found"}`; success sends `Cache-Control: public, max-age=30`. The API is read-only and shows only what a signed-out visitor sees (no dead or hidden items, no keys, no emails). Field names are final once released.
-- Favorites and hide: `POST /p/hn/favorite/{story|comment}/{id}` and `POST /p/hn/unfavorite/{story|comment}/{id}` (a story id is the item number, a comment id is the core comment id), `POST /p/hn/hide/{number}` and `POST /p/hn/unhide/{number}`. Story rows get the hide and favorite actions through the row-action seam; a theme may print the comment favorite form itself.
+- Favorites and hide: `POST /p/hn/favorite/{story|comment}/{id}` and `POST /p/hn/unfavorite/{story|comment}/{id}` (a story id is the item number, a comment id is the core comment id), `POST /p/hn/hide/{number}` and `POST /p/hn/unhide/{number}`. Story rows get the hide and favorite actions through the row-action seam, and feed and item rows add `past` (a link to `/search?q=<title>`) between them (`[unvote |] hide | past | favorite`; the `/favorites` and `/search` lists do not show it); a theme may print the comment favorite form itself.
 - Search: a full-text index of story titles and text and of comment text, kept by story and comment events and repaired by the `search` cron (every 5 minutes).
 
 ## User bar and the theme header
@@ -119,7 +119,7 @@ Declared once in 0.1.0: adding one later makes every install grant again.
 |---|---|---|
 | `db` | all | votes, karma, ranks, lists, flags and the search mirror, in the plugin's own database area |
 | `settings` | all | the thresholds below |
-| `site.scripts` | P6 | `assets/plugin.js`: votes without a reload; everything works without it |
+| `site.scripts` | P6 | `assets/plugin.js`: votes without a reload, a multi-line submit text box (without the grant the host refuses `<textarea>` in a section, so the text is a one-line input); everything works without it |
 | `entities.write.own` | P2 | creates, edits and deletes stories of the one content type `hn-story` |
 | `comments.read` | P1, P3, P4, P5 | comment events, a member's comments, the commenter key on pages and routes |
 | `comments.moderate` | P1, P3, P4 | marks comments dead or restores them, sets their order |

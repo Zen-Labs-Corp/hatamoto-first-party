@@ -161,8 +161,11 @@ func TestFeedsRowView(t *testing.T) {
 	if m["vote_href"] != "/p/hn/vote/story/42" || m["item_href"] != "/item/42" || m["site_href"] != "/from?site=example.com" || m["age"] != "30 minutes ago" {
 		t.Errorf("hrefs %v", m)
 	}
-	if got := labels(m); len(got) != 1 || got[0] != "flag" {
+	if got := labels(m); strings.Join(got, ",") != "flag,past" {
 		t.Errorf("signed out actions %v", got)
+	}
+	if a := m["actions"].([]map[string]any)[1]; a["href"] != "/search?q=T" || a["post"] != false || a["class"] != "hn-past" {
+		t.Errorf("past action %v", a)
 	}
 
 	job := base
@@ -178,7 +181,7 @@ func TestFeedsRowView(t *testing.T) {
 	if m["vote"] != "none" {
 		t.Errorf("own vote %v", m["vote"])
 	}
-	if got := labels(m); strings.Join(got, ",") != "edit,delete,flag" {
+	if got := labels(m); strings.Join(got, ",") != "edit,delete,flag,past" {
 		t.Errorf("own actions %v", got)
 	}
 
@@ -186,7 +189,7 @@ func TestFeedsRowView(t *testing.T) {
 	at := feedNow.Add(-10 * time.Minute)
 	voted.VotedAt = &at
 	m = rowView(r, alice, voted, 1, "/news", st)
-	if got := labels(m); m["vote"] != "voted" || strings.Join(got, ",") != "unvote,flag" {
+	if got := labels(m); m["vote"] != "voted" || strings.Join(got, ",") != "unvote,flag,past" {
 		t.Errorf("voted view %v %v", m["vote"], got)
 	}
 	if a := m["actions"].([]map[string]any)[0]; a["href"] != "/p/hn/vote/story/42?how=un" || a["post"] != true {
@@ -194,7 +197,7 @@ func TestFeedsRowView(t *testing.T) {
 	}
 	late := feedNow.Add(-2 * time.Hour)
 	voted.VotedAt = &late
-	if got := labels(rowView(r, alice, voted, 1, "/news", st)); strings.Join(got, ",") != "flag" {
+	if got := labels(rowView(r, alice, voted, 1, "/news", st)); strings.Join(got, ",") != "flag,past" {
 		t.Errorf("late vote actions %v", got)
 	}
 
@@ -202,5 +205,32 @@ func TestFeedsRowView(t *testing.T) {
 	dead.Dead = true
 	if m = rowView(r, alice, dead, 0, "/item/42", st); m["vote"] != "none" || m["title"] != "[dead] T" || m["rank"] != "" {
 		t.Errorf("dead view %v", m)
+	}
+}
+
+// past sits between hide and favorite and searches for the title, url-encoded.
+func TestFeedsRowViewPast(t *testing.T) {
+	pinNow(t, feedNow)
+	install(t, &fakeDB{})
+	r := newRegistry(t, map[string]func(*core.Registry){"parity": func(r *core.Registry) {
+		r.RowActions(func(*core.User, core.Item) []core.Action {
+			return []core.Action{{Label: "hide", Href: "/p/hn/hide/42", Class: "hn-hide", Post: true}, {Label: "favorite", Href: "/p/hn/favorite/story/42", Class: "hn-fav", Post: true}}
+		})
+	}})
+	at := feedNow.Add(-10 * time.Minute)
+	s := storyRow{EntityID: entityID, ItemNo: 42, AuthorID: 2, By: "bob", Title: "Rust & Go: 100% <fast>?", Kind: "story", Points: 3, CreatedAt: mustTime("2026-11-25T11:30:00Z"), VotedAt: &at}
+	var got []string
+	var href any
+	for _, a := range rowView(r, &core.User{ID: 1, Username: "alice"}, s, 1, "/news", core.DefaultSettings())["actions"].([]map[string]any) {
+		got = append(got, a["label"].(string))
+		if a["label"] == "past" {
+			href = a["href"]
+		}
+	}
+	if strings.Join(got, ",") != "unvote,hide,past,favorite" {
+		t.Errorf("actions %v", got)
+	}
+	if href != "/search?q=Rust+%26+Go%3A+100%25+%3Cfast%3E%3F" {
+		t.Errorf("past href %v", href)
 	}
 }

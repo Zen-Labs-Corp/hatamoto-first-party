@@ -201,8 +201,17 @@ func rowView(r *core.Registry, v *core.User, s storyRow, rank int, next string, 
 		add("edit", "/submit?id="+no, "hn-edit", false)
 		add("delete", "/p/hn/story/"+no+"/delete", "hn-delete", true)
 	}
+	// past (a search for the title) follows hide, or ends the row without one.
+	past := true
 	for _, a := range r.ActionsFor(v, core.Item{Kind: "story", ID: s.EntityID, ItemNo: s.ItemNo, AuthorID: s.AuthorID, Dead: s.Dead}) {
 		add(a.Label, a.Href, a.Class, a.Post)
+		if past && (a.Class == "hn-hide" || a.Class == "hn-unhide") {
+			add("past", "/search?q="+url.QueryEscape(s.Title), "hn-past", false)
+			past = false
+		}
+	}
+	if past {
+		add("past", "/search?q="+url.QueryEscape(s.Title), "hn-past", false)
 	}
 	m["actions"] = acts
 	return m
