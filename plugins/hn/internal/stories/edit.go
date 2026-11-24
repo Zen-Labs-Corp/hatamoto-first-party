@@ -97,7 +97,8 @@ func handleEdit(r *core.Registry, q *core.Request) (sdk.HTTPResponse, error) {
 	if ref.Kind == "job" {
 		kind = "job"
 	}
-	attrs := map[string]string{"kind": kind}
+	// entities.update merges attributes: a key left out is kept, JSON null removes it.
+	attrs := map[string]any{"kind": kind, "url": nil, "text": nil}
 	if canon != "" {
 		attrs["url"] = canon
 	}

@@ -109,8 +109,8 @@ func TestStoryEditKeepText(t *testing.T) {
 	if a := string((*updates)[0]["attributes"]); !strings.Contains(a, `"text":"old text"`) {
 		t.Errorf("keep_text: %s", a)
 	}
-	if a := string((*updates)[1]["attributes"]); strings.Contains(a, `"text"`) {
-		t.Errorf("cleared text still sent: %s", a)
+	if a := string((*updates)[1]["attributes"]); !strings.Contains(a, `"text":null`) {
+		t.Errorf("cleared text must be sent as null: %s", a)
 	}
 }
 
@@ -180,5 +180,18 @@ func TestStoryEditDelete(t *testing.T) {
 	install(t, db)
 	if loc := remove(t, newRegistry(t, nil), ""); loc != "/login?m=story-login" {
 		t.Errorf("signed out: %q", loc)
+	}
+}
+
+func TestStoryEditClearsURLWithNull(t *testing.T) {
+	pinNow(t, voteNow)
+	db, updates := editDB(nil)
+	install(t, db)
+	edit(t, newRegistry(t, nil), url.Values{"title": {"T"}, "text": {"now text"}}, "k1")
+	if len(*updates) != 1 {
+		t.Fatalf("updates %v", *updates)
+	}
+	if a := string((*updates)[0]["attributes"]); !strings.Contains(a, `"url":null`) || strings.Contains(a, `"text":null`) {
+		t.Errorf("attributes %s", a)
 	}
 }
