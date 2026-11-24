@@ -30,6 +30,31 @@ func TestSweep(t *testing.T) {
 		}
 	})
 
+	t.Run("full batches repeat until a short one", func(t *testing.T) {
+		left := 25000
+		db := &fakeDB{Exec: func(sql string, _ []any) (int64, error) {
+			if sql != sqlSweepRate {
+				return 0, nil
+			}
+			n := min(left, sweepBatch)
+			left -= n
+			return int64(n), nil
+		}}
+		install(t, db)
+		if err := sweep(sdk.CronEvent{}); err != nil {
+			t.Fatal(err)
+		}
+		rate := 0
+		for _, e := range db.Execs {
+			if e.SQL == sqlSweepRate {
+				rate++
+			}
+		}
+		if rate != 3 || left != 0 {
+			t.Fatalf("rate deletes = %d, left = %d", rate, left)
+		}
+	})
+
 	t.Run("a failed delete does not stop the others", func(t *testing.T) {
 		db := &fakeDB{Exec: func(sql string, _ []any) (int64, error) {
 			if sql == sqlSweepNetBans {

@@ -147,6 +147,20 @@ func TestGates(t *testing.T) {
 				t.Fatalf("rate rows = %v, want 3 (user, addr, net)", db.Execs[0].Args[1])
 			}
 		})
+		t.Run("flood rows are not recorded", func(t *testing.T) {
+			db := counts(false, 30, 30, 60)
+			install(t, db)
+			wantRefusal(t, r.RunGates(core.GateVote, gateReq(core.GateVote, member(10), "net1", "addr1", "")), nVoteRate)
+			if len(db.Execs) != 0 {
+				t.Fatalf("execs = %+v", db.Execs)
+			}
+			db = counts(false, 30, 0, 0)
+			install(t, db)
+			wantRefusal(t, r.RunGates(core.GateVote, gateReq(core.GateVote, member(10), "net1", "addr1", "")), nVoteRate)
+			if rows, _ := db.Execs[0].Args[1].([]any); len(db.Execs) != 1 || len(rows) != 2 {
+				t.Fatalf("execs = %+v", db.Execs)
+			}
+		})
 		t.Run("db error passes", func(t *testing.T) {
 			install(t, &fakeDB{Query: func(string, []any) (any, error) { return nil, hostErr(sdk.ErrUnavailable) }})
 			if err := r.RunGates(core.GateVote, gateReq(core.GateVote, member(10), "n", "a", "")); err != nil {
@@ -175,6 +189,13 @@ func TestGates(t *testing.T) {
 		}
 		if len(db.Execs) != 1 || db.Execs[0].SQL != sqlRateRecord {
 			t.Fatalf("execs = %+v", db.Execs)
+		}
+		install(t, answer(false, 5))
+		over := &fakeDB{Query: answer(false, 5).Query}
+		install(t, over)
+		wantRefusal(t, r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")), nSignupRate)
+		if len(over.Execs) != 0 {
+			t.Fatalf("flood recorded: %+v", over.Execs)
 		}
 		t.Run("no net key passes without a host call", func(t *testing.T) {
 			h := install(t, &fakeDB{})

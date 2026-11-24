@@ -104,8 +104,11 @@ func gateVote(req *core.GateReq) error {
 	if res.Blocked {
 		return refusal{nBlocked}
 	}
-	recordRates(now, "vote_user", user, "vote_addr", addr, "vote_net", net)
-	if (user != "" && res.UserN >= voteUserPerMin) || (addr != "" && res.AddrN >= voteAddrPerMin) || (net != "" && res.NetN >= voteNetPerMin) {
+	userOver, addrOver, netOver := res.UserN >= voteUserPerMin, res.AddrN >= voteAddrPerMin, res.NetN >= voteNetPerMin
+	// A key already over its limit stays over without more rows, so a flood
+	// does not grow rate_events.
+	recordRates(now, "vote_user", keyBelow(user, userOver), "vote_addr", keyBelow(addr, addrOver), "vote_net", keyBelow(net, netOver))
+	if (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver) {
 		return refusal{nVoteRate}
 	}
 	return nil
@@ -128,10 +131,10 @@ func gateSignup(req *core.GateReq) error {
 	if res.Net {
 		return refusal{nNet}
 	}
-	recordRates(now, "signup_net", net)
 	if res.NetN >= signupNetPerHour {
 		return refusal{nSignupRate}
 	}
+	recordRates(now, "signup_net", net)
 	return nil
 }
 
@@ -149,6 +152,14 @@ func gateFlag(req *core.GateReq) error {
 		return refusal{nBlocked}
 	}
 	return nil
+}
+
+// keyBelow is key, or "" when the key is over its limit and needs no new row.
+func keyBelow(key string, over bool) string {
+	if over {
+		return ""
+	}
+	return key
 }
 
 // recordRates stores one rate_events row per non-empty key; pairs are kind, key.
