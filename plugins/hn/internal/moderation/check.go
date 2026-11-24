@@ -12,6 +12,10 @@ const sqlCheckComment = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM ba
 
 const maxLinkSuffixes = 50
 
+// storySchema is the entity schema this plugin owns; comment.check runs for
+// every schema of the site and must leave the others alone.
+const storySchema = "hn-story"
+
 // linkSuffixes lists the banned-domain candidates of the linked domains: each
 // domain and its parents, without duplicates, at most maxLinkSuffixes.
 func linkSuffixes(domains []string) []string {
@@ -32,6 +36,9 @@ func linkSuffixes(domains []string) []string {
 // linking a banned site, by raising the spam score to the maximum. It never
 // lowers the score, never returns an error and fails open.
 func checkComment(in sdk.CommentCheck) (sdk.CommentCheck, error) {
+	if in.Schema != "" && in.Schema != storySchema {
+		return in, nil
+	}
 	doms := linkSuffixes(in.LinkDomains)
 	if in.CommenterKey == "" && in.AreaKey == "" && len(doms) == 0 {
 		return in, nil

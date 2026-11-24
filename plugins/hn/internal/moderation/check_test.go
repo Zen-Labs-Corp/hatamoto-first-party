@@ -56,6 +56,21 @@ func TestCheck(t *testing.T) {
 		}
 	})
 
+	t.Run("other schema: unchanged, no query", func(t *testing.T) {
+		h := install(t, checkWith(map[string]any{"blocked": true}))
+		other := in
+		other.Schema = "post"
+		out, err := checkComment(other)
+		if err != nil || out.Score != 7 || len(out.Reasons) != 0 || len(h.Calls) != 0 {
+			t.Fatalf("out = %+v, err = %v, calls = %v", out, err, h.Calls)
+		}
+		story := in
+		story.Schema = "hn-story"
+		if out, _ := checkComment(story); out.Score != sdk.CommentCheckMaxScore {
+			t.Fatalf("story schema score = %d", out.Score)
+		}
+	})
+
 	t.Run("no keys and no domains: no host call", func(t *testing.T) {
 		h := install(t, &fakeDB{})
 		out, err := checkComment(sdk.CommentCheck{Body: "hi", Score: 3})
