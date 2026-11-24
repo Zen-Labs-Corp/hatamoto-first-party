@@ -24,6 +24,7 @@ func Register(r *core.Registry) {
 	r.Route("POST /unhide/{id}", func(q *core.Request) (sdk.HTTPResponse, error) { return handleHide(q, false) })
 	r.RowActions(rowActions)
 	r.Page("/favorites", func(p *core.Page) error { return favoritesPage(r, p) })
+	r.Page("/search", func(p *core.Page) error { return searchPage(r, p) })
 	r.Subscribe(core.StorySaved, indexStory)
 	r.Subscribe(core.StoryDeleted, dropStory)
 	for _, k := range []core.CommentKind{core.OnCreated, core.OnApproved, core.OnUpdated} {

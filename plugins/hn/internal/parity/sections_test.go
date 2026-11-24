@@ -13,7 +13,7 @@ import (
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 )
 
-var sectionFiles = []string{"../../sections/hn_saved.html"}
+var sectionFiles = []string{"../../sections/hn_saved.html", "../../sections/hn_search.html"}
 
 func TestFavoritesSectionAvoidsBannedMarkup(t *testing.T) {
 	banned := []string{"<svg", "<script", "<iframe", "<object", "<embed", "<base", "<meta", "<link", "<math", "<template", "<noscript", "<dialog", "<title", "<textarea",
@@ -39,7 +39,8 @@ func TestFavoritesSectionAvoidsBannedMarkup(t *testing.T) {
 			t.Errorf("%s: an action sits in a style block or a comment", file)
 		}
 		for _, f := range regexp.MustCompile(`<form[^>]*>`).FindAllString(src, -1) {
-			if !strings.Contains(f, `method="post"`) {
+			// only the search form may be a GET: it posts nothing
+			if !strings.Contains(f, `method="post"`) && !(strings.HasSuffix(file, "hn_search.html") && strings.Contains(f, `method="get"`)) {
 				t.Errorf("%s: form without method=post: %s", file, f)
 			}
 		}
@@ -48,7 +49,7 @@ func TestFavoritesSectionAvoidsBannedMarkup(t *testing.T) {
 
 func sectionTemplates(t *testing.T) *template.Template {
 	t.Helper()
-	tpl, err := template.New("").ParseFiles("../../partials/style.html", "../../partials/story-row.html", "../../sections/hn_saved.html")
+	tpl, err := template.New("").ParseFiles("../../partials/style.html", "../../partials/story-row.html", "../../sections/hn_saved.html", "../../sections/hn_search.html")
 	if err != nil {
 		t.Fatal(err)
 	}
