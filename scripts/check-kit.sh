@@ -53,7 +53,8 @@ extra=$(git ls-files --cached --others --exclude-standard -- "$dir" | sed "s#^$d
 report files "$extra" "only kit.json and docs in $dir"
 
 # 2. kit check: core's own checker
-if "$BIN" kit check "$dir" --expect-name "$name" >"$tmp/check" 2>&1; then
+# a requires name core does not know can never be applied; "needs a newer Hatamoto" stays a note
+if "$BIN" kit check "$dir" --expect-name "$name" >"$tmp/check" 2>&1 && ! grep -q 'which this Hatamoto does not know' "$tmp/check"; then
   ok "kit check" "$(head -1 "$tmp/check")"
   grep '^note:' "$tmp/check" | sed 's/^/                      /' || true
 else

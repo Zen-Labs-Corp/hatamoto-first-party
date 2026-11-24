@@ -42,6 +42,7 @@ echo "ok   baseline"
 
 fixture; mutate '.name="other"'; expect_fail "name is not the folder name" 'is not the folder name'
 fixture; mutate '.extra=1'; expect_fail "unknown key" 'FAIL  kit check'
+fixture; mutate '.requires += ["comment.sigin"]'; expect_fail "unknown requires name" 'FAIL  kit check'
 fixture; mutate '.schemas[0].schema.properties.kind.enum=["story"]'; expect_fail "schema drift" 'FAIL  schema parity'
 fixture; mutate 'del(.schemas[0].schema.properties.kind)'; expect_fail "field set drift" 'FAIL  schema parity'
 fixture; mutate '(.pages[] | select(.slug == "news").blocks[0].type) = "hn-feed"'; expect_fail "hyphenated block type" 'FAIL  sections'
