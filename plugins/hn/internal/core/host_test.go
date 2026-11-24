@@ -62,3 +62,19 @@ func TestHostNotAvailable(t *testing.T) {
 		t.Error("QueryJSON without host: nil error")
 	}
 }
+
+func TestHostQueryTruncated(t *testing.T) {
+	h := &coretest.Host{Fns: map[string]func(json.RawMessage) (any, error){
+		"db.query": func(json.RawMessage) (any, error) {
+			return map[string]any{"rows": [][]any{{1}, {2}}, "truncated": true}, nil
+		},
+	}}
+	coretest.Install(t, h)
+	rows, err := core.Query("SELECT n FROM t")
+	if !errors.Is(err, core.ErrTruncated) || len(rows) != 2 {
+		t.Fatalf("Query = %d rows, %v; want 2 rows and ErrTruncated", len(rows), err)
+	}
+	if err := core.QueryJSON("SELECT n FROM t", new(int)); !errors.Is(err, core.ErrTruncated) {
+		t.Fatalf("QueryJSON err = %v, want ErrTruncated", err)
+	}
+}
