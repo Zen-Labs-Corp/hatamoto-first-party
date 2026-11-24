@@ -68,17 +68,21 @@ func SameSite(r *Request) bool {
 }
 
 // SafePath reports whether p is a same-site absolute path: one leading "/", no
-// "//", no backslash, no control character, at most 2048 bytes.
+// "//" or "/\", no byte at or below 0x20 or 0x7f (browsers strip tabs and
+// newlines before resolving, so "/\t/evil" would become "//evil"), at most 2048
+// bytes, and it parses as a URL with no scheme, host or opaque part. It mirrors
+// the host's own redirect check.
 func SafePath(p string) bool {
-	if len(p) == 0 || len(p) > 2048 || p[0] != '/' || strings.HasPrefix(p, "//") || strings.Contains(p, `\`) {
+	if len(p) == 0 || len(p) > 2048 || p[0] != '/' || strings.HasPrefix(p, "//") || strings.HasPrefix(p, `/\`) {
 		return false
 	}
-	for _, c := range p {
-		if c < 0x20 || c == 0x7f {
+	for i := 0; i < len(p); i++ {
+		if p[i] <= 0x20 || p[i] == 0x7f {
 			return false
 		}
 	}
-	return true
+	u, err := url.Parse(p)
+	return err == nil && u.Scheme == "" && u.Host == "" && u.Opaque == ""
 }
 
 // SafeNext is where a form post goes back to: the form's "next" when it is a

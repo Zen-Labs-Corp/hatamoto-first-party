@@ -16,7 +16,8 @@ func TestSafePath(t *testing.T) {
 	for p, want := range map[string]bool{
 		"/x": true, "/": true, "/a?b=c": true,
 		"//x": false, `/\x`: false, "http://x": false, "x": false, "": false,
-		"/a\nb": false, "/" + strings.Repeat("a", 2048): false,
+		"/a\nb": false,
+		"/a b":  false, "/\t/evil.example": false, "/a\x7fb": false, "/%zz": false, "/a%0d": true, "/" + strings.Repeat("a", 2048): false,
 	} {
 		if got := core.SafePath(p); got != want {
 			t.Errorf("SafePath(%q) = %v", p, got)
