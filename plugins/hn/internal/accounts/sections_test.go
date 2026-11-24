@@ -94,7 +94,10 @@ func TestPagesSectionStates(t *testing.T) {
 	has("bar out", render("/news", "", "hn_userbar"), ">login</a>")
 
 	out := render("/login", "", "hn_login")
-	has("login out", out, `action="/-/comments/signin"`, `name="email"`)
+	has("login out", out, `<a href="/-/comments/signin">send me a sign-in link</a>`, "<b>Login</b>")
+	if strings.Contains(out, "<form") || strings.Contains(out, `name="email"`) {
+		t.Errorf("signed-out login shows a form: %s", out)
+	}
 	if strings.Contains(out, `type="password"`) {
 		t.Error("login has a password field")
 	}

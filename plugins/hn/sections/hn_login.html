@@ -12,9 +12,6 @@
 </form>
 <p><a href="{{$c.logout_href}}">logout</a></p>
 {{else}}<b>Login</b>
-<form method="post" action="{{$c.signin_action}}">
-<p><label>email <input type="email" name="email" required></label></p>
-<p><button type="submit">send me a sign-in link</button></p>
+<p><a href="{{$c.signin_action}}">send me a sign-in link</a></p>
 <p class="hn-note">We email you a link; there is no password. After signing in you pick a username.</p>
-</form>
 {{end}}</div>{{end}}
