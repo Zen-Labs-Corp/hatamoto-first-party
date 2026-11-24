@@ -97,7 +97,7 @@
     forms = d.querySelectorAll('form[action^="/p/hn/vouch/comment/"]');
     for (i = forms.length - 1; i >= 0; i--) {
       c = cs[idOf(forms[i].getAttribute('action'), 'vouch')];
-      if (!v.vouch || !c || !c.dead) dropForm(forms[i]);
+      if (!v.vouch || (c && !c.dead)) dropForm(forms[i]);
     }
   }
 

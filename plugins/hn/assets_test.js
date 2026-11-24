@@ -309,6 +309,14 @@ async function main() {
   check('state: vouch of a live comment removed, dead kept', pg.vouches.c1.parentNode === null && pg.vouches.c3.parentNode === pg.cells.c3.head);
 
   pg = page(EID);
+  var vo5 = form('hn-inline', '/p/hn/vouch/comment/c5', [['next', '/']]);
+  pg.cells.c5.cell.parentNode.appendChild(new Text(' | '));
+  pg.cells.c5.cell.parentNode.appendChild(vo5);
+  b = boot(pg.root, stateFetch(STATE));
+  await flush();
+  check('state: vouch of a comment missing from state kept', vo5.parentNode === pg.cells.c5.head && texts(pg.cells.c5.head) === 1);
+
+  pg = page(EID);
   var unvote = form('hn-vote-form', '/p/hn/vote/comment/c1', [['how', 'un']]);
   pg.cells.c1.cell.appendChild(unvote);
   b = boot(pg.root, stateFetch(STATE));
