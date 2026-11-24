@@ -11,4 +11,5 @@ func Register(r *core.Registry) {
 	defineNotices()
 	r.Route("POST /vote/story/{id}", func(q *core.Request) (sdk.HTTPResponse, error) { return handleVote(r, q) })
 	r.Route("POST /submit", func(q *core.Request) (sdk.HTTPResponse, error) { return handleSubmit(r, q) })
+	r.Cron("rank", rankCron)
 }
