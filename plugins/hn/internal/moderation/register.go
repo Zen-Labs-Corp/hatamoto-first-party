@@ -15,5 +15,6 @@ func Register(r *core.Registry) {
 	r.Route("POST /flag/{kind}/{id}", func(q *core.Request) (sdk.HTTPResponse, error) { return handleFlag(r, q) })
 	r.Route("POST /vouch/{kind}/{id}", handleVouch)
 	r.RowActions(rowActions)
+	registerAdmin(r)
 	r.Cron("sweep", sweep)
 }
