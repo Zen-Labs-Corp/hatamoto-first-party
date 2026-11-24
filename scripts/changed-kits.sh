@@ -10,7 +10,7 @@ set -euo pipefail
 json=0
 [ "${1:-}" = --json ] && { json=1; shift; }
 cd "$(git rev-parse --show-toplevel)"
-all() { for f in kits/*/kit.json; do [ -f "$f" ] && dirname "$f"; done; }
+all() { for f in kits/*/kit.json; do if [ -f "$f" ]; then dirname "$f"; fi; done; }
 
 if [ $# -eq 0 ]; then
   list=$(all)
@@ -26,10 +26,10 @@ else
       sed -n 's#^\(kits/[^/]*\)/.*#\1#p' <<<"$files"
       for p in $(sed -n 's#^plugins/\([^/]*\)/.*#\1#p' <<<"$files" | sort -u); do
         for k in kits/*/kit.json; do
-          [ -f "$k" ] && jq -e --arg p "$p" 'any(.plugins[]?; .name == $p)' "$k" >/dev/null && dirname "$k"
+          if [ -f "$k" ] && jq -e --arg p "$p" 'any(.plugins[]?; .name == $p)' "$k" >/dev/null; then dirname "$k"; fi
         done
       done
-    } | sort -u | while read -r d; do [ -f "$d/kit.json" ] && echo "$d"; done)
+    } | sort -u | while read -r d; do if [ -f "$d/kit.json" ]; then echo "$d"; fi; done)
   fi
 fi
 

@@ -93,6 +93,8 @@ jobs:
         run: scripts/check-kit.sh "$KIT"
       - name: check-kit.sh refuses broken kits
         run: scripts/test-check-kit.sh
+      - name: changed-kits.sh lists the right kits
+        run: scripts/test-changed-kits.sh
 
   template:
     runs-on: ubuntu-latest
