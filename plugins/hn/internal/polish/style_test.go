@@ -173,6 +173,30 @@ func TestStyleUserScope(t *testing.T) {
 	}
 }
 
+// The user bar may be moved into a theme header, so it inherits its colour from
+// the container: no rule may set color on .hn-ub itself.
+func TestStyleUserBarInheritsColor(t *testing.T) {
+	ruleRe := regexp.MustCompile(`([^{}]+)\{([^{}]*)\}`)
+	colorRe := regexp.MustCompile(`(^|;)\s*color\s*:`)
+	seen := false
+	for _, m := range ruleRe.FindAllStringSubmatch(styleSource(t), -1) {
+		for _, sel := range strings.Split(m[1], ",") {
+			sel = strings.TrimSpace(sel)
+			sel = strings.TrimSuffix(strings.TrimPrefix(sel, ":where("), ")")
+			if sel != ".hn-ub" {
+				continue
+			}
+			seen = true
+			if colorRe.MatchString(m[2]) {
+				t.Errorf("rule %q sets color on .hn-ub", strings.TrimSpace(m[1]))
+			}
+		}
+	}
+	if !seen {
+		t.Error("no .hn-ub rule")
+	}
+}
+
 // The arrow button must not size itself: a theme draws its own 10x10 arrow and
 // sets none of these, so only a zero-specificity padding:0 is allowed. There is
 // no ::after hit area: it overlapped neighbouring controls.
