@@ -52,7 +52,7 @@ Written by stories (`comment_count` also by comments, `dead` also by moderation)
 
 | Table | Columns |
 |---|---|
-| `item_numbers` | `item_no` identity primary key. Reserve-only: a row is inserted first and its number becomes the story slug, so the URL reads `/item/<number>` |
+| `item_numbers` | `item_no` identity primary key. Reserve-only: a row is inserted first and its number becomes the story slug, so the canonical URL reads `/item/<number>`. The `/item/{slug}` url_pattern is set on the `hn-story` type by the hn kit (or by the owner in Settings > Content types), not by the plugin package; without it stories route at `/<number>` |
 | `story_meta` | `entity_id` uuid primary key, `item_no` unique, `author_id` references `users`, `title`, `url`, `url_key` (normalised, indexed), `domain` (indexed with `created_at`), `body`, `kind` one of story, ask, show, job, `points` default 1, `comment_count` default 0, `score` double precision default 0 (gravity), `dead` default false. Indexes: score desc where not dead; created desc; kind + score; author + created |
 | `story_votes` | `story_id` references `story_meta` (cascade), `user_id` references `users` (cascade), primary key both |
 

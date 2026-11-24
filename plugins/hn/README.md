@@ -29,7 +29,7 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 
 ## Pages
 
-`render.page` does not run on a 404, so every path below except `/` must exist as a CMS page holding the section named here. Kit page slugs: `news newest front newcomments best ask show jobs submit threads user from favorites login search`, plus a plain `guidelines` page. `/` is served when the owner makes the news page the homepage. Story pages come from the `hn-story` content type with the URL pattern `/item/{slug}`; the slug is the story number, so a story reads `/item/<number>`.
+`render.page` does not run on a 404, so every path below except `/` must exist as a CMS page holding the section named here. Kit page slugs: `news newest front newcomments best ask show jobs submit threads user from favorites login search`, plus a plain `guidelines` page. `/` is served when the owner makes the news page the homepage. Story pages come from the plugin-owned `hn-story` content type; the slug is the story number. `/item/<number>` is the canonical story URL the plugin links to. The `/item/{slug}` url_pattern is not carried by the plugin package (a schema file holds no settings, so core gives the type the default `/{slug}`): the hn kit sets it on the type, or the owner sets it in Settings > Content types. Without it stories route at `/<number>` and the plugin's `/item/` links do not resolve.
 
 | Page path | Section the page holds | Phase | Query keys used |
 |---|---|---|---|
