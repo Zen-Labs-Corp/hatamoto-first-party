@@ -1,8 +1,8 @@
 {{define "section-hn_user"}}{{template "plugin/hn/style" .}}{{$c := .Content}}<div class="hn-user">
 <style>.hn-user{font:10pt Verdana,Geneva,sans-serif;padding:8px 4px}.hn-user th{text-align:left;vertical-align:top;padding-right:12px}.hn-user input[type=text]{width:30em;max-width:100%;font:inherit}.hn-user .hn-notice{color:#c23b22}</style>
 {{if $c.notice}}<p class="hn-notice" role="status">{{$c.notice}}</p>
-{{end}}{{if not $c.found}}<p>No such user.</p>
-{{else if $c.own}}<form method="post" action="/p/hn/profile">
+{{end}}{{if $c.missing}}<p>No such user.</p>
+{{else if not $c.found}}{{else if $c.own}}<form method="post" action="/p/hn/profile">
 <table>
 <tr><th>user:</th><td>{{$c.name}}</td></tr>
 <tr><th>created:</th><td>{{$c.created}}</td></tr>

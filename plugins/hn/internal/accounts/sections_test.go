@@ -112,6 +112,10 @@ func TestPagesSectionStates(t *testing.T) {
 	}
 	ctx := sdk.PageContext{Path: "/user", Query: map[string]string{"id": "ghost"}}
 	has("user unknown", renderBlock(t, tpl, block(t, renderPage(t, ctx), "hn_user")), "No such user.")
+	// A host error leaves the placeholder with no content: not a not-found page.
+	if out := renderBlock(t, tpl, sdk.Block{Type: "hn_user"}); strings.Contains(out, "No such user.") {
+		t.Errorf("empty user placeholder says not found: %s", out)
+	}
 }
 
 var (

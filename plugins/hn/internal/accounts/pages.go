@@ -61,7 +61,7 @@ func loginPage(p *core.Page) error {
 }
 
 func userPage(p *core.Page) error {
-	c := map[string]any{"found": false, "notice": core.NoticeText(p.Query("m"))}
+	c := map[string]any{"found": false, "missing": true, "notice": core.NoticeText(p.Query("m"))}
 	if id := p.Query("id"); id != "" {
 		u, err := core.UserByName(id)
 		if err != nil {
@@ -79,7 +79,7 @@ func userPage(p *core.Page) error {
 // Only plain values go in: never the user row or its commenter key.
 func fill(c map[string]any, u *core.User, viewer *core.User) {
 	own := viewer != nil && viewer.ID == u.ID
-	c["found"], c["name"], c["karma"], c["own"] = true, u.Username, u.Karma, own
+	c["found"], c["missing"], c["name"], c["karma"], c["own"] = true, false, u.Username, u.Karma, own
 	c["created"] = u.CreatedAt.UTC().Format("January 2, 2006")
 	c["about"] = aboutSegments(u.About)
 	if !own {
