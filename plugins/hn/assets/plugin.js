@@ -32,7 +32,8 @@
 
   function vote(ev) {
     var f = ev && ev.target;
-    if (!f || !has(f, 'hn-vote-form') || f.__hnBusy) return;
+    if (!f || !has(f, 'hn-vote-form')) return;
+    if (f.__hnBusy) { ev.preventDefault(); return; }
     try {
       ev.preventDefault();
       f.__hnBusy = 1;

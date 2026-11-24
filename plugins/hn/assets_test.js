@@ -218,6 +218,7 @@ async function main() {
   b.doc.fire('submit', s.form);
   await flush();
   check('double submit: one fetch', b.win.fetch.calls.length === 1);
+  check('double submit: both submits prevented', s.form.prevented === 2 && s.form.submitted === 0);
 
   // 12. idempotence (boot runs the script twice)
   check('idempotent: one submit listener', b.doc.listeners.filter(function (l) { return l.type === 'submit'; }).length === 1);
