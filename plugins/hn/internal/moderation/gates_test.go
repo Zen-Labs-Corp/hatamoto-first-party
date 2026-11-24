@@ -69,15 +69,27 @@ func TestGates(t *testing.T) {
 				noEntityCalls(t, h)
 			})
 		}
-		t.Run("parent domains are sent", func(t *testing.T) {
+		t.Run("the host is sent without www", func(t *testing.T) {
 			db := answer(map[string]any{})
 			install(t, db)
 			_ = r.RunGates(core.GateSubmit, gateReq(core.GateSubmit, member(10), "", "", "www.Blog.Example.com"))
 			if len(db.Queries) != 1 {
 				t.Fatalf("%d queries", len(db.Queries))
 			}
-			if got := db.Queries[0].Args[1]; !sameList(got, "blog.example.com", "example.com", "com") {
+			if got := db.Queries[0].Args[1]; !sameList(got, "blog.example.com") {
 				t.Fatalf("domains arg = %v", got)
+			}
+		})
+		t.Run("deep host is sent whole and matched by suffix in SQL", func(t *testing.T) {
+			deep := "a.b.c.d.e.f.g.h.i.j.example.com"
+			db := answer(map[string]any{})
+			install(t, db)
+			_ = r.RunGates(core.GateSubmit, gateReq(core.GateSubmit, member(10), "", "", deep+"."))
+			if got := db.Queries[0].Args[1]; !sameList(got, deep) {
+				t.Fatalf("domains arg = %v", got)
+			}
+			if !strings.Contains(sqlSubmitCheck, "h.host LIKE '%.' || d.domain") {
+				t.Error("query does not match parent domains")
 			}
 		})
 		t.Run("db error passes", func(t *testing.T) {
@@ -192,13 +204,11 @@ func TestGates(t *testing.T) {
 	})
 }
 
-func TestDomainSuffixes(t *testing.T) {
-	got := strings.Join(domainSuffixes("WWW.A.b.Example.com"), " ")
-	if got != "a.b.example.com b.example.com example.com com" {
-		t.Fatalf("got %q", got)
-	}
-	if len(domainSuffixes("")) != 0 {
-		t.Fatal("empty domain must give no suffixes")
+func TestDomainHost(t *testing.T) {
+	for in, want := range map[string]string{"WWW.A.b.Example.com.": "a.b.example.com", " example.com ": "example.com", "": ""} {
+		if got := domainHost(in); got != want {
+			t.Errorf("domainHost(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

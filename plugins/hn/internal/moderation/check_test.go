@@ -1,6 +1,8 @@
 package moderation
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,14 +46,14 @@ func TestCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("sends the www-stripped suffixes", func(t *testing.T) {
+	t.Run("sends the www-stripped host", func(t *testing.T) {
 		db := checkWith(map[string]any{})
 		install(t, db)
 		_, _ = checkComment(in)
 		if len(db.Queries) != 1 || db.Queries[0].SQL != sqlCheckComment {
 			t.Fatalf("queries = %+v", db.Queries)
 		}
-		if !sameList(db.Queries[0].Args[3], "blog.spam.com", "spam.com", "com") {
+		if !sameList(db.Queries[0].Args[3], "blog.spam.com") {
 			t.Fatalf("domains = %v", db.Queries[0].Args[3])
 		}
 	})
@@ -68,6 +70,25 @@ func TestCheck(t *testing.T) {
 		story.Schema = "hn-story"
 		if out, _ := checkComment(story); out.Score != sdk.CommentCheckMaxScore {
 			t.Fatalf("story schema score = %d", out.Score)
+		}
+	})
+
+	t.Run("deep host and 50+ throwaway links before the banned one", func(t *testing.T) {
+		db := checkWith(map[string]any{})
+		install(t, db)
+		links := []string{}
+		for i := 0; i < 60; i++ {
+			links = append(links, fmt.Sprintf("junk%d.example.net", i))
+		}
+		deep := "a.b.c.d.e.f.g.h.i.j.banned.com"
+		links = append(links, deep, deep)
+		_, _ = checkComment(sdk.CommentCheck{Body: "hi", CommenterKey: "k1", LinkDomains: links})
+		got, _ := db.Queries[0].Args[3].([]any)
+		if len(got) != 61 || got[60] != deep {
+			t.Fatalf("hosts = %v", got)
+		}
+		if !strings.Contains(sqlCheckComment, "h.host LIKE '%.' || d.domain") {
+			t.Error("query does not match parent domains")
 		}
 	})
 

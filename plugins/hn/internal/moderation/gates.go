@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	sqlSubmitCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, EXISTS(SELECT 1 FROM banned_domains WHERE domain IN (SELECT jsonb_array_elements_text($2::jsonb))) AS domain, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net) x`
+	sqlSubmitCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, EXISTS(SELECT 1 FROM banned_domains d JOIN jsonb_array_elements_text($2::jsonb) h(host) ON h.host = d.domain OR h.host LIKE '%.' || d.domain) AS domain, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net) x`
 	sqlVoteCheck   = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, (SELECT count(*) FROM rate_events WHERE kind = 'vote_user' AND key = $2 AND created_at > $5::timestamptz - interval '1 minute') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_addr' AND key = $3 AND created_at > $5::timestamptz - interval '1 minute') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_net' AND key = $4 AND created_at > $5::timestamptz - interval '1 minute') AS net_n) x`
 	sqlSignupCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $1 AND (expires_at IS NULL OR expires_at > $2::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'signup_net' AND key = $1 AND created_at > $2::timestamptz - interval '1 hour') AS net_n) x`
 	sqlBlocked     = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked) x`
@@ -47,27 +47,22 @@ func userID(req *core.GateReq) int64 {
 	return req.User.ID
 }
 
-// domainSuffixes lists a domain and its parent domains, longest first ("a.b.com"
-// gives a.b.com, b.com, com); lower-case, without "www.", at most 10.
-func domainSuffixes(d string) []string {
-	d = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(d)), "www.")
-	var out []string
-	for d != "" && len(out) < 10 {
-		out = append(out, d)
-		_, rest, ok := strings.Cut(d, ".")
-		if !ok {
-			break
-		}
-		d = rest
-	}
-	return out
+// domainHost is a host in the form banned_domains is matched in: lower-case,
+// without "www." and a trailing dot. The SQL matches the host and its parents,
+// so the match does not depend on how many labels the host has.
+func domainHost(d string) string {
+	d = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(d)), ".")
+	return strings.TrimPrefix(d, "www.")
 }
 
 // gateSubmit refuses blocked members, banned sites (and their subdomains) and
 // banned networks. It cannot tell an edit from a submit and does not count
 // submissions: stories owns submit_per_hour. Host errors fail open.
 func gateSubmit(req *core.GateReq) error {
-	doms := domainSuffixes(req.Domain)
+	var doms []string
+	if h := domainHost(req.Domain); h != "" {
+		doms = []string{h}
+	}
 	if req.User == nil && len(doms) == 0 && netKey(req) == "" {
 		return nil
 	}
