@@ -113,7 +113,7 @@ func TestManifestEntityPagesAndQuery(t *testing.T) {
 	if want := []string{"/item/"}; !slices.Equal(doc.PagePathPrefixes, want) {
 		t.Errorf("page_path_prefixes %v", doc.PagePathPrefixes)
 	}
-	if want := []string{"p", "id", "day", "site", "kind", "next", "view", "q"}; !slices.Equal(doc.PageQuery, want) {
+	if want := []string{"p", "id", "day", "site", "kind", "next", "view", "q", "m"}; !slices.Equal(doc.PageQuery, want) {
 		t.Errorf("page_query %v", doc.PageQuery)
 	}
 	if want := []string{"sec-fetch-site"}; !slices.Equal(doc.RequestHeaders, want) {

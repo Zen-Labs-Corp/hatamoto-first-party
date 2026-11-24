@@ -10,7 +10,7 @@
   "limits": { "memory_pages": 256, "max_instances": 4 },
   "page_paths": ["/", "/news", "/newest", "/front", "/newcomments", "/ask", "/show", "/jobs", "/best", "/submit", "/threads", "/user", "/from", "/favorites", "/login", "/search"],
   "page_path_prefixes": ["/item/"],
-  "page_query": ["p", "id", "day", "site", "kind", "next", "view", "q"],
+  "page_query": ["p", "id", "day", "site", "kind", "next", "view", "q", "m"],
   "routes": [
     { "method": "POST", "path": "/username", "public": true },
     { "method": "POST", "path": "/profile", "public": true },

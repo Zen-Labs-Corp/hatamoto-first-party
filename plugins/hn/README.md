@@ -43,7 +43,7 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 | `/search` | `hn-search` | P5 | `q`, `p` |
 | every filtered page | `hn-userbar`, injected first | P1 | |
 
-Sections: `hn-feed hn-submit hn-item hn-threads hn-user hn-login hn-saved hn-search hn-userbar` (`hn-item` and `hn-userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys: `p id day site kind next view q`.
+Sections: `hn-feed hn-submit hn-item hn-threads hn-user hn-login hn-saved hn-search hn-userbar` (`hn-item` and `hn-userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
 
 ## Theme-posted forms
 
