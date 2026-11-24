@@ -86,7 +86,7 @@ Public routes are served at `/p/hn/...`; admin routes need the owner.
 | `POST /admin/jobs` | admin | P2 |
 | `POST /vote/comment/{id}` | public | P3 |
 | `POST /flag/{kind}/{id}`, `POST /vouch/{kind}/{id}` | public | P4 |
-| `GET /admin/queue`, `GET /admin/log`, `POST /admin/users/{name}/ban`, `POST /admin/users/{name}/unban`, `POST /admin/domains`, `POST /admin/domains/remove`, `POST /admin/nets/ban`, `POST /admin/nets/unban` | admin | P4 |
+| `GET /admin/queue`, `GET /admin/log`, `POST /admin/users/{name}/ban`, `POST /admin/users/{name}/unban`, `POST /admin/domains`, `POST /admin/domains/remove`, `POST /admin/nets/ban`, `POST /admin/nets/unban`, `POST /admin/items/kill`, `POST /admin/items/restore` | admin | P4 |
 | `POST /favorite/{kind}/{id}`, `POST /unfavorite/{kind}/{id}`, `POST /hide/{id}`, `POST /unhide/{id}` | public | P5 |
 | `GET /rss`, `GET /api/feed/{name}`, `GET /api/item/{id}`, `GET /api/user/{name}` | public | P5 |
 | `GET /state/{entity_id}` | public | P6 |
