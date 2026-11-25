@@ -25,6 +25,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveEventDetail(r.User, r.PathValues["id"]), nil
 		case "/admin/settings":
 			return serveSettings(r.User), nil
+		case "/token":
+			return serveToken(r.Query), nil
 		case "/ticket/{token}":
 			return serveTicket(r.PathValues["token"]), nil
 		case "/ticket/{token}/qr.png":
@@ -33,6 +35,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 	}
 	if r.Method == http.MethodPost {
 		switch r.Pattern {
+		case "/rsvp":
+			return serveRSVP(r), nil
 		case "/admin/events/{id}/types":
 			return serveSaveType(r, r.PathValues["id"]), nil
 		case "/admin/types/{id}/delete":

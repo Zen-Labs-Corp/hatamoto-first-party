@@ -23,6 +23,8 @@
     { "method": "POST", "path": "/admin/types/{id}/delete", "roles": ["owner", "editor"] },
     { "method": "POST", "path": "/admin/events/{id}/fields", "roles": ["owner", "editor"] },
     { "method": "GET", "path": "/admin/settings", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/token", "public": true },
+    { "method": "POST", "path": "/rsvp", "public": true },
     { "method": "GET", "path": "/ticket/{token}", "public": true },
     { "method": "GET", "path": "/ticket/{token}/qr.png", "public": true }
   ],
