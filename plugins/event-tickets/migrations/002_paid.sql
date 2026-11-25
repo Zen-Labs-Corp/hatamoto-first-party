@@ -23,10 +23,12 @@ ALTER TABLE orders
     ADD COLUMN pay_code text UNIQUE,
     ADD COLUMN expires_at timestamptz,
     ADD COLUMN paid_at timestamptz,
+    ADD COLUMN refund_claimed_at timestamptz,
     ADD COLUMN problem text CHECK (problem IS NULL OR problem IN ('amount_mismatch', 'refund_failed'));
 -- orders.lines: snapshot at hold time, [{type, name, qty, unit}].
 -- orders.provider_ref: Stripe session id or PayPal order id.
 -- orders.payment_ref: Stripe payment intent or PayPal capture id.
+-- orders.refund_claimed_at: a refund is in flight; set before the provider is asked, so two refunds cannot both go out.
 -- orders.pay_code: 128-bit random, signed into the return and cancel links.
 CREATE UNIQUE INDEX orders_provider_ref_idx ON orders (provider, provider_ref) WHERE provider_ref IS NOT NULL;
 CREATE INDEX orders_pending_idx ON orders (expires_at) WHERE status = 'pending';

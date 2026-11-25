@@ -106,6 +106,21 @@ func readRefundable(id int64) (*refundable, error) {
 	return o, err
 }
 
+// refundClaimTTL is how long a refund claim holds the order. A claim that was
+// never released (the plugin died after the provider call) frees itself.
+const refundClaimTTL = "2 minutes"
+
+// claimRefund reserves the order for one refund before the provider is asked:
+// of two requests racing with the same refunded_cents only one gets true.
+func claimRefund(id, refunded int64) (bool, error) {
+	var ok bool
+	err := dbJSON(`WITH o AS (UPDATE orders SET refund_claimed_at = now()
+    WHERE id = $1 AND status = 'paid' AND refunded_cents = $2
+    AND (refund_claimed_at IS NULL OR refund_claimed_at < now() - interval '`+refundClaimTTL+`') RETURNING id)
+SELECT to_jsonb(EXISTS (SELECT 1 FROM o))`, &ok, id, refunded)
+	return ok, err
+}
+
 // serveRefund answers POST /admin/orders/{id}/refund. The provider is asked
 // first, with an idempotency key made of the order, the amount already
 // refunded and this amount, so a retry after a database failure reuses the
@@ -138,6 +153,13 @@ func serveRefund(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 	case b.Amount < 1 || b.Amount > o.Total-o.Refunded:
 		return failReply(http.StatusBadRequest, "amount must be between 1 and what is left to refund")
 	}
+	claimed, err := claimRefund(id, o.Refunded)
+	if err != nil {
+		return unavailable()
+	}
+	if !claimed {
+		return failReply(http.StatusConflict, "another refund of this order is in progress, reload it")
+	}
 	s := loadSettings()
 	key := idemKey(o.PayCode, "refund-"+strconv.FormatInt(o.Refunded, 10)+"-"+strconv.FormatInt(b.Amount, 10))
 	switch o.Provider {
@@ -147,6 +169,7 @@ func serveRefund(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 		_, err = paypalRefund(s, o.PaymentRef, b.Amount, o.Currency, key, newDeadline(8*time.Second))
 	}
 	if err != nil {
+		_ = dbExec(`UPDATE orders SET refund_claimed_at = NULL WHERE id = $1`, id) // nothing was refunded: free the order
 		return unavailable()
 	}
 	which, _ := json.Marshal(b.Attendees)
@@ -156,7 +179,7 @@ func serveRefund(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 		Refunded int64  `json:"refunded_cents"`
 	}
 	err = dbJSON(`WITH o AS (UPDATE orders SET refunded_cents = refunded_cents + $2,
-    status = CASE WHEN refunded_cents + $2 = total_cents THEN 'refunded' ELSE status END
+    status = CASE WHEN refunded_cents + $2 = total_cents THEN 'refunded' ELSE status END, refund_claimed_at = NULL
     WHERE id = $1 AND status = 'paid' AND refunded_cents = $3 AND refunded_cents + $2 <= total_cents
     RETURNING id, status, refunded_cents),
  a AS (UPDATE attendees SET status = 'refunded' WHERE order_id IN (SELECT id FROM o) AND status = 'active'

@@ -15,6 +15,7 @@ type orderHost struct {
 	order    string // readRefundable answer
 	list     string
 	refunded string // answer of the refund statement
+	claim    string // answer of the refund claim
 	cancel   string // answer of the order cancel statement
 	hold     string // answer of releaseHold
 	answers  map[string][2]string
@@ -29,6 +30,7 @@ func newOrderHost(t *testing.T) *orderHost {
 		order:    `{"status":"paid","provider":"stripe","pay_code":"paycode","payment_ref":"pi_1","total_cents":2030,"refunded_cents":0,"currency":"USD"}`,
 		list:     `[]`,
 		refunded: `{"status":"refunded","refunded_cents":2030}`,
+		claim:    `true`,
 		cancel:   `true`, hold: `false`,
 		answers: map[string][2]string{
 			"POST https://api.stripe.com/v1/refunds":                   {"200", `{"id":"re_1"}`},
@@ -65,6 +67,10 @@ func newOrderHost(t *testing.T) *orderHost {
 			return cell(h.list)
 		case strings.Contains(sql, "'payment_ref', coalesce(payment_ref"):
 			return cell(h.order)
+		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET refund_claimed_at = now()"):
+			return cell(h.claim)
+		case strings.HasPrefix(sql, "UPDATE orders SET refund_claimed_at = NULL"):
+			return nil
 		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET refunded_cents"):
 			return cell(h.refunded)
 		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET status = 'cancelled'"):
@@ -275,5 +281,43 @@ func TestOrdersList(t *testing.T) {
 	}
 	if code, _ := request(t, sdk.HTTPRequest{Method: "GET", Pattern: "/admin/orders"}); code != 403 {
 		t.Errorf("no user: %d", code)
+	}
+}
+
+// Two refunds of one order must not both reach the provider: the claim comes
+// first, and a lost claim never calls the provider.
+func TestRefundIsClaimedBeforeTheProviderIsAsked(t *testing.T) {
+	h := newOrderHost(t)
+	h.claim = `false`
+	if code, _ := post(t, refundPattern, "42", owner, `{"amount_cents":100}`); code != 409 || len(h.fetches) != 0 || h.stmt("WITH o AS (UPDATE orders SET refunded_cents") != nil {
+		t.Fatalf("lost claim: %d, %d provider calls", code, len(h.fetches))
+	}
+
+	h = newOrderHost(t)
+	if code, _ := post(t, refundPattern, "42", owner, `{"amount_cents":100}`); code != 200 {
+		t.Fatalf("%d", code)
+	}
+	claim, pay := -1, -1
+	for i, c := range h.calls {
+		if strings.HasPrefix(c.sql, "WITH o AS (UPDATE orders SET refund_claimed_at = now()") {
+			claim = i
+		}
+		if strings.HasPrefix(c.sql, "WITH o AS (UPDATE orders SET refunded_cents") {
+			pay = i
+		}
+	}
+	if claim < 0 || pay < claim || !strings.Contains(h.calls[pay].sql, "refund_claimed_at = NULL") {
+		t.Errorf("claim at %d, record at %d", claim, pay)
+	}
+}
+
+func TestRefundClaimIsReleasedWhenTheProviderFails(t *testing.T) {
+	h := newOrderHost(t)
+	h.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"500", `{}`}
+	if code, _ := post(t, refundPattern, "42", owner, `{"amount_cents":100}`); code != 503 {
+		t.Fatalf("%d", code)
+	}
+	if h.stmt("UPDATE orders SET refund_claimed_at = NULL") == nil {
+		t.Error("the claim stays after a failed refund")
 	}
 }
