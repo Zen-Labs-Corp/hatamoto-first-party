@@ -73,6 +73,8 @@ function mount(box, env) {
   const tokenApi = safePath(box.getAttribute("data-token-api"));
   const rows = Array.from(box.querySelectorAll(".hm-event-tickets_ticket-type"));
   const eventId = rows.length ? rows[0].getAttribute("data-event") || "" : "";
+  // An event without ticket types shows nothing: not the box, not the note.
+  if (!rows.length) box.hidden = true;
   if (!api || !tokenApi || !eventId) return null;
 
   const qty = {}; // ticket type id -> seats asked for

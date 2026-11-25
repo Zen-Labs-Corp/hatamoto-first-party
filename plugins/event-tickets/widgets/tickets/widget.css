@@ -10,3 +10,4 @@
 .hm-event-tickets_tickets .row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:0 0 var(--hm-space-2,.5rem)}
 .hm-event-tickets_tickets .field select{padding:.4rem .5rem;font:inherit}
 .hm-event-tickets_tickets .links{margin:var(--hm-space-2,.5rem) 0 0;padding:0;list-style:none}
+.hm-event-tickets_tickets[hidden]{display:none}

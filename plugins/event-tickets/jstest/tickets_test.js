@@ -162,6 +162,9 @@ function fillBuyer(form) {
   assert.equal(setup({ attrs: { "data-api": "//evil.test/x" } }).form, null);
   assert.equal(setup({ attrs: { "data-token-api": "" } }).form, null);
   assert.equal(setup({ rows: [] }).form, null);
+  // no ticket types: the box, with its "Turn on JavaScript" note, is hidden
+  assert.equal(setup({ rows: [] }).b.hidden, true);
+  assert.equal(setup().b.hidden, false);
 
   // booking closed: the token route answers 404
   {
