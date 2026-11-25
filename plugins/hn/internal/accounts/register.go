@@ -32,6 +32,7 @@ const (
 	noticePwConnected   core.Notice = "pw_connected"
 	noticePwHave        core.Notice = "pw_have"
 	noticePwNone        core.Notice = "pw_none"
+	noticePwConfirm     core.Notice = "pw_confirm"
 	noticeEmailBad      core.Notice = "email_bad"
 )
 
@@ -52,6 +53,7 @@ func Register(r *core.Registry) {
 	core.DefineNotice(noticePwWrong, "That is not your current password.")
 	core.DefineNotice(noticePwConnected, "Password connected. You can now log in with your username and password.")
 	core.DefineNotice(noticePwHave, "This account already has a password.")
+	core.DefineNotice(noticePwConfirm, "To connect a password, type your username and the same password twice.")
 	core.DefineNotice(noticePwNone, "Connect a password first.")
 	core.DefineNotice(noticeEmailBad, "That email address does not look right.")
 

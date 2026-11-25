@@ -75,7 +75,7 @@ func passwordHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, er
 
 // connectHandler is the explicit "connect a password" action of an email-link member, and the
 // only route that sends Link: core binds this browser's commenter to the new account, so the
-// member keeps username, comments and karma. A member who already has a login is refused.
+// member keeps username, comments and karma. It needs the typed confirmation above. A member who already has a login is refused.
 func connectHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, error) {
 	return func(req *core.Request) (sdk.HTTPResponse, error) {
 		v, l, early := passwordHead(r, req)
@@ -89,7 +89,13 @@ func connectHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, err
 		if l != nil {
 			return fail(noticePwHave)
 		}
-		hash, err := hashPassword(req.Form().Get("password"))
+		// The link is permanent and core gives no proof of who holds the browser, so the
+		// member must spell out the action: their username and the new password twice.
+		f := req.Form()
+		if f.Get("confirm") != v.Username || f.Get("password") != f.Get("password2") {
+			return fail(noticePwConfirm)
+		}
+		hash, err := hashPassword(f.Get("password"))
 		if err != nil {
 			return fail(noticeTryAgain)
 		}

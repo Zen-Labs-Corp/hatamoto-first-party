@@ -53,3 +53,25 @@ func TestPasswordChangeNeedsTheRevoke(t *testing.T) {
 		t.Fatalf("got %+v revoked %v", resp, f.revoked)
 	}
 }
+
+// Connecting a password is permanent: it needs the member's username and the password twice.
+func TestConnectNeedsConfirmation(t *testing.T) {
+	for name, form := range map[string]url.Values{
+		"nothing typed":    {"password": {goodPw}},
+		"no repeat":        {"password": {goodPw}, "confirm": {"Eve"}},
+		"repeat differs":   {"password": {goodPw}, "password2": {goodPw + "x"}, "confirm": {"Eve"}},
+		"other username":   {"password": {goodPw}, "password2": {goodPw}, "confirm": {"Ann"}},
+		"username omitted": {"password": {goodPw}, "password2": {goodPw}},
+	} {
+		f := loginFixture(t)
+		resp := postFrom(newRegistry(nil), "/password/connect", "k-eve", "same-origin", form)
+		if resp.Headers["Location"] != "/user?id=Eve&m=pw_confirm" || resp.CommenterSession != nil || f.logins[f.byKey["k-eve"].ID] != nil {
+			t.Errorf("%s: got %+v", name, resp)
+		}
+	}
+	f := loginFixture(t)
+	resp := postFrom(newRegistry(nil), "/password/connect", "k-eve", "same-origin", url.Values{"password": {goodPw}, "password2": {goodPw}, "confirm": {"Eve"}})
+	if resp.CommenterSession == nil || !resp.CommenterSession.Link || f.logins[f.byKey["k-eve"].ID] == nil {
+		t.Fatalf("confirmed connect: got %+v", resp)
+	}
+}

@@ -24,9 +24,11 @@
 </form>
 {{end}}{{if $c.connect_action}}<form method="post" action="{{$c.connect_action}}">
 <p><b>Connect a password to this account</b></p>
-<p class="hn-note">Keeps your username, comments and karma. Then you can log in with your username and password.</p>
+<p class="hn-note">Keeps your username, comments and karma. Then you can log in with your username and password, from any browser. This cannot be undone by you. Only connect a password on a device you trust.</p>
 <table>
+<tr><th><label for="hn-pw-confirm">your username:</label></th><td><input id="hn-pw-confirm" type="text" name="confirm" autocomplete="off" required></td></tr>
 <tr><th><label for="hn-pw-connect">password:</label></th><td><input id="hn-pw-connect" type="password" name="password" minlength="8" maxlength="72" autocomplete="new-password" required></td></tr>
+<tr><th><label for="hn-pw-connect2">again:</label></th><td><input id="hn-pw-connect2" type="password" name="password2" minlength="8" maxlength="72" autocomplete="new-password" required></td></tr>
 </table>
 <p><button type="submit">connect password</button></p>
 </form>
