@@ -56,13 +56,18 @@ func (r *Request) WantsJSON() bool {
 	return strings.Contains(r.Headers["accept"], "application/json")
 }
 
-// SameSite reports whether a browser-posted request may be accepted: the
-// Sec-Fetch-Site header is absent, same-origin or none. Cross-site and
-// same-site (another subdomain) are refused.
+// SameSite reports whether a browser-posted request may be accepted. With
+// Fetch Metadata the browser decides: same-origin or none pass, cross-site and
+// same-site (another subdomain) do not. Without Sec-Fetch-Site the request
+// passes only when it has no Origin either: routes cannot see the site's host to
+// compare, and any browser that sends Origin without Fetch Metadata is old.
+// An Origin of "null" counts as present.
 func SameSite(r *Request) bool {
 	switch r.Headers["sec-fetch-site"] {
-	case "", "same-origin", "none":
+	case "same-origin", "none":
 		return true
+	case "":
+		return r.Headers["origin"] == ""
 	}
 	return false
 }
