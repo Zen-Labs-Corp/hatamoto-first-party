@@ -262,6 +262,9 @@ func TestOrdersList(t *testing.T) {
 		t.Fatalf("%d %v", code, body)
 	}
 	st := h.stmt("SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id DESC)")
+	if st == nil || !strings.Contains(st.sql, "'type_name', t.name || coalesce(', ' || a.seat_label, '')") {
+		t.Errorf("an order's tickets print their seats: %+v", st)
+	}
 	if st == nil || !same(st.args[0], "paid") || !same(st.args[1], "e1") || !same(st.args[2], `%50\%\_off%`) || !same(st.args[3], 20) || !same(st.args[4], 101) {
 		t.Fatalf("args %+v", st)
 	}

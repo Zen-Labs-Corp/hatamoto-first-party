@@ -54,7 +54,7 @@ SELECT o.id, o.event_id, coalesce(e.name, '') AS event_name,
   CASE WHEN o.anonymised_at IS NULL THEN o.name ELSE '(removed)' END AS name, o.email, o.status,
   coalesce(o.provider, '') AS provider, o.lines, o.total_cents, o.refunded_cents, coalesce(o.currency, '') AS currency,
   coalesce(o.problem, '') AS problem, o.created_at, o.paid_at,
-  (SELECT coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'type_name', t.name, 'status', a.status) ORDER BY a.id), '[]'::jsonb)
+  (SELECT coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'type_name', `+ticketNameSQL+`, 'status', a.status) ORDER BY a.id), '[]'::jsonb)
      FROM attendees a JOIN ticket_types t ON t.id = a.type_id WHERE a.order_id = o.id) AS tickets
 FROM orders o LEFT JOIN events e ON e.entity_id = o.event_id
 WHERE ($1 = '' OR o.status = $1) AND ($2 = '' OR o.event_id = $2)

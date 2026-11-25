@@ -73,7 +73,7 @@ func newAttendeesHost(t *testing.T) *attendeesHost {
 }
 
 func (h *attendeesHost) csvRow(id int) string {
-	return fmt.Sprintf(`{"attendee_id":%d,"order_id":%d,"ticket_type":"Standard","name":"Ana %d","email":"ana@example.com","status":"active","booked_at":"2027-01-01T12:00:00+00:00","code":"c%d","answers":{}}`, id, id, id, id)
+	return fmt.Sprintf(`{"attendee_id":%d,"order_id":%d,"ticket_type":"Standard","name":"Ana %d","email":"ana@example.com","status":"active","booked_at":"2027-01-01T12:00:00+00:00","code":"c%d","seat":"Stalls A-%d","answers":{}}`, id, id, id, id, id)
 }
 
 func (h *attendeesHost) saw(prefix string) int {
@@ -150,6 +150,9 @@ func TestAttendeeList(t *testing.T) {
 		t.Errorf("waitlist = %+v", body["waitlist"])
 	}
 	c := h.sql[0]
+	if !strings.Contains(c.sql, "t.name || coalesce(', ' || a.seat_label, '') AS type_name") {
+		t.Errorf("the list prints the type without its seat: %s", c.sql)
+	}
 	if c.args[0] != "e1" || fmt.Sprint(c.args[1], c.args[2]) != "101 200" {
 		t.Errorf("page 3 reads 100 rows after 200: %v", c.args)
 	}
@@ -192,15 +195,15 @@ func TestCSVColumnsAndFormulas(t *testing.T) {
 {"key":"terms","label":"=SUM(A1)","kind":"checkbox","required":true}]`
 	rows, n, err := attendeesCSV([]field{{Key: "diet", Label: "Diet"}, {Key: "terms", Label: "=SUM(A1)"}, {Key: "z", Label: "@x"}},
 		[]csvRow{{AttendeeID: 1, OrderID: 2, TicketType: "-VIP", Name: "=SUM(A1)", Email: "a@example.com", Status: "active",
-			Code: "abc", Answers: map[string]string{"diet": "+cmd", "terms": "yes"}}}, maxCSVBytes)
+			Code: "abc", Seat: "=Stalls A-12", Answers: map[string]string{"diet": "+cmd", "terms": "yes"}}}, maxCSVBytes)
 	if err != nil || n != 1 {
 		t.Fatal(n, err)
 	}
 	lines := strings.Split(strings.TrimSpace(rows), "\n")
-	if lines[0] != "attendee_id,order_id,ticket_type,name,email,status,booked_at,ticket_code,Diet,'=SUM(A1),'@x" {
+	if lines[0] != "attendee_id,order_id,ticket_type,name,email,status,booked_at,ticket_code,seat,Diet,'=SUM(A1),'@x" {
 		t.Errorf("header = %s", lines[0])
 	}
-	if lines[1] != "1,2,'-VIP,'=SUM(A1),a@example.com,active,0001-01-01T00:00:00Z,abc,'+cmd,yes," {
+	if lines[1] != "1,2,'-VIP,'=SUM(A1),a@example.com,active,0001-01-01T00:00:00Z,abc,'=Stalls A-12,'+cmd,yes," {
 		t.Errorf("row = %s", lines[1])
 	}
 
@@ -210,7 +213,7 @@ func TestCSVColumnsAndFormulas(t *testing.T) {
 	if resp.Status != 200 || resp.Headers["Content-Type"] != "text/csv; charset=utf-8" || resp.Headers["Content-Disposition"] != `attachment; filename="attendees.csv"` {
 		t.Fatalf("%d %+v", resp.Status, resp.Headers)
 	}
-	if got := strings.Split(resp.Body, "\n")[0]; got != "attendee_id,order_id,ticket_type,name,email,status,booked_at,ticket_code,Diet,'=SUM(A1)" {
+	if got := strings.Split(resp.Body, "\n")[0]; got != "attendee_id,order_id,ticket_type,name,email,status,booked_at,ticket_code,seat,Diet,'=SUM(A1)" {
 		t.Errorf("header = %s", got)
 	}
 }
@@ -236,7 +239,7 @@ func TestCSVHeaderOnlyWithoutAttendees(t *testing.T) {
 	h := newAttendeesHost(t)
 	h.fields = `[{"key":"diet","label":"Diet","kind":"text","options":[],"required":false}]`
 	resp := csvRequest(t, editor, "e1")
-	if resp.Status != 200 || strings.TrimSpace(resp.Body) != "attendee_id,order_id,ticket_type,name,email,status,booked_at,ticket_code,Diet" {
+	if resp.Status != 200 || strings.TrimSpace(resp.Body) != "attendee_id,order_id,ticket_type,name,email,status,booked_at,ticket_code,seat,Diet" {
 		t.Errorf("%d %q", resp.Status, resp.Body)
 	}
 }
@@ -326,5 +329,25 @@ func TestCancelTwiceIs409(t *testing.T) {
 	code, body := post(t, "/admin/attendees/{id}/cancel", "12", editor, "")
 	if code != 409 || body["ok"] != false {
 		t.Errorf("%d %+v", code, body)
+	}
+}
+
+// The export keeps ticket_type the bare type and puts the seat in its own column.
+func TestCSVSeatColumn(t *testing.T) {
+	h := newAttendeesHost(t)
+	h.rows = 2
+	resp := csvRequest(t, editor, "e1")
+	lines := strings.Split(strings.TrimSpace(resp.Body), "\n")
+	if resp.Status != 200 || len(lines) != 3 || !strings.HasSuffix(lines[0], ",ticket_code,seat") || !strings.HasSuffix(lines[2], ",c2,Stalls A-2") {
+		t.Fatalf("%d %q", resp.Status, resp.Body)
+	}
+	var sql string
+	for _, c := range h.sql {
+		if strings.Contains(c.sql, "a.id > $2") {
+			sql = c.sql
+		}
+	}
+	if !strings.Contains(sql, "coalesce(a.seat_label, '') AS seat") || !strings.Contains(sql, "t.name AS ticket_type") {
+		t.Errorf("export SQL: %s", sql)
 	}
 }

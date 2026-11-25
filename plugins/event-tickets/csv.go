@@ -38,6 +38,7 @@ type csvRow struct {
 	Status     string            `json:"status"`
 	BookedAt   time.Time         `json:"booked_at"`
 	Code       string            `json:"code"`
+	Seat       string            `json:"seat"`
 	Answers    map[string]string `json:"answers"`
 }
 
@@ -45,7 +46,7 @@ type csvRow struct {
 // stops before the output would pass maxBytes and reports how many rows it
 // wrote. Every text cell, field labels included, goes through csvCell.
 func attendeesCSV(fields []field, rows []csvRow, maxBytes int) (string, int, error) {
-	head := []string{"attendee_id", "order_id", "ticket_type", "name", "email", "status", "booked_at", "ticket_code"}
+	head := []string{"attendee_id", "order_id", "ticket_type", "name", "email", "status", "booked_at", "ticket_code", "seat"}
 	for _, f := range fields {
 		head = append(head, csvCell(f.Label))
 	}
@@ -57,7 +58,7 @@ func attendeesCSV(fields []field, rows []csvRow, maxBytes int) (string, int, err
 	for i, r := range rows {
 		rec := []string{
 			strconv.FormatInt(r.AttendeeID, 10), strconv.FormatInt(r.OrderID, 10), csvCell(r.TicketType), csvCell(r.Name), csvCell(r.Email),
-			r.Status, r.BookedAt.UTC().Format(time.RFC3339), r.Code,
+			r.Status, r.BookedAt.UTC().Format(time.RFC3339), r.Code, csvCell(r.Seat),
 		}
 		for _, f := range fields {
 			rec = append(rec, csvCell(r.Answers[f.Key]))
@@ -83,7 +84,7 @@ func csvBatchRows(eventID string, after int64) ([]csvRow, error) {
 	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.attendee_id), '[]'::jsonb) FROM (
 SELECT a.id AS attendee_id, a.order_id, t.name AS ticket_type,
   CASE WHEN o.anonymised_at IS NULL THEN o.name ELSE '(removed)' END AS name, o.email, a.status,
-  a.created_at AS booked_at, a.code, o.answers
+  a.created_at AS booked_at, a.code, coalesce(a.seat_label, '') AS seat, o.answers
 FROM attendees a JOIN orders o ON o.id = a.order_id JOIN ticket_types t ON t.id = a.type_id
 WHERE a.event_id = $1 AND a.id > $2 ORDER BY a.id LIMIT $3) x`, &rows, eventID, after, csvBatch)
 	return rows, err
