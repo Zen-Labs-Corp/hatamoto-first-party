@@ -21,7 +21,8 @@
       "entity.deleted": 5000,
       "builder.data": 450,
       "on_cron_mail": 10000,
-      "on_cron_maintain": 10000
+      "on_cron_maintain": 10000,
+      "on_cron_emails": 10000
     }
   },
   "routes": [
@@ -65,7 +66,8 @@
   ],
   "cron": [
     { "name": "mail", "every": "5m" },
-    { "name": "maintain", "every": "1h" }
+    { "name": "maintain", "every": "1h" },
+    { "name": "emails", "every": "5m" }
   ],
   "settings_schema": {
     "type": "object",

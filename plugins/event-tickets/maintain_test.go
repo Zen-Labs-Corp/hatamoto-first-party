@@ -262,6 +262,18 @@ func TestMaintainRetentionBatches(t *testing.T) {
 			t.Errorf("unbounded delete: %s", c.sql)
 		}
 	}
+	for _, table := range []string{"email_sends", "event_changes", "campaigns"} {
+		c := h.first("DELETE FROM " + table)
+		if c == nil || !strings.Contains(c.sql, "interval '13 months'") || h.count("DELETE FROM "+table) != retainBatches {
+			t.Errorf("%s retention: %+v", table, c)
+		}
+	}
+	if h.count("DELETE FROM unsubscribes") != 0 {
+		t.Error("the unsubscribe list is never deleted")
+	}
+	if c := h.first("DELETE FROM campaigns"); c == nil || !strings.Contains(c.sql, "status <> 'sending'") {
+		t.Error("a campaign that is still sending is kept")
+	}
 }
 
 func TestMaintainOverBudgetSkipsLaterSteps(t *testing.T) {

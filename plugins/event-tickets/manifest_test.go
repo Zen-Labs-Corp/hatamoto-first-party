@@ -105,7 +105,7 @@ func TestManifest(t *testing.T) {
 	if len(m.BuilderSources) != 1 || m.BuilderSources[0].Name != "tickets" {
 		t.Errorf("builder_sources = %+v", m.BuilderSources)
 	}
-	if len(m.Cron) != 2 || m.Cron[0].Name != "mail" || m.Cron[0].Every != "5m" || m.Cron[1].Name != "maintain" || m.Cron[1].Every != "1h" {
+	if len(m.Cron) != 3 || m.Cron[2].Name != "emails" || m.Cron[2].Every != "5m" || m.Cron[0].Name != "mail" || m.Cron[0].Every != "5m" || m.Cron[1].Name != "maintain" || m.Cron[1].Every != "1h" {
 		t.Errorf("cron = %+v", m.Cron)
 	}
 
