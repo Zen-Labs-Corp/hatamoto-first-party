@@ -32,13 +32,15 @@ type GateKind int
 
 // The gates: moderation registers them; stories, accounts and moderation's own flag route run them.
 // GateLogin runs before a password is checked (login and password change); Target is the
-// lower-case username when it is a valid name, else empty.
+// lower-case username when it is a valid name, else empty. GateMember runs before the password
+// routes of a signed-in member (change, connect); Target is the member's id.
 const (
 	GateSubmit GateKind = iota
 	GateVote
 	GateSignup
 	GateFlag
 	GateLogin
+	GateMember
 )
 
 // EventKind names an in-process story event.

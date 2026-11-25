@@ -1,6 +1,8 @@
 package accounts
 
 import (
+	"strconv"
+
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 	"hatamoto.dev/sdk"
 )
@@ -18,7 +20,7 @@ func passwordHead(r *core.Registry, req *core.Request) (v *core.User, l *login, 
 		return fail("/login", noticeSigninFirst)
 	}
 	to := userHref(v.Username)
-	if err := r.RunGates(core.GateLogin, &core.GateReq{Kind: core.GateLogin, Req: req, Target: core.UsernameLower(v.Username)}); err != nil {
+	if err := r.RunGates(core.GateMember, &core.GateReq{Kind: core.GateMember, User: v, Req: req, Target: strconv.FormatInt(v.ID, 10)}); err != nil {
 		if req.WantsJSON() {
 			resp := core.JSONError(429, "too many attempts")
 			return nil, nil, &resp

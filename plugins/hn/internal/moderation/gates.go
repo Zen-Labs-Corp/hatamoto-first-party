@@ -12,7 +12,8 @@ const (
 	sqlSubmitCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, EXISTS(SELECT 1 FROM banned_domains d JOIN jsonb_array_elements_text($2::jsonb) h(host) ON h.host = d.domain OR h.host LIKE '%.' || d.domain) AS domain, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net) x`
 	sqlVoteCheck   = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, (SELECT count(*) FROM rate_events WHERE kind = 'vote_user' AND key = $2 AND created_at > $5::timestamptz - interval '1 minute') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_addr' AND key = $3 AND created_at > $5::timestamptz - interval '1 minute') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_net' AND key = $4 AND created_at > $5::timestamptz - interval '1 minute') AS net_n, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $4 AND (expires_at IS NULL OR expires_at > $5::timestamptz)) AS net, COALESCE((SELECT item_no FROM story_meta WHERE entity_id::text = $6), 0) AS story_no, (SELECT count(*) FROM rate_events WHERE kind = 'vote_ring' AND key = $7 AND created_at > $5::timestamptz - interval '24 hours') AS ring_n) x`
 	sqlSignupCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $1 AND (expires_at IS NULL OR expires_at > $3::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'signup_net' AND key = $1 AND created_at > $3::timestamptz - interval '1 hour') AS net_n, (SELECT count(*) FROM rate_events WHERE kind = 'signup_addr' AND key = $2 AND created_at > $3::timestamptz - interval '1 hour') AS addr_n) x`
-	sqlLoginCheck  = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'login_user' AND key = $1 AND created_at > $4::timestamptz - interval '1 hour') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_addr' AND key = $2 AND created_at > $4::timestamptz - interval '1 hour') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_net' AND key = $3 AND created_at > $4::timestamptz - interval '1 hour') AS net_n) x`
+	sqlLoginCheck  = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'login_user' AND key = $1 AND created_at > $4::timestamptz - interval '1 hour') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_user_all' AND key = $5 AND created_at > $4::timestamptz - interval '1 hour') AS user_all_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_addr' AND key = $2 AND created_at > $4::timestamptz - interval '1 hour') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_net' AND key = $3 AND created_at > $4::timestamptz - interval '1 hour') AS net_n) x`
+	sqlMemberCheck = `SELECT to_jsonb(x) FROM (SELECT count(*) AS n FROM rate_events WHERE kind = 'pw_member' AND key = $1 AND created_at > $2::timestamptz - interval '1 hour') x`
 	sqlBlocked     = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked) x`
 	sqlRateRecord  = `INSERT INTO rate_events (kind, key, created_at) SELECT e->>'kind', e->>'key', $1::timestamptz FROM jsonb_array_elements($2::jsonb) e`
 )
@@ -23,6 +24,7 @@ func registerGates(r *core.Registry) {
 	r.Gate(core.GateSignup, gateSignup)
 	r.Gate(core.GateFlag, gateFlag)
 	r.Gate(core.GateLogin, gateLogin)
+	r.Gate(core.GateMember, gateMember)
 }
 
 func nowArg() string { return core.Now().UTC().Format(time.RFC3339Nano) }
@@ -188,13 +190,23 @@ func gateLogin(req *core.GateReq) error {
 		net, netLimit = siteKey, loginSitePerHour
 	}
 	var res struct {
-		Net   bool
-		UserN int `json:"user_n"`
-		AddrN int `json:"addr_n"`
-		NetN  int `json:"net_n"`
+		Net      bool
+		UserN    int `json:"user_n"`
+		UserAllN int `json:"user_all_n"`
+		AddrN    int `json:"addr_n"`
+		NetN     int `json:"net_n"`
+	}
+	// A name is limited per network, so a third party cannot lock a member out of
+	// their own network; the all-networks cap is only a brute-force backstop.
+	userKey := ""
+	if user != "" {
+		userKey = user + ":" + net
+		if net == "" {
+			userKey = user + ":" + addr
+		}
 	}
 	now := nowArg()
-	if err := core.QueryJSON(sqlLoginCheck, &res, user, addr, net, now); err != nil {
+	if err := core.QueryJSON(sqlLoginCheck, &res, userKey, addr, net, now, user); err != nil {
 		if keyless {
 			return refusal{nLoginRate} // no per-client limit to fall back on: fail closed
 		}
@@ -203,11 +215,31 @@ func gateLogin(req *core.GateReq) error {
 	if res.Net {
 		return refusal{nNet}
 	}
-	userOver, addrOver, netOver := res.UserN >= loginUserPerHour, res.AddrN >= loginAddrPerHour, res.NetN >= netLimit
-	recordRates(now, "login_user", keyBelow(user, userOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
-	if (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver) {
+	userOver, allOver := res.UserN >= loginUserPerHour, res.UserAllN >= loginUserAllPerHour
+	addrOver, netOver := res.AddrN >= loginAddrPerHour, res.NetN >= netLimit
+	recordRates(now, "login_user", keyBelow(userKey, userOver), "login_user_all", keyBelow(user, allOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
+	if (user != "" && (userOver || allOver)) || (addr != "" && addrOver) || (net != "" && netOver) {
 		return refusal{nLoginRate}
 	}
+	return nil
+}
+
+// gateMember limits the password routes of a signed-in member per member, in a bucket of its
+// own: the login limits are not touched, so nobody else's traffic can block the member's
+// profile forms. Target is the member's id. A host error fails open (a session is needed anyway).
+func gateMember(req *core.GateReq) error {
+	if req.Target == "" {
+		return nil
+	}
+	var res struct{ N int }
+	now := nowArg()
+	if err := core.QueryJSON(sqlMemberCheck, &res, req.Target, now); err != nil {
+		return nil
+	}
+	if res.N >= memberPwPerHour {
+		return refusal{nLoginRate}
+	}
+	recordRates(now, "pw_member", req.Target)
 	return nil
 }
 

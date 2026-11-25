@@ -53,15 +53,17 @@ var noticeTexts = map[core.Notice]string{
 
 // Rate limits (plan decision 6).
 const (
-	commentFlagsToDead = 3
-	voteUserPerMin     = 30
-	voteAddrPerMin     = 30
-	voteNetPerMin      = 60
-	signupNetPerHour   = 5
-	signupAddrPerHour  = 3
-	loginAddrPerHour   = 20
-	loginNetPerHour    = 60
-	loginUserPerHour   = 10
+	commentFlagsToDead  = 3
+	voteUserPerMin      = 30
+	voteAddrPerMin      = 30
+	voteNetPerMin       = 60
+	signupNetPerHour    = 5
+	signupAddrPerHour   = 3
+	loginAddrPerHour    = 20
+	loginNetPerHour     = 60
+	loginUserPerHour    = 10  // per username and network
+	loginUserAllPerHour = 100 // per username, all networks: the brute-force backstop
+	memberPwPerHour     = 10  // change/connect password per member
 	// Without client.key every request shares one site-wide bucket (siteKey).
 	signupSitePerHour = 20
 	loginSitePerHour  = 120

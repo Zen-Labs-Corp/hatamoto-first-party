@@ -358,14 +358,14 @@ func TestGates(t *testing.T) {
 			m, _ := row.(map[string]any)
 			kinds += m["kind"].(string) + " "
 		}
-		if kinds != "login_user login_addr login_net " {
+		if kinds != "login_user login_user_all login_addr login_net " {
 			t.Fatalf("rate rows = %q", kinds)
 		}
 		t.Run("a key over its limit is not recorded", func(t *testing.T) {
 			db := counts(false, 10, 0, 0)
 			wantRefusal(t, run(db, "ann"), nLoginRate)
 			rows, _ := db.Execs[0].Args[1].([]any)
-			if len(db.Execs) != 1 || len(rows) != 2 {
+			if len(db.Execs) != 1 || len(rows) != 3 {
 				t.Fatalf("execs = %+v", db.Execs)
 			}
 		})
@@ -385,6 +385,21 @@ func TestGates(t *testing.T) {
 				t.Fatalf("err = %v", err)
 			}
 		})
+		t.Run("a name is limited per network, with an all-network backstop", func(t *testing.T) {
+			var args []any
+			db := &fakeDB{Query: func(_ string, a []any) (any, error) {
+				args = a
+				return jsonRow(map[string]any{"user_n": 0, "user_all_n": loginUserAllPerHour}), nil
+			}}
+			wantRefusal(t, run(db, "ann"), nLoginRate)
+			if args[0] != "ann:net1" || args[4] != "ann" {
+				t.Fatalf("user keys = %v, %v", args[0], args[4])
+			}
+			// another network's attempts do not count against this one: only the key differs
+			if err := run(counts(false, 0, 0, 0), "ann"); err != nil {
+				t.Fatalf("err = %v", err)
+			}
+		})
 		t.Run("no keys: one site-wide bucket", func(t *testing.T) {
 			keyless := func(db *fakeDB) error {
 				install(t, db)
@@ -399,6 +414,28 @@ func TestGates(t *testing.T) {
 			install(t, &fakeDB{Query: func(string, []any) (any, error) { return nil, hostErr(sdk.ErrUnavailable) }})
 			wantRefusal(t, r.RunGates(core.GateLogin, gateReq(core.GateLogin, nil, "", "", "")), nLoginRate)
 		})
+	})
+
+	t.Run("member", func(t *testing.T) {
+		run := func(n int) (*fakeDB, error) {
+			db := &fakeDB{Query: func(sql string, _ []any) (any, error) {
+				if sql != sqlMemberCheck {
+					t.Errorf("unexpected query %q", sql)
+				}
+				return jsonRow(map[string]any{"n": n}), nil
+			}}
+			install(t, db)
+			req := gateReq(core.GateMember, member(10), "", "", "")
+			req.Target = "7"
+			return db, r.RunGates(core.GateMember, req)
+		}
+		wantRefusalErr := func(err error) { wantRefusal(t, err, nLoginRate) }
+		_, err := run(memberPwPerHour)
+		wantRefusalErr(err)
+		db, err := run(memberPwPerHour - 1)
+		if err != nil || len(db.Execs) != 1 {
+			t.Fatalf("err = %v, execs = %+v", err, db.Execs)
+		}
 	})
 
 	t.Run("flag", func(t *testing.T) {
