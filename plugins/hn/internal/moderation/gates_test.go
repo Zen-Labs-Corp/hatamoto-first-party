@@ -117,11 +117,15 @@ func TestGates(t *testing.T) {
 				return jsonRow(map[string]any{"blocked": blocked, "user_n": u, "addr_n": a, "net_n": n}), nil
 			}}
 		}
+		netBanned := &fakeDB{Query: func(sql string, _ []any) (any, error) {
+			return jsonRow(map[string]any{"net": true}), nil
+		}}
 		cases := []struct {
 			name string
 			db   *fakeDB
 			want core.Notice
 		}{
+			{"net banned", netBanned, nNet},
 			{"blocked", counts(true, 0, 0, 0), nBlocked},
 			{"user flood", counts(false, 30, 0, 0), nVoteRate},
 			{"addr flood", counts(false, 0, 30, 0), nVoteRate},
@@ -141,6 +145,16 @@ func TestGates(t *testing.T) {
 				}
 			})
 		}
+		t.Run("a banned network records nothing and the query reads net_bans", func(t *testing.T) {
+			install(t, netBanned)
+			wantRefusal(t, r.RunGates(core.GateVote, gateReq(core.GateVote, member(10), "net1", "addr1", "")), nNet)
+			if len(netBanned.Execs) != 0 {
+				t.Fatalf("execs = %+v", netBanned.Execs)
+			}
+			if !strings.Contains(sqlVoteCheck, "net_bans WHERE net_key = $4") || !strings.Contains(sqlVoteCheck, "expires_at > $5::timestamptz") {
+				t.Error("vote query does not read net_bans with the expiry clause")
+			}
+		})
 		t.Run("records rate rows", func(t *testing.T) {
 			db := counts(false, 0, 0, 0)
 			install(t, db)
