@@ -108,11 +108,12 @@ SELECT coalesce((SELECT jsonb_build_object('order_id', o.id, 'code', a.code) FRO
 }
 
 // leaveWaitlist ends a waiting entry or an offer. An offer holds a seat, which
-// goes back in the same statement; freed is that type, 0 when none was held.
+// goes back in the same statement (RETURNING sees the new status, so an offer
+// is told by offered_at, which only an offer sets); freed is that type, 0 when none was held.
 func leaveWaitlist(waitCode string) (freed int64, err error) {
 	var tid *int64
 	err = dbJSON(`WITH w AS (UPDATE waitlist SET status = 'left' WHERE code = $1 AND status IN ('waiting', 'offered')
-    RETURNING type_id, status = 'offered' AS held),
+    RETURNING type_id, offered_at IS NOT NULL AS held),
  t AS (UPDATE ticket_types t SET taken = taken - 1, touched_at = now() FROM w WHERE t.id = w.type_id AND w.held RETURNING t.id)
 SELECT coalesce((SELECT to_jsonb(id) FROM t), 'null'::jsonb)`, &tid, waitCode)
 	if tid != nil {

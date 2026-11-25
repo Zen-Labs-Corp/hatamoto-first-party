@@ -308,3 +308,25 @@ func TestWaitlistForgedTokens(t *testing.T) {
 		t.Errorf("unknown entry: %d", r.Status)
 	}
 }
+
+// RETURNING sees the row after the update, so the held flag must not read the
+// status the same statement just set to 'left'.
+func TestLeaveStatementDoesNotReadNewStatusForHeld(t *testing.T) {
+	h := newWaitHost(t)
+	h.leave = `7`
+	if _, err := leaveWaitlist("c"); err != nil {
+		t.Fatal(err)
+	}
+	var sql string
+	for _, c := range h.calls {
+		if strings.Contains(c.sql, "SET status = 'left'") {
+			sql = c.sql
+		}
+	}
+	if sql == "" {
+		t.Fatal("no leave statement")
+	}
+	if strings.Contains(sql, "status = 'offered' AS held") || !strings.Contains(sql, "offered_at IS NOT NULL AS held") {
+		t.Errorf("held must be derived from offered_at, got %s", sql)
+	}
+}
