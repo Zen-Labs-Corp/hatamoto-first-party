@@ -84,13 +84,13 @@ function queueRow(it) {
     cell(label),
     cell(it.title),
     cell(it.by),
-    cell(`${it.flags} flags`),
+    cell(it.flags ? `${it.flags} flags` : ""),
     cell(it.dead ? `dead (${it.cause})` : "", it.dead ? "dead" : ""),
     el("td", { className: "actions" }, ...buttons));
 }
 
 function renderQueue(data) {
-  return table(["Item", "Title", "By", "Flags", "State", ""], (data.items || []).map(queueRow), "Nothing is flagged.");
+  return table(["Item", "Title", "By", "Flags", "State", ""], (data.items || []).map(queueRow), "Nothing is flagged or dead.");
 }
 
 // ---- Users -----------------------------------------------------------------

@@ -342,6 +342,10 @@ func TestAdminViews(t *testing.T) {
 	if _, leaked := items[1].(map[string]any)["body_html"]; leaked {
 		t.Error("body_html leaked")
 	}
+	killed := []map[string]any{{"kind": "story", "id": storyUUID, "item_no": 5, "title": "Spam", "by": "bob", "flags": 0, "dead": true, "cause": "owner", "body_html": ""}}
+	if it, _ := view(answer(sqlQueue, killed), "queue")["items"].([]any); len(it) != 1 || it[0].(map[string]any)["flags"] != float64(0) || it[0].(map[string]any)["dead"] != true || it[0].(map[string]any)["cause"] != "owner" {
+		t.Fatalf("kills-only row = %v", it)
+	}
 	if out := view(answer(sqlQueue, []any{}), ""); len(out["items"].([]any)) != 0 {
 		t.Fatalf("default view = %v", out)
 	}
@@ -378,6 +382,9 @@ func TestQueueSQLShape(t *testing.T) {
 	}
 	if !strings.Contains(inner, "WHERE s.entity_id IS NOT NULL OR cm.comment_id IS NOT NULL") {
 		t.Error("orphaned flags are not excluded")
+	}
+	if !strings.Contains(inner, "FROM kills k WHERE NOT EXISTS (SELECT 1 FROM flags fl") {
+		t.Error("kills without flags are not in the queue source")
 	}
 	if !strings.Contains(sqlQueue, "ORDER BY x.dead, x.flags DESC") {
 		t.Error("outer order puts dead items first")

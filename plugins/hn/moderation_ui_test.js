@@ -58,6 +58,7 @@ const fixtures = {
   "GET /admin/queue:queue": { items: [
     { kind: "story", id: "11111111-1111-1111-1111-111111111111", item_no: 7, title: "<b>x</b> story", by: "<i>bob</i>", flags: 5, dead: false, cause: "" },
     { kind: "comment", id: "22222222-2222-2222-2222-222222222222", item_no: 7, title: "a comment", by: "", flags: 2, dead: true, cause: "flags" },
+    { kind: "story", id: "33333333-3333-3333-3333-333333333333", item_no: 9, title: "owner killed", by: "", flags: 0, dead: true, cause: "owner" },
   ] },
   "GET /admin/queue:users": { users: [{ name: "<b>x</b>", mode: "dead", reason: "spam", created_at: "2026-01-02T03:04:05Z" }] },
   "GET /admin/queue:domains": { domains: [{ domain: "example.com", reason: "spam", created_at: "2026-01-02T03:04:05Z" }] },
@@ -100,6 +101,7 @@ async function boot() {
   const queue = t.cache["#body-queue"].children[0];
   const queueText = texts(queue);
   check("queue rows render", queueText.includes("#7") && queueText.includes("5 flags") && queueText.includes("dead (flags)"));
+  check("a dead item that was never flagged shows its cause and no flag count", queueText.includes("#9") && queueText.includes("dead (owner)") && !queueText.includes("0 flags"));
   check("markup stays text", queueText.includes("<b>x</b> story") && queueText.includes("<i>bob</i>") && !queue.children.some((c) => c.tag === "b"));
   check("no ban button without author", (() => { let n = 0; walk(queue, (_, x) => { if (x && x.textContent === "ban user") n++; }); return n === 1; })());
 
