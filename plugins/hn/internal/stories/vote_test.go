@@ -265,3 +265,38 @@ func TestStoryVoteRingRepro(t *testing.T) {
 		t.Errorf("points = %d, want 3", points)
 	}
 }
+
+// The ring budget is used only by a vote that is really stored: a repeat "up" (double click,
+// stale page) calls Stored no more, and a lost race (no row inserted) does not either.
+func TestStoryVoteReportsOnlyStoredVotes(t *testing.T) {
+	pinNow(t, voteNow)
+	run := func(row map[string]any, rows int64, ring bool) (stored []bool) {
+		db := voteDB(row)
+		db.Exec = func(string, []any) (int64, error) { return rows, nil }
+		install(t, db)
+		r := newRegistry(t, map[string]func(*core.Registry){"moderation": func(r *core.Registry) {
+			r.Gate(core.GateVote, func(g *core.GateReq) error {
+				g.Ring = ring
+				g.Stored = func(counted bool) { stored = append(stored, counted) }
+				return nil
+			})
+		}})
+		vote(t, r, "42", nil, "k1", true)
+		return stored
+	}
+	if got := run(nil, 1, false); len(got) != 1 || !got[0] {
+		t.Errorf("new counted vote: %v", got)
+	}
+	if got := run(nil, 1, true); len(got) != 1 || got[0] {
+		t.Errorf("new uncounted vote: %v", got)
+	}
+	if got := run(map[string]any{"voted_at": "2026-01-02T11:30:00Z"}, 1, false); len(got) != 0 {
+		t.Errorf("repeat vote: %v", got)
+	}
+	if got := run(nil, 0, false); len(got) != 0 {
+		t.Errorf("lost race (counted): %v", got)
+	}
+	if got := run(nil, 0, true); len(got) != 0 {
+		t.Errorf("lost race (uncounted): %v", got)
+	}
+}

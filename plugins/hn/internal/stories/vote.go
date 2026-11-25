@@ -95,13 +95,21 @@ UPDATE story_meta SET points = points - 1, score = `+scoreSQL("points - 1", "$3"
 	}
 	if gr.Ring {
 		// stored, shown as voted, but no points, score or karma
-		if _, err := core.Exec(`INSERT INTO story_votes (story_id, user_id, created_at, counted) VALUES ($1::uuid, $2, $3::timestamptz, false) ON CONFLICT DO NOTHING`, ref.EntityID, u.ID, nowArg()); err != nil {
+		n, err := core.Exec(`INSERT INTO story_votes (story_id, user_id, created_at, counted) VALUES ($1::uuid, $2, $3::timestamptz, false) ON CONFLICT DO NOTHING`, ref.EntityID, u.ID, nowArg())
+		if err != nil {
 			return refused(nError)
+		}
+		if n == 1 && gr.Stored != nil {
+			gr.Stored(false)
 		}
 		return voteResult{Points: ref.Points, Voted: true}
 	}
-	return applyVote(ref, u, 1, `WITH v AS (INSERT INTO story_votes (story_id, user_id, created_at) VALUES ($1::uuid, $2, $3::timestamptz) ON CONFLICT DO NOTHING RETURNING story_id)
+	res := applyVote(ref, u, 1, `WITH v AS (INSERT INTO story_votes (story_id, user_id, created_at) VALUES ($1::uuid, $2, $3::timestamptz) ON CONFLICT DO NOTHING RETURNING story_id)
 UPDATE story_meta SET points = points + 1, score = `+scoreSQL("points + 1", "$3")+` FROM v WHERE story_meta.entity_id = v.story_id`)
+	if res.Notice == "" && res.Points == ref.Points+1 && gr.Stored != nil {
+		gr.Stored(true)
+	}
+	return res
 }
 
 // applyVote runs the one statement of a vote and, when it changed a row, moves the author's karma.

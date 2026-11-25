@@ -130,22 +130,26 @@ func gateVote(req *core.GateReq) error {
 	rateRefused := (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver)
 	// The ring check only marks a vote the rate limits let through: the caller
 	// stores a marked story vote without counting it, the voter is told nothing.
-	ringOver := !rateRefused && res.StoryNo > 0 && ring != "" && res.RingN >= ringVotesPerNet
-	ringKey := ""
-	if !rateRefused && res.StoryNo > 0 {
-		ringKey = keyBelow(ring, ringOver)
-	}
-	recordRates(now, "vote_user", keyBelow(user, userOver), "vote_addr", keyBelow(addr, addrOver), "vote_net", keyBelow(net, netOver), "vote_ring", ringKey)
+	ringOver := res.RingN >= ringVotesPerNet
+	recordRates(now, "vote_user", keyBelow(user, userOver), "vote_addr", keyBelow(addr, addrOver), "vote_net", keyBelow(net, netOver))
 	if rateRefused {
 		return refusal{nVoteRate}
 	}
-	if ringOver {
-		req.Ring = true
-		prefix := net
-		if len(prefix) > 8 {
-			prefix = prefix[:8]
+	if res.StoryNo > 0 && ring != "" {
+		// Only a vote that is really stored uses the network's budget: a double click, a
+		// repeat vote or an unvote and revote must not (the caller reports it).
+		req.Ring = ringOver
+		req.Stored = func(counted bool) {
+			if counted {
+				recordRates(now, "vote_ring", ring)
+				return
+			}
+			prefix := net
+			if len(prefix) > 8 {
+				prefix = prefix[:8]
+			}
+			writeLog("ring", "ring-vote", "story:"+strconv.FormatInt(res.StoryNo, 10), "net:"+prefix)
 		}
-		writeLog("ring", "ring-vote", "story:"+strconv.FormatInt(res.StoryNo, 10), "net:"+prefix)
 	}
 	return nil
 }

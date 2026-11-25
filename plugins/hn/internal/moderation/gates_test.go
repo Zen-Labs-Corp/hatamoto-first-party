@@ -188,6 +188,10 @@ func TestGates(t *testing.T) {
 				if err := r.RunGates(core.GateVote, g); err != nil || g.Ring {
 					t.Fatalf("ring_n %d: err %v ring %v", n, err, g.Ring)
 				}
+				if rows := ringRows(db); len(rows) != 0 {
+					t.Fatalf("ring_n %d: the gate recorded %v before a vote was stored", n, rows)
+				}
+				g.Stored(true)
 				rows := ringRows(db)
 				if len(rows) != 1 || rows[0]["key"] != "net1:"+g.Target {
 					t.Fatalf("ring_n %d: rows = %v", n, rows)
@@ -205,6 +209,13 @@ func TestGates(t *testing.T) {
 			if err := r.RunGates(core.GateVote, g); err != nil || !g.Ring {
 				t.Fatalf("err %v ring %v", err, g.Ring)
 			}
+			if rows := ringRows(db); len(rows) != 0 {
+				t.Fatalf("rows = %v", rows)
+			}
+			if logs := execs(db, sqlLogInsert); len(logs) != 0 {
+				t.Fatalf("logged before an uncounted vote was stored: %+v", logs)
+			}
+			g.Stored(false)
 			if rows := ringRows(db); len(rows) != 0 {
 				t.Fatalf("rows = %v", rows)
 			}
@@ -233,7 +244,7 @@ func TestGates(t *testing.T) {
 			install(t, db)
 			g = vote("net1")
 			wantRefusal(t, r.RunGates(core.GateVote, g), nVoteRate)
-			if g.Ring || len(ringRows(db)) != 0 {
+			if g.Ring || g.Stored != nil || len(ringRows(db)) != 0 {
 				t.Fatalf("rate refusal: ring %v rows %v", g.Ring, ringRows(db))
 			}
 			// a query error fails open: counted

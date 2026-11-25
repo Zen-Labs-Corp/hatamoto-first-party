@@ -63,6 +63,9 @@ type GateReq struct {
 	// gave this story its counted votes for the day; the caller stores the vote
 	// without counting it. Story votes only; never a refusal.
 	Ring bool
+	// Stored is set by the vote gate and called by the caller once a story vote row was
+	// really inserted: counted is false for a Ring vote. A repeat vote never calls it.
+	Stored func(counted bool)
 }
 
 // Item is a story or comment row, for row actions.
