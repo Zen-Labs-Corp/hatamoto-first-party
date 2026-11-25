@@ -11,6 +11,7 @@
     <nav class="tabs">
       <button id="tab-events" type="button" class="tab">Events</button>
       <button id="tab-attendees" type="button" class="tab">Attendees</button>
+      <button id="tab-orders" type="button" class="tab">Orders</button>
       <button id="tab-settings" type="button" class="tab">Settings</button>
     </nav>
     <p id="notice" class="notice" hidden></p>
@@ -33,6 +34,15 @@
         <h2 id="ed-title"></h2>
         <div id="ed-types"></div>
         <button id="ed-add" type="button">Add ticket type</button>
+        <div id="ed-bundle-box">
+          <h2>Bundle discounts</h2>
+          <p class="muted">A discount when a buyer takes enough tickets. Only the best matching rule applies. Up to 10.</p>
+          <div id="ed-bundles"></div>
+          <div class="row">
+            <button id="ed-add-bundle" type="button">Add bundle rule</button>
+            <button id="ed-save-bundles" type="button">Save bundles</button>
+          </div>
+        </div>
         <h2>Questions for the buyer</h2>
         <p class="muted">Asked once per booking, next to name and email. Up to 10.</p>
         <div id="ed-fields"></div>
@@ -65,6 +75,64 @@
       <h2>Export CSV</h2>
       <p class="muted">Select the path, copy it, put your site address in front and open it in the browser while you are signed in to the admin.</p>
       <input id="at-csv" class="copy" type="text" readonly>
+    </section>
+
+    <section id="panel-orders" hidden>
+      <div class="row">
+        <label>Status <select id="or-status"></select></label>
+        <label>Event <select id="or-event"></select></label>
+        <label>Search <input id="or-search" type="text" maxlength="100" placeholder="Name or email"></label>
+        <button id="or-go" type="button">Filter</button>
+      </div>
+      <p id="or-state" class="muted"></p>
+      <table id="or-table" hidden>
+        <thead>
+          <tr><th>Order</th><th>Buyer</th><th>Tickets</th><th>Total</th><th>Paid with</th><th>Status</th><th>Action</th></tr>
+        </thead>
+        <tbody id="or-rows"></tbody>
+      </table>
+      <button id="or-more" type="button" hidden>More</button>
+
+      <section id="or-refund" class="panel-box" hidden>
+        <h2 id="or-refund-title"></h2>
+        <div class="row">
+          <label>Amount <input id="or-refund-amount" type="text" inputmode="decimal" maxlength="14"></label>
+          <span id="or-refund-cur" class="muted"></span>
+        </div>
+        <p class="muted">Tickets to take back (a refund of everything left takes back all of them):</p>
+        <div id="or-refund-tickets"></div>
+        <div class="row">
+          <span id="or-refund-act"></span>
+          <button id="or-refund-close" type="button">Close</button>
+        </div>
+      </section>
+
+      <h2>Coupons</h2>
+      <p id="cp-state" class="muted"></p>
+      <table id="cp-table" hidden>
+        <thead>
+          <tr><th>Code</th><th>Discount</th><th>Used</th><th>Until</th><th>Scope</th><th>Action</th></tr>
+        </thead>
+        <tbody id="cp-rows"></tbody>
+      </table>
+      <div id="cp-form" class="panel-box">
+        <h2 id="cp-title">New coupon</h2>
+        <div class="row">
+          <label>Code <input id="cp-code" type="text" maxlength="32"></label>
+          <label>Discount <select id="cp-kind"></select></label>
+          <label>Value <input id="cp-value" type="text" inputmode="decimal" maxlength="14"></label>
+          <label>Uses <input id="cp-max" type="number" min="1" max="1000000" placeholder="no limit"></label>
+          <label>Until <input id="cp-until" type="date"></label>
+          <label>Event <select id="cp-event"></select></label>
+          <label><input id="cp-active" type="checkbox" checked> Active</label>
+        </div>
+        <div class="row">
+          <button id="cp-save" type="button">Save coupon</button>
+          <button id="cp-reset" type="button">Clear</button>
+        </div>
+      </div>
+      <p id="or-bundles" class="muted"></p>
+      <p id="or-fees" class="muted"></p>
     </section>
 
     <section id="panel-settings" hidden>

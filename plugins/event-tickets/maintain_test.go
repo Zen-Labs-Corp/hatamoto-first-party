@@ -199,7 +199,7 @@ func TestMaintainDriftGuardsOnTouchedAt(t *testing.T) {
 	if n := strings.Count(c.sql, "touched_at < now() - interval '10 minutes'"); n != 2 {
 		t.Errorf("the touched_at guard appears %d times, want 2", n)
 	}
-	for _, want := range []string{"a.status = 'active'", "w.status = 'offered'", "t.taken <> x.n"} {
+	for _, want := range []string{"a.status IN ('active', 'pending')", "w.status = 'offered'", "t.taken <> x.n"} {
 		if !strings.Contains(c.sql, want) {
 			t.Errorf("drift statement lacks %q", want)
 		}
@@ -309,5 +309,34 @@ func TestMaintainClosesWaitlistsOfClosedEventsWithoutMail(t *testing.T) {
 	}
 	if i, j := h.order("WITH c AS"), h.order("WITH e AS"); i < 0 || j < 0 || i > j {
 		t.Error("closed events are cleared before offers expire and promote")
+	}
+}
+
+// Abandoned checkouts, handled payment events and queued refund mail are cleaned
+// up in bounded batches, and only unpaid orders are deleted.
+func TestMaintainRetentionOfPaidState(t *testing.T) {
+	h := newMaintainHost(t)
+	maintain(maintainBudget)
+	o := h.first("DELETE FROM orders")
+	if o == nil {
+		t.Fatal("abandoned checkouts are never deleted")
+	}
+	for _, want := range []string{"status IN ('expired', 'cancelled')", "paid_at IS NULL", "provider IS NOT NULL", "payment_ref IS NULL", "problem IS NULL", "refunded_cents = 0", "interval '7 days'", "LIMIT $2", "$1::int"} {
+		if !strings.Contains(o.sql, want) {
+			t.Errorf("abandoned-order delete must keep orders that hold money, it lacks %q", want)
+		}
+	}
+	p := h.first("DELETE FROM payment_events")
+	if p == nil || !strings.Contains(p.sql, "interval '90 days'") || !strings.Contains(p.sql, "LIMIT $2") {
+		t.Errorf("payment events are deleted after 90 days: %+v", p)
+	}
+	q := h.first("DELETE FROM mail_queue")
+	if !strings.Contains(q.sql, "q.kind IN ('confirm', 'refund')") || !strings.Contains(q.sql, "q.kind NOT IN ('confirm', 'refund')") {
+		t.Errorf("a refund mail refers to an order, not a waitlist entry: %s", q.sql)
+	}
+	for _, c := range h.calls {
+		if len(c.args) == 2 && strings.HasPrefix(c.sql, "DELETE FROM") && (c.args[0] != 24 || c.args[1] != retainBatch) {
+			t.Errorf("every retention step is called as (months, batch): %v", c.args)
+		}
 	}
 }

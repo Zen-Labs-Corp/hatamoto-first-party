@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"html/template"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -17,6 +18,7 @@ const (
 	kindConfirm        = "confirm"
 	kindWaitlistJoined = "waitlist_joined"
 	kindWaitlistOffer  = "waitlist_offer"
+	kindRefund         = "refund"
 
 	maxMailAttempts = 10
 	mailBackoff     = 5 * time.Minute
@@ -26,7 +28,8 @@ const (
 
 func init() {
 	guest.OnCron("mail", func(sdk.CronEvent) error {
-		drainMail(8*time.Second, 100)
+		expireHoldsStep(2 * time.Second)
+		drainMail(6*time.Second, 100)
 		return nil
 	})
 }
@@ -77,9 +80,13 @@ type confirmData struct {
 	When      string
 	OnlineURL string
 	Tickets   []mailTicket
-	Notes     []string // the confirmation_text, one entry per line
+	Receipt   []receiptRow // what was paid, empty for a free order
+	Notes     []string     // the confirmation_text, one entry per line
 	Signature string
 }
+
+// receiptRow is one line of the receipt in the confirmation of a paid order.
+type receiptRow struct{ Label, Value string }
 
 // mailTicket is one ticket of a mail. Img is empty when no origin is known.
 type mailTicket struct {
@@ -93,7 +100,11 @@ var confirmTmpl = template.Must(template.New("confirm").Parse(`<p>{{.Greeting}}<
 {{end}}{{range .Tickets}}<hr>
 <p><strong>{{.Type}}</strong><br>Ticket code: {{.Code}}<br>Ticket page: <a href="{{.Link}}">{{.Link}}</a></p>
 {{if .Img}}<p><img src="{{.Img}}" width="240" height="240" alt="QR code for ticket {{.Code}}"></p>
-{{end}}{{end}}{{if .Notes}}<hr>
+{{end}}{{end}}{{if .Receipt}}<hr>
+<p><strong>Receipt</strong></p>
+<table>{{range .Receipt}}<tr><td>{{.Label}}</td><td align="right">{{.Value}}</td></tr>
+{{end}}</table>
+{{end}}{{if .Notes}}<hr>
 {{range .Notes}}<p>{{.}}</p>
 {{end}}{{end}}{{if .Signature}}<p>{{.Signature}}</p>{{end}}
 `))
@@ -109,6 +120,12 @@ func (d confirmData) text() string {
 	}
 	for _, t := range d.Tickets {
 		b.WriteString("\n" + t.Type + "\nTicket code: " + t.Code + "\nTicket page: " + t.Link + "\n")
+	}
+	if len(d.Receipt) > 0 {
+		b.WriteString("\nReceipt\n")
+		for _, r := range d.Receipt {
+			b.WriteString(r.Label + ": " + r.Value + "\n")
+		}
 	}
 	if len(d.Notes) > 0 {
 		b.WriteString("\n" + strings.Join(d.Notes, "\n") + "\n")
@@ -129,6 +146,18 @@ type orderMail struct {
 		Code     string `json:"code"`
 		TypeName string `json:"type_name"`
 	} `json:"tickets"`
+
+	// Money, for the receipt and the refund mail. Amounts are minor units.
+	Status      string     `json:"status"`
+	Lines       []cartLine `json:"lines"`
+	Subtotal    int64      `json:"subtotal_cents"`
+	Discount    int64      `json:"discount_cents"`
+	Fee         int64      `json:"fee_cents"`
+	Total       int64      `json:"total_cents"`
+	Refunded    int64      `json:"refunded_cents"`
+	Currency    string     `json:"currency"`
+	FeeAbsorbed bool       `json:"fee_absorbed"`
+	RefundedFor []string   `json:"refunded_for"` // type names of the tickets a refund took back
 }
 
 // readOrderMail loads an order; nil when it is gone.
@@ -138,7 +167,13 @@ func readOrderMail(orderID int64) (*orderMail, error) {
     'anonymised', o.anonymised_at IS NOT NULL,
     'tickets', (SELECT coalesce(jsonb_agg(jsonb_build_object('code', a.code, 'type_name', t.name) ORDER BY a.id), '[]'::jsonb)
                 FROM attendees a JOIN ticket_types t ON t.id = a.type_id
-                WHERE a.order_id = o.id AND a.status = 'active'))
+                WHERE a.order_id = o.id AND a.status = 'active'),
+    'status', o.status, 'lines', o.lines, 'subtotal_cents', o.subtotal_cents, 'discount_cents', o.discount_cents,
+    'fee_cents', o.fee_cents, 'total_cents', o.total_cents, 'refunded_cents', o.refunded_cents,
+    'currency', coalesce(o.currency, ''), 'fee_absorbed', o.fee_absorbed,
+    'refunded_for', (SELECT coalesce(jsonb_agg(t.name ORDER BY a.id), '[]'::jsonb)
+                FROM attendees a JOIN ticket_types t ON t.id = a.type_id
+                WHERE a.order_id = o.id AND a.status = 'refunded'))
 FROM orders o WHERE o.id = $1), 'null'::jsonb)`, &o, orderID)
 	return o, err
 }
@@ -201,6 +236,9 @@ func composeConfirm(orderID int64) (m outMail, ok bool, err error) {
 	if e.OnlineURL != "" && (e.Mode == "online" || e.Mode == "hybrid") {
 		d.OnlineURL = e.OnlineURL
 	}
+	if o.Total > 0 {
+		d.Receipt = receiptRows(o)
+	}
 	for _, t := range o.Tickets {
 		tok := signCode(key, kindTicket, t.Code)
 		mt := mailTicket{Type: t.TypeName, Code: groupCode(t.Code), Link: ticketURL(origin, tok)}
@@ -214,6 +252,76 @@ func composeConfirm(orderID int64) (m outMail, ok bool, err error) {
 		return outMail{}, false, err
 	}
 	return outMail{To: o.Email, Subject: "Your tickets for " + eventTitle(e), Text: d.text(), HTML: buf.String()}, true, nil
+}
+
+// receiptRows is what a paid order cost: a row per ticket type, the discount,
+// the fee when the buyer paid it, and the total.
+func receiptRows(o *orderMail) []receiptRow {
+	var rows []receiptRow
+	for _, l := range o.Lines {
+		rows = append(rows, receiptRow{plainText(l.Name, false) + " x " + strconv.Itoa(l.Qty), formatMoney(l.Unit*int64(l.Qty), o.Currency)})
+	}
+	if o.Discount > 0 {
+		rows = append(rows, receiptRow{"Discount", "-" + formatMoney(o.Discount, o.Currency)})
+	}
+	if o.Fee > 0 && !o.FeeAbsorbed {
+		rows = append(rows, receiptRow{"Fee", formatMoney(o.Fee, o.Currency)})
+	}
+	return append(rows, receiptRow{"Total", formatMoney(o.Total, o.Currency)})
+}
+
+var refundTmpl = template.Must(template.New("refund").Parse(`<p>{{.Greeting}}</p>
+<p>We refunded <strong>{{.Amount}}</strong> for <strong>{{.EventName}}</strong> to your original payment method. It can take a few days to show on your statement.</p>
+{{if .Tickets}}<p>Tickets that are no longer valid:</p>
+<ul>{{range .Tickets}}<li>{{.}}</li>
+{{end}}</ul>
+{{end}}{{if .Signature}}<p>{{.Signature}}</p>{{end}}
+`))
+
+type refundData struct {
+	Greeting  string
+	EventName string
+	Amount    string
+	Tickets   []string
+	Signature string
+}
+
+func (d refundData) text() string {
+	var b strings.Builder
+	b.WriteString(d.Greeting + "\n\nWe refunded " + d.Amount + " for " + d.EventName + " to your original payment method. It can take a few days to show on your statement.\n")
+	if len(d.Tickets) > 0 {
+		b.WriteString("\nTickets that are no longer valid:\n")
+		for _, t := range d.Tickets {
+			b.WriteString("- " + t + "\n")
+		}
+	}
+	if d.Signature != "" {
+		b.WriteString("\n" + d.Signature + "\n")
+	}
+	return b.String()
+}
+
+// composeRefund builds the mail of a refund: the amount and the tickets it took
+// back. Nothing is sent for an order that is gone, anonymised or refunded nothing.
+func composeRefund(orderID int64) (m outMail, ok bool, err error) {
+	o, err := readOrderMail(orderID)
+	if err != nil || o == nil || o.Anonymised || o.Email == "" || o.Refunded <= 0 {
+		return outMail{}, false, err
+	}
+	s := loadSettings()
+	e, err := eventFacts(o.EventID, s)
+	if err != nil {
+		return outMail{}, false, err
+	}
+	d := refundData{Greeting: greeting(o.Name), EventName: eventTitle(e), Amount: formatMoney(o.Refunded, o.Currency), Signature: s.SenderName}
+	for _, name := range o.RefundedFor {
+		d.Tickets = append(d.Tickets, plainText(name, false))
+	}
+	var buf bytes.Buffer
+	if err := refundTmpl.Execute(&buf, d); err != nil {
+		return outMail{}, false, err
+	}
+	return outMail{To: o.Email, Subject: "Your refund for " + eventTitle(e), Text: d.text(), HTML: buf.String()}, true, nil
 }
 
 // waitlistMail is a waitlist entry as its mails read it.
@@ -316,6 +424,8 @@ func compose(kind string, ref int64) (outMail, bool, error) {
 	switch kind {
 	case kindConfirm:
 		return composeConfirm(ref)
+	case kindRefund:
+		return composeRefund(ref)
 	case kindWaitlistJoined, kindWaitlistOffer:
 		return composeWaitlist(kind, ref)
 	}

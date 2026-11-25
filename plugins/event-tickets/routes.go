@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
@@ -12,9 +13,17 @@ import (
 
 func init() { guest.OnHTTP(serve) }
 
+// routeBudget is how much of core's 10 s route limit the plugin plans to use;
+// routeEnd is that point for the request being served (the zero value, as in
+// tests that skip serve, means no overall limit).
+const routeBudget = 9 * time.Second
+
+var routeEnd deadline
+
 // serve answers the routes. It never returns a Go error and never puts host
 // or database error text in a body.
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
+	routeEnd = newDeadline(routeBudget)
 	// Core mounts GET routes, which also match HEAD; it drops the body of a
 	// HEAD answer itself.
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
@@ -29,12 +38,20 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveAttendeesCSV(r.User, r.PathValues["id"]), nil
 		case "/admin/settings":
 			return serveSettings(r.User), nil
+		case "/admin/orders":
+			return serveOrders(r.User, r.Query), nil
+		case "/admin/coupons":
+			return serveCoupons(r.User), nil
 		case "/token":
 			return serveToken(r.Query), nil
 		case "/waitlist/{token}/claim":
 			return serveClaim(r.PathValues["token"], r.Query), nil
 		case "/waitlist/{token}/leave":
 			return serveLeave(r.PathValues["token"], r.Query), nil
+		case "/return/{token}":
+			return servePayReturn(r.PathValues["token"], r.Query), nil
+		case "/cancel/{token}":
+			return servePayCancel(r.PathValues["token"]), nil
 		case "/ticket/{token}":
 			return serveTicket(r.PathValues["token"]), nil
 		case "/ticket/{token}/qr.png":
@@ -45,6 +62,14 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		switch r.Pattern {
 		case "/rsvp":
 			return serveRSVP(r), nil
+		case "/quote":
+			return serveQuote(r), nil
+		case "/checkout":
+			return serveCheckout(r), nil
+		case "/stripe/webhook":
+			return serveStripeWebhook(r), nil
+		case "/paypal/webhook":
+			return servePayPalWebhook(r), nil
 		case "/admin/events/{id}/types":
 			return serveSaveType(r, r.PathValues["id"]), nil
 		case "/admin/types/{id}/delete":
@@ -55,6 +80,16 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveCancel(r.User, r.PathValues["id"]), nil
 		case "/admin/events/{id}/fields":
 			return serveSaveFields(r, r.PathValues["id"]), nil
+		case "/admin/events/{id}/bundles":
+			return serveSaveBundles(r, r.PathValues["id"]), nil
+		case "/admin/orders/{id}/refund":
+			return serveRefund(r, r.PathValues["id"]), nil
+		case "/admin/orders/{id}/cancel":
+			return serveCancelOrder(r.User, r.PathValues["id"]), nil
+		case "/admin/coupons":
+			return serveSaveCoupon(r), nil
+		case "/admin/coupons/{id}/delete":
+			return serveDeleteCoupon(r.User, r.PathValues["id"]), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil

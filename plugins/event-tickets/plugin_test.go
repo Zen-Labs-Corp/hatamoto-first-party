@@ -48,6 +48,34 @@ func TestLoadSettingsOutOfRange(t *testing.T) {
 	}
 }
 
+func TestLoadSettingsPayments(t *testing.T) {
+	fakeSettings(t, `{"stripe_secret_key":"sk_test_abcdefghij","stripe_webhook_secret":"whsec_abcdefghij","paypal_client_id":"cid","paypal_secret":"sec",
+"paypal_webhook_id":"ABCDEFGH1","paypal_sandbox":true,"fee_fixed_cents":30,"fee_percent_bp":250,"fee_per":"ticket","fee_payer":"organizer"}`, nil)
+	want := defaultSettings()
+	want.StripeKey, want.StripeWebhookSecret = "sk_test_abcdefghij", "whsec_abcdefghij"
+	want.PayPalClientID, want.PayPalSecret, want.PayPalWebhookID, want.PayPalSandbox = "cid", "sec", "ABCDEFGH1", true
+	want.FeeFixed, want.FeeBP, want.FeePerTicket, want.FeeAbsorbed = 30, 250, true, true
+	got := loadSettings()
+	if got != want {
+		t.Errorf("%+v, want %+v", got, want)
+	}
+	if !got.stripeReady() || !got.paypalReady() {
+		t.Error("both providers are configured")
+	}
+	// out of range values fall back; a key of the wrong shape is not used
+	fakeSettings(t, `{"stripe_secret_key":"pk_live_abcdefghij","stripe_webhook_secret":"nope","paypal_webhook_id":"abc","fee_fixed_cents":-1,"fee_percent_bp":5001,"fee_per":"x","fee_payer":"y"}`, nil)
+	if got := loadSettings(); got != defaultSettings() || got.stripeReady() || got.paypalReady() {
+		t.Errorf("%+v", got)
+	}
+	// each provider needs both of its credentials
+	s := defaultSettings()
+	s.StripeKey = "sk_test_abcdefghij"
+	s.PayPalClientID = "cid"
+	if s.stripeReady() || s.paypalReady() {
+		t.Error("half a configuration is not ready")
+	}
+}
+
 func TestAccepts(t *testing.T) {
 	s := defaultSettings()
 	if !s.accepts("calendar-event") || !s.accepts("event") || s.accepts("page") {

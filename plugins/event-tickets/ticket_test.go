@@ -203,3 +203,17 @@ func TestTicketQRRoute(t *testing.T) {
 		t.Errorf("unknown: %d", r.Status)
 	}
 }
+
+func TestTicketPageStatusWords(t *testing.T) {
+	for status, want := range map[string]string{"pending": "Awaiting payment", "refunded": "Refunded", "expired": "Expired", "cancelled": "Cancelled", "active": "Active"} {
+		h := newTicketHost(t)
+		h.ticket = strings.Replace(holderRow, `"status":"active"`, `"status":"`+status+`"`, 1)
+		r := getTicket(t, h.token(t, kindTicket))
+		if r.Status != 200 || !strings.Contains(r.Body, want) {
+			t.Errorf("%s: %d %s", status, r.Status, r.Body)
+		}
+		if hasQR := strings.Contains(r.Body, "data:image"); hasQR != (status == "active") {
+			t.Errorf("%s: QR on the page = %v", status, hasQR)
+		}
+	}
+}

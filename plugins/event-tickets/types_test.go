@@ -17,8 +17,11 @@ func TestSaveTypeAdds(t *testing.T) {
 		t.Fatal("no insert")
 	}
 	// defaults: the default capacity of the settings, waitlist and sale on
-	if got := jsonText(c.args); got != `["e1","Standard",30,true,true,2,20]` {
+	if got := jsonText(c.args); got != `["e1","Standard",30,true,true,2,20,0]` {
 		t.Errorf("args %s", got)
+	}
+	if !strings.Contains(c.sql, "price_cents") {
+		t.Error("the price is written")
 	}
 	if !strings.Contains(c.sql, "WHERE (SELECT count(*)") {
 		t.Error("the number of types is capped in the statement")
@@ -37,6 +40,8 @@ func TestSaveTypeValidation(t *testing.T) {
 	h := newAdminHost(t)
 	for name, body := range map[string]string{
 		"unknown key":    `{"name":"x","price":3}`,
+		"negative price": `{"name":"x","price_cents":-1}`,
+		"price too big":  `{"name":"x","price_cents":100000000}`,
 		"no name":        `{"name":"  "}`,
 		"long name":      `{"name":"` + strings.Repeat("a", 81) + `"}`,
 		"control char":   `{"name":"a\u0000b"}`,
@@ -182,5 +187,24 @@ func TestSaveFieldsRoute(t *testing.T) {
 	eleven := `{"fields":[` + strings.TrimSuffix(strings.Repeat(`{"label":"a","kind":"text"},`, 11), ",") + `]}`
 	if code, _ := post(t, "/admin/events/{id}/fields", "e1", editor, eleven); code != 400 {
 		t.Errorf("11 fields: %d", code)
+	}
+}
+
+func TestSaveTypeWithPrice(t *testing.T) {
+	h := newAdminHost(t)
+	if code, body := post(t, "/admin/events/{id}/types", "e1", editor, `{"name":"VIP","price_cents":2500}`); code != 200 {
+		t.Fatalf("%d %v", code, body)
+	}
+	c := h.sawSQL("INSERT INTO ticket_types")
+	// a priced type has no waitlist, whatever was sent
+	if got := jsonText(c.args); got != `["e1","VIP",30,false,true,0,20,2500]` {
+		t.Errorf("insert args %s", got)
+	}
+	if code, _ := post(t, "/admin/events/{id}/types", "e1", editor, `{"id":7,"name":"VIP","capacity":5,"price_cents":99999999}`); code != 200 {
+		t.Fatal(code)
+	}
+	u := h.sawSQL("UPDATE ticket_types SET name")
+	if !strings.Contains(u.sql, "price_cents = $8") || jsonText(u.args) != `[7,"e1","VIP",5,false,true,0,99999999]` {
+		t.Errorf("update %s %s", u.sql, jsonText(u.args))
 	}
 }

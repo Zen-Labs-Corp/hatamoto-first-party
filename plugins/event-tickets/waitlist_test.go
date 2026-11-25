@@ -369,3 +369,27 @@ func TestSnapshotRecordsACancelledEvent(t *testing.T) {
 	}
 	t.Error("no snapshot written")
 }
+
+// Seats of a priced type are only taken by paying: promotion and claim skip them.
+func TestWaitlistStatementsSkipPricedTypes(t *testing.T) {
+	h := newWaitHost(t)
+	h.promote = []string{`7`}
+	promoteNext(1)
+	if _, _, err := claimOffer("c", "t"); err != nil {
+		t.Fatal(err)
+	}
+	for marker, want := range map[string]string{
+		"SET status = 'offered'": "price_cents = 0",
+		"SET status = 'claimed'": "t.price_cents = 0",
+	} {
+		sql := ""
+		for _, c := range h.calls {
+			if strings.Contains(c.sql, marker) {
+				sql = c.sql
+			}
+		}
+		if !strings.Contains(sql, want) {
+			t.Errorf("%s does not refuse priced types: %s", marker, sql)
+		}
+	}
+}

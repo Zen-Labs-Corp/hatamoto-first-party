@@ -175,13 +175,18 @@ func serveEventDetail(u *sdk.HTTPUser, id string) sdk.HTTPResponse {
 	if e.HasEnd {
 		ev["ends_at"] = e.End.UTC().Format("2006-01-02T15:04:05Z")
 	}
+	bundles, err := listBundles(id)
+	if err != nil {
+		return unavailable()
+	}
 	return jsonReply(http.StatusOK, map[string]any{
-		"event": ev, "types": types, "fields": fields, "default_capacity": s.DefaultCapacity,
+		"event": ev, "types": types, "fields": fields, "bundles": bundles, "default_capacity": s.DefaultCapacity,
 	})
 }
 
 // typeBody is the body of POST /admin/events/{id}/types. A missing waitlist
-// or on_sale means true; a missing capacity means the default capacity.
+// or on_sale means true; a missing capacity means the default capacity; a
+// missing price means free.
 type typeBody struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
@@ -189,6 +194,7 @@ type typeBody struct {
 	Waitlist *bool  `json:"waitlist"`
 	OnSale   *bool  `json:"on_sale"`
 	Position int    `json:"position"`
+	Price    *int64 `json:"price_cents"`
 }
 
 // serveSaveType answers POST /admin/events/{id}/types: add a ticket type, or
@@ -216,6 +222,12 @@ func serveSaveType(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 	}
 	if t.Capacity < 1 || t.Capacity > maxCapacity {
 		return failReply(http.StatusBadRequest, "capacity must be between 1 and 100000")
+	}
+	if b.Price != nil {
+		t.Price = *b.Price
+	}
+	if t.Price < 0 || t.Price > maxPriceCents {
+		return failReply(http.StatusBadRequest, "price must be between 0 and 99999999")
 	}
 	if b.Waitlist != nil {
 		t.Waitlist = *b.Waitlist
@@ -302,9 +314,20 @@ func serveSettings(u *sdk.HTTPUser) sdk.HTTPResponse {
 		return forbidden()
 	}
 	s := loadSettings()
+	feePer, feePayer := "order", "buyer"
+	if s.FeePerTicket {
+		feePer = "ticket"
+	}
+	if s.FeeAbsorbed {
+		feePayer = "organizer"
+	}
 	return jsonReply(http.StatusOK, map[string]any{
 		"currency": s.Currency, "sender_name": s.SenderName, "confirmation_text_set": s.ConfirmationText != "",
 		"default_capacity": s.DefaultCapacity, "retention_months": s.RetentionMonths,
 		"site_url": s.SiteURL, "schema_slug": s.SchemaSlug,
+		"stripe_configured": s.stripeReady(), "paypal_configured": s.paypalReady(),
+		"paypal_webhook_set": s.PayPalWebhookID != "", "paypal_sandbox": s.PayPalSandbox,
+		"fee_fixed_cents": s.FeeFixed, "fee_percent_bp": s.FeeBP, "fee_per": feePer, "fee_payer": feePayer,
+		"currency_exponent": currencyExp(s.Currency), "can_refund": u.Role == "owner",
 	})
 }

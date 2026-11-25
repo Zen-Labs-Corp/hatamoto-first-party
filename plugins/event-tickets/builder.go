@@ -25,6 +25,7 @@ var errTicketsUnavailable = errors.New("ticket types unavailable")
 // renders the page with empty props and keeps it out of the page cache.
 func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	var types []ticketType
+	currency := ""
 	loaded := false
 	failed := false
 	for _, q := range r.Requests {
@@ -35,6 +36,7 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 		if r.EntityID != "" {
 			if !loaded {
 				loaded = true
+				currency = loadSettings().Currency
 				all, err := listTypes(r.EntityID)
 				if err != nil {
 					failed = true
@@ -51,7 +53,7 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 				limit = sdk.MaxBuilderDataItems
 			}
 			for _, t := range types[:min(len(types), limit)] {
-				res.Items = append(res.Items, ticketItem(t))
+				res.Items = append(res.Items, ticketItem(t, currency))
 			}
 		}
 		r.Results = append(r.Results, res)
@@ -62,12 +64,12 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	return r, nil
 }
 
-func ticketItem(t ticketType) sdk.BuilderDataItem {
+func ticketItem(t ticketType, currency string) sdk.BuilderDataItem {
 	left := max(t.Capacity-t.Taken, 0)
 	attrs := map[string]string{
 		"type_id":  strconv.FormatInt(t.ID, 10),
 		"event_id": t.EventID,
-		"price":    "Free",
+		"price":    formatMoney(t.Price, currency),
 		"left":     strconv.Itoa(left),
 		"sold_out": "",
 		"waitlist": "",

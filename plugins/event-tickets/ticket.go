@@ -122,10 +122,6 @@ func serveTicket(tok string) sdk.HTTPResponse {
 	if name == "" {
 		name = t.EventName
 	}
-	status := "Active"
-	if t.Status != "active" {
-		status = "Cancelled"
-	}
 	p := pageData{Title: name, Code: groupCode(code)}
 	if p.Title == "" {
 		p.Title = "Your ticket"
@@ -136,7 +132,7 @@ func serveTicket(tok string) sdk.HTTPResponse {
 	p.Facts = append(p.Facts,
 		pageFact{"Ticket", t.TypeName},
 		pageFact{"Name", t.Holder},
-		pageFact{"Status", status})
+		pageFact{"Status", ticketStatusText(t.Status)})
 	if t.Status == "active" {
 		p.QR = template.URL(qrDataURI(ticketURL(origin, tok)))
 		if e.OnlineURL != "" && (e.Mode == "online" || e.Mode == "hybrid") {
@@ -144,6 +140,23 @@ func serveTicket(tok string) sdk.HTTPResponse {
 		}
 	}
 	return htmlPage(http.StatusOK, p)
+}
+
+// ticketStatusText is the status of a ticket as the page says it. Only an
+// active ticket has a QR code; a held, refunded or lapsed one is told apart
+// from a cancelled one.
+func ticketStatusText(status string) string {
+	switch status {
+	case "active":
+		return "Active"
+	case "pending":
+		return "Awaiting payment"
+	case "refunded":
+		return "Refunded"
+	case "expired":
+		return "Expired"
+	}
+	return "Cancelled"
 }
 
 // serveTicketQR answers the QR image mails embed.

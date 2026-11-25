@@ -16,6 +16,8 @@ type manifestFile struct {
 	Version        string   `json:"version"`
 	SDK            string   `json:"sdk"`
 	Permissions    []string `json:"permissions"`
+	AllowedHosts   []string `json:"allowed_hosts"`
+	RequestHeaders []string `json:"request_headers"`
 	BuilderSources []struct {
 		Name string `json:"name"`
 	} `json:"builder_sources"`
@@ -39,12 +41,15 @@ type manifestFile struct {
 	} `json:"limits"`
 	Settings struct {
 		Properties map[string]struct {
-			Type    string `json:"type"`
-			Default any    `json:"default"`
-			Pattern string `json:"pattern"`
-			MaxLen  int    `json:"maxLength"`
-			Min     *int   `json:"minimum"`
-			Max     *int   `json:"maximum"`
+			Type      string   `json:"type"`
+			Desc      string   `json:"description"`
+			Default   any      `json:"default"`
+			Pattern   string   `json:"pattern"`
+			MaxLen    int      `json:"maxLength"`
+			WriteOnly bool     `json:"writeOnly"`
+			Enum      []string `json:"enum"`
+			Min       *int     `json:"minimum"`
+			Max       *int     `json:"maximum"`
 		} `json:"properties"`
 	} `json:"settings_schema"`
 }
@@ -71,7 +76,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m := loadManifest(t)
-	if m.Name != "event-tickets" || m.Version != "0.1.0" {
+	if m.Name != "event-tickets" || m.Version != "0.2.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 
@@ -85,9 +90,16 @@ func TestManifest(t *testing.T) {
 		t.Errorf("sdk range %q, go.mod %q", m.SDK, got)
 	}
 
-	wantPerms := []string{"builder.data", "builder.island", "db", "entities.read", "mail.send", "settings"}
+	wantPerms := []string{"builder.data", "builder.island", "db", "entities.read", "http.fetch", "mail.send", "settings"}
 	if perms := slices.Sorted(slices.Values(m.Permissions)); !slices.Equal(perms, wantPerms) {
 		t.Errorf("permissions = %v, want %v", perms, wantPerms)
+	}
+	if wantHosts := []string{"api.stripe.com", "api-m.paypal.com", "api-m.sandbox.paypal.com"}; !slices.Equal(m.AllowedHosts, wantHosts) {
+		t.Errorf("allowed_hosts = %v, want %v", m.AllowedHosts, wantHosts)
+	}
+	wantHeaders := []string{"stripe-signature", "paypal-transmission-id", "paypal-transmission-time", "paypal-transmission-sig", "paypal-cert-url", "paypal-auth-algo"}
+	if !slices.Equal(m.RequestHeaders, wantHeaders) {
+		t.Errorf("request_headers = %v, want %v", m.RequestHeaders, wantHeaders)
 	}
 	if len(m.BuilderSources) != 1 || m.BuilderSources[0].Name != "tickets" {
 		t.Errorf("builder_sources = %+v", m.BuilderSources)
@@ -108,7 +120,15 @@ func TestManifest(t *testing.T) {
 		{"GET", "/token", true}, {"POST", "/rsvp", true},
 		{"GET", "/waitlist/{token}/claim", true}, {"GET", "/waitlist/{token}/leave", true},
 		{"GET", "/ticket/{token}", true}, {"GET", "/ticket/{token}/qr.png", true},
+		{"POST", "/quote", true}, {"POST", "/checkout", true}, {"POST", "/stripe/webhook", true},
+		{"POST", "/paypal/webhook", true}, {"GET", "/return/{token}", true}, {"GET", "/cancel/{token}", true},
+		{"GET", "/admin/orders", false}, {"POST", "/admin/orders/{id}/refund", false}, {"POST", "/admin/orders/{id}/cancel", false},
+		{"GET", "/admin/coupons", false}, {"POST", "/admin/coupons", false}, {"POST", "/admin/coupons/{id}/delete", false},
+		{"POST", "/admin/events/{id}/bundles", false},
 	}
+	// Refund, order cancel, coupon changes and bundle rules move or give away money: the owner only (the handlers check again).
+	ownerOnly := map[string]bool{"/admin/orders/{id}/refund": true, "/admin/orders/{id}/cancel": true,
+		"/admin/coupons/{id}/delete": true, "/admin/events/{id}/bundles": true}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
 	}
@@ -117,7 +137,11 @@ func TestManifest(t *testing.T) {
 		if r.Method != w.method || r.Path != w.path || r.Public != w.public {
 			t.Errorf("route %d = %+v, want %+v", i, r, w)
 		}
-		if wantRoles := []string{"owner", "editor"}; !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {
+		wantRoles := []string{"owner", "editor"}
+		if ownerOnly[w.path] || (w.method == "POST" && w.path == "/admin/coupons") {
+			wantRoles = []string{"owner"}
+		}
+		if !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {
 			t.Errorf("route %s roles = %v", r.Path, r.Roles)
 		}
 	}
@@ -137,8 +161,8 @@ func TestManifest(t *testing.T) {
 	}
 
 	p := m.Settings.Properties
-	if len(p) != 7 {
-		t.Errorf("%d settings, want 7", len(p))
+	if len(p) != 17 {
+		t.Errorf("%d settings, want 17", len(p))
 	}
 	if c := p["currency"]; c.Default != "USD" || !regexp.MustCompile(c.Pattern).MatchString("EUR") || regexp.MustCompile(c.Pattern).MatchString("eur") {
 		t.Errorf("currency = %+v", c)
@@ -160,15 +184,42 @@ func TestManifest(t *testing.T) {
 			t.Errorf("%s = %+v", key, p[key])
 		}
 	}
-	// the signing key lives in the plugin's own table: no secret setting
-	raw, _ := os.ReadFile("plugin.json")
-	if strings.Contains(string(raw), "writeOnly") {
-		t.Error("no setting may be a secret")
+	// the signing key lives in the plugin's own table; the provider secrets, and only they, are write-only
+	var secret []string
+	for k, c := range p {
+		if c.WriteOnly {
+			secret = append(secret, k)
+		}
+	}
+	slices.Sort(secret)
+	if !slices.Equal(secret, []string{"paypal_secret", "stripe_secret_key", "stripe_webhook_secret"}) {
+		t.Errorf("write-only settings = %v", secret)
+	}
+	if c := p["stripe_secret_key"]; !regexp.MustCompile(c.Pattern).MatchString("rk_live_abcdefghij") || regexp.MustCompile(c.Pattern).MatchString("pk_live_abcdefghij") || !regexp.MustCompile(c.Pattern).MatchString("") {
+		t.Errorf("stripe_secret_key = %+v", c)
+	}
+	if c := p["stripe_webhook_secret"]; !regexp.MustCompile(c.Pattern).MatchString("whsec_abcdefghij") || regexp.MustCompile(c.Pattern).MatchString("abcdefghij") {
+		t.Errorf("stripe_webhook_secret = %+v", c)
+	}
+	if c := p["fee_per"]; c.Default != "order" || !slices.Equal(c.Enum, []string{"order", "ticket"}) {
+		t.Errorf("fee_per = %+v", c)
+	}
+	if c := p["fee_payer"]; c.Default != "buyer" || !slices.Equal(c.Enum, []string{"buyer", "organizer"}) {
+		t.Errorf("fee_payer = %+v", c)
+	}
+	if c := p["fee_percent_bp"]; c.Default != float64(0) || *c.Max != 5000 {
+		t.Errorf("fee_percent_bp = %+v", c)
+	}
+	if c := p["paypal_sandbox"]; c.Type != "boolean" || c.Default != false {
+		t.Errorf("paypal_sandbox = %+v", c)
+	}
+	if strings.Contains(p["currency"].Desc, "free for now") {
+		t.Error("the currency text must not say tickets are free")
 	}
 }
 
 func TestShippedFiles(t *testing.T) {
-	for _, f := range []string{"migrations/001_init.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
+	for _, f := range []string{"migrations/001_init.sql", "migrations/002_paid.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
 		exists(t, f)
 	}
 }
@@ -188,6 +239,11 @@ func TestReadmeExplainsPermissions(t *testing.T) {
 	for _, p := range m.Permissions {
 		if !strings.Contains(section, "- `"+p+"`") {
 			t.Errorf("README Permissions does not explain %s", p)
+		}
+	}
+	for _, h := range m.AllowedHosts {
+		if !strings.Contains(section, h) {
+			t.Errorf("README Permissions does not name %s", h)
 		}
 	}
 	if !strings.Contains(string(raw), "boombuler/barcode") || !strings.Contains(string(raw), "MIT") {

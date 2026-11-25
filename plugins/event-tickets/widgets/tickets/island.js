@@ -2,7 +2,11 @@
 // template cannot hold a form element. The ticket types are the rows the page
 // already shows. The island asks the plugin for a signed token, the live seats
 // left and the event's own questions, then posts JSON to the plugin's RSVP
-// route. The answer is always plain text; text is set with textContent only.
+// route. Paid tickets go the other way: the island asks the plugin's quote
+// route for the totals (it only shows what the server answers, it never works
+// out a price) and posts to the checkout route, which answers the payment
+// provider's page to go to. The answer is always plain text; text is set with
+// textContent only.
 
 // Two slashes, spelled so the install lint does not read them as a URL start.
 const SLASHES = "/".repeat(2);
@@ -18,6 +22,37 @@ const SOLD_OUT = "Sold out";
 const CHECK = "Please check the highlighted fields.";
 const CLOSED = "Booking is closed.";
 const LATER = "Try again later.";
+const COUPON_BAD = "This coupon code is not valid.";
+const CHANGED = "Prices changed. Please check the total and try again.";
+const NO_PAY = "Online payment is not available yet.";
+const PAYING = "Taking you to the payment page...";
+
+// The only pages the browser is sent to for payment: https, no login part, no
+// port, one of the providers' checkout hosts. The server checks the same list.
+const PAY_HOSTS = ["checkout.stripe.com", "www.paypal.com", "www.sandbox.paypal.com"];
+const PAY_LABELS = { stripe: "Pay with Stripe", paypal: "Pay with PayPal" };
+const QUOTE_MS = 400;
+const LEAVE_MS = 15000;
+
+function redirectOK(raw) {
+  if (typeof raw !== "string" || raw.length > 2048 || !raw.startsWith("https:")) return false;
+  let u;
+  try { u = new URL(raw); } catch (e) { return false; }
+  return u.protocol === "https:" && !u.username && !u.password && u.port === "" && u.host === u.hostname && PAY_HOSTS.includes(u.hostname);
+}
+
+// swapRoute is the quote or checkout route next to the RSVP route; empty when
+// the RSVP route is not where it is expected.
+function swapRoute(path, name) {
+  return path.endsWith("/rsvp") ? path.slice(0, -"rsvp".length) + name : "";
+}
+
+// cartItems are the chosen seats as the routes read them.
+function cartItems(qty) {
+  return Object.keys(qty || {})
+    .filter((id) => qty[id] > 0)
+    .map((id) => ({ type: Number(id), qty: qty[id] }));
+}
 
 function safePath(p) {
   return typeof p === "string" && p.startsWith("/") && !p.startsWith(SLASHES) ? p : "";
@@ -37,15 +72,17 @@ function buildPayload(v) {
   if (v.waitlistType) {
     out.waitlist_type = Number(v.waitlistType);
   } else {
-    out.items = Object.keys(v.qty || {})
-      .filter((id) => v.qty[id] > 0)
-      .map((id) => ({ type: Number(id), qty: v.qty[id] }));
+    out.items = cartItems(v.qty);
   }
   out.name = String(v.name || "").trim();
   out.email = String(v.email || "").trim();
   out.answers = v.answers || {};
   out.token = String(v.token || "");
   out.website = String(v.trap || "");
+  if (v.provider) {
+    out.provider = String(v.provider);
+    out.coupon = String(v.coupon || "");
+  }
   return out;
 }
 
@@ -77,7 +114,11 @@ function mount(box, env) {
   if (!rows.length) box.hidden = true;
   if (!api || !tokenApi || !eventId) return null;
 
+  const quoteApi = swapRoute(api, "quote");
+  const checkoutApi = swapRoute(api, "checkout");
   const qty = {}; // ticket type id -> seats asked for
+  const prices = {}; // ticket type id -> price in minor units, as the server said
+  let providers = []; // the payment providers the site has set up
   const counts = {}; // ticket type id -> count element of its stepper
   const inputs = {};
   let fields = [];
@@ -121,11 +162,13 @@ function mount(box, env) {
   const status = make(doc, "p", "status");
   status.setAttribute("role", "status");
   const links = make(doc, "ul", "links");
+  const payHolder = make(doc, "div", "pay-holder");
   panel.append(
     ...top,
     fieldWrap("hm-tickets-name", "Your name", nameInput),
     fieldWrap("hm-tickets-email", "Your email", emailInput),
     extra,
+    payHolder,
     trapWrap,
     send,
     status,
@@ -138,10 +181,109 @@ function mount(box, env) {
   const say = (text) => { status.textContent = text; };
   const closeForm = () => box.replaceChildren(make(doc, "p", "note", CLOSED));
   const total = () => Object.keys(qty).reduce((n, id) => n + qty[id], 0);
+  const priced = () => Object.keys(qty).some((id) => qty[id] > 0 && prices[id] > 0);
+
+  // The payment part: coupon, totals and the pay buttons. It is built the first
+  // time a priced ticket is chosen, so a free event never shows it.
+  let pay = null;
+  let couponInput = null;
+  let couponNote = null;
+  let totals = null;
+  let payButtons = null;
+  let quoteSeq = 0;
+  let busy = false;
+
+  function setBusy(on) {
+    busy = on;
+    send.disabled = on;
+    if (payButtons) for (const b of payButtons.querySelectorAll(".pay")) b.disabled = on;
+  }
+
+  function buildPayButtons() {
+    const list = providers.filter((p) => PAY_LABELS[p]);
+    if (!list.length) {
+      payButtons.replaceChildren(make(doc, "p", "note", NO_PAY));
+      return;
+    }
+    payButtons.replaceChildren(...list.map((p) => {
+      const b = make(doc, "button", "pay", PAY_LABELS[p]);
+      b.type = "button";
+      b.disabled = busy;
+      b.addEventListener("click", () => checkout(p));
+      return b;
+    }));
+  }
+
+  function ensurePay() {
+    if (pay) return;
+    couponInput = make(doc, "input");
+    couponInput.name = "coupon";
+    couponInput.maxLength = 32;
+    couponInput.setAttribute("autocomplete", "off");
+    couponInput.addEventListener("input", scheduleQuote);
+    couponNote = make(doc, "p", "coupon-note");
+    totals = make(doc, "div", "totals");
+    payButtons = make(doc, "div", "pay-buttons");
+    pay = make(doc, "div", "pay-box");
+    pay.append(fieldWrap("hm-tickets-coupon", "Coupon", couponInput), couponNote, totals, payButtons);
+    payHolder.append(pay);
+    buildPayButtons();
+  }
+
+  // showQuote writes the server's totals: Subtotal, Discount and Fee when they
+  // are there, and Total. The texts are the server's; nothing is added up here.
+  function showQuote(body) {
+    const q = body.quote;
+    const d = body.display;
+    const rows = [["Subtotal", d.subtotal]];
+    if (q.discount_cents > 0) rows.push(["Discount", "-" + d.discount]);
+    if (q.fee_cents > 0 && !q.fee_absorbed) rows.push(["Fee", d.fee]);
+    rows.push(["Total", d.total]);
+    totals.replaceChildren(...rows.map(([label, text]) => {
+      const line = make(doc, "p", "line");
+      line.append(make(doc, "span", "label", label), make(doc, "span", "amount", text));
+      return line;
+    }));
+    const typed = couponInput.value.trim();
+    couponNote.textContent = typed && body.coupon_ok === false ? COUPON_BAD : "";
+  }
+
+  async function fetchQuote(mine) {
+    try {
+      const r = await env.fetch(quoteApi, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ event: eventId, items: cartItems(qty), coupon: couponInput.value.trim() }),
+      });
+      let body = null;
+      try { body = await r.json(); } catch (e) { /* not JSON */ }
+      if (mine !== quoteSeq) return;
+      if (r.status === 200 && body && body.ok === true && body.quote && body.display) showQuote(body);
+      else totals.replaceChildren();
+    } catch (e) {
+      if (mine === quoteSeq) totals.replaceChildren();
+    }
+  }
+
+  // scheduleQuote shows or hides the payment part for the chosen seats and asks
+  // for the totals once the buyer stops clicking. An older answer is dropped.
+  function scheduleQuote() {
+    const mine = ++quoteSeq;
+    if (!priced() || !quoteApi || !checkoutApi) {
+      if (pay) pay.hidden = true;
+      send.hidden = false;
+      return;
+    }
+    ensurePay();
+    pay.hidden = false;
+    send.hidden = true;
+    env.delay(() => fetchQuote(mine), QUOTE_MS);
+  }
 
   function setQty(id, want) {
     qty[id] = clampQty(want, total() - (qty[id] || 0));
     if (counts[id]) counts[id].textContent = String(qty[id]);
+    scheduleQuote();
   }
 
   // applyTypes shows the live seats on the rows and gives each row its
@@ -151,6 +293,7 @@ function mount(box, env) {
       const t = list.find((x) => String(x.id) === row.getAttribute("data-type"));
       if (!t) continue;
       const id = String(t.id);
+      prices[id] = Number(t.price_cents) || 0;
       const left = row.querySelector(".left");
       if (left) left.textContent = t.sold_out ? SOLD_OUT : t.left + " left";
       row.setAttribute("data-sold-out", t.sold_out ? "1" : "");
@@ -217,6 +360,8 @@ function mount(box, env) {
       if (!body || typeof body.token !== "string" || !body.token) return false;
       token = body.token;
       issued = env.now();
+      if (Array.isArray(body.providers)) providers = body.providers.filter((p) => typeof p === "string");
+      if (payButtons) buildPayButtons();
       if (Array.isArray(body.types)) applyTypes(body.types);
       if (Array.isArray(body.fields) && !fields.length) applyFields(body.fields);
       return true;
@@ -261,6 +406,85 @@ function mount(box, env) {
     return bad.length > 0 || (!joining && total() < 1);
   }
 
+  // showTickets is the end of a booking: the counts go back to zero and each
+  // ticket gets a link.
+  function showTickets(body) {
+    token = "";
+    for (const id of Object.keys(qty)) setQty(id, 0);
+    const paths = Array.isArray(body.tickets) ? body.tickets.map(safePath).filter(Boolean) : [];
+    paths.forEach((p, n) => {
+      const li = make(doc, "li");
+      const a = make(doc, "a", "", "Ticket " + (n + 1));
+      a.setAttribute("href", p);
+      li.append(a);
+      links.append(li);
+    });
+  }
+
+  // checkout asks the plugin to hold the seats and open the payment at the
+  // chosen provider, then goes to the page it answers, if that page is one of
+  // the providers' own.
+  async function checkout(provider) {
+    if (invalid(false)) {
+      say(CHECK);
+      return;
+    }
+    setBusy(true);
+    say("");
+    links.replaceChildren();
+    let leaving = false;
+    try {
+      if (!(await ensureToken())) {
+        say(LATER);
+        return;
+      }
+      const r = await env.fetch(checkoutApi, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(buildPayload({
+          event: eventId,
+          qty,
+          name: nameInput.value,
+          email: emailInput.value,
+          answers: answers(),
+          token,
+          trap: trap.value,
+          coupon: couponInput.value,
+          provider,
+        })),
+      });
+      let body = null;
+      try { body = await r.json(); } catch (e) { /* not JSON */ }
+      if (r.status === 200 && body && body.ok === true) {
+        if (typeof body.redirect !== "string") {
+          showTickets(body); // a coupon covered everything: the tickets are ready
+          say(BOOKED);
+        } else if (redirectOK(body.redirect)) {
+          leaving = true;
+          say(PAYING);
+          env.go(body.redirect);
+        } else {
+          say(LATER);
+        }
+      } else if (r.status === 409) {
+        token = ""; // fresh seats and prices, and the totals again
+        await getToken();
+        scheduleQuote();
+        say(body && body.error === "coupon" ? COUPON_BAD : body && body.error === "changed" ? CHANGED : SOLD_OUT);
+      } else if (r.status === 404) {
+        closeForm();
+      } else {
+        say(messageFor(r.status, body));
+      }
+    } catch (e) {
+      say(LATER);
+    } finally {
+      // Back from the payment page the buttons must work again.
+      if (leaving) env.delay(() => setBusy(false), LEAVE_MS);
+      else setBusy(false);
+    }
+  }
+
   // submit books the chosen seats, or joins the waitlist of one sold-out type.
   async function submit(waitlistType) {
     const joining = typeof waitlistType === "string" && waitlistType !== "";
@@ -294,16 +518,7 @@ function mount(box, env) {
       try { body = await r.json(); } catch (e) { /* not JSON */ }
       const text = messageFor(r.status, body);
       if (r.status === 200 && body && body.ok === true) {
-        token = "";
-        for (const id of Object.keys(qty)) setQty(id, 0);
-        const paths = Array.isArray(body.tickets) ? body.tickets.map(safePath).filter(Boolean) : [];
-        paths.forEach((p, n) => {
-          const li = make(doc, "li");
-          const a = make(doc, "a", "", "Ticket " + (n + 1));
-          a.setAttribute("href", p);
-          li.append(a);
-          links.append(li);
-        });
+        showTickets(body);
       } else if (r.status === 409) {
         token = ""; // the next try fetches fresh seat counts
         await getToken();
@@ -320,7 +535,7 @@ function mount(box, env) {
 
   send.addEventListener("click", () => submit(""));
   getToken();
-  return { submit, setQty, nameInput, emailInput, inputs, trap, send, status, links, qty, rows };
+  return { submit, checkout, setQty, nameInput, emailInput, inputs, trap, send, status, links, qty, rows };
 }
 
 if (typeof document !== "undefined") {
@@ -329,8 +544,11 @@ if (typeof document !== "undefined") {
     fetch: (u, o) => fetch(u, o),
     now: () => Date.now(),
     delay: (fn, ms) => setTimeout(fn, ms),
+    go: (u) => location.assign(u),
   };
   for (const box of document.querySelectorAll(".hm-event-tickets_tickets")) mount(box, env);
 }
 
-if (typeof module !== "undefined") module.exports = { BOOKED, WAITLISTED, SOLD_OUT, CHECK, CLOSED, LATER, clampQty, buildPayload, messageFor, safePath, mount };
+if (typeof module !== "undefined") module.exports = {
+    BOOKED, WAITLISTED, SOLD_OUT, CHECK, CLOSED, LATER, COUPON_BAD, CHANGED, NO_PAY, clampQty, buildPayload, messageFor, safePath, redirectOK, swapRoute, mount,
+  };

@@ -305,3 +305,91 @@ func TestDrainClaimsBeforeSending(t *testing.T) {
 		t.Error("a claimed entry was sent by a second drain")
 	}
 }
+
+const paidOrder = `{"event_id":"e1","name":"Ana","email":"ana@example.com","anonymised":false,"tickets":[
+{"code":"0123456789abcdef0123456789abcdef","type_name":"GA"}],"status":"paid",
+"lines":[{"type":5,"name":"GA <b>","qty":2,"unit":1000},{"type":6,"name":"Kids","qty":1,"unit":0}],
+"subtotal_cents":2000,"discount_cents":200,"fee_cents":30,"total_cents":1830,"refunded_cents":0,"currency":"USD","fee_absorbed":false,"refunded_for":[]}`
+
+func TestConfirmMailReceipt(t *testing.T) {
+	h := newMailHost(t)
+	h.order = paidOrder
+	m, ok, err := composeConfirm(7)
+	if err != nil || !ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	for _, body := range []string{m.HTML, m.Text} {
+		for _, want := range []string{"Receipt", "x 2", "20.00 USD", "Kids x 1", "Free", "-2.00 USD", "Fee", "0.30 USD", "Total", "18.30 USD"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("lacks %q: %s", want, body)
+			}
+		}
+	}
+	if strings.Contains(m.HTML, "<b>") || !strings.Contains(m.HTML, "GA &lt;b&gt;") {
+		t.Errorf("a type name is not escaped: %s", m.HTML)
+	}
+
+	// a fee the organiser absorbs is not on the buyer's receipt
+	h.order = strings.Replace(paidOrder, `"fee_absorbed":false`, `"fee_absorbed":true`, 1)
+	m, _, _ = composeConfirm(7)
+	if strings.Contains(m.Text, "Fee") {
+		t.Errorf("an absorbed fee is on the receipt: %s", m.Text)
+	}
+
+	// a free order has no receipt
+	h.order = twoTickets
+	if m, _, _ = composeConfirm(7); strings.Contains(m.Text, "Receipt") || strings.Contains(m.HTML, "Receipt") {
+		t.Error("a free order has a receipt")
+	}
+}
+
+func TestRefundMail(t *testing.T) {
+	h := newMailHost(t)
+	h.order = strings.NewReplacer(`"refunded_cents":0`, `"refunded_cents":1830`, `"tickets":[
+{"code":"0123456789abcdef0123456789abcdef","type_name":"GA"}]`, `"tickets":[]`, `"refunded_for":[]`, `"refunded_for":["GA <b>","Kids"]`).Replace(paidOrder)
+	h.settings = `{"sender_name":"The Crew"}`
+	m, ok, err := compose(kindRefund, 7)
+	if err != nil || !ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	if m.To != "ana@example.com" || m.Subject != "Your refund for Gig" {
+		t.Errorf("%q %q", m.To, m.Subject)
+	}
+	for _, body := range []string{m.HTML, m.Text} {
+		for _, want := range []string{"18.30 USD", "Gig", "Kids", "The Crew", "Ana"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("lacks %q: %s", want, body)
+			}
+		}
+		if strings.Contains(body, "qr.png") || strings.Contains(body, "/ticket/") {
+			t.Errorf("a refund mail links a ticket: %s", body)
+		}
+	}
+	if !strings.Contains(m.HTML, "GA &lt;b&gt;") {
+		t.Errorf("a type name is not escaped: %s", m.HTML)
+	}
+
+	// nothing refunded, anonymised or gone: nothing to send
+	for name, order := range map[string]string{
+		"nothing refunded": paidOrder,
+		"anonymised":       strings.Replace(h.order, `"anonymised":false`, `"anonymised":true`, 1),
+		"no address":       strings.Replace(h.order, `"email":"ana@example.com"`, `"email":""`, 1),
+		"gone":             `null`,
+	} {
+		h.order = order
+		if _, ok, err := compose(kindRefund, 7); ok || err != nil {
+			t.Errorf("%s: sent=%v err=%v", name, ok, err)
+		}
+	}
+}
+
+func TestDeliverRefundMail(t *testing.T) {
+	h := newMailHost(t)
+	h.order = strings.Replace(paidOrder, `"refunded_cents":0`, `"refunded_cents":500`, 1)
+	if sent, err := deliver(kindRefund, 7); !sent || err != nil || len(h.mails) != 1 {
+		t.Fatalf("%v %v, %d mails", sent, err, len(h.mails))
+	}
+	if h.wrote("UPDATE orders SET mailed_at") != 0 {
+		t.Error("a refund mail marks the order as confirmed-mailed")
+	}
+}

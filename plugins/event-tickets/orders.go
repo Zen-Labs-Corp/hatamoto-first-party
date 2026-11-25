@@ -74,8 +74,10 @@ FROM (SELECT type_id, count(*) AS n FROM c GROUP BY type_id) x WHERE t.id = x.ty
 // eventCounts are the numbers the per-event spam caps look at.
 type eventCounts struct {
 	ByEmail int `json:"by_email"` // active orders of this address
-	Hour    int `json:"hour"`     // orders made in the last hour
+	Hour    int `json:"hour"`     // orders made in the last hour, not counting holds that lapsed or were cancelled unpaid
 	Waiting int `json:"waiting"`  // entries waiting for a seat
+
+	PendingByEmail int `json:"pending_by_email"` // unpaid holds of this address
 }
 
 func countEvent(eventID, email string) (eventCounts, error) {
@@ -83,7 +85,9 @@ func countEvent(eventID, email string) (eventCounts, error) {
 	err := dbJSON(`SELECT jsonb_build_object(
     'by_email', (SELECT count(*) FROM orders o WHERE o.event_id = $1 AND lower(o.email) = lower($2)
         AND EXISTS (SELECT 1 FROM attendees a WHERE a.order_id = o.id AND a.status = 'active')),
-    'hour', (SELECT count(*) FROM orders WHERE event_id = $1 AND created_at > now() - interval '1 hour'),
+    'pending_by_email', (SELECT count(*) FROM orders o WHERE o.event_id = $1 AND lower(o.email) = lower($2) AND o.status = 'pending'),
+    'hour', (SELECT count(*) FROM orders WHERE event_id = $1 AND created_at > now() - interval '1 hour'
+        AND NOT (status IN ('expired', 'cancelled') AND paid_at IS NULL)),
     'waiting', (SELECT count(*) FROM waitlist WHERE event_id = $1 AND status = 'waiting'))`, &c, eventID, email)
 	return c, err
 }

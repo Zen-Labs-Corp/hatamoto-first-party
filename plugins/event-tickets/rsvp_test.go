@@ -434,3 +434,37 @@ func TestRSVPDBErrorIsGeneric(t *testing.T) {
 		t.Errorf("%d %s", resp.Status, resp.Body)
 	}
 }
+
+const pricedTypes = `[{"id":5,"event_id":"e1","name":"Standard","capacity":10,"taken":4,"waitlist":true,"on_sale":true,"position":0},
+{"id":8,"event_id":"e1","name":"Gala","capacity":2,"taken":2,"waitlist":true,"on_sale":true,"position":1,"price_cents":2500}]`
+
+// Priced tickets are sold through /checkout only: RSVP and waitlist refuse them.
+func TestRSVPRefusesPricedTypes(t *testing.T) {
+	h := newRSVPHost(t)
+	h.types = pricedTypes
+	if code, _ := rsvpJSON(t, h, map[string]any{"items": items(5, 1, 8, 1)}); code != 422 {
+		t.Errorf("a priced line in a free order: %d", code)
+	}
+	if code, _ := rsvpJSON(t, h, map[string]any{"waitlist_type": 8}); code != 409 {
+		t.Errorf("waitlist of a priced type: %d", code)
+	}
+	if len(h.writes) != 0 {
+		t.Errorf("nothing may be written: %+v", h.writes)
+	}
+	if code, _ := rsvpJSON(t, h, map[string]any{"items": items(5, 1)}); code != 200 {
+		t.Errorf("a free line still works: %d", code)
+	}
+}
+
+func TestTokenShowsPrices(t *testing.T) {
+	h := newRSVPHost(t)
+	h.types = pricedTypes
+	r := publicGet(t, "/token", nil, map[string][]string{"event": {"e1"}})
+	var b struct{ Types []tokenType }
+	if err := json.Unmarshal([]byte(r.Body), &b); err != nil || len(b.Types) != 2 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	if b.Types[0].PriceText != "Free" || b.Types[1].Price != 2500 || b.Types[1].PriceText != "25.00 USD" || b.Types[1].Waitlist {
+		t.Errorf("types = %+v", b.Types)
+	}
+}
