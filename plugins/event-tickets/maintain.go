@@ -45,7 +45,8 @@ func maintain(budget time.Duration) {
 }
 
 // closeWaitlists ends the waiting entries and offers of events that are over,
-// cancelled or no longer published, without mail. An offer holds a seat, which
+// cancelled or deleted, without mail. Unpublished and postponed events only
+// pause their waitlists; the entries stay. An offer holds a seat, which
 // goes back in the same statement; offered_at tells an offer because RETURNING
 // sees the new status.
 func closeWaitlists(over func() bool) {
@@ -56,7 +57,7 @@ func closeWaitlists(over func() bool) {
 		var n int
 		err := dbJSON(`WITH c AS (UPDATE waitlist SET status = 'expired'
     WHERE status IN ('waiting', 'offered') AND id IN (SELECT id FROM waitlist WHERE status IN ('waiting', 'offered')
-        AND NOT (`+eventOpenSQL("waitlist.event_id")+`) ORDER BY id LIMIT $1)
+        AND `+eventOverSQL("waitlist.event_id")+` ORDER BY id LIMIT $1)
     RETURNING type_id, offered_at IS NOT NULL AS held),
  t AS (UPDATE ticket_types t SET taken = taken - x.n, touched_at = now()
     FROM (SELECT type_id, count(*) n FROM c WHERE held GROUP BY type_id) x WHERE t.id = x.type_id RETURNING t.id)

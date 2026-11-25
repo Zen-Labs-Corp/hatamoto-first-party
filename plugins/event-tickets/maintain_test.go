@@ -293,10 +293,15 @@ func TestMaintainClosesWaitlistsOfClosedEventsWithoutMail(t *testing.T) {
 	if c == nil {
 		t.Fatal("no statement ends the waitlists of closed events")
 	}
-	for _, want := range []string{"status IN ('waiting', 'offered')", "ev.status = 'published'", "coalesce(ev.ends_at, ev.starts_at) > now()",
+	for _, want := range []string{"status IN ('waiting', 'offered')", "ev.status IN ('cancelled', 'deleted')", "coalesce(ev.ends_at, ev.starts_at) <= now()",
 		"offered_at IS NOT NULL AS held", "taken = taken - x.n"} {
 		if !strings.Contains(c.sql, want) {
 			t.Errorf("close statement lacks %q", want)
+		}
+	}
+	for _, bad := range []string{"unpublished", "postponed", "ev.status = 'published'"} {
+		if strings.Contains(c.sql, bad) {
+			t.Errorf("a paused event keeps its waitlist, but the close statement names %q", bad)
 		}
 	}
 	if h.count("INSERT INTO mail_queue") != 0 || len(h.freed) != 0 {

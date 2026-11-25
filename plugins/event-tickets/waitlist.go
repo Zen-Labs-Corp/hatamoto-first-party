@@ -26,6 +26,14 @@ func eventOpenSQL(eventCol string) string {
     AND NOT coalesce(ev.status = 'published' AND coalesce(ev.ends_at, ev.starts_at) > now(), false))`
 }
 
+// eventOverSQL is a SQL condition: the event whose id is eventCol is over,
+// cancelled or deleted for good. Unpublished and postponed events are only
+// paused (see eventOpenSQL), so their waitlists are kept.
+func eventOverSQL(eventCol string) string {
+	return `EXISTS (SELECT 1 FROM events ev WHERE ev.entity_id = ` + eventCol + `
+    AND (ev.status IN ('cancelled', 'deleted') OR coalesce(ev.ends_at, ev.starts_at) <= now()))`
+}
+
 // promoteNext offers one freed seat of a type to the oldest waiting entry and
 // queues the offer mail. ok is false when nobody waits or no seat is free.
 func promoteNext(typeID int64) (waitID int64, ok bool) {
