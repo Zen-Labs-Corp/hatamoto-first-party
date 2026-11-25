@@ -1,6 +1,6 @@
 {
   "name": "event-tickets",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "sdk": "^0.22.2",
   "description": "Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.",
   "permissions": ["settings", "db", "entities.read", "mail.send", "http.fetch", "builder.data", "builder.island"],
@@ -56,7 +56,12 @@
     { "method": "POST", "path": "/admin/events/{id}/bundles", "roles": ["owner"] },
     { "method": "GET", "path": "/admin/events/{id}/checkin", "roles": ["owner", "editor"] },
     { "method": "POST", "path": "/admin/events/{id}/checkin", "roles": ["owner", "editor"] },
-    { "method": "POST", "path": "/admin/attendees/{id}/uncheck", "roles": ["owner", "editor"] }
+    { "method": "POST", "path": "/admin/attendees/{id}/uncheck", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/events/{id}/splits", "roles": ["owner"] },
+    { "method": "GET", "path": "/admin/payouts", "roles": ["owner"] },
+    { "method": "GET", "path": "/admin/payouts.csv", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/payouts/mark", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/payouts/unmark", "roles": ["owner"] }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },

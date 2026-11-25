@@ -179,9 +179,17 @@ func serveEventDetail(u *sdk.HTTPUser, id string) sdk.HTTPResponse {
 	if err != nil {
 		return unavailable()
 	}
-	return jsonReply(http.StatusOK, map[string]any{
+	reply := map[string]any{
 		"event": ev, "types": types, "fields": fields, "bundles": bundles, "default_capacity": s.DefaultCapacity,
-	})
+	}
+	if u.Role == "owner" {
+		splits, err := listSplits(id)
+		if err != nil {
+			return unavailable()
+		}
+		reply["splits"] = splits
+	}
+	return jsonReply(http.StatusOK, reply)
 }
 
 // typeBody is the body of POST /admin/events/{id}/types. A missing waitlist

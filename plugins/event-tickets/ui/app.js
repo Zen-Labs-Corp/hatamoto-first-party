@@ -53,6 +53,7 @@ function button(text, onClick, props = {}) {
 
 const MAX_PRICE_CENTS = 99999999;
 const MAX_BUNDLES = 10;
+const MAX_SPLITS = 10;
 const STATUSES = [["", "Any status"], ["paid", "Paid"], ["pending", "Waiting for payment"], ["confirmed", "Confirmed (free)"],
   ["refunded", "Refunded"], ["cancelled", "Cancelled"], ["expired", "Expired"]];
 const PROVIDERS = { stripe: "Stripe", paypal: "PayPal" };
@@ -60,7 +61,7 @@ const PROVIDERS = { stripe: "Stripe", paypal: "PayPal" };
 const state = {
   events: [], cursor: "", search: "", editing: null, attendeeEvent: "", page: 1,
   settings: {}, orders: [], orderCursor: "", orderFilter: { status: "", event: "", q: "" }, refunding: null,
-  coupons: [], coupon: { id: 0, type_id: 0 },
+  coupons: [], coupon: { id: 0, type_id: 0 }, payouts: null,
   checkinEvent: "", checkinLog: [],
 };
 
@@ -132,6 +133,7 @@ async function openEditor(id) {
   state.editing = {
     id, name: data.event.name, types: data.types || [], fields: data.fields || [], defaultCapacity: data.default_capacity,
     bundles: (data.bundles || []).map(bundleRule),
+    splits: (data.splits || []).map(splitRule),
   };
   renderEditor();
 }
@@ -230,6 +232,58 @@ function bundleRow(rule, i) {
     button("Remove", () => { ed.bundles.splice(i, 1); renderEditor(); }));
 }
 
+// parsePercent reads "80", "12.5" or "12.25" as basis points (1..10000) with
+// string math only; anything else, or a value outside 0.01..100, throws.
+function parsePercent(s) {
+  const m = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(String(s).trim());
+  const bp = m ? Number(m[1]) * 100 + Number((m[2] || "").padEnd(2, "0")) : 0;
+  if (bp < 1 || bp > 10000) throw new Error("Percent must be between 0.01 and 100");
+  return bp;
+}
+
+// splitText is a rule's value as the field shows it: basis points as a
+// percent ("80", "12.5"), or minor units as an amount.
+function splitText(rule, exp = exponent()) {
+  if (rule.kind !== "percent") return centsText(rule.value, exp);
+  const frac = String(rule.value % 100).padStart(2, "0").replace(/0+$/, "");
+  return `${Math.floor(rule.value / 100)}${frac ? `.${frac}` : ""}`;
+}
+
+// splitRule is a rule as the editor holds it; text is what the value field shows.
+function splitRule(r) {
+  return { name: r.name || "", email: r.email || "", kind: r.kind || "percent", text: r.value ? splitText(r) : "" };
+}
+
+// splitsBody turns editor rows into the request: percent "12.5" is 1250 basis
+// points, a fixed "2.00" is minor units. It throws a message the owner can read.
+function splitsBody(rules, exp = exponent()) {
+  return {
+    rules: rules.map((r) => {
+      let value;
+      if (r.kind === "percent") value = parsePercent(r.text);
+      else {
+        value = parseMoney(r.text, exp);
+        if (!value) throw new Error("Enter the fixed amount per ticket as a number, for example 2.50.");
+      }
+      return { name: r.name.trim(), email: r.email.trim(), kind: r.kind, value };
+    }),
+  };
+}
+
+function splitRow(rule, i) {
+  const name = el("input", { type: "text", value: rule.name, maxLength: 80, placeholder: "Payee name" });
+  name.addEventListener("input", () => { rule.name = name.value; });
+  const email = el("input", { type: "text", value: rule.email, maxLength: 254, placeholder: "Payout email", inputMode: "email" });
+  email.addEventListener("input", () => { rule.email = email.value; });
+  const kind = el("select", {}, el("option", { value: "percent", textContent: "% of the total" }), el("option", { value: "fixed", textContent: "per ticket" }));
+  kind.value = rule.kind;
+  kind.addEventListener("change", () => { rule.kind = kind.value; });
+  const value = el("input", { type: "text", value: rule.text, maxLength: 12, size: 8, inputMode: "decimal" });
+  value.addEventListener("input", () => { rule.text = value.value; });
+  return el("div", { className: "row" }, el("label", {}, "Payee ", name), email, kind, value,
+    button("Remove", () => { state.editing.splits.splice(i, 1); renderEditor(); }));
+}
+
 // isOwner: coupons and bundles are changed by owners only (an editor would get a 403).
 function isOwner() { return Boolean(state.settings.can_refund); }
 
@@ -239,6 +293,8 @@ function renderEditor() {
   if (!ed) return;
   $("#ed-title").textContent = `Tickets for ${ed.name}`;
   $("#ed-bundle-box").hidden = !isOwner(); // the server answers 403 to an editor
+  $("#ed-split-box").hidden = !isOwner();
+  $("#ed-splits").replaceChildren(...ed.splits.map(splitRow));
   $("#ed-types").replaceChildren(...ed.types.map(typeRow));
   $("#ed-bundles").replaceChildren(...ed.bundles.map(bundleRow));
   $("#ed-fields").replaceChildren(...ed.fields.map(fieldRow));
@@ -264,6 +320,25 @@ $("#ed-save-bundles").addEventListener("click", () => run(async () => {
   say("Saved.");
   renderEditor();
 }));
+$("#ed-add-split").addEventListener("click", () => {
+  const ed = state.editing;
+  if (ed.splits.length >= MAX_SPLITS) { say(`At most ${MAX_SPLITS} payees.`, true); return; }
+  ed.splits.push(splitRule({ kind: "percent" }));
+  renderEditor();
+});
+$("#ed-save-splits").addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  await run(async () => {
+    const ed = state.editing;
+    const data = await api("POST", `/admin/events/${encodeURIComponent(ed.id)}/splits`, splitsBody(ed.splits));
+    ed.splits = (data.splits || []).map(splitRule);
+    say("Saved.");
+    renderEditor();
+  });
+  btn.disabled = false;
+});
 $("#ed-add-field").addEventListener("click", () => {
   const ed = state.editing;
   if (ed.fields.length >= MAX_FIELDS) { say(`At most ${MAX_FIELDS} questions.`, true); return; }
@@ -627,6 +702,133 @@ function openOrders() {
   loadCoupons();
 }
 
+// ---- Payouts
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// periodOptions lists the last n UTC months, newest first.
+function periodOptions(nowMs, n = 24) {
+  const now = new Date(nowMs);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    out.push({ value: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, label: `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` });
+  }
+  return out;
+}
+
+// defaultPeriod is the previous UTC month, "YYYY-MM": the last one that is over.
+function defaultPeriod(nowMs) { return periodOptions(nowMs, 2)[1].value; }
+
+// shareText is a payee's share: "80%", "12.5%", "2.00 / ticket" or "mixed".
+function shareText(share, exp = exponent()) {
+  if (share.kind === "percent") return `${splitText({ kind: "percent", value: share.value })}%`;
+  if (share.kind === "fixed") return `${centsText(share.value, exp)} / ticket`;
+  return "mixed";
+}
+
+// markRequest is the body of the mark route: the amount is the one on screen,
+// the server refuses it when it has changed.
+function markRequest(row, date, ref) {
+  return { period: state.payouts.period, email: row.email, currency: row.currency, paid_on: date, reference: ref.trim(), owed_cents: row.owed };
+}
+
+function money(cents, cur, exp) { return `${centsText(cents, exp)} ${cur}`; }
+
+// shortDay is "2026-07-02" as "2 Jul".
+function shortDay(iso) {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(iso || "");
+  return m ? `${Number(m[2])} ${MONTHS[Number(m[1]) - 1].slice(0, 3)}` : "";
+}
+
+async function openPayouts() {
+  const sel = $("#po-period");
+  if (!sel.children.length) {
+    sel.replaceChildren(...periodOptions(Date.now()).map((o) => el("option", { value: o.value, textContent: o.label })));
+    sel.value = defaultPeriod(Date.now());
+  }
+  closeMark();
+  await loadPayouts();
+}
+
+async function loadPayouts() {
+  const period = $("#po-period").value;
+  const data = await run(() => api("GET", "/admin/payouts", null, { period }));
+  if (!data) return;
+  say("");
+  const exps = data.exponents || {};
+  const rows = data.payees || [];
+  state.payouts = { period, rows, exps };
+  $("#po-state").textContent = rows.length ? "" : "Nobody is owed anything for this period. Add split rules to an event on the Events tab.";
+  $("#po-held").hidden = !data.held_back;
+  $("#po-held").textContent = `${data.held_back} orders with a payment problem are left out. Check them on the Orders tab.`;
+  $("#po-table").hidden = !rows.length;
+  $("#po-rows").replaceChildren(...rows.map(payoutRow));
+  $("#po-csv").value = `${BASE}/admin/payouts.csv?period=${period}`;
+}
+
+function payoutRow(p) {
+  const exp = state.payouts.exps[p.currency] ?? 2;
+  const num = (cents) => el("td", { className: "num", textContent: money(cents, p.currency, exp) });
+  const status = el("td", {});
+  if (p.paid) {
+    const now = p.paid.changed ? ` (now ${money(p.owed, p.currency, exp)})` : "";
+    status.append(`Paid ${shortDay(p.paid.paid_on)}${p.paid.reference ? ` #${p.paid.reference}` : ""}${now} `,
+      confirmButton("Undo", "Confirm undo", "Click Confirm undo to remove the paid record. No money moves.", () => unmarkPayout(p)));
+  } else if (p.owed > 0) {
+    status.append(button("Mark paid", () => openMark(p)));
+  } else {
+    status.append("Nothing owed");
+  }
+  return el("tr", {}, el("td", { title: p.email, textContent: p.name }), cell(String(p.events)), num(p.gross), num(p.refunds), num(p.fees),
+    cell(shareText(p.share, exp)), num(p.owed), status);
+}
+
+async function unmarkPayout(p) {
+  const data = await run(() => api("POST", "/admin/payouts/unmark", { period: state.payouts.period, email: p.email, currency: p.currency }));
+  if (!data) return;
+  say("Paid record removed.");
+  loadPayouts();
+}
+
+function openMark(p) {
+  state.payouts.marking = p;
+  const exp = state.payouts.exps[p.currency] ?? 2;
+  $("#po-mark").hidden = false;
+  $("#po-mark-title").textContent = `Mark ${p.name} as paid: ${money(p.owed, p.currency, exp)}`;
+  $("#po-mark-date").value = new Date(Date.now()).toISOString().slice(0, 10);
+  $("#po-mark-ref").value = "";
+}
+
+function closeMark() {
+  if (state.payouts) state.payouts.marking = null;
+  $("#po-mark").hidden = true;
+}
+
+// submitMark records the payout; the route compares the amount with its own.
+async function submitMark() {
+  const p = state.payouts && state.payouts.marking;
+  if (!p) return;
+  const date = $("#po-mark-date").value;
+  if (!date) { say("Pick the date you paid.", true); return; }
+  const data = await run(() => api("POST", "/admin/payouts/mark", markRequest(p, date, $("#po-mark-ref").value)));
+  if (!data) return;
+  say("Marked as paid.");
+  closeMark();
+  loadPayouts();
+}
+
+$("#po-period").addEventListener("change", () => { closeMark(); loadPayouts(); });
+$("#po-csv").addEventListener("click", () => {
+  const f = $("#po-csv");
+  f.select();
+  try {
+    say(document.execCommand("copy") ? "Copied. If it did not work, press Ctrl+C." : "Selected. Press Ctrl+C to copy.");
+  } catch { say("Selected. Press Ctrl+C to copy."); }
+});
+$("#po-mark-act").append(confirmButton("Mark paid", "Confirm mark paid", "Click Confirm mark paid to record that you paid this amount. No money is sent from here.", submitMark));
+$("#po-mark-close").addEventListener("click", closeMark);
+
 // ---- Settings
 
 async function fetchSettings() {
@@ -842,7 +1044,7 @@ window.addEventListener("online", () => ckQueue.sync());
 
 // ---- Tabs
 
-const TABS = { events: () => loadEvents(false), attendees: () => loadAttendees(1), orders: openOrders, checkin: openCheckin, settings: loadSettings };
+const TABS = { events: () => loadEvents(false), attendees: () => loadAttendees(1), orders: openOrders, checkin: openCheckin, payouts: openPayouts, settings: loadSettings };
 const loaded = new Set();
 
 function showTab(name) {
@@ -851,7 +1053,7 @@ function showTab(name) {
     $(`#tab-${tab}`).classList.toggle("active", tab === name);
   }
   say("");
-  if (name === "attendees" || name === "orders" || name === "checkin" || !loaded.has(name)) {
+  if (name === "attendees" || name === "orders" || name === "checkin" || name === "payouts" || !loaded.has(name)) {
     loaded.add(name);
     TABS[name]();
   }
@@ -861,12 +1063,14 @@ for (const tab of Object.keys(TABS)) $(`#tab-${tab}`).addEventListener("click", 
 
 hatamoto.ready.then(async () => {
   await fetchSettings();
+  $("#tab-payouts").hidden = !isOwner(); // the server answers 403 to an editor
   showTab("events");
 });
 
 if (typeof module !== "undefined") {
   module.exports = {
-    csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest,
+    csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest, splitsBody, parsePercent,
+    periodOptions, defaultPeriod, markRequest, shareText,
     feesText, submitRefund, openRefund, state, showScanResult, clockTime, scanClick, ckQueue,
   };
 }

@@ -76,6 +76,8 @@ func newAdminHost(t *testing.T) *adminHost {
 			return cell(jsonText(h.types))
 		case strings.Contains(sql, "FROM bundle_rules"):
 			return cell(`[]`)
+		case strings.Contains(sql, "FROM split_rules"):
+			return cell(`[]`)
 		case strings.Contains(sql, "FROM fields"):
 			return cell(jsonText(h.fields))
 		case strings.Contains(sql, "FROM ticket_types tt"):

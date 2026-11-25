@@ -18,6 +18,7 @@ Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with co
 10. **Export CSV**: the admin page cannot start a download, so it shows the path `/api/v1/p/event-tickets/admin/events/<id>/attendees.csv`. Copy it, put your site address in front and open it in the browser while you are signed in to the admin.
 11. **Check-in**: open the **Check-in** tab at the door and pick the event. The line at the top shows how many tickets are checked in. **Scan QR (camera)** opens the camera dialog: take one photo of the ticket's QR code (on a phone screen or on paper) and the ticket is checked in; one photo per tap, and if no code is found you tap again. The result is listed as **OK**, **ALREADY CHECKED IN** (with the time of the first check-in) or **REFUSED** (not a valid ticket, a ticket for another event, or a ticket that is cancelled, refunded, expired or not paid). **Undo** next to an OK result takes the check-in back after you confirm. To check someone in by hand, search by name or by the start of the ticket code and press **Check in**. The owner must grant the camera on the plugin's Permissions tab first; without it, search still works.
 12. **Weak signal**: a scan that cannot reach the server is kept in an offline queue shown under the list and sent in order when the connection is back (the page retries every 15 seconds). A queued scan that turns out to be already checked in or refused is reported in the list like any other.
+13. **Payouts** (owner only): under **Tickets** on an event, **Payout splits** lists who is owed a share of its ticket money: a name, a payout email and either a percent (for example 80 or 12.5) or a fixed amount per ticket. The **Payouts** tab shows, for a calendar month, what each payee is owed, with gross, refunds, fees, share and the amount owed. After you have paid someone by hand, **Mark paid** records the date and a reference; **Undo** removes the record. For a spreadsheet, the tab shows the path `/api/v1/p/event-tickets/admin/payouts.csv?period=YYYY-MM`: copy it, put your site address in front and open it in the browser while you are signed in to the admin. It is a report only: the plugin sends no money.
 
 ## Settings
 
@@ -52,6 +53,8 @@ The **Settings** tab of the admin page shows the current values; change them in 
 - `builder.island`: runs the booking form on the event page; a widget cannot hold a form on its own.
 - `ui.allow camera`: lets the admin page take a photo to read ticket QR codes. The owner grants it on the plugin's Permissions tab. The photo is decoded in the page and is never stored or sent.
 
+Payouts need only `db`, and move no money.
+
 Nothing else: no other hosts, no scripts added to your pages.
 
 ## Join links
@@ -65,6 +68,8 @@ All of it lives in the plugin's own database:
 - **Ticket types and fields** of each event, with how many tickets are taken.
 - **Orders**: the buyer's name, email address and answers, when the confirmation was sent, and for paid orders the amounts, currency, provider ids and status. Card data never reaches this plugin.
 - **Coupons and bundle rules** you define.
+- **Split rules**: for each event, the payee's name, payout email and share. Removed some months after the event ends, like orders (see below).
+- **Payout records**: the month, payee name and email, currency, the amount owed when you marked it paid, the date, your reference and the id of the admin user who marked it. Removed after the same number of months, counted from the paid date.
 - **Payment events**: the ids of processed provider events, kept 90 days so a repeated event is ignored.
 - **PayPal access token**: cached in the plugin database for a short time.
 - **Attendees**: one row per ticket, with its status and a random ticket code. The code is part of the ticket link. A checked-in ticket also keeps the check-in time and the id of the admin user who checked it in.
@@ -73,7 +78,7 @@ All of it lives in the plugin's own database:
 - **Event dates**, copied from the event so the retention job knows when it ended.
 - **Signing key**: the key that signs the booking form's token is generated on first use and kept in the plugin database. It is never a setting and is never shown.
 
-Orders are anonymised the number of months set in **Keep attendee details for** after the event ends: name, email and answers are cleared. The waitlist rows of that event are removed then, and queued mails that point at nothing are dropped. The ticket rows stay, since counts and codes are not personal. Checkouts that were started but never paid are deleted after 7 days. Everything is removed when you remove the plugin's data.
+Orders are anonymised the number of months set in **Keep attendee details for** after the event ends: name, email and answers are cleared. The waitlist rows of that event are removed then, and queued mails that point at nothing are dropped. The ticket rows stay, since counts and codes are not personal. Split rules are deleted at the same time, and payout records the same number of months after their paid date, but never while a split rule for that payee still exists, so a paid month does not come back as owed. Checkouts that were started but never paid are deleted after 7 days. Everything is removed when you remove the plugin's data.
 
 ## Limits
 
@@ -90,6 +95,14 @@ Orders are anonymised the number of months set in **Keep attendee details for** 
 - One photo per scan: the camera dialog takes a still picture, not a video stream, and a QR code that is blurred or cut off needs a new photo.
 - Check-in is for the owner and editor accounts of the admin; there is no separate door-staff role yet.
 - Attendees cannot cancel their own tickets yet; you cancel them from the Attendees tab.
+- Payouts are a report. The plugin sends no money and does not connect to Stripe Connect or PayPal payouts.
+- Owed is the share of (paid total - refunds - this plugin's fee) per order, never below 0. Stripe or PayPal fees are not known to the plugin and are not deducted.
+- A period is a calendar month in UTC by payment date. A refund counts in the month the order was paid.
+- The report uses today's split rules. **Mark paid** keeps the amount owed at that time, and the report flags it when the amount later changes. Mark a month paid before you edit the rules.
+- One row per payee and currency. A payee is identified by payout email, whatever the name.
+- A fixed per-ticket amount counts tickets that were not refunded and whose type has a price today. Each rule is capped at the event's base on its own, so several rules together can go above it. Percent rules of one event cannot add up to more than 100.
+- Events without split rules do not appear. Orders with a payment problem are left out and counted above the table.
+- Payouts and split rules are for owners only: editors do not see them.
 
 ## Build
 

@@ -13,6 +13,7 @@
       <button id="tab-attendees" type="button" class="tab">Attendees</button>
       <button id="tab-orders" type="button" class="tab">Orders</button>
       <button id="tab-checkin" type="button" class="tab">Check-in</button>
+      <button id="tab-payouts" type="button" class="tab">Payouts</button>
       <button id="tab-settings" type="button" class="tab">Settings</button>
     </nav>
     <p id="notice" class="notice" hidden></p>
@@ -42,6 +43,15 @@
           <div class="row">
             <button id="ed-add-bundle" type="button">Add bundle rule</button>
             <button id="ed-save-bundles" type="button">Save bundles</button>
+          </div>
+        </div>
+        <div id="ed-split-box">
+          <h2>Payout splits</h2>
+          <p class="muted">Who is owed a share of this event's ticket money: a percent of what was paid minus refunds and fees, or a fixed amount per ticket. Up to 10. No money is sent; see the Payouts tab.</p>
+          <div id="ed-splits"></div>
+          <div class="row">
+            <button id="ed-add-split" type="button">Add payee</button>
+            <button id="ed-save-splits" type="button">Save splits</button>
           </div>
         </div>
         <h2>Questions for the buyer</h2>
@@ -158,6 +168,37 @@
       <ul id="ck-log" class="ck-log"></ul>
       <p id="ck-queue" class="muted"></p>
       <p id="ck-warn" class="notice error" hidden>Offline queue is kept in this page only: it is lost if you reload or close it.</p>
+    </section>
+
+    <section id="panel-payouts" hidden>
+      <div class="row">
+        <label>Period <select id="po-period"></select></label>
+      </div>
+      <p class="muted">What each payee is owed for the payments made in that month (UTC), after refunds and this plugin's fee. A report only: no money is sent.</p>
+      <p id="po-state" class="muted"></p>
+      <p id="po-held" class="muted" hidden></p>
+      <table id="po-table" hidden>
+        <thead>
+          <tr><th>Payee</th><th>Events</th><th class="num">Gross</th><th class="num">Refunds</th><th class="num">Fees</th><th>Share</th><th class="num">Owed</th><th>Status</th></tr>
+        </thead>
+        <tbody id="po-rows"></tbody>
+      </table>
+
+      <section id="po-mark" class="panel-box" hidden>
+        <h2 id="po-mark-title"></h2>
+        <div class="row">
+          <label>Paid on <input id="po-mark-date" type="date"></label>
+          <label>Reference <input id="po-mark-ref" type="text" maxlength="80" placeholder="Optional"></label>
+        </div>
+        <div class="row">
+          <span id="po-mark-act"></span>
+          <button id="po-mark-close" type="button">Close</button>
+        </div>
+      </section>
+
+      <h2>Export CSV</h2>
+      <p class="muted">Select the path, copy it, put your site address in front and open it in the browser while you are signed in to the admin.</p>
+      <input id="po-csv" class="copy" type="text" readonly>
     </section>
 
     <section id="panel-settings" hidden>
