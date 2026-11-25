@@ -6,5 +6,5 @@ golang.org/x/net v0.62.0 h1:18ELalfM5+XNRwzM2nYqXsZQ9ByS1uhj2O/U7+5jqRY=
 golang.org/x/net v0.62.0/go.mod h1:WgDCOTH8iwtB66T4/GfI94AHo/hhdb7Hah9NDseQfiI=
 golang.org/x/text v0.44.0 h1:YItdp/mQNGnsmrgpcdA5yQ3bnRxCfo/Tj/iByGW9GGo=
 golang.org/x/text v0.44.0/go.mod h1:S4FR1waQ9LbjQTls97SyRjDaUUVkaM+cXwwuG/G+MwY=
-hatamoto.dev/sdk v0.27.0 h1:Rp5Ie5D8KonQ7a5HkE7fkE58a6g2VGeoOFkRSatdfRA=
-hatamoto.dev/sdk v0.27.0/go.mod h1:oJyA9ZOHmsgefVekwCxK2Ad8znn1j4le4lW1u7luJhU=
+hatamoto.dev/sdk v0.29.0 h1:TE+OCimv8yyfCjhRi349+I5cXViF2Sh/0e+UbnwUf3w=
+hatamoto.dev/sdk v0.29.0/go.mod h1:oJyA9ZOHmsgefVekwCxK2Ad8znn1j4le4lW1u7luJhU=
