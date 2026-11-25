@@ -1,5 +1,5 @@
 {{define "section-hn_userbar"}}{{template "plugin/hn/style" .}}{{$c := .Content}}<div class="hn-ub">
-{{if eq $c.state "named"}}<a href="{{$c.user_href}}">{{$c.name}}</a> ({{$c.karma}}) | <a href="{{$c.logout_href}}">logout</a>
-{{else if eq $c.state "noname"}}<a href="{{$c.login_href}}">pick a username</a> | <a href="{{$c.logout_href}}">logout</a>
+{{if eq $c.state "named"}}<a href="{{$c.user_href}}">{{$c.name}}</a> ({{$c.karma}}) | <form method="post" action="{{$c.logout_action}}" class="hn-out"><button type="submit">logout</button></form>
+{{else if eq $c.state "noname"}}<a href="{{$c.login_href}}">pick a username</a> | <form method="post" action="{{$c.logout_action}}" class="hn-out"><button type="submit">logout</button></form>
 {{else}}<a href="{{$c.login_href}}">login</a>
 {{end}}</div>{{end}}

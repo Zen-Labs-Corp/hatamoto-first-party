@@ -1,7 +1,7 @@
 {{define "section-hn_login"}}{{template "plugin/hn/style" .}}{{$c := .Content}}<div class="hn-login">
 {{if $c.notice}}<p class="hn-notice" role="status">{{$c.notice}}</p>
 {{end}}{{if eq $c.state "named"}}<p>signed in as {{$c.name}}</p>
-<p><a href="{{$c.logout_href}}">logout</a></p>
+<p><form method="post" action="{{$c.logout_action}}" class="hn-out"><button type="submit">logout</button></form></p>
 {{else if eq $c.state "noname"}}<b>Pick a username</b>
 <form method="post" action="/p/hn/username">
 <p><label>username <input type="text" name="username" maxlength="15" required></label></p>
@@ -9,8 +9,18 @@
 <p><button type="submit">create account</button></p>
 <p class="hn-note">2 to 15 letters, digits, dashes and underscores. You cannot change it later.</p>
 </form>
-<p><a href="{{$c.logout_href}}">logout</a></p>
+<p><form method="post" action="{{$c.logout_action}}" class="hn-out"><button type="submit">logout</button></form></p>
 {{else}}<b>Login</b>
-<p><a href="{{$c.signin_action}}">send me a sign-in link</a></p>
-<p class="hn-note">We email you a link; there is no password. After signing in you pick a username.</p>
+<form method="post" action="{{$c.login_action}}"><table class="hn-form-tbl">
+<tr><td><label for="hn-login-user">username:</label></td><td><input id="hn-login-user" type="text" name="username" maxlength="15" autocomplete="username" autocapitalize="off" spellcheck="false" required></td></tr>
+<tr><td><label for="hn-login-pw">password:</label></td><td><input id="hn-login-pw" type="password" name="password" maxlength="72" autocomplete="current-password" required></td></tr>
+</table><input type="hidden" name="next" value="{{$c.next}}"><p><button type="submit">login</button></p></form>
+{{if $c.reset_href}}<p><a href="{{$c.reset_href}}">Forgot your password?</a></p>{{end}}
+<p class="hn-note">Signed up with an email link? <a href="{{$c.email_signin_href}}">Sign in by email</a>.</p>
+<b>Create Account</b>
+<form method="post" action="{{$c.signup_action}}"><table class="hn-form-tbl">
+<tr><td><label for="hn-signup-user">username:</label></td><td><input id="hn-signup-user" type="text" name="username" maxlength="15" autocomplete="username" autocapitalize="off" spellcheck="false" required></td></tr>
+<tr><td><label for="hn-signup-pw">password:</label></td><td><input id="hn-signup-pw" type="password" name="password" minlength="8" maxlength="72" autocomplete="new-password" required></td></tr>
+</table><input type="hidden" name="next" value="{{$c.next}}"><p><button type="submit">create account</button></p></form>
+<p class="hn-note">2 to 15 letters, digits, dashes and underscores. Passwords are 8 to 72 characters. No email needed.</p>
 {{end}}</div>{{end}}
