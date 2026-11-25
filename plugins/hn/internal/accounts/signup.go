@@ -25,7 +25,7 @@ func signupHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, erro
 		if !validPassword(pw) {
 			return fail(noticePwBad)
 		}
-		if err := r.RunGates(core.GateSignup, &core.GateReq{Kind: core.GateSignup, Req: req, Target: name}); err != nil {
+		if err := r.RunGates(core.GateSignup, &core.GateReq{Kind: core.GateSignup, Req: req, Target: core.UsernameLower(name)}); err != nil {
 			if req.WantsJSON() {
 				return core.JSONError(403, "sign-up is not available"), nil
 			}

@@ -90,6 +90,16 @@ func TestSignupRefusals(t *testing.T) {
 	}
 }
 
+func TestSignupGateTargetIsLowerCase(t *testing.T) {
+	installFake(t)
+	var targets []string
+	r := newGateRegistry(core.GateSignup, func(g *core.GateReq) error { targets = append(targets, g.Target); return gateRefusal{} })
+	signup(r, "AnN", goodPw)
+	if len(targets) != 1 || targets[0] != "ann" {
+		t.Fatalf("targets %q", targets)
+	}
+}
+
 func TestSignupGateRefusal(t *testing.T) {
 	f := installFake(t)
 	r := newGateRegistry(core.GateSignup, func(*core.GateReq) error { return gateRefusal{} })
