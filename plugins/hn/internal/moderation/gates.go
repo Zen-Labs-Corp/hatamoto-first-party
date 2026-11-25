@@ -11,7 +11,8 @@ import (
 const (
 	sqlSubmitCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, EXISTS(SELECT 1 FROM banned_domains d JOIN jsonb_array_elements_text($2::jsonb) h(host) ON h.host = d.domain OR h.host LIKE '%.' || d.domain) AS domain, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net) x`
 	sqlVoteCheck   = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, (SELECT count(*) FROM rate_events WHERE kind = 'vote_user' AND key = $2 AND created_at > $5::timestamptz - interval '1 minute') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_addr' AND key = $3 AND created_at > $5::timestamptz - interval '1 minute') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_net' AND key = $4 AND created_at > $5::timestamptz - interval '1 minute') AS net_n) x`
-	sqlSignupCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $1 AND (expires_at IS NULL OR expires_at > $2::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'signup_net' AND key = $1 AND created_at > $2::timestamptz - interval '1 hour') AS net_n) x`
+	sqlSignupCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $1 AND (expires_at IS NULL OR expires_at > $3::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'signup_net' AND key = $1 AND created_at > $3::timestamptz - interval '1 hour') AS net_n, (SELECT count(*) FROM rate_events WHERE kind = 'signup_addr' AND key = $2 AND created_at > $3::timestamptz - interval '1 hour') AS addr_n) x`
+	sqlLoginCheck  = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'login_user' AND key = $1 AND created_at > $4::timestamptz - interval '1 hour') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_addr' AND key = $2 AND created_at > $4::timestamptz - interval '1 hour') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_net' AND key = $3 AND created_at > $4::timestamptz - interval '1 hour') AS net_n) x`
 	sqlBlocked     = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked) x`
 	sqlRateRecord  = `INSERT INTO rate_events (kind, key, created_at) SELECT e->>'kind', e->>'key', $1::timestamptz FROM jsonb_array_elements($2::jsonb) e`
 )
@@ -21,6 +22,7 @@ func registerGates(r *core.Registry) {
 	r.Gate(core.GateVote, gateVote)
 	r.Gate(core.GateSignup, gateSignup)
 	r.Gate(core.GateFlag, gateFlag)
+	r.Gate(core.GateLogin, gateLogin)
 }
 
 func nowArg() string { return core.Now().UTC().Format(time.RFC3339Nano) }
@@ -114,27 +116,58 @@ func gateVote(req *core.GateReq) error {
 	return nil
 }
 
-// gateSignup runs for a visitor without a username: only the network is known.
+// gateSignup runs for a visitor without a username: only the network and the address are known.
 func gateSignup(req *core.GateReq) error {
-	net := netKey(req)
-	if net == "" {
+	net, addr := netKey(req), addrKey(req)
+	if net == "" && addr == "" {
 		return nil
 	}
 	var res struct {
-		Net  bool
-		NetN int `json:"net_n"`
+		Net   bool
+		NetN  int `json:"net_n"`
+		AddrN int `json:"addr_n"`
 	}
 	now := nowArg()
-	if err := core.QueryJSON(sqlSignupCheck, &res, net, now); err != nil {
+	if err := core.QueryJSON(sqlSignupCheck, &res, net, addr, now); err != nil {
 		return nil
 	}
 	if res.Net {
 		return refusal{nNet}
 	}
-	if res.NetN >= signupNetPerHour {
+	if (net != "" && res.NetN >= signupNetPerHour) || (addr != "" && res.AddrN >= signupAddrPerHour) {
 		return refusal{nSignupRate}
 	}
-	recordRates(now, "signup_net", net)
+	recordRates(now, "signup_net", net, "signup_addr", addr)
+	return nil
+}
+
+// gateLogin runs before a password is checked (login and password change). Target is the
+// lower-case username when it is a valid name, whether or not it exists, else "". Attempts
+// count (the gate cannot see the outcome); a key over its limit adds no more rows. The
+// refusal never depends on whether the username exists.
+func gateLogin(req *core.GateReq) error {
+	user, addr, net := req.Target, addrKey(req), netKey(req)
+	if user == "" && addr == "" && net == "" {
+		return nil
+	}
+	var res struct {
+		Net   bool
+		UserN int `json:"user_n"`
+		AddrN int `json:"addr_n"`
+		NetN  int `json:"net_n"`
+	}
+	now := nowArg()
+	if err := core.QueryJSON(sqlLoginCheck, &res, user, addr, net, now); err != nil {
+		return nil
+	}
+	if res.Net {
+		return refusal{nNet}
+	}
+	userOver, addrOver, netOver := res.UserN >= loginUserPerHour, res.AddrN >= loginAddrPerHour, res.NetN >= loginNetPerHour
+	recordRates(now, "login_user", keyBelow(user, userOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
+	if (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver) {
+		return refusal{nLoginRate}
+	}
 	return nil
 }
 

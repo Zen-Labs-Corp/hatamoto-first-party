@@ -170,36 +170,106 @@ func TestGates(t *testing.T) {
 	})
 
 	t.Run("signup", func(t *testing.T) {
-		answer := func(banned bool, n int) *fakeDB {
+		answer := func(banned bool, netN, addrN int) *fakeDB {
 			return &fakeDB{Query: func(sql string, _ []any) (any, error) {
 				if sql != sqlSignupCheck {
 					t.Errorf("unexpected query %q", sql)
 				}
-				return jsonRow(map[string]any{"net": banned, "net_n": n}), nil
+				return jsonRow(map[string]any{"net": banned, "net_n": netN, "addr_n": addrN}), nil
 			}}
 		}
-		install(t, answer(true, 0))
-		wantRefusal(t, r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")), nNet)
-		install(t, answer(false, 5))
-		wantRefusal(t, r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")), nSignupRate)
-		db := answer(false, 4)
-		install(t, db)
-		if err := r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")); err != nil {
+		run := func(db *fakeDB) error {
+			install(t, db)
+			return r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "addr1", ""))
+		}
+		wantRefusal(t, run(answer(true, 0, 0)), nNet)
+		wantRefusal(t, run(answer(false, 5, 0)), nSignupRate)
+		wantRefusal(t, run(answer(false, 0, 3)), nSignupRate)
+		over := answer(false, 0, 3)
+		_ = run(over)
+		if len(over.Execs) != 0 {
+			t.Fatalf("flood recorded: %+v", over.Execs)
+		}
+		db := answer(false, 4, 2)
+		if err := run(db); err != nil {
 			t.Fatalf("err = %v", err)
 		}
 		if len(db.Execs) != 1 || db.Execs[0].SQL != sqlRateRecord {
 			t.Fatalf("execs = %+v", db.Execs)
 		}
-		install(t, answer(false, 5))
-		over := &fakeDB{Query: answer(false, 5).Query}
-		install(t, over)
-		wantRefusal(t, r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")), nSignupRate)
-		if len(over.Execs) != 0 {
-			t.Fatalf("flood recorded: %+v", over.Execs)
+		if rows, _ := db.Execs[0].Args[1].([]any); len(rows) != 2 {
+			t.Fatalf("rate rows = %v, want signup_net and signup_addr", db.Execs[0].Args[1])
 		}
-		t.Run("no net key passes without a host call", func(t *testing.T) {
+		t.Run("no keys passes without a host call", func(t *testing.T) {
 			h := install(t, &fakeDB{})
 			if err := r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "", "", "")); err != nil || len(h.Calls) != 0 {
+				t.Fatalf("err = %v, calls = %v", err, h.Calls)
+			}
+		})
+	})
+
+	t.Run("login", func(t *testing.T) {
+		counts := func(banned bool, userN, addrN, netN int) *fakeDB {
+			return &fakeDB{Query: func(sql string, _ []any) (any, error) {
+				if sql != sqlLoginCheck {
+					t.Errorf("unexpected query %q", sql)
+				}
+				return jsonRow(map[string]any{"net": banned, "user_n": userN, "addr_n": addrN, "net_n": netN}), nil
+			}}
+		}
+		run := func(db *fakeDB, target string) error {
+			install(t, db)
+			req := gateReq(core.GateLogin, nil, "net1", "addr1", "")
+			req.Target = target
+			return r.RunGates(core.GateLogin, req)
+		}
+		wantRefusal(t, run(counts(true, 0, 0, 0), "ann"), nNet)
+		wantRefusal(t, run(counts(false, 10, 0, 0), "ann"), nLoginRate)
+		wantRefusal(t, run(counts(false, 0, 20, 0), "ann"), nLoginRate)
+		wantRefusal(t, run(counts(false, 0, 0, 60), "ann"), nLoginRate)
+		db := counts(false, 9, 19, 59)
+		if err := run(db, "ann"); err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if len(db.Execs) != 1 {
+			t.Fatalf("execs = %+v", db.Execs)
+		}
+		kinds := ""
+		rows, _ := db.Execs[0].Args[1].([]any)
+		for _, row := range rows {
+			m, _ := row.(map[string]any)
+			kinds += m["kind"].(string) + " "
+		}
+		if kinds != "login_user login_addr login_net " {
+			t.Fatalf("rate rows = %q", kinds)
+		}
+		t.Run("a key over its limit is not recorded", func(t *testing.T) {
+			db := counts(false, 10, 0, 0)
+			wantRefusal(t, run(db, "ann"), nLoginRate)
+			rows, _ := db.Execs[0].Args[1].([]any)
+			if len(db.Execs) != 1 || len(rows) != 2 {
+				t.Fatalf("execs = %+v", db.Execs)
+			}
+		})
+		t.Run("no username: no user row and no user refusal", func(t *testing.T) {
+			db := counts(false, 99, 0, 0)
+			if err := run(db, ""); err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			rows, _ := db.Execs[0].Args[1].([]any)
+			if len(rows) != 2 {
+				t.Fatalf("rate rows = %v, want addr and net only", db.Execs[0].Args[1])
+			}
+		})
+		t.Run("db error passes", func(t *testing.T) {
+			db := &fakeDB{Query: func(string, []any) (any, error) { return nil, hostErr(sdk.ErrUnavailable) }}
+			if err := run(db, "ann"); err != nil {
+				t.Fatalf("err = %v", err)
+			}
+		})
+		t.Run("no keys passes without a host call", func(t *testing.T) {
+			h := install(t, &fakeDB{})
+			if err := r.RunGates(core.GateLogin, gateReq(core.GateLogin, nil, "", "", "")); err != nil || len(h.Calls) != 0 {
 				t.Fatalf("err = %v, calls = %v", err, h.Calls)
 			}
 		})
