@@ -57,6 +57,29 @@ fixture foreigncall
 printf '{{define "plugin/foreigncall/ok_name"}}{{template "plugin/good/ok_name"}}{{end}}\n' >"$tmp/plugins/foreigncall/build/partials/ok_name.html"
 check "partial calling another plugin" 1 'foreigncall \.+ FAIL core would refuse templates: .*another plugin' "$tmp/plugins/foreigncall" "$tmp/plugins/good"
 
+fixture scriptmark
+jq '.permissions=["site.scripts"]' "$tmp/plugins/scriptmark/build/plugin.json" >"$tmp/m.json" && mv "$tmp/m.json" "$tmp/plugins/scriptmark/build/plugin.json"
+printf '{{define "section-fx_block"}}<button onclick="x()">go</button>{{end}}\n' >"$tmp/plugins/scriptmark/build/sections/fx_block.html"
+check "inline handler in a section of a plugin that asks for site.scripts (no grant on a fresh install)" 1 'scriptmark \.+ FAIL core would refuse templates: .*site\.scripts' "$tmp/plugins/scriptmark"
+
+# a wasm with one export, func_x (type () -> (), one empty function)
+wasm_x='\0asm\1\0\0\0\1\4\1\140\0\0\3\2\1\0\7\12\1\6func_x\0\0\12\4\1\2\0\13'
+funcfixture() { # <name> <declared func>: a section that calls plugin_<name>_<func>
+  fixture "$1"
+  jq --arg f "$2" '.funcs=[$f]' "$tmp/plugins/$1/build/plugin.json" >"$tmp/m.json" && mv "$tmp/m.json" "$tmp/plugins/$1/build/plugin.json"
+  printf "$wasm_x" >"$tmp/plugins/$1/build/plugin.wasm"
+  printf '{{define "section-fx_block"}}{{plugin_%s_%s}}{{end}}\n' "$1" "$2" >"$tmp/plugins/$1/build/sections/fx_block.html"
+}
+funcfixture hasexport x
+check "template func with a wasm export loads" 0 'hasexport \.+ OK' "$tmp/plugins/hasexport"
+funcfixture noexport y
+check "template func without a wasm export (host skips it, the call then fails to parse)" 1 'noexport \.+ FAIL core would refuse templates' "$tmp/plugins/noexport"
+
+fixture deepranges
+printf '{{define "section-fx_block"}}{{range .Content.a}}{{template "plugin/deepranges/p" .}}{{end}}{{end}}\n' >"$tmp/plugins/deepranges/build/sections/fx_block.html"
+printf '{{define "plugin/deepranges/p"}}{{range .b}}{{range $.Content.c}}x{{end}}{{end}}{{end}}\n' >"$tmp/plugins/deepranges/build/partials/ok_name.html"
+check "3 nested ranges across a called template" 1 'deepranges \.+ FAIL core would refuse templates: .*nests ranges deeper' "$tmp/plugins/deepranges"
+
 mkdir -p "$tmp/plugins/nobuild"
 check "no build/" 1 'FAIL no build/' "$tmp/plugins/nobuild"
 

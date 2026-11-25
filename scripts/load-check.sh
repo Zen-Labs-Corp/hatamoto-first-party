@@ -26,9 +26,10 @@ if [ ! -f "$src/backend/go.mod" ]; then
   rm -rf "$src"
   mv "$tmp" "$src" 2>/dev/null || [ -f "$src/backend/go.mod" ] || die "cannot place the core source in $src"
 fi
+src=$(cd "$src" && pwd)
 core=$(cat "$src/.load-check-core" 2>/dev/null || echo "${sha:0:12}")
 helper=$src/backend/cmd/fp-loadcheck
-trap 'rm -rf "$helper"' EXIT
+trap 'rm -rf "$helper" ${tmp:+"$tmp"}' EXIT
 mkdir -p "$helper"
 cp "$root/scripts/loadcheck/main.go" "$src/backend/cmd/fp-loadcheck/main.go"
 dirs=("$@")
