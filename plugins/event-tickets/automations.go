@@ -204,6 +204,12 @@ func composeAuto(s sendRow) (m outMail, ok bool, err error) {
 		return outMail{}, false, nil
 	}
 	if due, err := stillDue(s.Kind, e); err != nil || !due {
+		if err == nil && (s.Kind == "reminder" || s.Kind == "thanks") {
+			// Not skipped: a skipped row counts as sent for the fan-out and
+			// would keep this person from the mail once the event is due again.
+			// The delete is safe next to a concurrent instance; it only takes a queued row.
+			err = dbExec(`DELETE FROM email_sends WHERE id = $1 AND status = 'queued'`, s.ID)
+		}
 		return outMail{}, false, err
 	}
 	title := eventTitle(e)

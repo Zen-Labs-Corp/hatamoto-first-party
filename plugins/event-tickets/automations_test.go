@@ -17,6 +17,7 @@ type autoHost struct {
 	markers string // ids of unfanned markers, a jsonb array
 	what    string // event_changes.what of the one marker, "" = none
 	inserts []call
+	deletes []call
 	picks   []call
 	meta    []call
 }
@@ -41,6 +42,9 @@ func newAutoHost(t *testing.T) *autoHost {
 			return jsonInto(`{"rows":[[`+jsonText(h.what)+`]]}`, out)
 		case strings.HasPrefix(sql, "WITH p AS (SELECT id, what"), strings.HasPrefix(sql, "INSERT INTO email_sends"):
 			h.inserts = append(h.inserts, call{fn, sql, ar})
+			return nil
+		case strings.HasPrefix(sql, "DELETE FROM email_sends WHERE id"):
+			h.deletes = append(h.deletes, call{fn, sql, ar})
 			return nil
 		case strings.HasPrefix(sql, "INSERT INTO meta (key, value) VALUES ('email."):
 			h.meta = append(h.meta, call{fn, sql, ar})
@@ -239,6 +243,27 @@ func TestComposeAutoRechecksReminderAndThanks(t *testing.T) {
 		if err != nil || ok != c.want {
 			t.Errorf("%s: ok %v err %v, want %v", c.name, ok, err, c.want)
 		}
+	}
+}
+
+// A reminder that is not due any more must leave no row behind: a skipped row
+// counts as sent for the fan-out, so the person would never get the reminder
+// once the event is due again.
+func TestComposeAutoDropsReminderNotDue(t *testing.T) {
+	h := newAutoHost(t)
+	fixedNow(t, beforeGig)
+	h.entity = strings.Replace(gigEntity, `"attendance_mode"`, `"event_status":"postponed","attendance_mode"`, 1)
+	_, ok, err := composeAuto(sendRow{ID: 9, Kind: "reminder", OrderID: 7, EventID: "e1", Code: strings.Repeat("ab", 16)})
+	if ok || err != nil {
+		t.Fatalf("ok %v err %v", ok, err)
+	}
+	if len(h.deletes) != 1 || !strings.Contains(h.deletes[0].sql, "status = 'queued'") || jsonText(h.deletes[0].args) != `[9]` {
+		t.Errorf("deletes %+v", h.deletes)
+	}
+	h.deletes = nil
+	h.entity = gigEntity
+	if _, ok, _ := composeAuto(sendRow{ID: 9, Kind: "reminder", OrderID: 7, EventID: "e1", Code: strings.Repeat("ab", 16)}); !ok || len(h.deletes) != 0 {
+		t.Errorf("due reminder: ok %v, deletes %d", ok, len(h.deletes))
 	}
 }
 
