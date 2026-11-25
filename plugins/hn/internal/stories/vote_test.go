@@ -200,3 +200,68 @@ func TestStoryVoteNextIsSafe(t *testing.T) {
 		t.Errorf("location %q", loc)
 	}
 }
+
+func TestStoryVoteRingIsStoredUncounted(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(nil)
+	install(t, db)
+	r := newRegistry(t, map[string]func(*core.Registry){"moderation": func(r *core.Registry) {
+		r.Gate(core.GateVote, func(g *core.GateReq) error { g.Ring = true; return nil })
+	}})
+	resp := vote(t, r, "42", nil, "k1", true)
+	if resp.Body != `{"points":5,"voted":true}` {
+		t.Errorf("body %s", resp.Body)
+	}
+	if len(db.Execs) != 1 || !strings.Contains(db.Execs[0].SQL, "INSERT INTO story_votes") || !strings.Contains(db.Execs[0].SQL, "false)") ||
+		strings.Contains(db.Execs[0].SQL, "UPDATE") {
+		t.Errorf("execs %v (want one uncounted insert, no points or karma)", execSQL(db))
+	}
+}
+
+func TestStoryVoteUnOfUncountedVote(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(map[string]any{"voted_at": "2026-01-02T11:30:00Z", "vote_uncounted": true})
+	install(t, db)
+	r := newRegistry(t, nil)
+	resp := vote(t, r, "42", url.Values{"how": {"un"}}, "k1", true)
+	if resp.Body != `{"points":5,"voted":false}` {
+		t.Errorf("body %s", resp.Body)
+	}
+	if len(db.Execs) != 1 || !strings.HasPrefix(db.Execs[0].SQL, "DELETE FROM story_votes") {
+		t.Errorf("execs %v (want one plain delete, no points or karma)", execSQL(db))
+	}
+}
+
+func TestStoryVoteCountedUnvoteOnlyDeletesCountedRows(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(map[string]any{"voted_at": "2026-01-02T11:30:00Z"})
+	install(t, db)
+	vote(t, newRegistry(t, nil), "42", url.Values{"how": {"un"}}, "k1", true)
+	if len(db.Execs) == 0 || !strings.Contains(db.Execs[0].SQL, "user_id = $2 AND counted AND") {
+		t.Errorf("execs %v", execSQL(db))
+	}
+}
+
+// Three voters behind one network: the gate marks the third, so points go 1 -> 3, not 4.
+func TestStoryVoteRingRepro(t *testing.T) {
+	pinNow(t, voteNow)
+	points := 1
+	calls := 0
+	db := voteDB(map[string]any{"points": 1})
+	db.Exec = func(sql string, _ []any) (int64, error) {
+		if strings.Contains(sql, "points = points + 1") {
+			points++
+		}
+		return 1, nil
+	}
+	install(t, db)
+	r := newRegistry(t, map[string]func(*core.Registry){"moderation": func(r *core.Registry) {
+		r.Gate(core.GateVote, func(g *core.GateReq) error { calls++; g.Ring = calls >= 3; return nil })
+	}})
+	for i := 0; i < 3; i++ {
+		vote(t, r, "42", nil, "k1", true)
+	}
+	if points != 3 {
+		t.Errorf("points = %d, want 3", points)
+	}
+}

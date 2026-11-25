@@ -26,13 +26,15 @@ type storyRef struct {
 	URL          string     `json:"url"`
 	Body         string     `json:"body"`
 	VotedAt      *time.Time `json:"voted_at"`
+	// VoteUncounted: the viewer's vote was stored without counting it (voting-ring check).
+	VoteUncounted bool `json:"vote_uncounted"`
 }
 
 // loadRef reads a story by item number with viewerID's vote; nil when there is no such story.
 func loadRef(itemNo, viewerID int64) (*storyRef, error) {
 	var ref storyRef
 	err := core.QueryJSON(`SELECT to_jsonb(x) FROM (
-SELECT s.entity_id, s.item_no, s.author_id, s.kind, s.dead, s.points, s.comment_count, s.created_at, s.title, s.url, s.body, v.created_at AS voted_at
+SELECT s.entity_id, s.item_no, s.author_id, s.kind, s.dead, s.points, s.comment_count, s.created_at, s.title, s.url, s.body, v.created_at AS voted_at, NOT COALESCE(v.counted, true) AS vote_uncounted
 FROM story_meta s LEFT JOIN story_votes v ON v.story_id = s.entity_id AND v.user_id = $2
 WHERE s.item_no = $1) x`, &ref, itemNo, viewerID)
 	if errors.Is(err, core.ErrNoRows) {
@@ -74,13 +76,28 @@ func castVote(r *core.Registry, q *core.Request, u *core.User, ref *storyRef, ho
 		if core.Now().Sub(*ref.VotedAt) > unvoteWindow {
 			return refused(nUnvoteLate)
 		}
-		return applyVote(ref, u, -1, `WITH v AS (DELETE FROM story_votes WHERE story_id = $1::uuid AND user_id = $2 AND created_at > $3::timestamptz - interval '1 hour' RETURNING story_id)
+		if ref.VoteUncounted {
+			// an uncounted vote never gave a point, score or karma: nothing to take back
+			if _, err := core.Exec(`DELETE FROM story_votes WHERE story_id = $1::uuid AND user_id = $2 AND created_at > $3::timestamptz - interval '1 hour'`, ref.EntityID, u.ID, nowArg()); err != nil {
+				return refused(nError)
+			}
+			return voteResult{Points: ref.Points}
+		}
+		return applyVote(ref, u, -1, `WITH v AS (DELETE FROM story_votes WHERE story_id = $1::uuid AND user_id = $2 AND counted AND created_at > $3::timestamptz - interval '1 hour' RETURNING story_id)
 UPDATE story_meta SET points = points - 1, score = `+scoreSQL("points - 1", "$3")+` FROM v WHERE story_meta.entity_id = v.story_id`)
 	}
-	if err := r.RunGates(core.GateVote, &core.GateReq{Kind: core.GateVote, User: u, Req: q, Target: ref.EntityID}); err != nil {
+	gr := &core.GateReq{Kind: core.GateVote, User: u, Req: q, Target: ref.EntityID}
+	if err := r.RunGates(core.GateVote, gr); err != nil {
 		return voteResult{Notice: noticeOf(err), Text: err.Error()}
 	}
 	if voted {
+		return voteResult{Points: ref.Points, Voted: true}
+	}
+	if gr.Ring {
+		// stored, shown as voted, but no points, score or karma
+		if _, err := core.Exec(`INSERT INTO story_votes (story_id, user_id, created_at, counted) VALUES ($1::uuid, $2, $3::timestamptz, false) ON CONFLICT DO NOTHING`, ref.EntityID, u.ID, nowArg()); err != nil {
+			return refused(nError)
+		}
 		return voteResult{Points: ref.Points, Voted: true}
 	}
 	return applyVote(ref, u, 1, `WITH v AS (INSERT INTO story_votes (story_id, user_id, created_at) VALUES ($1::uuid, $2, $3::timestamptz) ON CONFLICT DO NOTHING RETURNING story_id)
