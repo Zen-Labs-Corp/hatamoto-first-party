@@ -1,0 +1,3 @@
+# Known load-check refusals: `<plugin> <substring of the expected FAIL reason>` per line.
+# appointments: known refusal, to fix in the plugin (iframe in a section without site.scripts).
+appointments <iframe> is not allowed (not allowed without site.scripts)

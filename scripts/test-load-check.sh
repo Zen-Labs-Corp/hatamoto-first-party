@@ -85,5 +85,14 @@ check "no build/" 1 'FAIL no build/' "$tmp/plugins/nobuild"
 
 check "one FAIL does not stop the others" 1 '^  good \.+ OK' "$tmp/plugins/good" "$tmp/plugins/bad-name"
 
+# known-refusal list (a temp list, never the real file)
+known=$tmp/known.txt
+printf '# c\nscriptmark site.scripts\n' >"$known"
+LOAD_CHECK_KNOWN=$known check "known: listed + matching reason is KNOWN FAIL, exit 0" 0 'scriptmark \.+ KNOWN FAIL core would refuse' "$tmp/plugins/scriptmark"
+printf 'scriptmark some other reason\n' >"$known"
+LOAD_CHECK_KNOWN=$known check "known: listed + different reason still fails" 1 'scriptmark \.+ FAIL core would refuse' "$tmp/plugins/scriptmark"
+printf 'good whatever\n' >"$known"
+LOAD_CHECK_KNOWN=$known check "known: listed + now passing fails" 1 'good \.+ OK \(remove it from load-check-known\.txt\)' "$tmp/plugins/good"
+
 ((fails == 0)) || { echo "test-load-check: $fails case(s) failed" >&2; exit 1; }
 echo "test-load-check: all cases passed"

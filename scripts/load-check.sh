@@ -5,6 +5,9 @@
 # Usage: scripts/load-check.sh [plugins/<name> ...]   (default: every plugins/*/)
 # Env:   HATAMOTO_CORE_SRC  a core checkout, normally at the pin (skips the fetch); the helper is
 #        copied in for the run and removed after, and a HEAD other than the pin is said in the header
+# Env:   LOAD_CHECK_KNOWN  known-refusal list (default scripts/load-check-known.txt): `<plugin> <substring of the FAIL reason>`
+#        per line, `#` comments. A match prints KNOWN FAIL and is not counted; a listed plugin that fails for another
+#        reason still fails, and one that now passes fails too (remove it from the list).
 # The core source is fetched once into ${XDG_CACHE_HOME:-~/.cache}/hatamoto-first-party/core-src-<sha>/.
 set -euo pipefail
 die() { echo "load-check: $*" >&2; exit 1; }
@@ -47,4 +50,25 @@ else
   echo "load-check: core $core (.hatamoto-core pin)"
 fi
 cd "$src/backend"
-GOWORK=off GOFLAGS= go run ./cmd/fp-loadcheck "${args[@]}"
+known=${LOAD_CHECK_KNOWN:-$root/scripts/load-check-known.txt}
+rc=0
+out=$(GOWORK=off GOFLAGS= go run ./cmd/fp-loadcheck "${args[@]}" 2>&1) || rc=$?
+bad=0
+while IFS= read -r line; do
+  if [[ $line =~ ^\ \ ([^\ ]+)\ \.+\ (OK|FAIL)\ ?(.*)$ ]]; then
+    name=${BASH_REMATCH[1]} verdict=${BASH_REMATCH[2]} reason=${BASH_REMATCH[3]}
+    want=$(awk -v n="$name" '$1 == n {sub(/^[^ ]+[ \t]+/, ""); print; exit}' "$known" 2>/dev/null || true)
+    if [ -n "$want" ]; then
+      if [ "$verdict" = OK ]; then
+        echo "${line%% OK*} OK (remove it from load-check-known.txt)"; bad=1; continue
+      elif [[ $reason == *"$want"* ]]; then
+        echo "${line%% FAIL*} KNOWN FAIL $reason"; continue
+      fi
+    fi
+    [ "$verdict" = OK ] || bad=1
+  fi
+  [[ $line =~ ^exit\ status\ [0-9]+$ ]] || echo "$line"
+done <<<"$out"
+# a helper failure that printed no FAIL line (build error, panic) must still fail
+if [ "$rc" != 0 ] && ! grep -q ' FAIL ' <<<"$out"; then bad=1; fi
+exit "$bad"
