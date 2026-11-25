@@ -92,14 +92,24 @@ func completePayment(orderID int64, provider, paymentRef string, amount int64, c
 }
 
 // lateAfterExpiry handles a payment for an order whose hold ended: take the
-// seats again and finish the payment, or pay the buyer back.
+// seats again and finish the payment, or pay the buyer back. Another request
+// for the same order may be doing the same at this moment, so the refund is
+// claimed in the database first and only the claim's winner calls the provider.
+// A loser tries the payment again: the order may have been taken back, and
+// payOrder answers for it.
 func lateAfterExpiry(orderID int64, provider, paymentRef string, amount int64, cur string) (string, error) {
 	back, err := retakeHold(orderID)
 	if err != nil {
 		return "", err
 	}
 	if !back {
-		return refundLate(orderID, provider, paymentRef, amount, cur)
+		claimed, err := claimLateRefund(orderID, paymentRef)
+		if err != nil {
+			return "", err
+		}
+		if claimed {
+			return refundLate(orderID, provider, paymentRef, amount, cur)
+		}
 	}
 	done, err := payOrder(orderID, provider, paymentRef, amount, cur)
 	if err != nil {
@@ -112,10 +122,23 @@ func lateAfterExpiry(orderID int64, provider, paymentRef string, amount int64, c
 	return outcomePaid, nil
 }
 
-// refundLate pays a late payment back in full. The idempotency key is the same
-// on every try, so a retry after a failure reuses the refund. When the provider
-// refuses, the order is marked refund_failed for the owner and the error is
-// returned so the provider sends the message again.
+// claimLateRefund moves an expired or cancelled, never paid order to refunded
+// before any money moves. Of concurrent requests exactly one gets true; the
+// seats are not held, so taken is not touched.
+func claimLateRefund(orderID int64, paymentRef string) (bool, error) {
+	var done bool
+	err := dbJSON(`WITH o AS (UPDATE orders SET status = 'refunded', refunded_cents = total_cents, payment_ref = $2, problem = NULL
+    WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL RETURNING id),
+ a AS (UPDATE attendees SET status = 'refunded' WHERE order_id IN (SELECT id FROM o) AND status = 'expired' RETURNING id)
+SELECT to_jsonb(EXISTS (SELECT 1 FROM o))`, &done, orderID, paymentRef)
+	return done, err
+}
+
+// refundLate pays a claimed late payment back in full. The idempotency key is
+// the same on every try, so a retry after a failure reuses the refund. When the
+// provider refuses, the claim is undone (the order is expired again) and marked
+// refund_failed for the owner, and the error is returned so the provider sends
+// the message again.
 func refundLate(orderID int64, provider, paymentRef string, amount int64, cur string) (string, error) {
 	s := loadSettings()
 	key := "et-" + strconv.FormatInt(orderID, 10) + "-late-refund"
@@ -129,19 +152,10 @@ func refundLate(orderID int64, provider, paymentRef string, amount int64, cur st
 		err = errRefundFailed
 	}
 	if err != nil {
-		_ = dbExec(`UPDATE orders SET problem = 'refund_failed', payment_ref = $2 WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL`, orderID, paymentRef)
+		_ = dbExec(`WITH o AS (UPDATE orders SET status = 'expired', problem = 'refund_failed', refunded_cents = 0, payment_ref = $2
+    WHERE id = $1 AND status = 'refunded' AND paid_at IS NULL RETURNING id)
+UPDATE attendees SET status = 'expired' WHERE order_id IN (SELECT id FROM o) AND status = 'refunded'`, orderID, paymentRef)
 		return "", errRefundFailed
-	}
-	var done bool
-	err = dbJSON(`WITH o AS (UPDATE orders SET status = 'refunded', refunded_cents = total_cents, payment_ref = $2, problem = NULL
-    WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL RETURNING id),
- a AS (UPDATE attendees SET status = 'refunded' WHERE order_id IN (SELECT id FROM o) AND status = 'expired' RETURNING id)
-SELECT to_jsonb(EXISTS (SELECT 1 FROM o))`, &done, orderID, paymentRef)
-	if err != nil {
-		return "", err
-	}
-	if !done {
-		return outcomeDuplicate, nil
 	}
 	sendNow(kindRefund, orderID)
 	return outcomeRefunded, nil

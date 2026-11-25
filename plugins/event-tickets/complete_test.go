@@ -33,7 +33,8 @@ type shop struct {
 	secret   string        // webhook secret
 	tick     time.Duration // the clock moves this much with every provider call (to a URL with tickOn)
 	tickOn   string
-	live     bool // the hold has not lapsed
+	live     bool   // the hold has not lapsed
+	racing   func() // runs just before retakeHold reads the order: another request moves it
 
 	mails    []map[string]any
 	queued   []string // kind of queued mails
@@ -134,12 +135,18 @@ func newShop(t *testing.T) *shop {
 			write()
 			w.problem = "amount_mismatch"
 			return nil
-		case strings.HasPrefix(sql, "UPDATE orders SET problem = 'refund_failed'"):
+		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET status = 'expired', problem = 'refund_failed'"):
 			write()
-			w.problem = "refund_failed"
+			if w.status == "refunded" && !w.paid {
+				w.status, w.refunded, w.attend, w.problem = "expired", 0, "expired", "refund_failed"
+			}
 			return nil
 		case strings.Contains(sql, "SET status = 'pending', expires_at"):
 			write()
+			if w.racing != nil {
+				w.racing()
+				w.racing = nil
+			}
 			ok := w.seats && (w.status == "expired" || w.status == "cancelled") && !w.paid
 			if ok {
 				w.status, w.attend, w.live = "pending", "pending", true
@@ -413,5 +420,31 @@ func TestPayHooksCloseStripeSessionsWithinABudget(t *testing.T) {
 	onHoldsExpired([]string{"cs_test_1", "cs_test_2", "cs_test_3", "cs_test_4"})
 	if len(w.fetches) != 1 || !strings.HasSuffix(w.fetches[0].url, "/v1/checkout/sessions/cs_test_1/expire") {
 		t.Fatalf("%+v", w.fetches)
+	}
+}
+
+// A late payment that races another request for the same order has one winner:
+// the loser refunds nothing and does not change the seats.
+func TestLatePaymentRaceHasOneWinner(t *testing.T) {
+	cases := []struct {
+		name    string
+		racing  func(w *shop)
+		out     string
+		status  string
+		mails   int
+		refunds int
+	}{
+		{"other request already paid it", func(w *shop) { w.status, w.paid, w.attend = "paid", true, "active" }, outcomeDuplicate, "paid", 0, 0},
+		{"other request holds it again", func(w *shop) { w.status, w.attend = "pending", "pending" }, outcomePaid, "paid", 1, 0},
+		{"other request refunded it", func(w *shop) { w.status, w.refunded, w.attend = "refunded", w.total, "refunded" }, outcomeDuplicate, "refunded", 0, 0},
+	}
+	for _, c := range cases {
+		w := newShop(t)
+		w.status, w.attend = "expired", "expired"
+		w.racing = func() { c.racing(w) }
+		out, err := completePayment(shopOrder, "stripe", "pi_1", 2030, "USD")
+		if err != nil || out != c.out || w.status != c.status || len(w.mails) != c.mails || len(w.refundCalls()) != c.refunds {
+			t.Errorf("%s: %q %v, order %q, %d mails, %d refunds", c.name, out, err, w.status, len(w.mails), len(w.refundCalls()))
+		}
 	}
 }
