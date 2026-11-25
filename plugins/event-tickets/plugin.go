@@ -1,5 +1,6 @@
-// Command event-tickets is a Hatamoto plugin. Free tickets, RSVP, paid tickets,
-// attendees, check-in, seating and event emails for the event-calendar plugin.
+// Command event-tickets is a Hatamoto plugin. Free and paid tickets
+// (Stripe, PayPal), RSVP, coupons, attendees and event emails for the
+// event-calendar plugin.
 //
 // The logic lives in plain Go files and the //go:wasmexport lines in
 // exports_wasip1.go, so everything but the exports builds and tests on the

@@ -240,6 +240,11 @@ func TestReadmeExplainsPermissions(t *testing.T) {
 			t.Errorf("README Permissions does not explain %s", p)
 		}
 	}
+	for _, h := range m.AllowedHosts {
+		if !strings.Contains(section, h) {
+			t.Errorf("README Permissions does not name %s", h)
+		}
+	}
 	if !strings.Contains(string(raw), "boombuler/barcode") || !strings.Contains(string(raw), "MIT") {
 		t.Error("README must credit boombuler/barcode and its MIT licence")
 	}

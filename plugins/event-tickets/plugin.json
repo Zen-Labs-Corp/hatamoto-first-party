@@ -2,7 +2,7 @@
   "name": "event-tickets",
   "version": "0.1.0",
   "sdk": "^0.22",
-  "description": "Free tickets, RSVP, paid tickets, attendees, check-in, seating and event emails for the event-calendar plugin.",
+  "description": "Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.",
   "permissions": ["settings", "db", "entities.read", "mail.send", "http.fetch", "builder.data", "builder.island"],
   "allowed_hosts": ["api.stripe.com", "api-m.paypal.com", "api-m.sandbox.paypal.com"],
   "request_headers": ["stripe-signature", "paypal-transmission-id", "paypal-transmission-time", "paypal-transmission-sig", "paypal-cert-url", "paypal-auth-algo"],
