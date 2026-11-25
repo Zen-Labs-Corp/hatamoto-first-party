@@ -15,7 +15,7 @@
   "plugins": [
     {
       "name": "hn",
-      "range": "^1",
+      "range": "^1.1",
       "grant": "all"
     }
   ],
