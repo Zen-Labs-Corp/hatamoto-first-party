@@ -28,6 +28,10 @@ type fakeUsers struct {
 	ensured    []string          // accounts passed to comments.identity.ensure, in order
 	ensureErr  error             // answer of every ensure call when set
 	ensureKeys map[string]string // per-account key override; default "ck-"+account
+
+	revoked      []string // accounts passed to comments.identity.revoke, in order
+	revokeErr    error
+	revokeAnswer *bool // answer of revoke; nil = true
 }
 
 var fakeCreated = time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC)
@@ -125,6 +129,16 @@ func installFake(t *testing.T) *fakeUsers {
 				key = k
 			}
 			return sdk.CommentsIdentityEnsured{CommenterKey: key}, nil
+		},
+		sdk.FnCommentsIdentityRevoke: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentsIdentityArgs
+			_ = json.Unmarshal(raw, &a)
+			f.revoked = append(f.revoked, a.Account)
+			if f.revokeErr != nil {
+				return nil, f.revokeErr
+			}
+			ok := f.revokeAnswer == nil || *f.revokeAnswer
+			return sdk.CommentsIdentityRevoked{Revoked: ok}, nil
 		},
 		sdk.FnCommentsSetViewer: func(raw json.RawMessage) (any, error) {
 			var a sdk.CommentViewerArgs

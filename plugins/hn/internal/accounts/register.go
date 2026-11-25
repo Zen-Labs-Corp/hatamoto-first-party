@@ -47,6 +47,8 @@ func Register(r *core.Registry) {
 	r.Route("POST /profile", profileHandler)
 	r.Route("POST /signup", sessionRoute(signupHandler(r)))
 	r.Route("POST /login", sessionRoute(loginHandler(r)))
+	r.Route("POST /logout", sessionRoute(logoutHandler))
+	r.Route("POST /logout/all", sessionRoute(logoutAllHandler))
 	r.Draft(draftName)
 	r.PageAll(userbar)
 	r.Page("/login", loginPage)
