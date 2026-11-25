@@ -176,7 +176,7 @@ func serveRefund(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 		_, err = paypalRefund(s, o.PaymentRef, b.Amount, o.Currency, key, newDeadline(8*time.Second))
 	}
 	if err != nil {
-		_ = dbExec(`UPDATE orders SET refund_claimed_at = NULL WHERE id = $1`, id) // nothing was refunded: free the order
+		_ = dbExec(`UPDATE orders SET refund_claimed_at = NULL WHERE id = $1`, id) // a refusal refunds nothing, but a timeout may have: the same amount reuses the key; a different one is the owner's call
 		return unavailable()
 	}
 	which, _ := json.Marshal(b.Attendees)
