@@ -65,7 +65,7 @@ func serveCoupons(u *sdk.HTTPUser) sdk.HTTPResponse {
 	var rows []json.RawMessage
 	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.id DESC), '[]'::jsonb) FROM (
 SELECT id, code, kind, value, coalesce(event_id, '') AS event_id, coalesce(type_id, 0) AS type_id,
-  max_uses, used, expires_at, active FROM coupons ORDER BY id DESC LIMIT 500) c`, &rows)
+  max_uses, used, to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS expires_at, active FROM coupons ORDER BY id DESC LIMIT 500) c`, &rows)
 	if err != nil {
 		return unavailable()
 	}

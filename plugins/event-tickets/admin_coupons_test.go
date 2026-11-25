@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -206,5 +207,24 @@ func TestCouponsAndBundlesAreOwnerOnly(t *testing.T) {
 		if !strings.HasPrefix(call.sql, "SELECT") {
 			t.Errorf("a forbidden request wrote: %q", call.sql)
 		}
+	}
+}
+
+// A date the owner enters is the end of that day in UTC and is listed as that
+// same day, whatever the server's or the database session's time zone is.
+func TestCouponUntilIsTimezoneIndependent(t *testing.T) {
+	old := time.Local
+	time.Local = time.FixedZone("AEST", 10*3600)
+	defer func() { time.Local = old }()
+	if got, ok := parseExpiry("2027-06-30"); !ok || *got != "2027-06-30T23:59:59Z" {
+		t.Fatalf("%v %v", got, ok)
+	}
+	h := newCouponAdminHost(t)
+	if code, _ := get(t, "/admin/coupons", "", owner, nil); code != 200 {
+		t.Fatal(code)
+	}
+	st := h.stmt("SELECT coalesce(jsonb_agg(to_jsonb(c)")
+	if st == nil || !strings.Contains(st.sql, `expires_at AT TIME ZONE 'UTC'`) {
+		t.Fatalf("listing must render expires_at in UTC: %+v", st)
 	}
 }
