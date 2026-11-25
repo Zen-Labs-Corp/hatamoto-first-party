@@ -56,6 +56,24 @@ func TestSameSite(t *testing.T) {
 	}
 }
 
+func TestSameSiteOrigin(t *testing.T) {
+	for name, c := range map[string]struct {
+		h    map[string]string
+		want bool
+	}{
+		"no headers":           {nil, true},
+		"foreign origin only":  {map[string]string{"origin": "https://evil.example"}, false},
+		"null origin only":     {map[string]string{"origin": "null"}, false},
+		"same-origin + origin": {map[string]string{"sec-fetch-site": "same-origin", "origin": "https://site.example"}, true},
+		"cross-site + origin":  {map[string]string{"sec-fetch-site": "cross-site", "origin": "https://evil.example"}, false},
+		"same-site + origin":   {map[string]string{"sec-fetch-site": "same-site", "origin": "https://evil.example"}, false},
+	} {
+		if got := core.SameSite(req(c.h, "")); got != c.want {
+			t.Errorf("%s: SameSite = %v", name, got)
+		}
+	}
+}
+
 func TestRespond(t *testing.T) {
 	r := req(map[string]string{"accept": "application/json"}, "")
 	got := core.Respond(r, "/x", map[string]int{"points": 3})

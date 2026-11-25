@@ -80,6 +80,14 @@ func TestGates(t *testing.T) {
 				t.Fatalf("domains arg = %v", got)
 			}
 		})
+		t.Run("a unicode host is sent as punycode", func(t *testing.T) {
+			db := answer(map[string]any{})
+			install(t, db)
+			_ = r.RunGates(core.GateSubmit, gateReq(core.GateSubmit, member(10), "", "", "münchen-qa.example"))
+			if got := db.Queries[0].Args[1]; !sameList(got, "xn--mnchen-qa-q9a.example") {
+				t.Fatalf("domains arg = %v", got)
+			}
+		})
 		t.Run("deep host is sent whole and matched by suffix in SQL", func(t *testing.T) {
 			deep := "a.b.c.d.e.f.g.h.i.j.example.com"
 			db := answer(map[string]any{})
@@ -109,11 +117,15 @@ func TestGates(t *testing.T) {
 				return jsonRow(map[string]any{"blocked": blocked, "user_n": u, "addr_n": a, "net_n": n}), nil
 			}}
 		}
+		netBanned := &fakeDB{Query: func(sql string, _ []any) (any, error) {
+			return jsonRow(map[string]any{"net": true}), nil
+		}}
 		cases := []struct {
 			name string
 			db   *fakeDB
 			want core.Notice
 		}{
+			{"net banned", netBanned, nNet},
 			{"blocked", counts(true, 0, 0, 0), nBlocked},
 			{"user flood", counts(false, 30, 0, 0), nVoteRate},
 			{"addr flood", counts(false, 0, 30, 0), nVoteRate},
@@ -133,6 +145,115 @@ func TestGates(t *testing.T) {
 				}
 			})
 		}
+		t.Run("a banned network records nothing and the query reads net_bans", func(t *testing.T) {
+			install(t, netBanned)
+			wantRefusal(t, r.RunGates(core.GateVote, gateReq(core.GateVote, member(10), "net1", "addr1", "")), nNet)
+			if len(netBanned.Execs) != 0 {
+				t.Fatalf("execs = %+v", netBanned.Execs)
+			}
+			if !strings.Contains(sqlVoteCheck, "net_bans WHERE net_key = $4") || !strings.Contains(sqlVoteCheck, "expires_at > $5::timestamptz") {
+				t.Error("vote query does not read net_bans with the expiry clause")
+			}
+		})
+		t.Run("voting ring", func(t *testing.T) {
+			ringDB := func(storyNo, ringN int) *fakeDB {
+				return &fakeDB{Query: func(sql string, _ []any) (any, error) {
+					return jsonRow(map[string]any{"story_no": storyNo, "ring_n": ringN}), nil
+				}}
+			}
+			vote := func(net string) *core.GateReq {
+				g := gateReq(core.GateVote, member(10), net, "addr1", "")
+				g.Target = "5b0e6a3c-0000-4000-8000-000000000001"
+				return g
+			}
+			ringRows := func(db *fakeDB) []map[string]string {
+				var out []map[string]string
+				for _, e := range db.Execs {
+					if e.SQL != sqlRateRecord {
+						continue
+					}
+					rows, _ := e.Args[1].([]any)
+					for _, r := range rows {
+						if m, _ := r.(map[string]any); m["kind"] == "vote_ring" {
+							out = append(out, map[string]string{"kind": "vote_ring", "key": m["key"].(string)})
+						}
+					}
+				}
+				return out
+			}
+			for _, n := range []int{0, 1} {
+				db := ringDB(12, n)
+				install(t, db)
+				g := vote("net1")
+				if err := r.RunGates(core.GateVote, g); err != nil || g.Ring {
+					t.Fatalf("ring_n %d: err %v ring %v", n, err, g.Ring)
+				}
+				if rows := ringRows(db); len(rows) != 0 {
+					t.Fatalf("ring_n %d: the gate recorded %v before a vote was stored", n, rows)
+				}
+				g.Stored(true)
+				rows := ringRows(db)
+				if len(rows) != 1 || rows[0]["key"] != "net1:"+g.Target {
+					t.Fatalf("ring_n %d: rows = %v", n, rows)
+				}
+				if got := db.Queries[0].Args[5]; got != g.Target {
+					t.Fatalf("target arg = %v", got)
+				}
+				if got := db.Queries[0].Args[6]; got != "net1:"+g.Target {
+					t.Fatalf("ring arg = %v", got)
+				}
+			}
+			db := ringDB(12, 2)
+			install(t, db)
+			g := vote("net12345678")
+			if err := r.RunGates(core.GateVote, g); err != nil || !g.Ring {
+				t.Fatalf("err %v ring %v", err, g.Ring)
+			}
+			if rows := ringRows(db); len(rows) != 0 {
+				t.Fatalf("rows = %v", rows)
+			}
+			if logs := execs(db, sqlLogInsert); len(logs) != 0 {
+				t.Fatalf("logged before an uncounted vote was stored: %+v", logs)
+			}
+			g.Stored(false)
+			if rows := ringRows(db); len(rows) != 0 {
+				t.Fatalf("rows = %v", rows)
+			}
+			logs := execs(db, sqlLogInsert)
+			if len(logs) != 1 || logs[0].Args[0] != "ring" || logs[0].Args[1] != "ring-vote" || logs[0].Args[2] != "story:12" || logs[0].Args[3] != "net:net12345" {
+				t.Fatalf("log = %+v", logs)
+			}
+			// a comment vote has no story number: no ring row, never marked
+			db = ringDB(0, 5)
+			install(t, db)
+			g = vote("net1")
+			if err := r.RunGates(core.GateVote, g); err != nil || g.Ring || len(ringRows(db)) != 0 {
+				t.Fatalf("comment vote: err %v ring %v rows %v", err, g.Ring, ringRows(db))
+			}
+			// no network key, no check
+			db = ringDB(12, 5)
+			install(t, db)
+			g = vote("")
+			if err := r.RunGates(core.GateVote, g); err != nil || g.Ring || db.Queries[0].Args[6] != "" {
+				t.Fatalf("no net: err %v ring %v", err, g.Ring)
+			}
+			// a rate refusal never marks and records no ring row
+			db = &fakeDB{Query: func(string, []any) (any, error) {
+				return jsonRow(map[string]any{"story_no": 12, "ring_n": 5, "user_n": 30}), nil
+			}}
+			install(t, db)
+			g = vote("net1")
+			wantRefusal(t, r.RunGates(core.GateVote, g), nVoteRate)
+			if g.Ring || g.Stored != nil || len(ringRows(db)) != 0 {
+				t.Fatalf("rate refusal: ring %v rows %v", g.Ring, ringRows(db))
+			}
+			// a query error fails open: counted
+			install(t, &fakeDB{Query: func(string, []any) (any, error) { return nil, hostErr(sdk.ErrUnavailable) }})
+			g = vote("net1")
+			if err := r.RunGates(core.GateVote, g); err != nil || g.Ring {
+				t.Fatalf("error: err %v ring %v", err, g.Ring)
+			}
+		})
 		t.Run("records rate rows", func(t *testing.T) {
 			db := counts(false, 0, 0, 0)
 			install(t, db)
@@ -170,39 +291,162 @@ func TestGates(t *testing.T) {
 	})
 
 	t.Run("signup", func(t *testing.T) {
-		answer := func(banned bool, n int) *fakeDB {
+		answer := func(banned bool, netN, addrN int) *fakeDB {
 			return &fakeDB{Query: func(sql string, _ []any) (any, error) {
 				if sql != sqlSignupCheck {
 					t.Errorf("unexpected query %q", sql)
 				}
-				return jsonRow(map[string]any{"net": banned, "net_n": n}), nil
+				return jsonRow(map[string]any{"net": banned, "net_n": netN, "addr_n": addrN}), nil
 			}}
 		}
-		install(t, answer(true, 0))
-		wantRefusal(t, r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")), nNet)
-		install(t, answer(false, 5))
-		wantRefusal(t, r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")), nSignupRate)
-		db := answer(false, 4)
-		install(t, db)
-		if err := r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")); err != nil {
+		run := func(db *fakeDB) error {
+			install(t, db)
+			return r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "addr1", ""))
+		}
+		wantRefusal(t, run(answer(true, 0, 0)), nNet)
+		wantRefusal(t, run(answer(false, 5, 0)), nSignupRate)
+		wantRefusal(t, run(answer(false, 0, 3)), nSignupRate)
+		over := answer(false, 0, 3)
+		_ = run(over)
+		if len(over.Execs) != 0 {
+			t.Fatalf("flood recorded: %+v", over.Execs)
+		}
+		db := answer(false, 4, 2)
+		if err := run(db); err != nil {
 			t.Fatalf("err = %v", err)
 		}
 		if len(db.Execs) != 1 || db.Execs[0].SQL != sqlRateRecord {
 			t.Fatalf("execs = %+v", db.Execs)
 		}
-		install(t, answer(false, 5))
-		over := &fakeDB{Query: answer(false, 5).Query}
-		install(t, over)
-		wantRefusal(t, r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "net1", "", "")), nSignupRate)
-		if len(over.Execs) != 0 {
-			t.Fatalf("flood recorded: %+v", over.Execs)
+		if rows, _ := db.Execs[0].Args[1].([]any); len(rows) != 2 {
+			t.Fatalf("rate rows = %v, want signup_net and signup_addr", db.Execs[0].Args[1])
 		}
-		t.Run("no net key passes without a host call", func(t *testing.T) {
-			h := install(t, &fakeDB{})
-			if err := r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "", "", "")); err != nil || len(h.Calls) != 0 {
-				t.Fatalf("err = %v, calls = %v", err, h.Calls)
+		t.Run("no keys: one site-wide bucket", func(t *testing.T) {
+			keyless := func(db *fakeDB) error {
+				install(t, db)
+				return r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "", "", ""))
+			}
+			wantRefusal(t, keyless(answer(false, signupSitePerHour, 0)), nSignupRate)
+			db := answer(false, signupSitePerHour-1, 0)
+			if err := keyless(db); err != nil || len(db.Execs) != 1 {
+				t.Fatalf("err = %v, execs = %+v", err, db.Execs)
+			}
+			if rows, _ := db.Execs[0].Args[1].([]any); len(rows) != 1 {
+				t.Fatalf("rate rows = %v", db.Execs[0].Args[1])
 			}
 		})
+	})
+
+	t.Run("login", func(t *testing.T) {
+		counts := func(banned bool, userN, addrN, netN int) *fakeDB {
+			return &fakeDB{Query: func(sql string, _ []any) (any, error) {
+				if sql != sqlLoginCheck {
+					t.Errorf("unexpected query %q", sql)
+				}
+				return jsonRow(map[string]any{"net": banned, "user_n": userN, "addr_n": addrN, "net_n": netN}), nil
+			}}
+		}
+		run := func(db *fakeDB, target string) error {
+			install(t, db)
+			req := gateReq(core.GateLogin, nil, "net1", "addr1", "")
+			req.Target = target
+			return r.RunGates(core.GateLogin, req)
+		}
+		wantRefusal(t, run(counts(true, 0, 0, 0), "ann"), nNet)
+		wantRefusal(t, run(counts(false, 10, 0, 0), "ann"), nLoginRate)
+		wantRefusal(t, run(counts(false, 0, 20, 0), "ann"), nLoginRate)
+		wantRefusal(t, run(counts(false, 0, 0, 60), "ann"), nLoginRate)
+		db := counts(false, 9, 19, 59)
+		if err := run(db, "ann"); err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if len(db.Execs) != 1 {
+			t.Fatalf("execs = %+v", db.Execs)
+		}
+		kinds := ""
+		rows, _ := db.Execs[0].Args[1].([]any)
+		for _, row := range rows {
+			m, _ := row.(map[string]any)
+			kinds += m["kind"].(string) + " "
+		}
+		if kinds != "login_user login_addr login_net " {
+			t.Fatalf("rate rows = %q", kinds)
+		}
+		t.Run("a key over its limit is not recorded", func(t *testing.T) {
+			db := counts(false, 10, 0, 0)
+			wantRefusal(t, run(db, "ann"), nLoginRate)
+			rows, _ := db.Execs[0].Args[1].([]any)
+			if len(db.Execs) != 1 || len(rows) != 2 {
+				t.Fatalf("execs = %+v", db.Execs)
+			}
+		})
+		t.Run("no username: no user row and no user refusal", func(t *testing.T) {
+			db := counts(false, 99, 0, 0)
+			if err := run(db, ""); err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			rows, _ := db.Execs[0].Args[1].([]any)
+			if len(rows) != 2 {
+				t.Fatalf("rate rows = %v, want addr and net only", db.Execs[0].Args[1])
+			}
+		})
+		t.Run("db error passes", func(t *testing.T) {
+			db := &fakeDB{Query: func(string, []any) (any, error) { return nil, hostErr(sdk.ErrUnavailable) }}
+			if err := run(db, "ann"); err != nil {
+				t.Fatalf("err = %v", err)
+			}
+		})
+		t.Run("a name is limited per network, with an all-network backstop", func(t *testing.T) {
+			var args []any
+			db := &fakeDB{Query: func(_ string, a []any) (any, error) {
+				args = a
+				return jsonRow(map[string]any{"user_n": 0, "user_all_n": loginUserAllPerHour}), nil
+			}}
+			wantRefusal(t, run(db, "ann"), nLoginRate)
+			if args[0] != "ann:net1" || args[4] != "ann" {
+				t.Fatalf("user keys = %v, %v", args[0], args[4])
+			}
+			// another network's attempts do not count against this one: only the key differs
+			if err := run(counts(false, 0, 0, 0), "ann"); err != nil {
+				t.Fatalf("err = %v", err)
+			}
+		})
+		t.Run("no keys: one site-wide bucket", func(t *testing.T) {
+			keyless := func(db *fakeDB) error {
+				install(t, db)
+				return r.RunGates(core.GateLogin, gateReq(core.GateLogin, nil, "", "", ""))
+			}
+			wantRefusal(t, keyless(counts(false, 0, 0, loginSitePerHour)), nLoginRate)
+			if err := keyless(counts(false, 0, 0, loginSitePerHour-1)); err != nil {
+				t.Fatalf("err = %v", err)
+			}
+		})
+		t.Run("no keys: a db error fails closed", func(t *testing.T) {
+			install(t, &fakeDB{Query: func(string, []any) (any, error) { return nil, hostErr(sdk.ErrUnavailable) }})
+			wantRefusal(t, r.RunGates(core.GateLogin, gateReq(core.GateLogin, nil, "", "", "")), nLoginRate)
+		})
+	})
+
+	t.Run("member", func(t *testing.T) {
+		run := func(n int) (*fakeDB, error) {
+			db := &fakeDB{Query: func(sql string, _ []any) (any, error) {
+				if sql != sqlMemberCheck {
+					t.Errorf("unexpected query %q", sql)
+				}
+				return jsonRow(map[string]any{"n": n}), nil
+			}}
+			install(t, db)
+			req := gateReq(core.GateMember, member(10), "", "", "")
+			req.Target = "7"
+			return db, r.RunGates(core.GateMember, req)
+		}
+		wantRefusalErr := func(err error) { wantRefusal(t, err, nLoginRate) }
+		_, err := run(memberPwPerHour)
+		wantRefusalErr(err)
+		db, err := run(memberPwPerHour - 1)
+		if err != nil || len(db.Execs) != 1 {
+			t.Fatalf("err = %v, execs = %+v", err, db.Execs)
+		}
 	})
 
 	t.Run("flag", func(t *testing.T) {
@@ -226,7 +470,7 @@ func TestGates(t *testing.T) {
 }
 
 func TestDomainHost(t *testing.T) {
-	for in, want := range map[string]string{"WWW.A.b.Example.com.": "a.b.example.com", " example.com ": "example.com", "": ""} {
+	for in, want := range map[string]string{"WWW.A.b.Example.com.": "a.b.example.com", "www.MÜNCHEN-qa.example.": "xn--mnchen-qa-q9a.example", " example.com ": "example.com", "": ""} {
 		if got := domainHost(in); got != want {
 			t.Errorf("domainHost(%q) = %q, want %q", in, got, want)
 		}
@@ -244,4 +488,119 @@ func sameList(got any, want ...string) bool {
 		}
 	}
 	return true
+}
+
+// ratesDB is a rate_events table: the gate's check query counts its rows, its record
+// statement adds to it.
+func ratesDB() (*fakeDB, map[string]int) {
+	rows := map[string]int{}
+	return &fakeDB{
+		Query: func(_ string, a []any) (any, error) {
+			n := func(kind string, key any) int { return rows[kind+"|"+key.(string)] }
+			return jsonRow(map[string]any{
+				"user_n": n("login_user", a[0]), "addr_n": n("login_addr", a[1]),
+				"net_n": n("login_net", a[2]), "user_all_n": n("login_user_all", a[4]),
+			}), nil
+		},
+		Exec: func(_ string, a []any) (int64, error) {
+			for _, row := range a[1].([]any) {
+				m := row.(map[string]any)
+				rows[m["kind"].(string)+"|"+m["key"].(string)]++
+			}
+			return 1, nil
+		},
+	}, rows
+}
+
+// One address cannot lock a name out of other networks: requests the per-address and
+// per-name limits refuse add nothing to the all-networks cap.
+func TestLoginAllNetworksCapIgnoresRefusedRequests(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db, rows := ratesDB()
+	install(t, db)
+	r := core.NewRegistry()
+	Register(r)
+	login := func(net, addr string) error {
+		req := gateReq(core.GateLogin, nil, net, addr, "")
+		req.Target = "mod"
+		err := r.RunGates(core.GateLogin, req)
+		if err == nil && req.Failed != nil {
+			req.Failed() // every attempt has a wrong password
+		}
+		return err
+	}
+	for i := 0; i < 200; i++ {
+		_ = login("net1", "addr1")
+	}
+	if n := rows["login_user_all|mod"]; n >= loginUserAllPerHour || n > loginUserPerHour {
+		t.Fatalf("one address filled the all-networks cap: %d rows", n)
+	}
+	if err := login("net2", "addr2"); err != nil {
+		t.Fatalf("another network is locked out: %v", err)
+	}
+}
+
+// Without client.key, real logins must not use up the site-wide caps: only a wrong password
+// (reported by the route) is recorded.
+func TestKeylessLoginCountsOnlyFailures(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db, rows := ratesDB()
+	install(t, db)
+	r := core.NewRegistry()
+	Register(r)
+	for i := 0; i < 3*loginSitePerHour; i++ {
+		req := gateReq(core.GateLogin, nil, "", "", "")
+		req.Target = "ann"
+		if err := r.RunGates(core.GateLogin, req); err != nil {
+			t.Fatalf("right password %d refused: %v", i, err)
+		}
+	}
+	if len(rows) != 0 {
+		t.Fatalf("successful logins recorded: %v", rows)
+	}
+	for i := 0; i < loginSitePerHour; i++ {
+		req := gateReq(core.GateLogin, nil, "", "", "")
+		req.Target = "bob" + string(rune('a'+i%26))
+		if err := r.RunGates(core.GateLogin, req); err != nil {
+			t.Fatalf("attempt %d refused: %v", i, err)
+		}
+		req.Failed()
+	}
+	req := gateReq(core.GateLogin, nil, "", "", "")
+	req.Target = "ann"
+	wantRefusal(t, r.RunGates(core.GateLogin, req), nLoginRate)
+}
+
+// A username claim carries a verified commenter key: it does not use the keyless sign-up bucket.
+func TestKeylessClaimSkipsSignupBucket(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db := &fakeDB{Query: func(string, []any) (any, error) {
+		return jsonRow(map[string]any{"net_n": signupSitePerHour}), nil
+	}}
+	install(t, db)
+	r := core.NewRegistry()
+	Register(r)
+	anon := gateReq(core.GateSignup, nil, "", "", "")
+	wantRefusal(t, r.RunGates(core.GateSignup, anon), nSignupRate)
+	claim := gateReq(core.GateSignup, nil, "", "", "")
+	claim.Req = core.NewRequest(sdk.HTTPRequest{CommenterKey: "ck"})
+	claim.Claim = true
+	if err := r.RunGates(core.GateSignup, claim); err != nil || len(db.Execs) != 0 {
+		t.Fatalf("claim: err = %v, execs = %+v", err, db.Execs)
+	}
+}
+
+// A password sign-up by a visitor who already carries a commenter key is not a claim: without
+// client.key it still counts toward the site-wide cap.
+func TestKeylessSignupWithCommenterKeyIsCounted(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db := &fakeDB{Query: func(string, []any) (any, error) {
+		return jsonRow(map[string]any{"net_n": signupSitePerHour}), nil
+	}}
+	install(t, db)
+	r := core.NewRegistry()
+	Register(r)
+	req := gateReq(core.GateSignup, nil, "", "", "")
+	req.Req = core.NewRequest(sdk.HTTPRequest{CommenterKey: "ck"})
+	wantRefusal(t, r.RunGates(core.GateSignup, req), nSignupRate)
 }

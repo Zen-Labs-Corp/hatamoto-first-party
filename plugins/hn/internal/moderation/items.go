@@ -23,6 +23,7 @@ const (
 	causeFlags      = "flags"
 	causeOwner      = "owner"
 	causeBan        = "ban"
+	causeDomain     = "domain"
 	kindStory       = "story"
 	kindComment     = "comment"
 	maxModBody      = 64 << 10

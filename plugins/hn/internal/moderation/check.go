@@ -47,13 +47,13 @@ func checkComment(in sdk.CommentCheck) (sdk.CommentCheck, error) {
 	}
 	var reasons []string
 	if res.Blocked {
-		reasons = append(reasons, "hn: blocked member")
+		reasons = append(reasons, "blocked member")
 	}
 	if res.Net {
-		reasons = append(reasons, "hn: blocked network")
+		reasons = append(reasons, "blocked network")
 	}
 	if res.Domain {
-		reasons = append(reasons, "hn: banned site")
+		reasons = append(reasons, "banned site")
 	}
 	if len(reasons) == 0 {
 		return in, nil

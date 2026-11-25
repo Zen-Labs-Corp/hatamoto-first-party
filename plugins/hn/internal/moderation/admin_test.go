@@ -61,7 +61,7 @@ func TestAdminOwnerOnly(t *testing.T) {
 	install(t, bobDB())
 	routes := []struct{ method, pattern string }{
 		{"GET", "/admin/queue"}, {"GET", "/admin/log"},
-		{"POST", "/admin/users/{name}/ban"}, {"POST", "/admin/users/{name}/unban"},
+		{"POST", "/admin/users/{name}/ban"}, {"POST", "/admin/users/{name}/unban"}, {"POST", "/admin/users/{name}/password/remove"},
 		{"POST", "/admin/domains"}, {"POST", "/admin/domains/remove"},
 		{"POST", "/admin/nets/ban"}, {"POST", "/admin/nets/unban"},
 		{"POST", "/admin/items/kill"}, {"POST", "/admin/items/restore"},
@@ -143,6 +143,77 @@ func TestAdminDomains(t *testing.T) {
 	if len(logs) != 2 || logs[0].Args[1] != "domain-ban" || logs[1].Args[1] != "domain-remove" {
 		t.Fatalf("log = %+v", logs)
 	}
+}
+
+func TestAdminDomainKillsAndRestoresStories(t *testing.T) {
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	pinNow(t, now)
+	db := &fakeDB{Exec: func(sql string, _ []any) (int64, error) {
+		switch sql {
+		case sqlDomainKill:
+			return 3, nil
+		case sqlDomainRevive:
+			return 2, nil
+		}
+		return 1, nil
+	}}
+	install(t, db)
+	out := wantStatus(t, asOwner(t, "POST", "/admin/domains", nil, `{"domain":"Spam.example","reason":"spam"}`), 200)
+	if out["killed"] != float64(3) {
+		t.Fatalf("out = %v", out)
+	}
+	if len(db.Execs) < 2 || !strings.HasPrefix(db.Execs[0].SQL, "INSERT INTO banned_domains") || db.Execs[1].SQL != sqlDomainKill ||
+		db.Execs[1].Args[0] != "spam.example" || db.Execs[1].Args[1] != now.Format(time.RFC3339Nano) {
+		t.Fatalf("execs = %+v", db.Execs)
+	}
+	out = wantStatus(t, asOwner(t, "POST", "/admin/domains/remove", nil, `{"domain":"spam.example"}`), 200)
+	if out["restored"] != float64(2) {
+		t.Fatalf("out = %v", out)
+	}
+	if n := len(db.Execs); n < 3 || db.Execs[n-3].SQL != sqlDomainDelete || db.Execs[n-2].SQL != sqlDomainRevive || db.Execs[n-2].Args[0] != "spam.example" {
+		t.Fatalf("remove order: %+v", db.Execs)
+	}
+	logs := execs(db, sqlLogInsert)
+	if len(logs) != 2 || logs[0].Args[3] != "killed 3" || logs[1].Args[3] != "restored 2" {
+		t.Fatalf("log = %+v", logs)
+	}
+	for _, want := range []string{"WHERE NOT dead", "'domain'", "ON CONFLICT (kind, target_id) DO NOTHING"} {
+		if !strings.Contains(sqlDomainKill, want) {
+			t.Errorf("kill SQL lacks %q", want)
+		}
+	}
+	for _, want := range []string{"NOT EXISTS (SELECT 1 FROM banned_domains", "k.cause = 'domain'"} {
+		if !strings.Contains(sqlDomainRevive, want) {
+			t.Errorf("revive SQL lacks %q", want)
+		}
+	}
+	// a kill that fails answers 500; a retry is safe
+	fail := &fakeDB{Exec: func(sql string, _ []any) (int64, error) {
+		if sql == sqlDomainKill {
+			return 0, hostErr(sdk.ErrUnavailable)
+		}
+		return 1, nil
+	}}
+	install(t, fail)
+	wantStatus(t, asOwner(t, "POST", "/admin/domains", nil, `{"domain":"spam.example"}`), 500)
+}
+
+func TestAdminDomainsIDN(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db := &fakeDB{}
+	install(t, db)
+	out := wantStatus(t, asOwner(t, "POST", "/admin/domains", nil, `{"domain":"MÜNCHEN-qa.example","reason":"spam"}`), 200)
+	if out["domain"] != "xn--mnchen-qa-q9a.example" {
+		t.Fatalf("out = %v", out)
+	}
+	if d := execs(db, "INSERT INTO banned_domains"); len(d) != 1 || d[0].Args[0] != "xn--mnchen-qa-q9a.example" {
+		t.Fatalf("inserts = %+v", d)
+	}
+	wantStatus(t, asOwner(t, "POST", "/admin/domains/remove", nil, `{"domain":"münchen-qa.example"}`), 200)
+	if d := execs(db, "DELETE FROM banned_domains"); len(d) != 1 || d[0].Args[0] != "xn--mnchen-qa-q9a.example" {
+		t.Fatalf("deletes = %+v", d)
+	}
+	wantStatus(t, asOwner(t, "POST", "/admin/domains", nil, "{\"domain\":\"a\\ufffdb.example\"}"), 400)
 }
 
 func TestAdminNets(t *testing.T) {
@@ -271,6 +342,10 @@ func TestAdminViews(t *testing.T) {
 	if _, leaked := items[1].(map[string]any)["body_html"]; leaked {
 		t.Error("body_html leaked")
 	}
+	killed := []map[string]any{{"kind": "story", "id": storyUUID, "item_no": 5, "title": "Spam", "by": "bob", "flags": 0, "dead": true, "cause": "owner", "body_html": ""}}
+	if it, _ := view(answer(sqlQueue, killed), "queue")["items"].([]any); len(it) != 1 || it[0].(map[string]any)["flags"] != float64(0) || it[0].(map[string]any)["dead"] != true || it[0].(map[string]any)["cause"] != "owner" {
+		t.Fatalf("kills-only row = %v", it)
+	}
 	if out := view(answer(sqlQueue, []any{}), ""); len(out["items"].([]any)) != 0 {
 		t.Fatalf("default view = %v", out)
 	}
@@ -298,6 +373,31 @@ func TestAdminViews(t *testing.T) {
 
 // The queue must rank live targets before dead ones inside the LIMIT and skip
 // targets whose story or comment row is gone.
+func TestAdminRecentView(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	rows := []map[string]any{
+		{"kind": "story", "id": storyUUID, "item_no": 5, "title": "Hello", "by": "bob", "flags": 0, "dead": false, "cause": "", "body_html": "", "at": "2026-01-02T03:00:00Z"},
+		{"kind": "comment", "id": commentID, "item_no": 5, "title": "", "by": "ann", "flags": 0, "dead": true, "cause": "owner", "body_html": "<p>hi</p>", "at": "2026-01-02T02:00:00Z"},
+	}
+	install(t, &fakeDB{Query: func(got string, _ []any) (any, error) {
+		if got != sqlRecent {
+			t.Errorf("unexpected sql %q", got)
+		}
+		return jsonRow(rows), nil
+	}})
+	out := wantStatus(t, adminCall(t, "GET", "/admin/queue", nil, map[string][]string{"view": {"recent"}}, "", owner), 200)
+	items, _ := out["items"].([]any)
+	if len(items) != 2 || items[0].(map[string]any)["at"] != "2026-01-02T03:00:00Z" || items[1].(map[string]any)["title"] != "hi" {
+		t.Fatalf("items = %v", out)
+	}
+	// owner only, like every admin view
+	install(t, bobDB())
+	wantStatus(t, adminCall(t, "GET", "/admin/queue", nil, map[string][]string{"view": {"recent"}}, "", &sdk.HTTPUser{ID: "u2", Role: "editor"}), 403)
+	if strings.Count(sqlRecent, "LIMIT 50") != 2 || !strings.Contains(sqlRecent, "ORDER BY x.at DESC") {
+		t.Error("recent view is not the newest 50 stories + 50 comments, newest first")
+	}
+}
+
 func TestQueueSQLShape(t *testing.T) {
 	inner := sqlQueue[strings.Index(sqlQueue, "FROM (SELECT f.kind"):]
 	order := strings.Index(inner, "ORDER BY (k.cause IS NOT NULL OR COALESCE(s.dead, false)), f.n DESC")
@@ -308,7 +408,95 @@ func TestQueueSQLShape(t *testing.T) {
 	if !strings.Contains(inner, "WHERE s.entity_id IS NOT NULL OR cm.comment_id IS NOT NULL") {
 		t.Error("orphaned flags are not excluded")
 	}
+	if !strings.Contains(inner, "FROM kills k WHERE NOT EXISTS (SELECT 1 FROM flags fl") {
+		t.Error("kills without flags are not in the queue source")
+	}
 	if !strings.Contains(sqlQueue, "ORDER BY x.dead, x.flags DESC") {
 		t.Error("outer order puts dead items first")
 	}
+}
+
+func TestAdminPasswordRemove(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	const route = "/admin/users/{name}/password/remove"
+	bob := map[string]string{"name": "bob"}
+	withLogin := func(has bool) *fakeDB {
+		db := bobDB()
+		inner := db.Query
+		db.Query = func(sql string, args []any) (any, error) {
+			if sql == sqlLoginAccount && has {
+				return jsonRow(map[string]any{"account": "acc-bob"}), nil
+			}
+			return inner(sql, args)
+		}
+		return db
+	}
+	t.Run("revokes, deletes and logs", func(t *testing.T) {
+		db := withLogin(true)
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 200)
+		if len(db.Revoked) != 2 || db.Revoked[0] != "acc-bob" || db.Revoked[1] != "acc-bob" {
+			t.Fatalf("revoked %v", db.Revoked)
+		}
+		if d := execs(db, sqlLoginDelete); len(d) != 1 || d[0].Args[0] != float64(9) {
+			t.Fatalf("deletes = %+v", d)
+		}
+		if logs := execs(db, sqlLogInsert); len(logs) != 1 || logs[0].Args[1] != "password-remove" || logs[0].Args[2] != "user:bob" {
+			t.Fatalf("log = %+v", logs)
+		}
+	})
+	t.Run("a failed first revoke keeps the login for a retry", func(t *testing.T) {
+		db := withLogin(true)
+		db.Revoke = func(string) error { return hostErr(sdk.ErrUnavailable) }
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
+		if d := execs(db, sqlLoginDelete); len(d) != 0 {
+			t.Fatalf("deletes = %+v", d)
+		}
+		db.Revoke = nil
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 200)
+		if d := execs(db, sqlLoginDelete); len(d) != 1 {
+			t.Fatalf("deletes after retry = %+v", d)
+		}
+	})
+	t.Run("a failed second revoke is reported, the login is gone and it is logged", func(t *testing.T) {
+		db := withLogin(true)
+		calls := 0
+		db.Revoke = func(string) error {
+			calls++
+			if calls == 2 {
+				return hostErr(sdk.ErrUnavailable)
+			}
+			return nil
+		}
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
+		if d := execs(db, sqlLoginDelete); len(d) != 1 {
+			t.Fatalf("deletes = %+v", d)
+		}
+		if logs := execs(db, sqlLogInsert); len(logs) != 1 || !strings.Contains(logs[0].Args[3].(string), "sessions not ended") {
+			t.Fatalf("log = %+v", logs)
+		}
+	})
+	t.Run("a failed delete does not revoke again", func(t *testing.T) {
+		db := withLogin(true)
+		db.Exec = func(sql string, _ []any) (int64, error) {
+			if sql == sqlLoginDelete {
+				return 0, hostErr(sdk.ErrUnavailable)
+			}
+			return 1, nil
+		}
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
+		if len(db.Revoked) != 1 {
+			t.Fatalf("revoked %v", db.Revoked)
+		}
+	})
+	t.Run("no password, unknown member", func(t *testing.T) {
+		db := withLogin(false)
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 404)
+		install(t, &fakeDB{})
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 404)
+	})
 }

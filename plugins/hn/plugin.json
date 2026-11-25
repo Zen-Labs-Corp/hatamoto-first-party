@@ -1,9 +1,9 @@
 {
   "name": "hn",
-  "version": "1.0.3",
-  "sdk": "^0.27",
+  "version": "1.1.0",
+  "sdk": "^0.29",
   "description": "A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation, built on core comments.",
-  "permissions": ["db", "settings", "site.scripts", "entities.write.own", "comments.read", "comments.moderate", "client.key"],
+  "permissions": ["db", "settings", "site.scripts", "entities.write.own", "comments.read", "comments.moderate", "client.key", "comments.identity"],
   "entity_schema": "hn-story",
   "entity_fields": ["url", "text", "kind"],
   "request_headers": ["sec-fetch-site"],
@@ -18,6 +18,12 @@
   "routes": [
     { "method": "POST", "path": "/username", "public": true },
     { "method": "POST", "path": "/profile", "public": true },
+    { "method": "POST", "path": "/login", "public": true },
+    { "method": "POST", "path": "/signup", "public": true },
+    { "method": "POST", "path": "/logout", "public": true },
+    { "method": "POST", "path": "/logout/all", "public": true },
+    { "method": "POST", "path": "/password", "public": true },
+    { "method": "POST", "path": "/password/connect", "public": true },
     { "method": "POST", "path": "/submit", "public": true },
     { "method": "POST", "path": "/story/{id}/edit", "public": true },
     { "method": "POST", "path": "/story/{id}/delete", "public": true },
@@ -29,6 +35,7 @@
     { "method": "GET", "path": "/admin/queue" },
     { "method": "POST", "path": "/admin/users/{name}/ban" },
     { "method": "POST", "path": "/admin/users/{name}/unban" },
+    { "method": "POST", "path": "/admin/users/{name}/password/remove" },
     { "method": "POST", "path": "/admin/domains" },
     { "method": "POST", "path": "/admin/domains/remove" },
     { "method": "POST", "path": "/admin/nets/ban" },
@@ -57,7 +64,7 @@
   "settings_schema": {
     "type": "object",
     "properties": {
-      "flag_karma": { "type": "integer", "title": "Karma to flag", "description": "Minimum karma a member needs to flag a story or comment.", "default": 30, "minimum": 0 },
+      "flag_karma": { "type": "integer", "title": "Karma to flag", "description": "Minimum karma a member needs to flag a story or comment. New members start at 1, so on a new site nobody can flag until members earn karma; kill spam from the Recent tab of the News moderation page, or lower this for the first weeks.", "default": 30, "minimum": 0 },
       "downvote_karma": { "type": "integer", "title": "Karma to downvote", "description": "Minimum karma a member needs to downvote a comment.", "default": 500, "minimum": 0 },
       "vouch_karma": { "type": "integer", "title": "Karma to vouch", "description": "Minimum karma a member needs to vouch for a dead story or comment.", "default": 31, "minimum": 0 },
       "edit_window_minutes": { "type": "integer", "title": "Edit window (minutes)", "description": "How long an author may edit or delete a story after posting it.", "default": 120, "minimum": 0 },

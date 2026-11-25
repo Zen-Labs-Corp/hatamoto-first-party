@@ -53,10 +53,12 @@
     } catch (e) { fallback(f); }
   }
 
+  function within(n, a) { for (; n; n = n.parentNode) if (n === a) return true; return false; }
+  // A theme that renders the bar in its header (inside a wrapper) keeps it there.
   function userbar() {
     try {
       var ub = d.querySelector('.hn-ub'), slot = d.querySelector('.hn-userbar');
-      if (ub && slot && ub.parentNode !== slot) slot.appendChild(ub);
+      if (ub && slot && !within(ub, slot)) slot.appendChild(ub);
     } catch (e) {}
   }
 

@@ -21,9 +21,9 @@ func TestCheck(t *testing.T) {
 		name, reason string
 		doc          map[string]any
 	}{
-		{"blocked member", "hn: blocked member", map[string]any{"blocked": true}},
-		{"net", "hn: blocked network", map[string]any{"net": true}},
-		{"domain", "hn: banned site", map[string]any{"domain": true}},
+		{"blocked member", "blocked member", map[string]any{"blocked": true}},
+		{"net", "blocked network", map[string]any{"net": true}},
+		{"domain", "banned site", map[string]any{"domain": true}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

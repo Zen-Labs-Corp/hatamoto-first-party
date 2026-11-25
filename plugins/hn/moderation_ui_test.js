@@ -58,6 +58,11 @@ const fixtures = {
   "GET /admin/queue:queue": { items: [
     { kind: "story", id: "11111111-1111-1111-1111-111111111111", item_no: 7, title: "<b>x</b> story", by: "<i>bob</i>", flags: 5, dead: false, cause: "" },
     { kind: "comment", id: "22222222-2222-2222-2222-222222222222", item_no: 7, title: "a comment", by: "", flags: 2, dead: true, cause: "flags" },
+    { kind: "story", id: "33333333-3333-3333-3333-333333333333", item_no: 9, title: "owner killed", by: "", flags: 0, dead: true, cause: "owner" },
+  ] },
+  "GET /admin/queue:recent": { items: [
+    { kind: "story", id: "44444444-4444-4444-4444-444444444444", item_no: 12, title: "<b>fresh</b>", by: "eve", flags: 0, dead: false, cause: "", at: "2026-01-02T03:04:05Z" },
+    { kind: "comment", id: "55555555-5555-5555-5555-555555555555", item_no: 12, title: "spam reply", by: "", flags: 0, dead: true, cause: "owner", at: "2026-01-02T03:05:05Z" },
   ] },
   "GET /admin/queue:users": { users: [{ name: "<b>x</b>", mode: "dead", reason: "spam", created_at: "2026-01-02T03:04:05Z" }] },
   "GET /admin/queue:domains": { domains: [{ domain: "example.com", reason: "spam", created_at: "2026-01-02T03:04:05Z" }] },
@@ -91,15 +96,16 @@ async function boot() {
 
 (async () => {
   const t = await boot();
-  const tabs = ["queue", "users", "domains", "nets", "jobs", "log"];
-  const labels = ["Queue", "Users", "Domains", "Networks", "Jobs", "Log"];
-  check("six tabs in the page", labels.every((l, i) => files["index.html"].includes(`id="tab-${tabs[i]}" type="button" role="tab" aria-selected="${i === 0}">${l}</button>`)));
-  check("render functions exposed", Object.keys(t.ctx.__hnTest.render || {}).length === 6);
+  const tabs = ["queue", "recent", "users", "domains", "nets", "jobs", "log"];
+  const labels = ["Queue", "Recent", "Users", "Domains", "Networks", "Jobs", "Log"];
+  check("seven tabs in the page", labels.every((l, i) => files["index.html"].includes(`id="tab-${tabs[i]}" type="button" role="tab" aria-selected="${i === 0}">${l}</button>`)));
+  check("render functions exposed", Object.keys(t.ctx.__hnTest.render || {}).length === 7);
   check("queue loaded at start", t.calls.length === 1 && t.calls[0].path === "/admin/queue" && t.calls[0].query.view === "queue");
 
   const queue = t.cache["#body-queue"].children[0];
   const queueText = texts(queue);
   check("queue rows render", queueText.includes("#7") && queueText.includes("5 flags") && queueText.includes("dead (flags)"));
+  check("a dead item that was never flagged shows its cause and no flag count", queueText.includes("#9") && queueText.includes("dead (owner)") && !queueText.includes("0 flags"));
   check("markup stays text", queueText.includes("<b>x</b> story") && queueText.includes("<i>bob</i>") && !queue.children.some((c) => c.tag === "b"));
   check("no ban button without author", (() => { let n = 0; walk(queue, (_, x) => { if (x && x.textContent === "ban user") n++; }); return n === 1; })());
 
@@ -121,6 +127,13 @@ async function boot() {
     check(`tab ${name} shown`, t.cache[`#panel-${name}`].hidden === false && t.cache[`#tab-${name}`].attributes["aria-selected"] === "true"
       && tabs.every((o) => o === name || t.cache[`#panel-${o}`].hidden === true));
   }
+  const recent = t.cache["#body-recent"].children[0];
+  const hasButton = (row, label) => Boolean(find(row, "button", label));
+  const rows = recent.children[1].children;
+  check("recent tab loads the recent view", t.calls.some((c) => c.path === "/admin/queue" && c.query.view === "recent"));
+  check("recent: live row has kill and no restore", rows.length === 2 && hasButton(rows[0], "kill") && !hasButton(rows[0], "restore"));
+  check("recent: dead row has restore and no kill", hasButton(rows[1], "restore") && !hasButton(rows[1], "kill"));
+  check("recent markup stays text", texts(recent).includes("<b>fresh</b>") && !recent.children.some((c) => c.tag === "b"));
   const users = texts(t.cache["#body-users"]);
   check("users render", users.includes("<b>x</b>") && users.includes("spam") && users.some((s) => s.includes("2026")));
   check("domains render", texts(t.cache["#body-domains"]).includes("example.com"));

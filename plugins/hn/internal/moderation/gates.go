@@ -10,8 +10,10 @@ import (
 
 const (
 	sqlSubmitCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, EXISTS(SELECT 1 FROM banned_domains d JOIN jsonb_array_elements_text($2::jsonb) h(host) ON h.host = d.domain OR h.host LIKE '%.' || d.domain) AS domain, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net) x`
-	sqlVoteCheck   = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, (SELECT count(*) FROM rate_events WHERE kind = 'vote_user' AND key = $2 AND created_at > $5::timestamptz - interval '1 minute') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_addr' AND key = $3 AND created_at > $5::timestamptz - interval '1 minute') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_net' AND key = $4 AND created_at > $5::timestamptz - interval '1 minute') AS net_n) x`
-	sqlSignupCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $1 AND (expires_at IS NULL OR expires_at > $2::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'signup_net' AND key = $1 AND created_at > $2::timestamptz - interval '1 hour') AS net_n) x`
+	sqlVoteCheck   = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, (SELECT count(*) FROM rate_events WHERE kind = 'vote_user' AND key = $2 AND created_at > $5::timestamptz - interval '1 minute') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_addr' AND key = $3 AND created_at > $5::timestamptz - interval '1 minute') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_net' AND key = $4 AND created_at > $5::timestamptz - interval '1 minute') AS net_n, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $4 AND (expires_at IS NULL OR expires_at > $5::timestamptz)) AS net, COALESCE((SELECT item_no FROM story_meta WHERE entity_id::text = $6), 0) AS story_no, (SELECT count(*) FROM rate_events WHERE kind = 'vote_ring' AND key = $7 AND created_at > $5::timestamptz - interval '24 hours') AS ring_n) x`
+	sqlSignupCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $1 AND (expires_at IS NULL OR expires_at > $3::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'signup_net' AND key = $1 AND created_at > $3::timestamptz - interval '1 hour') AS net_n, (SELECT count(*) FROM rate_events WHERE kind = 'signup_addr' AND key = $2 AND created_at > $3::timestamptz - interval '1 hour') AS addr_n) x`
+	sqlLoginCheck  = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'login_user' AND key = $1 AND created_at > $4::timestamptz - interval '1 hour') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_user_all' AND key = $5 AND created_at > $4::timestamptz - interval '1 hour') AS user_all_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_addr' AND key = $2 AND created_at > $4::timestamptz - interval '1 hour') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_net' AND key = $3 AND created_at > $4::timestamptz - interval '1 hour') AS net_n) x`
+	sqlMemberCheck = `SELECT to_jsonb(x) FROM (SELECT count(*) AS n FROM rate_events WHERE kind = 'pw_member' AND key = $1 AND created_at > $2::timestamptz - interval '1 hour') x`
 	sqlBlocked     = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked) x`
 	sqlRateRecord  = `INSERT INTO rate_events (kind, key, created_at) SELECT e->>'kind', e->>'key', $1::timestamptz FROM jsonb_array_elements($2::jsonb) e`
 )
@@ -21,6 +23,8 @@ func registerGates(r *core.Registry) {
 	r.Gate(core.GateVote, gateVote)
 	r.Gate(core.GateSignup, gateSignup)
 	r.Gate(core.GateFlag, gateFlag)
+	r.Gate(core.GateLogin, gateLogin)
+	r.Gate(core.GateMember, gateMember)
 }
 
 func nowArg() string { return core.Now().UTC().Format(time.RFC3339Nano) }
@@ -47,11 +51,17 @@ func userID(req *core.GateReq) int64 {
 	return req.User.ID
 }
 
-// domainHost is a host in the form banned_domains is matched in: lower-case,
+// domainHost is a host in the form banned_domains is matched in: lower-case punycode,
 // without "www." and a trailing dot. The SQL matches the host and its parents,
 // so the match does not depend on how many labels the host has.
 func domainHost(d string) string {
-	d = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(d)), ".")
+	d = strings.TrimSpace(d)
+	if a, ok := core.ASCIIHost(d); ok {
+		d = a
+	} else {
+		d = strings.ToLower(d)
+	}
+	d = strings.TrimSuffix(d, ".")
 	return strings.TrimPrefix(d, "www.")
 }
 
@@ -81,7 +91,7 @@ func gateSubmit(req *core.GateReq) error {
 	return nil
 }
 
-// gateVote refuses blocked members and floods per member, address and network
+// gateVote refuses blocked members, banned networks and floods per member, address and network
 // (attempts count, so every vote that gets this far is recorded).
 func gateVote(req *core.GateReq) error {
 	var res struct {
@@ -89,6 +99,9 @@ func gateVote(req *core.GateReq) error {
 		UserN   int `json:"user_n"`
 		AddrN   int `json:"addr_n"`
 		NetN    int `json:"net_n"`
+		Net     bool
+		StoryNo int64 `json:"story_no"`
+		RingN   int   `json:"ring_n"`
 	}
 	user, addr, net := "", addrKey(req), netKey(req)
 	if req.User != nil {
@@ -97,44 +110,158 @@ func gateVote(req *core.GateReq) error {
 	if user == "" && addr == "" && net == "" {
 		return nil
 	}
+	ring := ""
+	if net != "" && req.Target != "" {
+		ring = net + ":" + req.Target
+	}
 	now := nowArg()
-	if err := core.QueryJSON(sqlVoteCheck, &res, userID(req), user, addr, net, now); err != nil {
+	if err := core.QueryJSON(sqlVoteCheck, &res, userID(req), user, addr, net, now, req.Target, ring); err != nil {
 		return nil
 	}
 	if res.Blocked {
 		return refusal{nBlocked}
 	}
+	if res.Net {
+		return refusal{nNet}
+	}
 	userOver, addrOver, netOver := res.UserN >= voteUserPerMin, res.AddrN >= voteAddrPerMin, res.NetN >= voteNetPerMin
 	// A key already over its limit stays over without more rows, so a flood
 	// does not grow rate_events.
+	rateRefused := (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver)
+	// The ring check only marks a vote the rate limits let through: the caller
+	// stores a marked story vote without counting it, the voter is told nothing.
+	ringOver := res.RingN >= ringVotesPerNet
 	recordRates(now, "vote_user", keyBelow(user, userOver), "vote_addr", keyBelow(addr, addrOver), "vote_net", keyBelow(net, netOver))
-	if (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver) {
+	if rateRefused {
 		return refusal{nVoteRate}
+	}
+	if res.StoryNo > 0 && ring != "" {
+		// Only a vote that is really stored uses the network's budget: a double click, a
+		// repeat vote or an unvote and revote must not (the caller reports it).
+		req.Ring = ringOver
+		req.Stored = func(counted bool) {
+			if counted {
+				recordRates(now, "vote_ring", ring)
+				return
+			}
+			prefix := net
+			if len(prefix) > 8 {
+				prefix = prefix[:8]
+			}
+			writeLog("ring", "ring-vote", "story:"+strconv.FormatInt(res.StoryNo, 10), "net:"+prefix)
+		}
 	}
 	return nil
 }
 
-// gateSignup runs for a visitor without a username: only the network is known.
+// gateSignup runs for a visitor without a username: only the network and the address are known.
 func gateSignup(req *core.GateReq) error {
-	net := netKey(req)
-	if net == "" {
-		return nil
+	net, addr := netKey(req), addrKey(req)
+	netLimit := signupNetPerHour
+	if net == "" && addr == "" {
+		if req.Claim {
+			// A username claim: core verified the email session and rate-limits that sign-in,
+			// so it must not share the site-wide bucket with anonymous password sign-ups.
+			return nil
+		}
+		// No client.key grant: one site-wide bucket, so a flood still has a ceiling.
+		net, netLimit = siteKey, signupSitePerHour
 	}
 	var res struct {
-		Net  bool
-		NetN int `json:"net_n"`
+		Net   bool
+		NetN  int `json:"net_n"`
+		AddrN int `json:"addr_n"`
 	}
 	now := nowArg()
-	if err := core.QueryJSON(sqlSignupCheck, &res, net, now); err != nil {
+	if err := core.QueryJSON(sqlSignupCheck, &res, net, addr, now); err != nil {
 		return nil
 	}
 	if res.Net {
 		return refusal{nNet}
 	}
-	if res.NetN >= signupNetPerHour {
+	if (net != "" && res.NetN >= netLimit) || (addr != "" && res.AddrN >= signupAddrPerHour) {
 		return refusal{nSignupRate}
 	}
-	recordRates(now, "signup_net", net)
+	recordRates(now, "signup_net", net, "signup_addr", addr)
+	return nil
+}
+
+// gateLogin runs before a password is checked (login and password change). Target is the
+// lower-case username when it is a valid name, whether or not it exists, else "". Per-key limits
+// count attempts; the all-networks and keyless caps count wrong passwords only (Failed). The
+// refusal never depends on whether the username exists.
+func gateLogin(req *core.GateReq) error {
+	user, addr, net := req.Target, addrKey(req), netKey(req)
+	netLimit := loginNetPerHour
+	keyless := addr == "" && net == ""
+	if keyless {
+		// No client.key grant: one site-wide bucket, so a flood still has a ceiling.
+		net, netLimit = siteKey, loginSitePerHour
+	}
+	var res struct {
+		Net      bool
+		UserN    int `json:"user_n"`
+		UserAllN int `json:"user_all_n"`
+		AddrN    int `json:"addr_n"`
+		NetN     int `json:"net_n"`
+	}
+	// A name is limited per network, so a third party cannot lock a member out of
+	// their own network; the all-networks cap is only a brute-force backstop.
+	userKey := ""
+	if user != "" {
+		userKey = user + ":" + net
+		if net == "" {
+			userKey = user + ":" + addr
+		}
+	}
+	now := nowArg()
+	if err := core.QueryJSON(sqlLoginCheck, &res, userKey, addr, net, now, user); err != nil {
+		if keyless {
+			return refusal{nLoginRate} // no per-client limit to fall back on: fail closed
+		}
+		return nil
+	}
+	if res.Net {
+		return refusal{nNet}
+	}
+	userOver, allOver := res.UserN >= loginUserPerHour, res.UserAllN >= loginUserAllPerHour
+	addrOver, netOver := res.AddrN >= loginAddrPerHour, res.NetN >= netLimit
+	// Without client.key only wrong passwords count against the site-wide buckets, so real
+	// logins cannot lock a busy site out.
+	refused := (user != "" && (userOver || allOver)) || (addr != "" && addrOver) || (net != "" && netOver)
+	if !keyless {
+		recordRates(now, "login_user", keyBelow(userKey, userOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
+	}
+	if refused {
+		// A refused request adds nothing to the all-networks cap: one address cannot fill it.
+		return refusal{nLoginRate}
+	}
+	req.Failed = func() {
+		if keyless {
+			recordRates(now, "login_user", userKey, "login_user_all", user, "login_net", net)
+			return
+		}
+		recordRates(now, "login_user_all", user)
+	}
+	return nil
+}
+
+// gateMember limits the password routes of a signed-in member per member, in a bucket of its
+// own: the login limits are not touched, so nobody else's traffic can block the member's
+// profile forms. Target is the member's id. A host error fails open (a session is needed anyway).
+func gateMember(req *core.GateReq) error {
+	if req.Target == "" {
+		return nil
+	}
+	var res struct{ N int }
+	now := nowArg()
+	if err := core.QueryJSON(sqlMemberCheck, &res, req.Target, now); err != nil {
+		return nil
+	}
+	if res.N >= memberPwPerHour {
+		return refusal{nLoginRate}
+	}
+	recordRates(now, "pw_member", req.Target)
 	return nil
 }
 

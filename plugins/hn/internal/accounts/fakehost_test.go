@@ -2,6 +2,7 @@ package accounts
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 type fakeUsers struct {
 	host     *coretest.Host
 	byKey    map[string]*core.User
+	logins   map[int64]*login
 	nextID   int64
 	inserts  int
 	updates  int
@@ -22,6 +24,14 @@ type fakeUsers struct {
 
 	setViewer    []sdk.CommentViewerArgs
 	setViewerErr error
+
+	ensured    []string          // accounts passed to comments.identity.ensure, in order
+	ensureErr  error             // answer of every ensure call when set
+	ensureKeys map[string]string // per-account key override; default "ck-"+account
+
+	revoked      []string // accounts passed to comments.identity.revoke, in order
+	revokeErr    error
+	revokeAnswer *bool // answer of revoke; nil = true
 }
 
 var fakeCreated = time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC)
@@ -35,6 +45,11 @@ func (f *fakeUsers) find(match func(*core.User) bool) *core.User {
 	return nil
 }
 
+// addLogin gives a member a password login row.
+func (f *fakeUsers) addLogin(user *core.User, account, hash string) {
+	f.logins[user.ID] = &login{UserID: user.ID, Username: user.Username, Account: account, PwHash: hash}
+}
+
 func (f *fakeUsers) add(key, name string) *core.User {
 	f.nextID++
 	u := &core.User{ID: f.nextID, CommenterKey: key, Username: name, Karma: 1, Maxvisit: 20, Minaway: 180, CreatedAt: fakeCreated}
@@ -45,7 +60,7 @@ func (f *fakeUsers) add(key, name string) *core.User {
 // installFake installs a host that models the users table by SQL text.
 func installFake(t *testing.T) *fakeUsers {
 	t.Helper()
-	f := &fakeUsers{byKey: map[string]*core.User{}}
+	f := &fakeUsers{byKey: map[string]*core.User{}, logins: map[int64]*login{}}
 	args := func(raw json.RawMessage) (string, []json.RawMessage) {
 		var a struct {
 			SQL  string            `json:"sql"`
@@ -67,6 +82,24 @@ func installFake(t *testing.T) *fakeUsers {
 			sql, a := args(raw)
 			var u *core.User
 			switch {
+			case strings.Contains(sql, "FROM users u JOIN user_logins"):
+				var l *login
+				if strings.Contains(sql, "u.username_lower = lower($1)") {
+					want := strings.ToLower(str(a[0]))
+					for _, x := range f.logins {
+						if strings.ToLower(x.Username) == want {
+							l = x
+						}
+					}
+				} else {
+					var id int64
+					_ = json.Unmarshal(a[0], &id)
+					l = f.logins[id]
+				}
+				if l == nil {
+					return map[string]any{"rows": [][]any{}}, nil
+				}
+				return coretest.Rows(l), nil
 			case strings.Contains(sql, "u.commenter_key = $1"):
 				u = f.byKey[str(a[0])]
 			case strings.Contains(sql, "u.username_lower = lower($1)"):
@@ -84,6 +117,29 @@ func installFake(t *testing.T) *fakeUsers {
 			}
 			return coretest.Rows(u), nil
 		},
+		sdk.FnCommentsIdentityEnsure: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentsIdentityArgs
+			_ = json.Unmarshal(raw, &a)
+			f.ensured = append(f.ensured, a.Account)
+			if f.ensureErr != nil {
+				return nil, f.ensureErr
+			}
+			key := "ck-" + a.Account
+			if k, ok := f.ensureKeys[a.Account]; ok {
+				key = k
+			}
+			return sdk.CommentsIdentityEnsured{CommenterKey: key}, nil
+		},
+		sdk.FnCommentsIdentityRevoke: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentsIdentityArgs
+			_ = json.Unmarshal(raw, &a)
+			f.revoked = append(f.revoked, a.Account)
+			if f.revokeErr != nil {
+				return nil, f.revokeErr
+			}
+			ok := f.revokeAnswer == nil || *f.revokeAnswer
+			return sdk.CommentsIdentityRevoked{Revoked: ok}, nil
+		},
 		sdk.FnCommentsSetViewer: func(raw json.RawMessage) (any, error) {
 			var a sdk.CommentViewerArgs
 			_ = json.Unmarshal(raw, &a)
@@ -100,6 +156,49 @@ func installFake(t *testing.T) *fakeUsers {
 					return map[string]any{"rows_affected": 0}, nil
 				}
 				f.add(key, name)
+				return map[string]any{"rows_affected": 1}, nil
+			case strings.HasPrefix(sql, "WITH u AS (INSERT INTO users"):
+				f.inserts++
+				key, name := str(a[0]), str(a[1])
+				if f.byKey[key] != nil || f.find(func(x *core.User) bool { return strings.EqualFold(x.Username, name) }) != nil {
+					return map[string]any{"rows_affected": 0}, nil
+				}
+				f.addLogin(f.add(key, name), str(a[3]), str(a[4]))
+				return map[string]any{"rows_affected": 1}, nil
+			case strings.HasPrefix(sql, "INSERT INTO user_logins"):
+				var id int64
+				_ = json.Unmarshal(a[0], &id)
+				if f.logins[id] != nil || f.find(func(x *core.User) bool { return x.ID == id }) == nil {
+					return map[string]any{"rows_affected": 0}, nil
+				}
+				f.addLogin(f.find(func(x *core.User) bool { return x.ID == id }), str(a[1]), str(a[2]))
+				return map[string]any{"rows_affected": 1}, nil
+			case strings.HasPrefix(sql, "UPDATE user_logins SET pw_hash"), strings.HasPrefix(sql, "UPDATE user_logins SET email"):
+				var id int64
+				_ = json.Unmarshal(a[1], &id)
+				l := f.logins[id]
+				if l == nil {
+					return map[string]any{"rows_affected": 0}, nil
+				}
+				if strings.Contains(sql, "SET pw_hash") {
+					l.PwHash = str(a[0])
+				} else {
+					l.Email = str(a[0])
+				}
+				return map[string]any{"rows_affected": 1}, nil
+			case strings.HasPrefix(sql, "UPDATE users SET commenter_key"):
+				var id int64
+				_ = json.Unmarshal(a[1], &id)
+				u, key := f.find(func(x *core.User) bool { return x.ID == id }), str(a[0])
+				if u == nil || u.CommenterKey == key {
+					return map[string]any{"rows_affected": 0}, nil
+				}
+				if f.byKey[key] != nil {
+					return nil, errors.New("unique violation")
+				}
+				delete(f.byKey, u.CommenterKey)
+				u.CommenterKey = key
+				f.byKey[key] = u
 				return map[string]any{"rows_affected": 1}, nil
 			case strings.HasPrefix(sql, "UPDATE users SET about"):
 				f.updates++

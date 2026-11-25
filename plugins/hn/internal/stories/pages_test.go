@@ -168,13 +168,20 @@ func TestSubmitPage(t *testing.T) {
 	pinNow(t, feedNow)
 	install(t, pageDB(0, map[string]any{"body": "mine"}))
 	r := newRegistry(t, nil)
-	if c := render(t, r, "/submit", "", nil).Blocks[0].Content; c["state"] != "login" || c["login_href"] != "/login?m=story-login" {
+	c := render(t, r, "/submit", "", nil).Blocks[0].Content
+	if c["state"] != "login" || c["login_action"] != "/p/hn/login" || c["signup_action"] != "/p/hn/signup" || c["next"] != "/submit" {
 		t.Errorf("signed out %v", c)
+	}
+	if _, ok := c["login_href"]; ok {
+		t.Errorf("signed out has login_href: %v", c)
+	}
+	if c := render(t, r, "/submit", "k9", nil).Blocks[0].Content; c["state"] != "noname" || c["login_href"] != "/login" || c["login_action"] != nil {
+		t.Errorf("signed in without a username %v", c)
 	}
 	if c := render(t, r, "/submit", "k1", nil).Blocks[0].Content; c["state"] != "new" || c["action"] != "/p/hn/submit" {
 		t.Errorf("new %v", c)
 	}
-	c := render(t, r, "/submit", "k2", map[string]string{"id": "42"}).Blocks[0].Content
+	c = render(t, r, "/submit", "k2", map[string]string{"id": "42"}).Blocks[0].Content
 	if c["state"] != "edit" || c["title"] != "T" || c["url"] != "https://example.com/a" || c["text"] != "mine" || c["can_delete"] != true ||
 		c["action"] != "/p/hn/story/42/edit" || c["delete_action"] != "/p/hn/story/42/delete" {
 		t.Errorf("edit %v", c)

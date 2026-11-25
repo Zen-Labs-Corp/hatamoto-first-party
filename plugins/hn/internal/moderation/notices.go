@@ -21,6 +21,7 @@ const (
 	nNet         core.Notice = "mod-net"
 	nVoteRate    core.Notice = "mod-vote-rate"
 	nSignupRate  core.Notice = "mod-signup-rate"
+	nLoginRate   core.Notice = "mod-login-rate"
 	nNotPublic   core.Notice = "mod-not-public"
 	nOff         core.Notice = "mod-off"
 	nError       core.Notice = "mod-error"
@@ -44,6 +45,7 @@ var noticeTexts = map[core.Notice]string{
 	nNet:         "Your network can't do that right now.",
 	nVoteRate:    "You are voting too fast. Please try again later.",
 	nSignupRate:  "Too many sign-ups from your network. Please try again later.",
+	nLoginRate:   "Too many login attempts. Please try again later.",
 	nNotPublic:   "That comment is not public, so it was not killed.",
 	nOff:         "That is not available yet.",
 	nError:       "Something went wrong, please try again.",
@@ -51,11 +53,24 @@ var noticeTexts = map[core.Notice]string{
 
 // Rate limits (plan decision 6).
 const (
-	commentFlagsToDead = 3
-	voteUserPerMin     = 30
-	voteAddrPerMin     = 30
-	voteNetPerMin      = 60
-	signupNetPerHour   = 5
+	commentFlagsToDead  = 3
+	voteUserPerMin      = 30
+	voteAddrPerMin      = 30
+	voteNetPerMin       = 60
+	signupNetPerHour    = 5
+	signupAddrPerHour   = 3
+	loginAddrPerHour    = 20
+	loginNetPerHour     = 60
+	loginUserPerHour    = 10  // per username and network
+	loginUserAllPerHour = 100 // per username, all networks: the brute-force backstop
+	memberPwPerHour     = 10  // change/connect password per member
+	// Without client.key every request shares one site-wide bucket (siteKey).
+	signupSitePerHour = 20
+	loginSitePerHour  = 120
+	siteKey           = "*"
+	// One network may add at most this many counted votes to one story in 24 hours;
+	// later ones are stored uncounted (voting-ring check).
+	ringVotesPerNet = 2
 )
 
 // defineNotices registers the texts of every notice code.

@@ -444,6 +444,38 @@ func TestRegistryServeRefusesCrossSitePublicPost(t *testing.T) {
 	}
 }
 
+func TestRegistryServeRefusesOriginWithoutFetchMetadata(t *testing.T) {
+	ran := 0
+	r := core.NewRegistry()
+	registerAll(r, map[string]func(*core.Registry){"accounts": func(r *core.Registry) {
+		h := func(*core.Request) (sdk.HTTPResponse, error) { ran++; return sdk.HTTPResponse{Status: 204}, nil }
+		r.Route("POST /p", h)
+		r.Route("POST /admin/x", h)
+	}})
+	serve := func(pat string, user *sdk.HTTPUser, origin string) sdk.HTTPResponse {
+		req := sdk.HTTPRequest{Method: "POST", Pattern: pat, User: user}
+		if origin != "" {
+			req.Headers = map[string]string{"origin": origin}
+		}
+		resp, err := r.ServeHTTP(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	for _, o := range []string{"https://evil.example", "null"} {
+		if resp := serve("/p", nil, o); resp.Status != 403 || ran != 0 {
+			t.Errorf("origin %q: status %d, handler ran %d times", o, resp.Status, ran)
+		}
+	}
+	if resp := serve("/p", nil, ""); resp.Status != 204 {
+		t.Errorf("no origin: status %d", resp.Status)
+	}
+	if resp := serve("/admin/x", &sdk.HTTPUser{}, "https://evil.example"); resp.Status != 204 {
+		t.Errorf("admin POST with user: status %d", resp.Status)
+	}
+}
+
 // TestAdminPrefixMatchesManifest pins the dispatcher's rule (non-public means
 // under /admin/) to plugin.json, so a new non-public route elsewhere fails here.
 func TestAdminPrefixMatchesManifest(t *testing.T) {

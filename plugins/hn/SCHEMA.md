@@ -21,6 +21,7 @@ Every table has `created_at timestamptz NOT NULL DEFAULT now()` unless noted.
 | Table | File | Phase |
 |---|---|---|
 | `users` | `010_accounts.sql` | accounts |
+| `user_logins` | `011_accounts_password.sql` | accounts |
 | `item_numbers` | `020_stories.sql` | stories |
 | `story_meta` | `020_stories.sql` | stories |
 | `story_votes` | `020_stories.sql` | stories |
@@ -49,6 +50,16 @@ Written by accounts (karma is also changed by stories and comments through `core
 |---|---|
 | `users` | `id`, `commenter_key` text unique, `username`, `username_lower` unique, `about` default '', `karma` integer default 1, `showdead` boolean default false, `noprocrast` boolean default false, `maxvisit` integer default 20, `minaway` integer default 180 |
 
+## 011_accounts_password
+
+Written by accounts only. The host runs plugin migrations out of order, so 011 applies after 051 on sites that already run an earlier version.
+
+| Table | Columns |
+|---|---|
+| `user_logins` | `user_id` primary key, references `users` (cascade), `account` text unique (plugin-owned id passed to `comments.identity.*`, 32 hex chars), `pw_hash` (bcrypt), `email` default '' (optional, never shown), `pw_changed_at` |
+
+The hash and the email never leave this table (`users` is read as `to_jsonb(u)`). `users.commenter_key` is the key `comments.identity.ensure` returned for an account created with a password; login re-attaches the row when core gave the account a new commenter (for example after a reinstall). An email-link member who connects a password keeps their key.
+
 ## 020_stories
 
 Written by stories (`comment_count` also by comments, `dead` also by moderation).
@@ -58,7 +69,7 @@ Written by stories (`comment_count` also by comments, `dead` also by moderation)
 | `item_numbers` | `item_no` identity primary key. Reserve-only: a row is inserted first and its number becomes the story slug, so the canonical URL reads `/item/<number>`. The `/item/{slug}` url_pattern is set on the `hn-story` type by the hn kit (or by the owner in Settings > Content types), not by the plugin package; without it stories route at `/<number>` |
 | `story_meta` | `entity_id` uuid primary key, `item_no` unique, `author_id` references `users`, `title`, `url`, `url_key` (normalised, indexed), `domain` (indexed with `created_at`), `body`, `kind` one of story, ask, show, job, `points` default 1, `comment_count` default 0, `score` double precision default 0 (gravity), `dead` default false. Indexes: score desc where not dead; created desc; kind + score; author + created |
 | `story_actions` | `id` identity, `author_id` references `users` (cascade), `kind` submit or edit; append-only, so deleting a story does not free a `submit_per_hour` slot. Index: author + kind + created |
-| `story_votes` | `story_id` references `story_meta` (cascade), `user_id` references `users` (cascade), primary key both |
+| `story_votes` | `story_id` references `story_meta` (cascade), `user_id` references `users` (cascade), primary key both, `counted` (022) false when the voting-ring check stored the vote without counting it |
 
 ## 030_comments
 
@@ -81,7 +92,7 @@ Written by moderation.
 | `net_bans` | `net_key` primary key, `reason`, `expires_at` null |
 | `rate_events` | `id` identity, `kind`, `key`; index `(kind, key, created_at)` |
 | `mod_log` | `id` identity, `actor`, `action`, `target`, `detail` |
-| `kills` (041) | `kind` story or comment, `target_id` uuid, `cause` flags, owner or ban, primary key `(kind, target_id)` |
+| `kills` (041) | `kind` story or comment, `target_id` uuid, `cause` flags, owner, ban or domain (042: a site ban), primary key `(kind, target_id)` |
 
 ## 050_parity
 

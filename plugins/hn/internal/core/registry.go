@@ -31,11 +31,16 @@ const (
 type GateKind int
 
 // The gates: moderation registers them; stories, accounts and moderation's own flag route run them.
+// GateLogin runs before a password is checked (login and password change); Target is the
+// lower-case username when it is a valid name, else empty. GateMember runs before the password
+// routes of a signed-in member (change, connect); Target is the member's id.
 const (
 	GateSubmit GateKind = iota
 	GateVote
 	GateSignup
 	GateFlag
+	GateLogin
+	GateMember
 )
 
 // EventKind names an in-process story event.
@@ -54,6 +59,20 @@ type GateReq struct {
 	Req    *Request
 	Target string
 	Domain string
+	// Claim marks a username claim after an email sign-in (set only by the claim route).
+	// The signup gate does not count it in the keyless site-wide bucket.
+	Claim bool
+	// Ring is set by the vote gate when the vote comes from a network that already
+	// gave this story its counted votes for the day; the caller stores the vote
+	// without counting it. Story votes only; never a refusal.
+	Ring bool
+	// Stored is set by the vote gate and called by the caller once a story vote row was
+	// really inserted: counted is false for a Ring vote. A repeat vote never calls it.
+	Stored func(counted bool)
+	// Failed is set by the login gate when it let the attempt through and is called by the
+	// caller after a wrong password. Only failures count toward the all-networks and
+	// site-wide login caps.
+	Failed func()
 }
 
 // Item is a story or comment row, for row actions.

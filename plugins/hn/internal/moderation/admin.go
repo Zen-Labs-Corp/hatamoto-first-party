@@ -2,8 +2,10 @@ package moderation
 
 import (
 	"encoding/json"
+	"errors"
 	"html"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -15,16 +17,24 @@ import (
 )
 
 const (
-	sqlQueue   = `SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.dead, x.flags DESC, x.last DESC), '[]'::jsonb) FROM (SELECT f.kind, f.target_id AS id, COALESCE(s.item_no, cs.item_no, 0) AS item_no, COALESCE(s.title, '') AS title, COALESCE(cm.body_html, '') AS body_html, COALESCE(su.username, cm.author_name, '') AS "by", f.n AS flags, f.last, (k.cause IS NOT NULL OR COALESCE(s.dead, false)) AS dead, COALESCE(k.cause, CASE WHEN s.dead THEN 'flags' ELSE '' END) AS cause FROM (SELECT kind, target_id, count(*) AS n, max(created_at) AS last FROM flags GROUP BY kind, target_id) f LEFT JOIN story_meta s ON f.kind = 'story' AND s.entity_id = f.target_id LEFT JOIN users su ON su.id = s.author_id LEFT JOIN comment_meta cm ON f.kind = 'comment' AND cm.comment_id = f.target_id LEFT JOIN story_meta cs ON cs.entity_id = cm.entity_id LEFT JOIN kills k ON k.kind = f.kind AND k.target_id = f.target_id WHERE s.entity_id IS NOT NULL OR cm.comment_id IS NOT NULL ORDER BY (k.cause IS NOT NULL OR COALESCE(s.dead, false)), f.n DESC, f.last DESC LIMIT 100) x`
+	sqlQueue   = `SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.dead, x.flags DESC, x.last DESC), '[]'::jsonb) FROM (SELECT f.kind, f.target_id AS id, COALESCE(s.item_no, cs.item_no, 0) AS item_no, COALESCE(s.title, '') AS title, COALESCE(cm.body_html, '') AS body_html, COALESCE(su.username, cm.author_name, '') AS "by", f.n AS flags, f.last, (k.cause IS NOT NULL OR COALESCE(s.dead, false)) AS dead, COALESCE(k.cause, CASE WHEN s.dead THEN 'flags' ELSE '' END) AS cause FROM (SELECT kind, target_id, count(*) AS n, max(created_at) AS last FROM flags GROUP BY kind, target_id UNION ALL SELECT k.kind, k.target_id, 0, k.created_at FROM kills k WHERE NOT EXISTS (SELECT 1 FROM flags fl WHERE fl.kind = k.kind AND fl.target_id = k.target_id)) f LEFT JOIN story_meta s ON f.kind = 'story' AND s.entity_id = f.target_id LEFT JOIN users su ON su.id = s.author_id LEFT JOIN comment_meta cm ON f.kind = 'comment' AND cm.comment_id = f.target_id LEFT JOIN story_meta cs ON cs.entity_id = cm.entity_id LEFT JOIN kills k ON k.kind = f.kind AND k.target_id = f.target_id WHERE s.entity_id IS NOT NULL OR cm.comment_id IS NOT NULL ORDER BY (k.cause IS NOT NULL OR COALESCE(s.dead, false)), f.n DESC, f.last DESC LIMIT 100) x`
+	sqlRecent  = `SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.at DESC), '[]'::jsonb) FROM ((SELECT 'story' AS kind, s.entity_id AS id, s.item_no, s.title, '' AS body_html, COALESCE(u.username, '') AS "by", 0 AS flags, (k.cause IS NOT NULL OR s.dead) AS dead, COALESCE(k.cause, CASE WHEN s.dead THEN 'flags' ELSE '' END) AS cause, s.created_at AS at FROM story_meta s LEFT JOIN users u ON u.id = s.author_id LEFT JOIN kills k ON k.kind = 'story' AND k.target_id = s.entity_id ORDER BY s.created_at DESC LIMIT 50) UNION ALL (SELECT 'comment', c.comment_id, COALESCE(cs.item_no, 0), '', c.body_html, COALESCE(cu.username, c.author_name, ''), 0, (k.cause IS NOT NULL), COALESCE(k.cause, ''), c.created_at FROM comment_meta c LEFT JOIN story_meta cs ON cs.entity_id = c.entity_id LEFT JOIN users cu ON cu.id = c.author_id LEFT JOIN kills k ON k.kind = 'comment' AND k.target_id = c.comment_id ORDER BY c.created_at DESC LIMIT 50)) x`
 	sqlUsers   = `SELECT COALESCE(jsonb_agg(to_jsonb(x)), '[]'::jsonb) FROM (SELECT u.username AS name, b.mode, b.reason, b.created_at FROM bans b JOIN users u ON u.id = b.user_id ORDER BY b.created_at DESC LIMIT 200) x`
 	sqlDomains = `SELECT COALESCE(jsonb_agg(to_jsonb(x)), '[]'::jsonb) FROM (SELECT domain, reason, created_at FROM banned_domains ORDER BY created_at DESC LIMIT 500) x`
 	sqlNets    = `SELECT jsonb_build_object('bans', (SELECT COALESCE(jsonb_agg(to_jsonb(b)), '[]'::jsonb) FROM (SELECT net_key, reason, expires_at FROM net_bans WHERE expires_at IS NULL OR expires_at > $1::timestamptz ORDER BY created_at DESC LIMIT 200) b), 'noisy', (SELECT COALESCE(jsonb_agg(to_jsonb(n)), '[]'::jsonb) FROM (SELECT key AS net_key, count(*) AS events FROM rate_events WHERE kind IN ('vote_net', 'signup_net') AND created_at > $1::timestamptz - interval '24 hours' GROUP BY key ORDER BY count(*) DESC LIMIT 50) n))`
 	sqlLogList = `SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.id DESC), '[]'::jsonb) FROM (SELECT id, created_at AS at, actor, action, target, detail FROM mod_log ORDER BY id DESC LIMIT 200) x`
 
 	sqlBanUpsert    = `INSERT INTO bans (user_id, mode, reason, created_at) VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT (user_id) DO UPDATE SET mode = EXCLUDED.mode, reason = EXCLUDED.reason`
+	sqlLoginAccount = `SELECT to_jsonb(x) FROM (SELECT account FROM user_logins WHERE user_id = $1) x`
+	sqlLoginDelete  = `DELETE FROM user_logins WHERE user_id = $1`
 	sqlBanDelete    = `DELETE FROM bans WHERE user_id = $1`
 	sqlDomainUpsert = `INSERT INTO banned_domains (domain, reason, created_at) VALUES ($1, $2, $3::timestamptz) ON CONFLICT (domain) DO UPDATE SET reason = EXCLUDED.reason`
 	sqlDomainDelete = `DELETE FROM banned_domains WHERE domain = $1`
+	// sqlDomainKill kills the live stories of a banned site and its subdomains
+	// (the effect of kill() for a story, set-based).
+	sqlDomainKill = `WITH s AS (UPDATE story_meta SET dead = true WHERE NOT dead AND (domain = $1 OR domain LIKE '%.' || $1) RETURNING entity_id) INSERT INTO kills (kind, target_id, cause, created_at) SELECT 'story', entity_id, 'domain', $2::timestamptz FROM s ON CONFLICT (kind, target_id) DO NOTHING`
+	// sqlDomainRevive brings back the stories a site ban killed once no remaining ban covers them.
+	sqlDomainRevive = `WITH k AS (DELETE FROM kills k USING story_meta s WHERE k.kind = 'story' AND k.cause = 'domain' AND k.target_id = s.entity_id AND (s.domain = $1 OR s.domain LIKE '%.' || $1) AND NOT EXISTS (SELECT 1 FROM banned_domains d WHERE s.domain = d.domain OR s.domain LIKE '%.' || d.domain) RETURNING k.target_id) UPDATE story_meta SET dead = false FROM k WHERE story_meta.entity_id = k.target_id`
 	sqlNetUpsert    = `INSERT INTO net_bans (net_key, reason, expires_at, created_at) VALUES ($1, $2, $3::timestamptz, $4::timestamptz) ON CONFLICT (net_key) DO UPDATE SET reason = EXCLUDED.reason, expires_at = EXCLUDED.expires_at`
 	sqlNetDelete    = `DELETE FROM net_bans WHERE net_key = $1`
 )
@@ -47,6 +57,7 @@ func registerAdmin(r *core.Registry) {
 	route("GET /admin/log", func(*core.Request) sdk.HTTPResponse { return list("log", sqlLogList) })
 	route("POST /admin/users/{name}/ban", handleBan)
 	route("POST /admin/users/{name}/unban", handleUnban)
+	route("POST /admin/users/{name}/password/remove", handlePasswordRemove)
 	route("POST /admin/domains", handleDomainBan)
 	route("POST /admin/domains/remove", handleDomainRemove)
 	route("POST /admin/nets/ban", handleNetBan)
@@ -136,6 +147,39 @@ func excerpt(bodyHTML string) string {
 	return s
 }
 
+// itemRows answers the {items: [...]} of an item list: the queue and the recent view.
+func itemRows(sql string) sdk.HTTPResponse {
+	var rows []struct {
+		Kind     string    `json:"kind"`
+		ID       string    `json:"id"`
+		ItemNo   int64     `json:"item_no"`
+		Title    string    `json:"title"`
+		BodyHTML string    `json:"body_html"`
+		By       string    `json:"by"`
+		Flags    int       `json:"flags"`
+		Dead     bool      `json:"dead"`
+		Cause    string    `json:"cause"`
+		Last     time.Time `json:"last"`
+		At       time.Time `json:"at"`
+	}
+	if err := core.QueryJSON(sql, &rows); err != nil {
+		return failed()
+	}
+	items := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		title := r.Title
+		if r.Kind == kindComment {
+			title = excerpt(r.BodyHTML)
+		}
+		item := map[string]any{"kind": r.Kind, "id": r.ID, "item_no": r.ItemNo, "title": title, "by": r.By, "flags": r.Flags, "dead": r.Dead, "cause": r.Cause}
+		if !r.At.IsZero() {
+			item["at"] = r.At
+		}
+		items = append(items, item)
+	}
+	return writeJSON(200, map[string]any{"items": items})
+}
+
 func handleQueue(q *core.Request) sdk.HTTPResponse {
 	view := "queue"
 	if v := q.Query["view"]; len(v) > 0 && v[0] != "" {
@@ -143,30 +187,9 @@ func handleQueue(q *core.Request) sdk.HTTPResponse {
 	}
 	switch view {
 	case "queue":
-		var rows []struct {
-			Kind     string    `json:"kind"`
-			ID       string    `json:"id"`
-			ItemNo   int64     `json:"item_no"`
-			Title    string    `json:"title"`
-			BodyHTML string    `json:"body_html"`
-			By       string    `json:"by"`
-			Flags    int       `json:"flags"`
-			Dead     bool      `json:"dead"`
-			Cause    string    `json:"cause"`
-			Last     time.Time `json:"last"`
-		}
-		if err := core.QueryJSON(sqlQueue, &rows); err != nil {
-			return failed()
-		}
-		items := make([]map[string]any, 0, len(rows))
-		for _, r := range rows {
-			title := r.Title
-			if r.Kind == kindComment {
-				title = excerpt(r.BodyHTML)
-			}
-			items = append(items, map[string]any{"kind": r.Kind, "id": r.ID, "item_no": r.ItemNo, "title": title, "by": r.By, "flags": r.Flags, "dead": r.Dead, "cause": r.Cause})
-		}
-		return writeJSON(200, map[string]any{"items": items})
+		return itemRows(sqlQueue)
+	case "recent":
+		return itemRows(sqlRecent)
 	case "users":
 		return list("users", sqlUsers)
 	case "domains":
@@ -223,9 +246,58 @@ func handleUnban(q *core.Request) sdk.HTTPResponse {
 	return ok(nil)
 }
 
-// cleanDomain lower-cases a domain and drops "www.".
+// handlePasswordRemove removes a member's password login (one that was connected without the
+// member's consent, say) and signs its browsers out. The member keeps username, comments and
+// karma and signs in with the email link again. Sessions end, then the login row goes, then
+// sessions end again (one may have started in between). A failure of the first end leaves the
+// row for a retry; of the second, the row is gone and the owner is told.
+func handlePasswordRemove(q *core.Request) sdk.HTTPResponse {
+	var in struct{}
+	if resp, good := decodeJSON(q, &in); !good {
+		return resp
+	}
+	u, err := core.UserByName(q.PathValue("name"))
+	if err != nil {
+		return failed()
+	}
+	if u == nil {
+		return core.JSONError(404, "unknown member")
+	}
+	var l struct{ Account string }
+	if err := core.QueryJSON(sqlLoginAccount, &l, u.ID); err != nil {
+		if errors.Is(err, core.ErrNoRows) {
+			return core.JSONError(404, "that member has no password")
+		}
+		return failed()
+	}
+	revoke := func() error {
+		return core.Call(sdk.FnCommentsIdentityRevoke, sdk.CommentsIdentityArgs{Account: l.Account}, &sdk.CommentsIdentityRevoked{})
+	}
+	// End the sessions first: when that fails the row is still there and the owner can retry.
+	if err := revoke(); err != nil {
+		return failed()
+	}
+	if _, err := core.Exec(sqlLoginDelete, u.ID); err != nil {
+		return failed()
+	}
+	// A session may have started between the first revoke and the delete; end it too. The row
+	// is gone now, so a retry is impossible: say so in the log.
+	if err := revoke(); err != nil {
+		writeLog("owner", "password-remove", "user:"+u.Username, "login removed, sessions not ended")
+		return core.JSONError(500, "the password was removed but its sessions could not be ended")
+	}
+	writeLog("owner", "password-remove", "user:"+u.Username, "")
+	return ok(nil)
+}
+
+// cleanDomain lower-cases a domain, converts a unicode spelling to punycode and
+// drops "www.".
 func cleanDomain(s string) (string, bool) {
-	d := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(s)), "www.")
+	d, ok := core.ASCIIHost(strings.TrimSpace(s))
+	if !ok {
+		return "", false
+	}
+	d = strings.TrimPrefix(strings.TrimSuffix(d, "."), "www.")
 	return d, len(d) <= 253 && domainRe.MatchString(d)
 }
 
@@ -242,8 +314,12 @@ func handleDomainBan(q *core.Request) sdk.HTTPResponse {
 	if _, err := core.Exec(sqlDomainUpsert, d, reason, nowArg()); err != nil {
 		return failed()
 	}
-	writeLog("owner", "domain-ban", "domain:"+d, "")
-	return ok(map[string]any{"domain": d})
+	n, err := core.Exec(sqlDomainKill, d, nowArg())
+	if err != nil {
+		return failed()
+	}
+	writeLog("owner", "domain-ban", "domain:"+d, "killed "+strconv.FormatInt(n, 10))
+	return ok(map[string]any{"domain": d, "killed": n})
 }
 
 func handleDomainRemove(q *core.Request) sdk.HTTPResponse {
@@ -258,8 +334,12 @@ func handleDomainRemove(q *core.Request) sdk.HTTPResponse {
 	if _, err := core.Exec(sqlDomainDelete, d); err != nil {
 		return failed()
 	}
-	writeLog("owner", "domain-remove", "domain:"+d, "")
-	return ok(nil)
+	n, err := core.Exec(sqlDomainRevive, d)
+	if err != nil {
+		return failed()
+	}
+	writeLog("owner", "domain-remove", "domain:"+d, "restored "+strconv.FormatInt(n, 10))
+	return ok(map[string]any{"restored": n})
 }
 
 func handleNetBan(q *core.Request) sdk.HTTPResponse {

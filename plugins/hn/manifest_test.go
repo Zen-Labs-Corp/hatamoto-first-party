@@ -42,7 +42,7 @@ func TestManifestIsValidForTheSDK(t *testing.T) {
 	if ok, err := m.Compatible(); !ok || err != nil {
 		t.Fatalf("Compatible() = %v, %v", ok, err)
 	}
-	if m.Name != "hn" || m.SDK != "^0.27" || m.Version != "1.0.3" {
+	if m.Name != "hn" || m.SDK != "^0.29" || m.Version != "1.1.0" {
 		t.Fatalf("name %q sdk %q version %q", m.Name, m.SDK, m.Version)
 	}
 }
@@ -64,7 +64,7 @@ func TestManifestSDKMatchesGoMod(t *testing.T) {
 func TestManifestPermissions(t *testing.T) {
 	got := slices.Clone(loadManifest(t).Permissions)
 	slices.Sort(got)
-	want := []string{"client.key", "comments.moderate", "comments.read", "db", "entities.write.own", "settings", "site.scripts"}
+	want := []string{"client.key", "comments.identity", "comments.moderate", "comments.read", "db", "entities.write.own", "settings", "site.scripts"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("permissions %v, want %v", got, want)
 	}
@@ -127,41 +127,48 @@ var routeOwners = map[string]struct {
 	phase  string
 	public bool
 }{
-	"POST /username":                 {"accounts", true},
-	"POST /profile":                  {"accounts", true},
-	"POST /submit":                   {"stories", true},
-	"POST /story/{id}/edit":          {"stories", true},
-	"POST /story/{id}/delete":        {"stories", true},
-	"POST /vote/story/{id}":          {"stories", true},
-	"POST /admin/jobs":               {"stories", false},
-	"POST /vote/comment/{id}":        {"comments", true},
-	"POST /flag/{kind}/{id}":         {"moderation", true},
-	"POST /vouch/{kind}/{id}":        {"moderation", true},
-	"GET /admin/queue":               {"moderation", false},
-	"POST /admin/users/{name}/ban":   {"moderation", false},
-	"POST /admin/users/{name}/unban": {"moderation", false},
-	"POST /admin/domains":            {"moderation", false},
-	"POST /admin/domains/remove":     {"moderation", false},
-	"POST /admin/nets/ban":           {"moderation", false},
-	"POST /admin/nets/unban":         {"moderation", false},
-	"GET /admin/log":                 {"moderation", false},
-	"POST /admin/items/kill":         {"moderation", false},
-	"POST /admin/items/restore":      {"moderation", false},
-	"POST /favorite/{kind}/{id}":     {"parity", true},
-	"POST /unfavorite/{kind}/{id}":   {"parity", true},
-	"POST /hide/{id}":                {"parity", true},
-	"POST /unhide/{id}":              {"parity", true},
-	"GET /rss":                       {"parity", true},
-	"GET /api/feed/{name}":           {"parity", true},
-	"GET /api/item/{id}":             {"parity", true},
-	"GET /api/user/{name}":           {"parity", true},
-	"GET /state/{entity_id}":         {"polish", true},
+	"POST /username":                           {"accounts", true},
+	"POST /profile":                            {"accounts", true},
+	"POST /login":                              {"accounts", true},
+	"POST /signup":                             {"accounts", true},
+	"POST /logout":                             {"accounts", true},
+	"POST /logout/all":                         {"accounts", true},
+	"POST /password":                           {"accounts", true},
+	"POST /password/connect":                   {"accounts", true},
+	"POST /submit":                             {"stories", true},
+	"POST /story/{id}/edit":                    {"stories", true},
+	"POST /story/{id}/delete":                  {"stories", true},
+	"POST /vote/story/{id}":                    {"stories", true},
+	"POST /admin/jobs":                         {"stories", false},
+	"POST /vote/comment/{id}":                  {"comments", true},
+	"POST /flag/{kind}/{id}":                   {"moderation", true},
+	"POST /vouch/{kind}/{id}":                  {"moderation", true},
+	"GET /admin/queue":                         {"moderation", false},
+	"POST /admin/users/{name}/ban":             {"moderation", false},
+	"POST /admin/users/{name}/unban":           {"moderation", false},
+	"POST /admin/users/{name}/password/remove": {"moderation", false},
+	"POST /admin/domains":                      {"moderation", false},
+	"POST /admin/domains/remove":               {"moderation", false},
+	"POST /admin/nets/ban":                     {"moderation", false},
+	"POST /admin/nets/unban":                   {"moderation", false},
+	"GET /admin/log":                           {"moderation", false},
+	"POST /admin/items/kill":                   {"moderation", false},
+	"POST /admin/items/restore":                {"moderation", false},
+	"POST /favorite/{kind}/{id}":               {"parity", true},
+	"POST /unfavorite/{kind}/{id}":             {"parity", true},
+	"POST /hide/{id}":                          {"parity", true},
+	"POST /unhide/{id}":                        {"parity", true},
+	"GET /rss":                                 {"parity", true},
+	"GET /api/feed/{name}":                     {"parity", true},
+	"GET /api/item/{id}":                       {"parity", true},
+	"GET /api/user/{name}":                     {"parity", true},
+	"GET /state/{entity_id}":                   {"polish", true},
 }
 
 func TestManifestRoutes(t *testing.T) {
 	m := loadManifest(t)
-	if len(m.Routes) != 29 || len(routeOwners) != 29 {
-		t.Fatalf("%d routes, %d owners, want 29", len(m.Routes), len(routeOwners))
+	if len(m.Routes) != 36 || len(routeOwners) != 36 {
+		t.Fatalf("%d routes, %d owners, want 36", len(m.Routes), len(routeOwners))
 	}
 	public, admin := http.NewServeMux(), http.NewServeMux()
 	register := func(mux *http.ServeMux, key string) {

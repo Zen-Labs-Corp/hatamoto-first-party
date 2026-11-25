@@ -2,7 +2,7 @@
 
 A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation, built on core comments.
 
-Status: 1.0.3: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in. Built against core v1.4.5 and SDK v0.27.0.
+Status: 1.1.0: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in, plus password accounts and the abuse fixes (voting-ring damping, IDN domain bans, port check, domain ban kills, network-banned votes, Origin check, Recent moderation view). Built against core v1.4.6 and SDK v0.29.0.
 
 ## Layout
 
@@ -58,13 +58,14 @@ Public routes of the parity phase, served at `/p/hn/...`.
 
 ## User bar and the theme header
 
-A plugin cannot print into the theme header, so `hn_userbar` is injected as the first section of `main`: a `<div class="hn-ub">` with the login link, or the name, karma and logout link. That is the no-script rendering and it must stay usable.
+hn adds one block of type `hn_userbar` (id `hn_userbar`) first in the blocks of every page it filters. Its section renders one `<div class="hn-ub">`: a login link, or the name, karma and a logout button in an inline POST form (`.hn-out`).
 
 Theme contract:
 
-- Optionally put an empty element with the class `hn-userbar` in the header (for example `<span class="hn-userbar"></span>`).
-- With `site.scripts` on, `assets/plugin.js` moves the first `.hn-ub` block into the first `.hn-userbar` element, once, when that element exists. Without the script, or without the slot, the block stays at the top of `main`; the theme should not hide it.
-- The bar can therefore be in either place: in `main` without the script, in the slot with it. A theme that styles `.hn-ub` (spacing, background, alignment, colours) should make that styling work in both positions, for example by scoping the rules to each position. The plugin's own rules are zero-specificity, use the `--hn-*` tokens and set no text colour on `.hn-ub`, so it inherits the colour of its container.
+- Recommended, server-side and without JavaScript: the theme renders the block in its header with `{{range .Blocks}}{{if eq .Type "hn_userbar"}}{{template "section" .}}{{end}}{{end}}` and skips that type wherever it loops over `.Blocks` for the main content. Use core's `section` template, never `{{template "section-hn_userbar" .}}` or a `plugin/hn/...` partial by name: those fail the page on a site without hn.
+- Without that, the bar stays at the top of `main`. That is the no-script rendering and it must stay usable; the theme should not hide it.
+- With `site.scripts` on, `assets/plugin.js` moves the first `.hn-ub` into the first `.hn-userbar` element (for example an empty `<span class="hn-userbar"></span>` in the header), once, and leaves it alone when it is already inside one, at any depth. Registry installs never run the script (Hatamoto does not grant `site.scripts` to a community package), so do not depend on it.
+- The bar can therefore be in either place. A theme that styles `.hn-ub` (spacing, background, alignment, colours) should make that styling work in both positions, for example by scoping the rules to each position. The plugin's own rules are zero-specificity, use the `--hn-*` tokens and set no text colour on `.hn-ub`, so it inherits the colour of its container.
 
 ## Theme-posted forms
 
@@ -92,14 +93,32 @@ Public routes are served at `/p/hn/...`; admin routes need the owner.
 | Route | Access | Phase |
 |---|---|---|
 | `POST /username`, `POST /profile` | public | P1 |
+| `POST /login`, `POST /signup`, `POST /logout`, `POST /logout/all`, `POST /password`, `POST /password/connect` | public, same-origin browser posts only | P1 |
 | `POST /submit`, `POST /story/{id}/edit`, `POST /story/{id}/delete`, `POST /vote/story/{id}` | public | P2 |
 | `POST /admin/jobs` | admin | P2 |
 | `POST /vote/comment/{id}` | public | P3 |
 | `POST /flag/{kind}/{id}`, `POST /vouch/{kind}/{id}` | public | P4 |
-| `GET /admin/queue`, `GET /admin/log`, `POST /admin/users/{name}/ban`, `POST /admin/users/{name}/unban`, `POST /admin/domains`, `POST /admin/domains/remove`, `POST /admin/nets/ban`, `POST /admin/nets/unban`, `POST /admin/items/kill`, `POST /admin/items/restore` | admin | P4 |
+| `GET /admin/queue`, `GET /admin/log`, `POST /admin/users/{name}/ban`, `POST /admin/users/{name}/unban`, `POST /admin/users/{name}/password/remove`, `POST /admin/domains`, `POST /admin/domains/remove`, `POST /admin/nets/ban`, `POST /admin/nets/unban`, `POST /admin/items/kill`, `POST /admin/items/restore` | admin | P4 |
 | `POST /favorite/{kind}/{id}`, `POST /unfavorite/{kind}/{id}`, `POST /hide/{id}`, `POST /unhide/{id}` | public | P5 |
 | `GET /rss`, `GET /api/feed/{name}`, `GET /api/item/{id}`, `GET /api/user/{name}` | public | P5 |
 | `GET /state/{entity_id}` | public | P6 |
+
+All six account routes accept only same-origin browser posts (`Sec-Fetch-Site: same-origin`): a sibling subdomain, a cross-site post or a request with no Fetch Metadata is refused with 403 before anything happens, because core signs a browser in only on same-origin requests.
+
+## Accounts and passwords
+
+A member is a username and a password, no email. The login page has two forms, Login and Create Account.
+
+- Email is optional, set on the own profile of a password member. It is never shown and used by nothing yet: password reset by email is not in this release, and "Forgot your password?" is not rendered.
+- Passwords are 8 to 72 bytes and stored only as bcrypt hashes (cost 11, about 180 ms per hash in wasm), in `user_logins` (see [SCHEMA.md](SCHEMA.md)), never in `users`. A hash made at a lower cost is replaced on the next login.
+- A failed login answers the same "Bad login." for an unknown user and a wrong password, and both run one bcrypt compare (an unknown user against a dummy hash of the same cost), so neither the answer nor the time tells them apart. Create Account says "That username is taken." for a taken name.
+- Limits, counted per hour and checked before any hash is computed: sign-up 3 per address and 5 per network; login 20 per address, 60 per network, 10 per username and network, and 100 per username overall (the per-address, per-network and per-username-and-network limits count every attempt; the all-networks username limit counts wrong passwords only), and 10 password changes or connects per member. The address and network limits need the `client.key` grant. Without it, all password sign-ups share one site-wide limit of 20 per hour and wrong passwords share one of 120 per hour (right passwords do not count), so a flood is capped but one visitor can also block everyone from signing up or logging in. Picking a username after an email sign-in is not part of that limit. Tick `client.key` when you install, so the limits are per visitor.
+- Logout is a POST (the `.hn-out` form in the user bar) that clears the core sign-in cookie. "Log out everywhere" on the own profile signs every browser of the account out.
+- A member who signed up with the email link connects a password with the separate "connect a password" form on their profile (they type their username and the new password twice; core gives no proof of who holds the browser, so a stolen signed-in browser can still connect a password, which the owner can undo with `POST /admin/users/{name}/password/remove`: it signs the account out and deletes the login) and keeps their username, comments and karma. This is the only action that joins a browser's existing sign-in to a password account; Create Account and Login never do. Changing a password needs the current one and signs the other browsers out.
+
+### Uninstalling and reinstalling
+
+Uninstalling hn signs every member out on every device (password members and email-link members who connected a password) and detaches them from hn; comments stay. Removing only the `comments.identity` grant signs nobody out; use Admin > Settings > Comments > Commenters to sign members out. After a reinstall that kept hn's data, members log in again: a password member gets a new core commenter and hn moves the username to it at that login. Comments written before the uninstall stay with the old commenter and no longer show under the username. Choosing "delete its data too" removes every hn account.
 
 ## Cron
 
@@ -113,7 +132,7 @@ Public routes are served at `/p/hn/...`; admin routes need the owner.
 
 ## Permissions
 
-Declared once in 0.1.0 and unchanged in 1.0.0: adding one later makes every install grant again.
+1.1.0 adds `comments.identity`: existing installs tick it on update. Adding a permission later makes every install grant again.
 
 | Permission | Used by | Why |
 |---|---|---|
@@ -123,29 +142,42 @@ Declared once in 0.1.0 and unchanged in 1.0.0: adding one later makes every inst
 | `entities.write.own` | P2 | creates, edits and deletes stories of the one content type `hn-story` |
 | `comments.read` | P1, P3, P4, P5 | comment events, a member's comments, the commenter key on pages and routes |
 | `comments.moderate` | P1, P3, P4 | marks comments dead or restores them, sets their order |
-| `client.key` | P1, P4 | pseudonymous address and network keys, for rate limits and network bans |
+| `client.key` | P1, P4 | pseudonymous address and network keys, for the login and sign-up rate limits and for network bans |
+| `comments.identity` | P1 | signs members in as core commenters for accounts the plugin manages (no email); needs `comments.read` and the content type, both declared |
 
-In plain words, the three that warn on install:
+In plain words, the four that warn on install:
 
 - Comments, moderate: marks comments on the plugin's own content type dead or restores them and sets their order, without review. It cannot post comments or touch other content types. Logged in the audit log.
 - Content, write (own type): creates, edits and deletes entries of one content type it declares and publishes them at once, without review. Rate limited and logged. It cannot touch any other content.
 - Visitor keys: a pseudonymous key for each visitor's address and network, not the address itself. The key is stable, so the plugin can recognise a returning visitor and block a network. It is personal data: your privacy notice should say so.
+- Comments, identity: signs visitors in as commenters the plugin vouches for (a username and password, no email) and signs them out again. It can only act on accounts the plugin created itself. Needs core v1.4.6 or newer.
 
 No `http.fetch`, `kv`, `mail.send`, `log` or `entities.read`: the lists read the plugin's own copy of each story.
 
-`request_headers` declares `sec-fetch-site` (not a permission): routes use it to refuse cross-site form posts.
+`request_headers` declares `sec-fetch-site` and the always-passed `Origin` header (not permissions): routes use them to refuse cross-site form posts.
 
 ## Settings
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `flag_karma` | 30 | karma needed to flag |
+| `flag_karma` | 30 | karma needed to flag (nobody has it on a new site: see Moderation and abuse controls) |
 | `downvote_karma` | 500 | karma needed to downvote a comment |
 | `vouch_karma` | 31 | karma needed to vouch for a dead item |
 | `edit_window_minutes` | 120 | how long an author may edit or delete a story |
 | `submit_per_hour` | 6 | stories one member may submit per hour |
 | `flags_to_dead` | 5 | flags after which an item is marked dead |
 | `page_size` | 30 | stories per page (1 to 100) |
+
+## Moderation and abuse controls
+
+- **Flags and karma on a new site.** New members start at karma 1 and flagging needs `flag_karma` (30), so nobody can flag at first. The owner kills spam from the **Recent** tab of the News moderation page (the newest 50 stories and 50 comments, live or dead, with kill, restore and ban). The default stays at 30; lower it in the plugin settings for the first weeks if you prefer.
+- **Queue.** Flagged items first, then every dead item with its cause (flags, owner, ban or domain), so anything killed can be restored from the page.
+- **Voting rings.** One network adds at most 2 counted up-votes to one story per 24 hours. Later ones are stored uncounted: the voter still sees "voted", but the vote adds no points, rank or karma, and each one is logged as `ring-vote` in the Log tab. Nothing is deleted. Needs the `client.key` permission (no network key, no check).
+- **Site bans.** A banned site includes its subdomains. A unicode spelling is stored and matched as punycode (new stories from an internationalised site show the punycode host). Banning kills the site's live stories (cause `domain`, members cannot vouch for them); removing the ban brings them back unless another ban still covers them.
+- **Network bans.** A banned network cannot submit or vote, and its comments are held.
+- **Story links.** Links must be http or https, with a port of 1 to 65535 if any.
+- **Cross-site posts.** Posts are refused by Fetch Metadata (`Sec-Fetch-Site`); a request that has an `Origin` but no `Sec-Fetch-Site` is refused too.
+- **Held comments.** The reasons shown are "blocked member", "blocked network" and "banned site".
 
 ## Data
 

@@ -9,6 +9,7 @@
   <main>
     <nav class="tabs" role="tablist">
       <button id="tab-queue" type="button" role="tab" aria-selected="true">Queue</button>
+      <button id="tab-recent" type="button" role="tab" aria-selected="false">Recent</button>
       <button id="tab-users" type="button" role="tab" aria-selected="false">Users</button>
       <button id="tab-domains" type="button" role="tab" aria-selected="false">Domains</button>
       <button id="tab-nets" type="button" role="tab" aria-selected="false">Networks</button>
@@ -18,7 +19,11 @@
     <p id="notice" class="notice" hidden></p>
     <section id="panel-queue">
       <div id="body-queue"></div>
-      <footer class="muted">Items are listed by the number of flags. Killing hides an item and only you can bring it back; a dead item killed by flags can also be vouched for by members.</footer>
+      <footer class="muted">Flagged items first, then every dead item, whatever killed it. Killing hides an item and only you can bring it back; a dead item killed by flags can also be vouched for by members.</footer>
+    </section>
+    <section id="panel-recent" hidden>
+      <div id="body-recent"></div>
+      <footer class="muted">The newest 50 stories and 50 comments, live or dead. Kill hides an item at once; only you can bring it back.</footer>
     </section>
     <section id="panel-users" hidden>
       <div id="body-users"></div>
@@ -26,7 +31,7 @@
     </section>
     <section id="panel-domains" hidden>
       <div id="body-domains"></div>
-      <footer class="muted">A blocked site also blocks its subdomains. Existing stories are not touched.</footer>
+      <footer class="muted">A blocked site also blocks its subdomains and kills their live stories. Removing the block brings those stories back.</footer>
     </section>
     <section id="panel-nets" hidden>
       <div id="body-nets"></div>

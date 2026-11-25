@@ -52,6 +52,19 @@ func profileHandler(req *core.Request) (sdk.HTTPResponse, error) {
 		return core.Respond(req, core.WithNotice(to, noticeTryAgain),
 			map[string]string{"error": core.NoticeText(string(noticeTryAgain))}), nil
 	}
+	if f.Has("email") {
+		if l, err := loginByUser(v.ID); err == nil && l != nil { // only password members have an email
+			email, ok := cleanEmail(f.Get("email"))
+			if !ok {
+				return core.Respond(req, core.WithNotice(to, noticeEmailBad),
+					map[string]string{"error": core.NoticeText(string(noticeEmailBad))}), nil
+			}
+			if err := setEmail(v.ID, email); err != nil {
+				return core.Respond(req, core.WithNotice(to, noticeTryAgain),
+					map[string]string{"error": core.NoticeText(string(noticeTryAgain))}), nil
+			}
+		}
+	}
 	if core.Call != nil {
 		// The viewer's show-dead flag follows the profile; the host may not offer it yet, so any error is ignored.
 		_ = core.Call(sdk.FnCommentsSetViewer, sdk.CommentViewerArgs{CommenterKey: v.CommenterKey, ShowDead: showdead}, nil)

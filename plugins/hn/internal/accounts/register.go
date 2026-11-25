@@ -2,11 +2,16 @@ package accounts
 
 import "github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 
-// The core sign-in page: the login form posts to it and it shows sign-out when
-// signed in. Kept in one place so the paths can follow core.
+// Paths: the core email-link sign-in (for members who signed up that way) and this plugin's
+// own session routes.
 const (
-	signInURL = "/-/comments/signin"
-	logoutURL = "/-/comments/signin"
+	signInURL      = core.EmailSignInURL
+	loginAction    = core.LoginAction
+	signupAction   = core.SignupAction
+	logoutAction   = "/p/hn/logout"
+	logoutAll      = "/p/hn/logout/all"
+	passwordAction = "/p/hn/password"         // change, password members only
+	connectAction  = "/p/hn/password/connect" // explicit connect of an email-link member (the only link route)
 )
 
 // Notice codes of this phase (static texts, defined in Register).
@@ -20,6 +25,15 @@ const (
 	noticeTryAgain      core.Notice = "try_again"
 	noticeWelcome       core.Notice = "welcome"
 	noticeProfileSaved  core.Notice = "profile_saved"
+	noticePwBad         core.Notice = "pw_bad"
+	noticeBadLogin      core.Notice = "bad_login"
+	noticePwSaved       core.Notice = "pw_saved"
+	noticePwWrong       core.Notice = "pw_wrong"
+	noticePwConnected   core.Notice = "pw_connected"
+	noticePwHave        core.Notice = "pw_have"
+	noticePwNone        core.Notice = "pw_none"
+	noticePwConfirm     core.Notice = "pw_confirm"
+	noticeEmailBad      core.Notice = "email_bad"
 )
 
 // Register adds this phase's handlers to r. plugin.go calls it once, in phase order.
@@ -33,9 +47,24 @@ func Register(r *core.Registry) {
 	core.DefineNotice(noticeTryAgain, "Something went wrong, try again.")
 	core.DefineNotice(noticeWelcome, "Welcome! Your account is ready.")
 	core.DefineNotice(noticeProfileSaved, "Profile updated.")
+	core.DefineNotice(noticePwBad, "Passwords are 8 to 72 characters.")
+	core.DefineNotice(noticeBadLogin, "Bad login.")
+	core.DefineNotice(noticePwSaved, "Password saved.")
+	core.DefineNotice(noticePwWrong, "That is not your current password.")
+	core.DefineNotice(noticePwConnected, "Password connected. You can now log in with your username and password.")
+	core.DefineNotice(noticePwHave, "This account already has a password.")
+	core.DefineNotice(noticePwConfirm, "To connect a password, type your username and the same password twice.")
+	core.DefineNotice(noticePwNone, "Connect a password first.")
+	core.DefineNotice(noticeEmailBad, "That email address does not look right.")
 
 	r.Route("POST /username", claimHandler(r))
 	r.Route("POST /profile", profileHandler)
+	r.Route("POST /signup", sessionRoute(signupHandler(r)))
+	r.Route("POST /login", sessionRoute(loginHandler(r)))
+	r.Route("POST /password", sessionRoute(passwordHandler(r)))
+	r.Route("POST /password/connect", sessionRoute(connectHandler(r)))
+	r.Route("POST /logout", sessionRoute(logoutHandler))
+	r.Route("POST /logout/all", sessionRoute(logoutAllHandler))
 	r.Draft(draftName)
 	r.PageAll(userbar)
 	r.Page("/login", loginPage)

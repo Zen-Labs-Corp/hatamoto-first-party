@@ -25,6 +25,7 @@ func TestVouch(t *testing.T) {
 		{"alive", 50, item(storyUUID, 42, 2, false, ""), "mod-vouch-alive"},
 		{"owner kill", 50, item(storyUUID, 42, 2, true, "owner"), "mod-vouch-locked"},
 		{"ban kill", 50, item(storyUUID, 42, 2, true, "ban"), "mod-vouch-locked"},
+		{"domain kill", 50, item(storyUUID, 42, 2, true, "domain"), "mod-vouch-locked"},
 		{"low karma", 30, item(storyUUID, 42, 2, true, "flags"), "mod-vouch-karma"},
 		{"own item", 50, item(storyUUID, 42, 1, true, "flags"), "mod-vouch-own"},
 		{"missing", 50, nil, "mod-missing"},

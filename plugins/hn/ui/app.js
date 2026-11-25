@@ -4,6 +4,7 @@
 
 const TABS = [
   ["queue", "Queue"],
+  ["recent", "Recent"],
   ["users", "Users"],
   ["domains", "Domains"],
   ["nets", "Networks"],
@@ -84,13 +85,37 @@ function queueRow(it) {
     cell(label),
     cell(it.title),
     cell(it.by),
-    cell(`${it.flags} flags`),
+    cell(it.flags ? `${it.flags} flags` : ""),
     cell(it.dead ? `dead (${it.cause})` : "", it.dead ? "dead" : ""),
     el("td", { className: "actions" }, ...buttons));
 }
 
 function renderQueue(data) {
-  return table(["Item", "Title", "By", "Flags", "State", ""], (data.items || []).map(queueRow), "Nothing is flagged.");
+  return table(["Item", "Title", "By", "Flags", "State", ""], (data.items || []).map(queueRow), "Nothing is flagged or dead.");
+}
+
+// ---- Recent ----------------------------------------------------------------
+
+function recentRow(it) {
+  const label = it.kind === "story" ? `#${it.item_no}` : "comment";
+  const action = it.dead
+    ? button("restore", () => act("Restored.", () => api("POST", "/admin/items/restore", null, { kind: it.kind, id: it.id })))
+    : button("kill", () => act("Killed.", () => api("POST", "/admin/items/kill", null, { kind: it.kind, id: it.id })));
+  const buttons = [action];
+  if (it.by) {
+    buttons.push(button("ban user", () => act("Banned.", () => api("POST", `/admin/users/${encodeURIComponent(it.by)}/ban`, null, { mode: "dead", reason: "spam" }))));
+  }
+  return el("tr", {},
+    cell(label),
+    cell(it.title),
+    cell(it.by),
+    cell(stamp(it.at)),
+    cell(it.dead ? `dead (${it.cause})` : "", it.dead ? "dead" : ""),
+    el("td", { className: "actions" }, ...buttons));
+}
+
+function renderRecent(data) {
+  return table(["Item", "Title", "By", "When (UTC)", "State", ""], (data.items || []).map(recentRow), "Nothing posted yet.");
 }
 
 // ---- Users -----------------------------------------------------------------
@@ -216,6 +241,7 @@ function renderLog(data) {
 
 const LOADERS = {
   queue: async () => renderQueue(await api("GET", "/admin/queue", { view: "queue" })),
+  recent: async () => renderRecent(await api("GET", "/admin/queue", { view: "recent" })),
   users: async () => renderUsers(await api("GET", "/admin/queue", { view: "users" })),
   domains: async () => renderDomains(await api("GET", "/admin/queue", { view: "domains" })),
   nets: async () => renderNets(await api("GET", "/admin/queue", { view: "nets" })),
@@ -246,6 +272,6 @@ function init() {
 }
 
 if (typeof globalThis.__hnTest === "object") {
-  globalThis.__hnTest.render = { renderQueue, renderUsers, renderDomains, renderNets, renderJobs, renderLog };
+  globalThis.__hnTest.render = { renderQueue, renderRecent, renderUsers, renderDomains, renderNets, renderJobs, renderLog };
 }
 if (typeof hatamoto === "object") hatamoto.ready.then(init);

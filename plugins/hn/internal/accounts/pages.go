@@ -26,7 +26,7 @@ func userHref(name string) string { return "/user?id=" + url.QueryEscape(name) }
 // userbar puts the user bar first on every filtered page.
 func userbar(p *core.Page) error {
 	st, v := state(p)
-	c := map[string]any{"state": st, "login_href": "/login", "logout_href": logoutURL}
+	c := map[string]any{"state": st, "login_href": "/login", "logout_action": logoutAction}
 	if v != nil {
 		c["name"], c["karma"], c["user_href"] = v.Username, v.Karma, userHref(v.Username)
 	}
@@ -49,10 +49,8 @@ func place(p *core.Page, typ string, c map[string]any) {
 
 func loginPage(p *core.Page) error {
 	st, v := state(p)
-	c := map[string]any{
-		"state": st, "notice": core.NoticeText(p.Query("m")),
-		"signin_action": signInURL, "logout_href": logoutURL, "next": "/login",
-	}
+	c := core.LoginForms("/login")
+	c["state"], c["notice"], c["logout_action"] = st, core.NoticeText(p.Query("m")), logoutAction
 	if v != nil {
 		c["name"] = v.Username
 	}
@@ -92,4 +90,17 @@ func fill(c map[string]any, u *core.User, viewer *core.User) {
 	c["about_raw"], c["showdead"], c["noprocrast"] = u.About, u.Showdead, u.Noprocrast
 	c["maxvisit"], c["minaway"] = u.Maxvisit, u.Minaway
 	c["next"] = userHref(u.Username)
+	// A failed read offers neither the password forms nor connect: the member may already have a password.
+	l, err := loginByUser(u.ID)
+	if err != nil {
+		c["has_password"] = false
+		return
+	}
+	c["has_password"] = l != nil
+	if l != nil {
+		c["email"] = l.Email
+		c["password_action"], c["logout_all_action"] = passwordAction, logoutAll
+	} else {
+		c["connect_action"] = connectAction
+	}
 }

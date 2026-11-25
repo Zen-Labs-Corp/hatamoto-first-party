@@ -11,11 +11,29 @@
 <tr><th><label for="hn-noprocrast">noprocrast:</label></th><td><select id="hn-noprocrast" name="noprocrast">{{if $c.noprocrast}}<option value="no">no</option><option value="yes" selected>yes</option>{{else}}<option value="no" selected>no</option><option value="yes">yes</option>{{end}}</select></td></tr>
 <tr><th><label for="hn-maxvisit">maxvisit:</label></th><td><input id="hn-maxvisit" type="number" name="maxvisit" min="1" max="120" value="{{$c.maxvisit}}"></td></tr>
 <tr><th><label for="hn-minaway">minaway:</label></th><td><input id="hn-minaway" type="number" name="minaway" min="1" max="1440" value="{{$c.minaway}}"></td></tr>
-</table>
+{{if $c.has_password}}<tr><th><label for="hn-email">email:</label></th><td><input id="hn-email" type="email" name="email" maxlength="254" value="{{$c.email}}"> <span class="hn-note">(optional, never shown)</span></td></tr>{{end}}</table>
 <input type="hidden" name="next" value="{{$c.next}}">
 <p><button type="submit">update</button></p>
 </form>
-<p><a href="{{$c.submissions_href}}">submissions</a> | <a href="{{$c.comments_href}}">comments</a> | <a href="{{$c.favorites_href}}">favorites</a></p>
+{{if $c.password_action}}<form method="post" action="{{$c.password_action}}">
+<table>
+<tr><th><label for="hn-pw-current">current password:</label></th><td><input id="hn-pw-current" type="password" name="current" maxlength="72" autocomplete="current-password" required></td></tr>
+<tr><th><label for="hn-pw-new">new password:</label></th><td><input id="hn-pw-new" type="password" name="password" minlength="8" maxlength="72" autocomplete="new-password" required></td></tr>
+</table>
+<p><button type="submit">change password</button></p>
+</form>
+{{end}}{{if $c.connect_action}}<form method="post" action="{{$c.connect_action}}">
+<p><b>Connect a password to this account</b></p>
+<p class="hn-note">Keeps your username, comments and karma. Then you can log in with your username and password, from any browser. This cannot be undone by you. Only connect a password on a device you trust.</p>
+<table>
+<tr><th><label for="hn-pw-confirm">your username:</label></th><td><input id="hn-pw-confirm" type="text" name="confirm" autocomplete="off" required></td></tr>
+<tr><th><label for="hn-pw-connect">password:</label></th><td><input id="hn-pw-connect" type="password" name="password" minlength="8" maxlength="72" autocomplete="new-password" required></td></tr>
+<tr><th><label for="hn-pw-connect2">again:</label></th><td><input id="hn-pw-connect2" type="password" name="password2" minlength="8" maxlength="72" autocomplete="new-password" required></td></tr>
+</table>
+<p><button type="submit">connect password</button></p>
+</form>
+{{end}}{{if $c.logout_all_action}}<form method="post" action="{{$c.logout_all_action}}"><p><button type="submit">log out everywhere</button></p></form>
+{{end}}<p><a href="{{$c.submissions_href}}">submissions</a> | <a href="{{$c.comments_href}}">comments</a> | <a href="{{$c.favorites_href}}">favorites</a></p>
 {{else}}<table>
 <tr><th>user:</th><td>{{$c.name}}</td></tr>
 <tr><th>created:</th><td>{{$c.created}}</td></tr>
