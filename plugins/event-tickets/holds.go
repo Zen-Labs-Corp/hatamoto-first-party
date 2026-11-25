@@ -14,10 +14,14 @@ import (
 
 const holdWindow = "15 minutes"
 
-// holdCode is the code of one ticket of a cart, the type it is for.
+// holdCode is the code of one ticket of a cart, the type it is for. A seated
+// ticket also names its seat and the label printed on it; a zone ticket has a
+// label only.
 type holdCode struct {
-	Type int64  `json:"type"`
-	Code string `json:"code"`
+	Type  int64  `json:"type"`
+	Code  string `json:"code"`
+	Seat  int64  `json:"seat,omitempty"`
+	Label string `json:"label,omitempty"`
 }
 
 // holdIn is everything holdCart writes. The lines and amounts come from
@@ -29,17 +33,23 @@ type holdIn struct {
 	Codes    []holdCode
 	Provider string // stripe, paypal or none (a zero total)
 	PayCode  string
+
+	// HoldCode is the seat hold code whose live seat holds the cart converts
+	// (the seats named in Codes); empty for a cart without picked seats.
+	HoldCode string
 }
 
 // holdResult is the answer of holdCart: OrderID is nil when nothing was held.
 // Full lists the types that cannot give their seats or are off sale, Changed
 // the types whose price is no longer the quoted one or that are not the event's,
-// CouponGone a coupon that is no longer valid.
+// CouponGone a coupon that is no longer valid, HoldGone that a seat of the
+// cart is no longer held by its hold code (the hold lapsed or was taken over).
 type holdResult struct {
 	OrderID    *int64  `json:"order_id"`
 	Full       []int64 `json:"full"`
 	Changed    []int64 `json:"changed"`
 	CouponGone bool    `json:"coupon_gone"`
+	HoldGone   bool    `json:"hold_gone"`
 }
 
 // heldShareOK limits the seats that unpaid, unexpired holds may take of one
@@ -47,7 +57,8 @@ type holdResult struct {
 // capacity, not of the seats left: once half of a type is sold, the rest can
 // all sit in holds, and a type of 20 seats or fewer can be held in full.
 // Counted from a snapshot, so requests racing each other may overshoot by a
-// few seats; the capacity check on taken stays exact.
+// few seats; the capacity check on taken stays exact. Seated (grid) types are
+// not limited here: their seat holds have their own cap (holdSeat).
 const heldShareOK = `lk.held + w.qty <= greatest(10, lk.capacity / 2)`
 
 // holdCart takes the seats of every line of a cart, counts the coupon use and
@@ -57,6 +68,11 @@ const heldShareOK = `lk.held + w.qty <= greatest(10, lk.capacity / 2)`
 // committed count once its lock is held (rows of an aggregate are all read
 // before the update starts). The per-row check in t is the guard; ok only
 // keeps the statement all-or-nothing.
+//
+// Seats: the live seat holds of HoldCode for the seats named in the codes are
+// locked (sh), all of them must still be there, no live ticket may have the
+// seat, and a seated line needs exactly its quantity of seats. The tickets are
+// written with their seat and the hold rows are deleted, in the same statement.
 func holdCart(h holdIn) (holdResult, error) {
 	var res holdResult
 	lines, err := json.Marshal(h.Q.Lines)
@@ -77,15 +93,24 @@ func holdCart(h holdIn) (holdResult, error) {
 	}
 	err = dbJSON(`WITH want AS (SELECT w."type" AS type_id, w.qty, w.unit
     FROM jsonb_to_recordset($2::jsonb) AS w("type" bigint, qty int, unit bigint)),
+ sc AS (SELECT (x->>'type')::bigint AS type_id, (x->>'seat')::bigint AS seat_id
+    FROM jsonb_array_elements($3::jsonb) AS x WHERE coalesce((x->>'seat')::bigint, 0) <> 0),
  lk AS (SELECT t.id, t.taken, t.capacity, t.on_sale, t.price_cents,
+        EXISTS (SELECT 1 FROM map_sections ms WHERE ms.id = t.section_id AND ms.kind = 'grid') AS seated,
         (SELECT count(*)::int FROM attendees a JOIN orders o ON o.id = a.order_id
             WHERE a.type_id = t.id AND a.status = 'pending' AND o.status = 'pending' AND o.expires_at > now()) AS held
     FROM ticket_types t
     WHERE t.event_id = $1 AND t.id IN (SELECT type_id FROM want) ORDER BY t.id FOR UPDATE),
+ sh AS (SELECT h.seat_id FROM seat_holds h
+    WHERE h.event_id = $1 AND h.code = $16 AND h.expires_at > now() AND h.seat_id IN (SELECT seat_id FROM sc) FOR UPDATE),
  cp AS (SELECT c.id FROM coupons c WHERE $8::bigint IS NOT NULL AND c.id = $8::bigint AND c.active
     AND (c.max_uses IS NULL OR c.used < c.max_uses) AND (c.expires_at IS NULL OR c.expires_at > now()) FOR UPDATE),
  ok AS (SELECT (SELECT count(*) FROM lk JOIN want w ON w.type_id = lk.id
-        WHERE lk.on_sale AND lk.taken + w.qty <= lk.capacity AND `+heldShareOK+` AND lk.price_cents = w.unit) = (SELECT count(*) FROM want)
+        WHERE lk.on_sale AND lk.taken + w.qty <= lk.capacity AND (lk.seated OR `+heldShareOK+`) AND lk.price_cents = w.unit
+        AND (NOT lk.seated OR (SELECT count(*) FROM sc WHERE sc.type_id = lk.id) = w.qty)) = (SELECT count(*) FROM want)
+    AND (SELECT count(*) FROM sh) = (SELECT count(*) FROM sc)
+    AND NOT EXISTS (SELECT 1 FROM attendees b WHERE b.event_id = $1 AND b.seat_id IN (SELECT seat_id FROM sc)
+        AND b.status IN ('pending', 'active'))
     AND ($8::bigint IS NULL OR EXISTS (SELECT 1 FROM cp)) AS go),
  t AS (UPDATE ticket_types tt SET taken = tt.taken + w.qty, touched_at = now()
     FROM want w, ok WHERE ok.go AND tt.id = w.type_id AND tt.event_id = $1
@@ -97,17 +122,21 @@ func holdCart(h holdIn) (holdResult, error) {
     SELECT $1, $4, $5, $6::jsonb, 'pending', $7, $2::jsonb, $9, $10, $11, $12, $13, $8::bigint, $14, $15,
         now() + interval '`+holdWindow+`'
     FROM ok WHERE ok.go AND (SELECT count(*) FROM t) = (SELECT count(*) FROM want) RETURNING id),
- a AS (INSERT INTO attendees (order_id, event_id, type_id, code, status)
-    SELECT o.id, $1, (x->>'type')::bigint, x->>'code', 'pending' FROM o, jsonb_array_elements($3::jsonb) AS x RETURNING id)
+ a AS (INSERT INTO attendees (order_id, event_id, type_id, code, status, seat_id, seat_label)
+    SELECT o.id, $1, (x->>'type')::bigint, x->>'code', 'pending', nullif((x->>'seat')::bigint, 0), nullif(x->>'label', '')
+    FROM o, jsonb_array_elements($3::jsonb) AS x RETURNING id),
+ dh AS (DELETE FROM seat_holds WHERE event_id = $1 AND code = $16 AND seat_id IN (SELECT seat_id FROM sh)
+    AND EXISTS (SELECT 1 FROM o) RETURNING seat_id)
 SELECT jsonb_build_object(
     'order_id', (SELECT id FROM o),
     'full', (SELECT coalesce(jsonb_agg(lk.id ORDER BY lk.id), '[]'::jsonb) FROM lk JOIN want w ON w.type_id = lk.id
-        WHERE NOT (lk.on_sale AND lk.taken + w.qty <= lk.capacity AND `+heldShareOK+`)),
+        WHERE NOT (lk.on_sale AND lk.taken + w.qty <= lk.capacity AND (lk.seated OR `+heldShareOK+`))),
     'changed', (SELECT coalesce(jsonb_agg(w.type_id ORDER BY w.type_id), '[]'::jsonb) FROM want w LEFT JOIN lk ON lk.id = w.type_id
         WHERE lk.id IS NULL OR lk.price_cents <> w.unit),
-    'coupon_gone', ($8::bigint IS NOT NULL AND NOT EXISTS (SELECT 1 FROM cp)))`,
+    'coupon_gone', ($8::bigint IS NOT NULL AND NOT EXISTS (SELECT 1 FROM cp)),
+    'hold_gone', ((SELECT count(*) FROM sc) > 0 AND (SELECT count(*) FROM sh) < (SELECT count(*) FROM sc)))`,
 		&res, h.EventID, string(lines), string(codes), h.Buyer.Name, h.Buyer.Email, string(answers), h.Q.Currency,
-		couponID, h.Q.Subtotal, h.Q.Discount, h.Q.Fee, h.Q.FeeAbsorbed, h.Q.Total, h.Provider, h.PayCode)
+		couponID, h.Q.Subtotal, h.Q.Discount, h.Q.Fee, h.Q.FeeAbsorbed, h.Q.Total, h.Provider, h.PayCode, h.HoldCode)
 	if res.Full == nil {
 		res.Full = []int64{}
 	}
@@ -176,14 +205,23 @@ SELECT jsonb_build_object('released', (SELECT count(*) FROM o),
 // An order whose late refund was claimed is never taken back, even when the claim has
 // lapsed: the provider may have refunded it. Only a definite refusal clears the claim. The coupon
 // use is counted again without a limit check: the buyer already paid the price.
+// Seats are part of "all": when another order has a live ticket on one of the
+// order's seats, or a live seat hold is on it, nothing is taken back and the
+// payment is refunded.
 func retakeHold(orderID int64) (bool, error) {
 	var done bool
-	err := dbJSON(`WITH o AS (SELECT id, coupon_id FROM orders WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL
+	err := dbJSON(`WITH o AS (SELECT id, coupon_id, event_id FROM orders WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL
     AND refund_claimed_at IS NULL FOR UPDATE),
  want AS (SELECT a.type_id, count(*)::int AS qty FROM attendees a
     WHERE a.order_id IN (SELECT id FROM o) AND a.status = 'expired' GROUP BY a.type_id),
+ sd AS (SELECT a.seat_id FROM attendees a
+    WHERE a.order_id IN (SELECT id FROM o) AND a.status = 'expired' AND a.seat_id IS NOT NULL),
  lk AS (SELECT t.id, t.taken, t.capacity FROM ticket_types t WHERE t.id IN (SELECT type_id FROM want) ORDER BY t.id FOR UPDATE),
  ok AS (SELECT (SELECT count(*) FROM o) = 1 AND (SELECT count(*) FROM want) > 0
+    AND NOT EXISTS (SELECT 1 FROM attendees b WHERE b.event_id = (SELECT event_id FROM o) AND b.order_id <> $1
+        AND b.seat_id IN (SELECT seat_id FROM sd) AND b.status IN ('pending', 'active'))
+    AND NOT EXISTS (SELECT 1 FROM seat_holds h WHERE h.event_id = (SELECT event_id FROM o)
+        AND h.seat_id IN (SELECT seat_id FROM sd) AND h.expires_at > now())
     AND (SELECT count(*) FROM lk JOIN want w ON w.type_id = lk.id WHERE lk.taken + w.qty <= lk.capacity) = (SELECT count(*) FROM want) AS go),
  t AS (UPDATE ticket_types tt SET taken = tt.taken + w.qty, touched_at = now()
     FROM want w, ok WHERE ok.go AND tt.id = w.type_id AND tt.taken + w.qty <= tt.capacity RETURNING tt.id),
