@@ -13,6 +13,7 @@ type eventSig struct {
 	Starts, Ends time.Time
 	Venue        *string
 	Status       string
+	Seen         string // when the stored snapshot was written; empty for a new signature
 }
 
 // sigOf is the signature snapshotEvent is about to store for e.
@@ -35,13 +36,14 @@ func readSnapshot(id string) (*eventSig, error) {
 		Ends   *string `json:"ends"`
 		Venue  *string `json:"venue"`
 		Status string  `json:"status"`
+		Seen   string  `json:"seen"`
 	}
-	err := dbJSON(`SELECT coalesce((SELECT jsonb_build_object('starts', starts_at, 'ends', ends_at, 'venue', venue_key, 'status', status)
+	err := dbJSON(`SELECT coalesce((SELECT jsonb_build_object('starts', starts_at, 'ends', ends_at, 'venue', venue_key, 'status', status, 'seen', seen_at)
 FROM events WHERE entity_id = $1), 'null'::jsonb)`, &raw, id)
 	if err != nil || raw == nil {
 		return nil, err
 	}
-	s := &eventSig{Venue: raw.Venue, Status: raw.Status}
+	s := &eventSig{Venue: raw.Venue, Status: raw.Status, Seen: raw.Seen}
 	s.Starts = parseStamp(raw.Starts)
 	s.Ends = parseStamp(raw.Ends)
 	return s, nil
@@ -92,9 +94,12 @@ func (s eventSig) text() string {
 }
 
 // changeKey identifies one transition, so the same change seen by the hook
-// and by the hourly refresh is recorded once.
+// and by the hourly refresh is recorded once. The time the old snapshot was
+// written tells a repeat of an earlier transition (postponed, restored,
+// postponed again) from a second sighting of the same one: both observers of
+// one transition read the same old row.
 func changeKey(old *eventSig, nw eventSig) string {
-	sum := sha256.Sum256([]byte(old.text() + "\n" + nw.text()))
+	sum := sha256.Sum256([]byte(old.text() + "\n" + nw.text() + "\n" + old.Seen))
 	return hex.EncodeToString(sum[:])[:32]
 }
 

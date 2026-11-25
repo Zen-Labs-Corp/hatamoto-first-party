@@ -131,3 +131,28 @@ func TestDetectRefreshAlsoObserves(t *testing.T) {
 		t.Errorf("the hourly refresh did not record the change: %v", c)
 	}
 }
+
+func TestChangeKeyTellsARepeatedTransitionApart(t *testing.T) {
+	old := &eventSig{Venue: new(string), Status: "published", Seen: "2027-01-01T10:00:00+00:00"}
+	nw := eventSig{Venue: new(string), Status: "postponed"}
+	first := changeKey(old, nw)
+	if again := changeKey(old, nw); again != first {
+		t.Error("the same transition seen twice must give one key")
+	}
+	later := *old
+	later.Seen = "2027-01-02T10:00:00+00:00" // restored in between, then postponed again
+	if changeKey(&later, nw) == first {
+		t.Error("a repeat of an earlier transition must get its own key")
+	}
+}
+
+func TestReadSnapshotCarriesWhenItWasWritten(t *testing.T) {
+	h := hookWith(t, `{"starts":"2027-03-01T19:00:00+00:00","ends":"2027-03-01T21:00:00+00:00","venue":"","status":"published","seen":"2027-01-01T10:00:00.5+00:00"}`)
+	s, err := readSnapshot("e1")
+	if err != nil || s == nil || s.Seen != "2027-01-01T10:00:00.5+00:00" {
+		t.Errorf("snapshot %+v %v", s, err)
+	}
+	if c := h.used("SELECT coalesce((SELECT jsonb_build_object('starts'"); c == nil || !strings.Contains(c.sql, "'seen', seen_at") {
+		t.Error("the snapshot query must select seen_at")
+	}
+}
