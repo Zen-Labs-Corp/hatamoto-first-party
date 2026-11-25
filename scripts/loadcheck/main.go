@@ -40,7 +40,8 @@ func main() {
 		name, dir, _ := strings.Cut(arg, "=")
 		label := "  " + name + " " + strings.Repeat(".", max(3, 14-len(name)))
 		if err := check(label, name, dir); err != nil {
-			fmt.Printf("%s FAIL %v\n", label, err)
+			// one line per plugin: a refusal's newlines become spaces
+			fmt.Printf("%s FAIL %v\n", label, strings.ReplaceAll(err.Error(), "\n", " "))
 			bad++
 		}
 	}

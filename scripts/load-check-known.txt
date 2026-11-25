@@ -1,3 +1,6 @@
-# Known load-check refusals: `<plugin> <substring of the expected FAIL reason>` per line.
+# Known load-check refusals: `<plugin> <label>: <substring of one refusal>` per line. A refusal is
+# known when it contains a listed substring; the list reason must start with a `<label>: ` prefix
+# (the refusal's own label, e.g. `section appointments: `), so it cannot excuse other refusals.
+# A plugin is KNOWN FAIL only when EVERY one of its refusals matches a line of its own.
 # appointments: known refusal, to fix in the plugin (iframe in a section without site.scripts).
-appointments <iframe> is not allowed (not allowed without site.scripts)
+appointments section appointments: markup: banned-element: template section-appointments: <iframe> is not allowed

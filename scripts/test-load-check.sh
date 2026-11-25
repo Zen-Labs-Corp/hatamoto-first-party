@@ -87,18 +87,20 @@ check "one FAIL does not stop the others" 1 '^  good \.+ OK' "$tmp/plugins/good"
 
 # known-refusal list (a temp list, never the real file)
 known=$tmp/known.txt
-printf '# c\nscriptmark site.scripts\n' >"$known"
+printf '# c\nscriptmark section fx_block: markup: banned-attribute\n' >"$known"
 LOAD_CHECK_KNOWN=$known check "known: listed + matching reason is KNOWN FAIL, exit 0" 0 'scriptmark \.+ KNOWN FAIL core would refuse' "$tmp/plugins/scriptmark"
-printf 'scriptmark some other reason\n' >"$known"
+printf 'scriptmark section fx_block: some other reason\n' >"$known"
 LOAD_CHECK_KNOWN=$known check "known: listed + different reason still fails" 1 'scriptmark \.+ FAIL core would refuse' "$tmp/plugins/scriptmark"
-printf 'good whatever\n' >"$known"
+printf 'good section fx_block: whatever\n' >"$known"
 LOAD_CHECK_KNOWN=$known check "known: listed + now passing fails" 1 'good \.+ OK \(remove it from load-check-known\.txt\)' "$tmp/plugins/good"
 
-printf 'scriptmark site.scripts\n' >"$known"
+printf 'scriptmark section fx_block: markup: banned-attribute\n' >"$known"
 printf '{{define "section-fx_block"}}<button onclick="x()">go</button>{{end}}{{define "plugin/scriptmark/ok_name"}}{{if}}{{end}}\n' >"$tmp/plugins/scriptmark/build/partials/ok_name.html"
 LOAD_CHECK_KNOWN=$known check "known: the listed reason plus one more refusal still fails" 1 'scriptmark \.+ FAIL core would refuse' "$tmp/plugins/scriptmark"
 printf 'scriptmark\n' >"$known"
 LOAD_CHECK_KNOWN=$known check "known: an entry without a reason is a config error" 1 'has no reason' "$tmp/plugins/scriptmark"
+printf 'scriptmark site.scripts\n' >"$known"
+LOAD_CHECK_KNOWN=$known check "known: a reason without a <label>: prefix is a config error" 1 'reason must start with' "$tmp/plugins/scriptmark"
 rm "$tmp/plugins/scriptmark/build/partials/ok_name.html"
 printf '{{define "plugin/scriptmark/ok_name"}}ok{{end}}\n' >"$tmp/plugins/scriptmark/build/partials/ok_name.html"
 

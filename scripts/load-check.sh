@@ -5,10 +5,11 @@
 # Usage: scripts/load-check.sh [plugins/<name> ...]   (default: every plugins/*/)
 # Env:   HATAMOTO_CORE_SRC  a core checkout, normally at the pin (skips the fetch); the helper is
 #        copied in for the run and removed after, and a HEAD other than the pin is said in the header
-# Env:   LOAD_CHECK_KNOWN  known-refusal list (default scripts/load-check-known.txt): `<plugin> <substring of one refusal>`
-#        per line (several lines per plugin; a line without a reason is an error), `#` comments. A plugin prints KNOWN FAIL
-#        and is not counted only when EVERY refusal matches a listed substring; one that fails for any other reason still fails, and one that now passes fails too (remove it from the list).
-# Env:   LOAD_CHECK_HELPER_SRC  a Go file to run instead of scripts/loadcheck/main.go (tests only)
+# Env:   LOAD_CHECK_KNOWN  known-refusal list (default scripts/load-check-known.txt): `<plugin> <label>: <substring of one refusal>`
+#        per line (several lines per plugin), `#` comments. The reason must start with a `<label>: ` prefix (text, a colon and a
+#        space, then more text) taken from the refusal, so a bare word cannot excuse unrelated refusals; a line without one is an error.
+#        A plugin prints KNOWN FAIL and is not counted only when EVERY refusal matches a listed substring; one that fails for any other reason still fails, and one that now passes fails too (remove it from the list).
+# Env:   LOAD_CHECK_HELPER_SRC  a Go file to run instead of scripts/loadcheck/main.go (tests only; warns on stderr)
 # The core source is fetched once into ${XDG_CACHE_HOME:-~/.cache}/hatamoto-first-party/core-src-<sha>/.
 set -euo pipefail
 die() { echo "load-check: $*" >&2; exit 1; }
@@ -52,10 +53,15 @@ else
 fi
 cd "$src/backend"
 known=${LOAD_CHECK_KNOWN:-$root/scripts/load-check-known.txt}
-# every list line is `<plugin> <reason substring>`; a plugin name alone would excuse any refusal
+# every list line is `<plugin> <label>: <reason substring>`; a plugin name alone would excuse any refusal
 if [ -f "$known" ]; then
-  awk 'NF && $1 !~ /^#/ && NF < 2 {print "load-check: " FILENAME ":" NR ": \"" $1 "\" has no reason" > "/dev/stderr"; bad=1} END {exit bad}' "$known" || exit 1
+  awk 'NF && $1 !~ /^#/ { r = $0; sub(/^[^ \t]+[ \t]+/, "", r)
+    if (NF < 2) {print "load-check: " FILENAME ":" NR ": \"" $1 "\" has no reason" > "/dev/stderr"; bad=1}
+    else if (r !~ /^[^:]+: ./) {print "load-check: " FILENAME ":" NR ": reason must start with \"<label>: \"" > "/dev/stderr"; bad=1} }
+    END {exit bad}' "$known" || exit 1
 fi
+[ -z "${LOAD_CHECK_KNOWN:-}" ] || echo "load-check: WARNING LOAD_CHECK_KNOWN is set, using $known" >&2
+[ -z "${LOAD_CHECK_HELPER_SRC:-}" ] || echo "load-check: WARNING LOAD_CHECK_HELPER_SRC is set, running $LOAD_CHECK_HELPER_SRC" >&2
 rc=0
 out=$(GOWORK=off GOFLAGS= go run ./cmd/fp-loadcheck "${args[@]}" 2>&1) || rc=$?
 bad=0 verdicts=0
