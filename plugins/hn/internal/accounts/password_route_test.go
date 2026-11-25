@@ -1,6 +1,7 @@
 package accounts
 
 import (
+	"errors"
 	"net/url"
 	"strconv"
 	"testing"
@@ -32,5 +33,23 @@ func TestPasswordRoutesUseTheMemberGate(t *testing.T) {
 		}
 		login := newGateRegistry(core.GateLogin, func(*core.GateReq) error { t.Fatalf("%s ran the login gate", route); return nil })
 		postFrom(login, route, key, "same-origin", pwForm(annPw, goodPw))
+	}
+}
+
+func TestPasswordChangeNeedsTheRevoke(t *testing.T) {
+	f := loginFixture(t)
+	old := f.logins[f.byKey["ck-acc-ann"].ID].PwHash
+	f.revokeErr = errors.New("rate_limited")
+	resp := postFrom(newRegistry(nil), "/password", "ck-acc-ann", "same-origin", pwForm(annPw, "another horse"))
+	if resp.Headers["Location"] != "/user?id=Ann&m=try_again" || resp.CommenterSession != nil {
+		t.Fatalf("got %+v", resp)
+	}
+	if f.logins[f.byKey["ck-acc-ann"].ID].PwHash != old {
+		t.Fatal("password changed although the other browsers could not be signed out")
+	}
+	f.revokeErr = nil
+	resp = postFrom(newRegistry(nil), "/password", "ck-acc-ann", "same-origin", pwForm(annPw, "another horse"))
+	if resp.Headers["Location"] != "/user?id=Ann&m=pw_saved" || len(f.revoked) != 2 {
+		t.Fatalf("got %+v revoked %v", resp, f.revoked)
 	}
 }

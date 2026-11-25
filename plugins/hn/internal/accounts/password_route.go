@@ -58,12 +58,15 @@ func passwordHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, er
 		if err != nil {
 			return fail(noticeTryAgain)
 		}
+		// Other browsers out first: when that fails the password is left unchanged, so "saved"
+		// never hides a session that is still signed in. Revoked=false (nothing to end) is fine.
+		var out sdk.CommentsIdentityRevoked
+		if err := core.Call(sdk.FnCommentsIdentityRevoke, sdk.CommentsIdentityArgs{Account: l.Account}, &out); err != nil {
+			return fail(noticeTryAgain)
+		}
 		if err := setHash(v.ID, hash); err != nil {
 			return fail(noticeTryAgain)
 		}
-		// Other browsers out; the password is already changed, so an error or revoked=false is ignored.
-		var out sdk.CommentsIdentityRevoked
-		_ = core.Call(sdk.FnCommentsIdentityRevoke, sdk.CommentsIdentityArgs{Account: l.Account}, &out)
 		resp := core.Respond(req, core.WithNotice(to, noticePwSaved), map[string]any{"saved": true})
 		resp.CommenterSession = &sdk.CommenterSession{Account: l.Account} // this browser stays in; no Link
 		return resp, nil
