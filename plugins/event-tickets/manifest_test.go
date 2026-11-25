@@ -252,6 +252,12 @@ func TestReadmeExplainsPermissions(t *testing.T) {
 	if !strings.Contains(string(raw), "boombuler/barcode") || !strings.Contains(string(raw), "MIT") {
 		t.Error("README must credit boombuler/barcode and its MIT licence")
 	}
+	if !strings.Contains(string(raw), "jsQR") || !strings.Contains(string(raw), "Apache-2.0") {
+		t.Error("README must credit jsQR and its Apache-2.0 licence")
+	}
+	if slices.Contains(m.UI.Allow, "camera") && !strings.Contains(section, "camera") {
+		t.Error("README Permissions does not explain the camera")
+	}
 }
 
 // TestManifestSDKValidate runs the manifest through the validation core

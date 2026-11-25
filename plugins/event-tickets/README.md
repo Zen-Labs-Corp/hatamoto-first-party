@@ -2,7 +2,7 @@
 
 Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.
 
-Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with coupons, bundle discounts, fees and refunds. Each event has ticket types with a capacity, a booking form on the event page, a confirmation email with one QR code per ticket, a waitlist for sold-out free types and an admin page with the attendee list. Check-in and seating are not part of it yet.
+Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with coupons, bundle discounts, fees and refunds. Each event has ticket types with a capacity, a booking form on the event page, a confirmation email with one QR code per ticket, a waitlist for sold-out free types and an admin page with the attendee list. Door check-in works from a phone by scanning the ticket QR code. Seating is not part of it yet.
 
 ## Use
 
@@ -16,6 +16,8 @@ Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with co
 8. **Stripe setup**: put a secret or restricted key in the settings. In Stripe add a webhook endpoint `<your site>/p/event-tickets/stripe/webhook` for the events `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` and `checkout.session.expired`, and put its signing secret in the settings.
 9. **PayPal setup**: create a REST app, put its client ID and secret in the settings, and add a webhook `<your site>/p/event-tickets/paypal/webhook` for `CHECKOUT.ORDER.APPROVED` and `PAYMENT.CAPTURE.COMPLETED`. Put the webhook ID in the settings. Turn on **PayPal test mode** while you try it with sandbox accounts.
 10. **Export CSV**: the admin page cannot start a download, so it shows the path `/api/v1/p/event-tickets/admin/events/<id>/attendees.csv`. Copy it, put your site address in front and open it in the browser while you are signed in to the admin.
+11. **Check-in**: open the **Check-in** tab at the door and pick the event. The line at the top shows how many tickets are checked in. **Scan QR (camera)** opens the camera dialog: take one photo of the ticket's QR code (on a phone screen or on paper) and the ticket is checked in; one photo per tap, and if no code is found you tap again. The result is listed as **OK**, **ALREADY CHECKED IN** (with the time of the first check-in) or **REFUSED** (not a valid ticket, a ticket for another event, or a ticket that is cancelled, refunded, expired or not paid). **Undo** next to an OK result takes the check-in back after you confirm. To check someone in by hand, search by name or by the start of the ticket code and press **Check in**. The owner must grant the camera on the plugin's Permissions tab first; without it, search still works.
+12. **Weak signal**: a scan that cannot reach the server is kept in an offline queue shown under the list and sent in order when the connection is back (the page retries every 15 seconds). A queued scan that turns out to be already checked in or refused is reported in the list like any other.
 
 ## Settings
 
@@ -48,6 +50,7 @@ The **Settings** tab of the admin page shows the current values; change them in 
 - `http.fetch`: talks to the payment providers you configure, and only to `api.stripe.com`, `api-m.paypal.com` and `api-m.sandbox.paypal.com`: it opens checkout sessions and PayPal orders, captures PayPal payments, checks that a PayPal webhook is genuine and makes refunds. A site that installed an earlier version has to grant it again.
 - `builder.data`: feeds the **Tickets** list on event pages (ticket types, with how many are left).
 - `builder.island`: runs the booking form on the event page; a widget cannot hold a form on its own.
+- `ui.allow camera`: lets the admin page take a photo to read ticket QR codes. The owner grants it on the plugin's Permissions tab. The photo is decoded in the page and is never stored or sent.
 
 Nothing else: no other hosts, no scripts added to your pages.
 
@@ -64,7 +67,7 @@ All of it lives in the plugin's own database:
 - **Coupons and bundle rules** you define.
 - **Payment events**: the ids of processed provider events, kept 90 days so a repeated event is ignored.
 - **PayPal access token**: cached in the plugin database for a short time.
-- **Attendees**: one row per ticket, with its status and a random ticket code. The code is part of the ticket link.
+- **Attendees**: one row per ticket, with its status and a random ticket code. The code is part of the ticket link. A checked-in ticket also keeps the check-in time and the id of the admin user who checked it in.
 - **Waitlist**: name, email address and status of everyone who joined.
 - **Mail queue**: ids of the mails still to be sent, never the text or the address.
 - **Event dates**, copied from the event so the retention job knows when it ended.
@@ -82,6 +85,10 @@ Orders are anonymised the number of months set in **Keep attendee details for** 
 - Holds are unauthenticated: anyone can start a checkout. At most max(10, half of a type's total capacity) seats of a type can sit in unpaid 15-minute holds at a time. That is a share of the capacity, not of the seats left: once half of a type is sold, the remaining seats can all be held, and a type of 20 seats or fewer can be held in full.
 - At most 10 tickets per booking, 10 extra questions per event.
 - QR images in emails need an absolute site address: the event's address, or the **Site address** setting.
+- The offline queue is kept in this page only: the admin page runs in a sandbox that has no browser storage, so scans waiting to be sent are lost if you reload or close the page. The tab warns you while the queue has items.
+- The check-in time is the time the server received the scan, so a scan that waited in the queue is stamped when it syncs.
+- One photo per scan: the camera dialog takes a still picture, not a video stream, and a QR code that is blurred or cut off needs a new photo.
+- Check-in is for the owner and editor accounts of the admin; there is no separate door-staff role yet.
 - Attendees cannot cancel their own tickets yet; you cancel them from the Attendees tab.
 
 ## Build
@@ -90,4 +97,4 @@ From the repository root: `scripts/build-plugin.sh plugins/event-tickets`.
 
 ## License
 
-Apache-2.0. QR codes are encoded with [github.com/boombuler/barcode](https://github.com/boombuler/barcode) (MIT licence, copyright Florian Sundermann).
+Apache-2.0. QR codes are encoded with [github.com/boombuler/barcode](https://github.com/boombuler/barcode) (MIT licence, copyright Florian Sundermann). QR codes are decoded in the page with jsQR 1.4.0 (Apache-2.0, `ui/jsqr.LICENSE`).
