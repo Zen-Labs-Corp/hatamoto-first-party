@@ -45,6 +45,7 @@ func init() {
 	guest.OnAction(sdk.CommentSpam, r.CommentAction(core.OnSpam))
 	guest.OnAction(sdk.CommentDeleted, r.CommentAction(core.OnDeleted))
 	guest.OnAction(sdk.CommentUpdated, r.CommentAction(core.OnUpdated))
+	guest.OnAction(sdk.EntityDeleted, stories.EntityDeleted(r))
 	for _, n := range core.CronNames {
 		guest.OnCron(n, r.CronHandler(n))
 	}
