@@ -116,18 +116,25 @@
   }
 
   // The host refuses <textarea> in a section without site.scripts, so the
-  // submit text is a one-line input; this file loads only with that grant.
+  // submit and reply texts are one-line inputs; this file loads only with that
+  // grant. The reply input's name is rotated by the server: copy it.
+  function swap(i, rows, cols, max) {
+    var t = d.createElement('textarea');
+    t.setAttribute('id', i.getAttribute('id') || '');
+    t.setAttribute('name', i.getAttribute('name') || 'text');
+    t.setAttribute('rows', rows);
+    t.setAttribute('cols', cols);
+    if (max) t.setAttribute('maxlength', max);
+    if (i.getAttribute('required') !== null) t.setAttribute('required', '');
+    t.value = i.value || '';
+    i.parentNode.replaceChild(t, i);
+  }
+
   function textarea() {
     try {
-      var i = d.querySelector('input[id="hn-text"]'), t;
-      if (!i) return;
-      t = d.createElement('textarea');
-      t.setAttribute('id', 'hn-text');
-      t.setAttribute('name', i.getAttribute('name') || 'text');
-      t.setAttribute('rows', '4');
-      t.setAttribute('cols', '49');
-      t.value = i.value || '';
-      i.parentNode.replaceChild(t, i);
+      var i = d.querySelector('input[id="hn-text"]'), r = d.querySelector('input[data-hn-reply]');
+      if (i) swap(i, '4', '49');
+      if (r) swap(r, '6', '60', '5000');
     } catch (e) {}
   }
 
