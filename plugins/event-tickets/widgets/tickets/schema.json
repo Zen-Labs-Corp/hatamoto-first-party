@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Tickets",
+    "hint": "Free tickets and RSVP for this event page. Place it under Event details",
+    "children": true,
+    "seed": [
+      {
+        "t": "loop",
+        "p": {
+          "from": "source",
+          "source": "ext.event-tickets.tickets",
+          "limit": 48
+        },
+        "c": [
+          {
+            "t": "event-tickets_ticket-type",
+            "b": {
+              "name": "loop.item.title",
+              "type_id": "loop.item.attributes.type_id",
+              "event_id": "loop.item.attributes.event_id",
+              "price": "loop.item.attributes.price",
+              "left": "loop.item.attributes.left",
+              "sold_out": "loop.item.attributes.sold_out",
+              "waitlist": "loop.item.attributes.waitlist"
+            }
+          },
+          {
+            "t": "loopempty"
+          }
+        ]
+      }
+    ]
+  },
+  "properties": {
+    "heading": {
+      "type": "string",
+      "maxLength": 120
+    }
+  }
+}

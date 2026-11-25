@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Ticket type",
+    "hint": "One ticket type of an event, with seats left"
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "type_id": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "event_id": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "price": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "left": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "sold_out": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "waitlist": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    }
+  }
+}

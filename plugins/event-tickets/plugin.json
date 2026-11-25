@@ -1,0 +1,104 @@
+{
+  "name": "event-tickets",
+  "version": "0.1.0",
+  "sdk": "^0.22",
+  "description": "Free tickets, RSVP, paid tickets, attendees, check-in, seating and event emails for the event-calendar plugin.",
+  "permissions": ["settings", "db", "entities.read", "mail.send", "builder.data", "builder.island"],
+  "ui": { "title": "Event tickets", "entry": "index.html", "roles": ["owner", "editor"] },
+  "builder_sources": [
+    { "name": "tickets", "label": "Tickets of this event", "kind": "items" }
+  ],
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "max_output_bytes": 2097152,
+    "hook_timeouts_ms": {
+      "entity.created": 5000,
+      "entity.updated": 5000,
+      "entity.published": 5000,
+      "entity.deleted": 5000,
+      "builder.data": 450,
+      "on_cron_mail": 10000,
+      "on_cron_maintain": 10000
+    }
+  },
+  "routes": [
+    { "method": "GET", "path": "/admin/events", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/admin/events/{id}", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/events/{id}/types", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/types/{id}/delete", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/events/{id}/fields", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/admin/events/{id}/attendees", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/admin/events/{id}/attendees.csv", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/attendees/{id}/resend", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/attendees/{id}/cancel", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/admin/settings", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/token", "public": true },
+    { "method": "POST", "path": "/rsvp", "public": true },
+    { "method": "GET", "path": "/waitlist/{token}/claim", "public": true },
+    { "method": "GET", "path": "/waitlist/{token}/leave", "public": true },
+    { "method": "GET", "path": "/ticket/{token}", "public": true },
+    { "method": "GET", "path": "/ticket/{token}/qr.png", "public": true }
+  ],
+  "cron": [
+    { "name": "mail", "every": "5m" },
+    { "name": "maintain", "every": "1h" }
+  ],
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "currency": {
+        "type": "string",
+        "title": "Currency",
+        "description": "Three-letter currency code, for example USD or EUR. Tickets are free for now; paid tickets will use it.",
+        "default": "USD",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "sender_name": {
+        "type": "string",
+        "title": "Sender name",
+        "description": "Signs the emails sent to attendees, for example the name of your organisation. Leave empty to sign with the site name.",
+        "default": "",
+        "maxLength": 80
+      },
+      "confirmation_text": {
+        "type": "string",
+        "title": "Confirmation message",
+        "description": "Extra text added to every confirmation email, for example how to find the entrance. Leave empty to add nothing.",
+        "default": "",
+        "maxLength": 2000
+      },
+      "default_capacity": {
+        "type": "integer",
+        "title": "Default number of tickets",
+        "description": "Pre-filled when you add a ticket type to an event.",
+        "default": 50,
+        "minimum": 1,
+        "maximum": 100000
+      },
+      "retention_months": {
+        "type": "integer",
+        "title": "Keep attendee details for (months)",
+        "description": "Names and email addresses are erased this many months after the event ended. Ticket counts stay.",
+        "default": 24,
+        "minimum": 1,
+        "maximum": 120
+      },
+      "site_url": {
+        "type": "string",
+        "title": "Site address",
+        "description": "Address of the site, used for QR images in emails when the event address is a path only",
+        "default": "",
+        "maxLength": 200,
+        "pattern": "^(https?://[^\\s/]+)?$"
+      },
+      "schema_slug": {
+        "type": "string",
+        "title": "Event content type",
+        "description": "Leave empty to use Calendar event and any older Event type. Or name one content type.",
+        "default": "",
+        "pattern": "^([a-z][a-z0-9_-]{0,63})?$"
+      }
+    }
+  }
+}
