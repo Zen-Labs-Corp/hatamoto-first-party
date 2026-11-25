@@ -34,6 +34,9 @@ const IDS = [
   "#wl-state", "#wl-table", "#wl-rows", "#at-more", "#at-csv", "#st-rows",
 ];
 
+let clock = 1000000;
+const fakeDate = { now: () => clock };
+
 // load runs the page; respond(method, path) returns {status, body}.
 async function load({ respond, timers = [] }) {
   const els = {};
@@ -50,7 +53,7 @@ async function load({ respond, timers = [] }) {
   const mod = { exports: {} };
   vm.runInNewContext(src, {
     document, hatamoto, module: mod, setTimeout: (fn) => timers.push(fn),
-    encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean,
+    Date: fakeDate, encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean,
   });
   await new Promise((r) => setTimeout(r, 10));
   routes.length = 0;
@@ -84,9 +87,15 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   await ctx.api.cancelAttendee("7", btn);
   assert.equal(btn.textContent, "Confirm cancel");
   assert.equal(ctx.routes.filter((r) => r.p.endsWith("/cancel")).length, 0, "first click: no call");
+  // a double-click: the second click right after arming is ignored
+  clock += 100;
+  await ctx.api.cancelAttendee("7", btn);
+  assert.equal(btn.textContent, "Confirm cancel", "a double-click stays armed");
+  assert.equal(ctx.routes.filter((r) => r.p.endsWith("/cancel")).length, 0, "double-click: no call");
   timers.forEach((fn) => fn());
   assert.equal(btn.textContent, "Cancel", "the armed button goes back");
   await ctx.api.cancelAttendee("7", btn);
+  clock += 500;
   await ctx.api.cancelAttendee("7", btn);
   assert.deepEqual(ctx.routes[0], { method: "POST", p: "/admin/attendees/7/cancel" });
   assert.equal(btn.textContent, "Cancel");

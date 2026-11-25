@@ -225,6 +225,8 @@ async function resendAttendee(id) {
 const CANCEL_LABEL = "Cancel";
 const CONFIRM_LABEL = "Confirm cancel";
 const CONFIRM_MS = 4000;
+// A second click this soon after arming is a double-click, not a confirmation.
+const ARM_GUARD_MS = 400;
 
 function cancelButton(id, active) {
   const b = button(CANCEL_LABEL, () => cancelAttendee(id, b), { disabled: !active });
@@ -235,10 +237,12 @@ function cancelButton(id, active) {
 async function cancelAttendee(id, btn) {
   if (btn.textContent !== CONFIRM_LABEL) {
     btn.textContent = CONFIRM_LABEL;
+    btn.armedAt = Date.now();
     say("Click Confirm cancel to free the seat and offer it to the waitlist. The attendee is not emailed.");
     setTimeout(() => { btn.textContent = CANCEL_LABEL; }, CONFIRM_MS);
     return;
   }
+  if (Date.now() - btn.armedAt < ARM_GUARD_MS) return;
   btn.textContent = CANCEL_LABEL;
   const data = await run(() => api("POST", `/admin/attendees/${encodeURIComponent(id)}/cancel`));
   if (!data) return;
