@@ -417,3 +417,16 @@ func TestPayoutWritesAreOwnerOnly(t *testing.T) {
 		t.Errorf("a refused request touched the database: %d calls", len(h.calls))
 	}
 }
+
+// Two 50 % shares of an odd base both round up; together they must not pay out more than the base.
+func TestBuildPayoutsPercentSharesNeverExceedBase(t *testing.T) {
+	aggs := []eventAgg{{EventID: "ev", Currency: "EUR", Base: 101}}
+	rules := map[string][]splitRule{"ev": {pct("a", "a@x.org", 5000), pct("b", "b@x.org", 5000)}}
+	var sum int64
+	for _, r := range buildPayouts(aggs, rules, nil) {
+		sum += r.Owed
+	}
+	if sum != 101 {
+		t.Errorf("percent shares add up to %d, want the base 101", sum)
+	}
+}

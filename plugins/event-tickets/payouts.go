@@ -108,6 +108,7 @@ func buildPayouts(aggs []eventAgg, rules map[string][]splitRule, paid []payoutRe
 	byKey := map[string]*acc{}
 	var order []string
 	for _, a := range aggs {
+		var percentPaid int64 // percent shares already given from this event's base
 		for _, r := range rules[a.EventID] {
 			email := strings.ToLower(strings.TrimSpace(r.Email))
 			key := email + "|" + a.Currency
@@ -125,7 +126,13 @@ func buildPayouts(aggs []eventAgg, rules map[string][]splitRule, paid []payoutRe
 				p.row.Refunds += a.Refunds
 				p.row.Fees += a.Fees
 			}
-			p.row.Owed += ruleOwed(r, a)
+			owed := ruleOwed(r, a)
+			if r.Kind == "percent" {
+				// Rounding each share half up can add a cent: the last rule takes only what is left.
+				owed = min(owed, max(a.Base-percentPaid, 0))
+				percentPaid += owed
+			}
+			p.row.Owed += owed
 		}
 	}
 	rows := make([]payeeRow, 0, len(order))
