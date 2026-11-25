@@ -210,3 +210,20 @@ func TestTrackStoresNothingAboutTheCaller(t *testing.T) {
 		}
 	}
 }
+
+func TestJunkTokensCostNoStatement(t *testing.T) {
+	h := newTrackHost(t)
+	for _, tok := range []string{"x", "a", "", strings.Repeat("a", 32), strings.Repeat("g", 32) + "." + strings.Repeat("a", 32), "x.gif"} {
+		serveOpen(tok)
+		serveClick(tok, map[string][]string{"l": {"0"}})
+		serveUnsub(tok, nil)
+	}
+	if len(h.all) != 0 {
+		t.Errorf("%d statements for junk tokens: %+v", len(h.all), h.all)
+	}
+	// a well-formed token still reaches the secret
+	serveOpen(strings.Repeat("a", 32) + "." + strings.Repeat("b", 32))
+	if len(h.all) == 0 {
+		t.Error("a well-formed token must be checked")
+	}
+}

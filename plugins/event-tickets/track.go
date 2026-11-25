@@ -29,9 +29,11 @@ const (
 // the mail's .gif suffix arrives inside the token and is stripped here.
 func serveOpen(tok string) sdk.HTTPResponse {
 	tok = strings.TrimSuffix(tok, ".gif")
-	if key, err := hmacSecret(); err == nil {
-		if code, ok := verifyToken(key, kindOpen, tok); ok {
-			_ = dbExec(`UPDATE email_sends SET opened_at = coalesce(opened_at, now()), open_count = open_count + 1 WHERE code = $1 AND kind = 'campaign'`, code)
+	if tokenRe.MatchString(tok) { // junk costs no statement
+		if key, err := hmacSecret(); err == nil {
+			if code, ok := verifyToken(key, kindOpen, tok); ok {
+				_ = dbExec(`UPDATE email_sends SET opened_at = coalesce(opened_at, now()), open_count = open_count + 1 WHERE code = $1 AND kind = 'campaign'`, code)
+			}
 		}
 	}
 	return sdk.HTTPResponse{
@@ -63,7 +65,7 @@ func safePath(p string) bool {
 // page with one plain link, as core refuses redirects off the site.
 func serveClick(tok string, q url.Values) sdk.HTTPResponse {
 	l := first(q["l"])
-	if !linkIdxRe.MatchString(l) {
+	if !linkIdxRe.MatchString(l) || !tokenRe.MatchString(tok) { // junk costs no statement
 		return notFound()
 	}
 	n, _ := strconv.Atoi(l)
@@ -108,6 +110,9 @@ func serveClick(tok string, q url.Values) sdk.HTTPResponse {
 // done page carries a third value to undo it. Pages cannot hold a form (the
 // route CSP is a sandbox), so the confirm is a link.
 func serveUnsub(tok string, q url.Values) sdk.HTTPResponse {
+	if !tokenRe.MatchString(tok) { // junk costs no statement
+		return notFound()
+	}
 	key, err := hmacSecret()
 	if err != nil {
 		return notFound()
