@@ -64,7 +64,7 @@ async function load({ respond, timers = [], camera = { available: false } }) {
   Object.defineProperty(window, "localStorage", { get() { throw new Error("SecurityError"); } });
   const context = vm.createContext({
     document, hatamoto, window, module: mod, setTimeout: (fn) => timers.push(fn),
-    Date: FakeDate, encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean, Array, Map, Promise,
+    Date: FakeDate, crypto: globalThis.crypto, Uint8Array, encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean, Array, Map, Promise,
   });
   vm.runInContext(checkinSrc, context);
   vm.runInContext(src, context);
@@ -137,6 +137,18 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   // a retry-confirmed scan reads OK, not ALREADY
   ctx.api.showScanResult({ event: "2", body: { scan: "t" } }, { result: "ok", confirmed: true, attendee: { id: 7, name: "Cy", type_name: "GA", checked_in_at: "2026-01-01T19:02:00Z" } });
   assert.match(ctx.els["#ck-log"].children[0].children[2].textContent, /^OK \(confirmed on retry\) \d\d:\d\d$/);
+
+  // the "Server not reachable" notice goes away when a later run drains the queue
+  let up = false;
+  const stallTimers = [];
+  ctx = await load({ timers: stallTimers, respond: (m, p) => (p.endsWith("/checkin") ? (up ? reply(200, { ok: true, result: "ok", attendee: { id: 1, name: "Ana" } }) : reply(404, {})) : quiet(m, p)) });
+  ctx.api.ckQueue.add("1", { scan: "t" });
+  await ctx.api.ckQueue.sync();
+  assert.match(ctx.els["#notice"].textContent, /Server not reachable \(404\)/);
+  up = true;
+  await stallTimers[0]();
+  assert.equal(ctx.api.ckQueue.size(), 0);
+  assert.ok(ctx.els["#notice"].hidden, "stall notice cleared once the queue drained");
 
   // a cancelled capture right after another one is core's cooldown: say so, never retry
   let captures = 0;

@@ -6,9 +6,6 @@
 const QUEUE_KEY = "event-tickets:checkin-queue";
 const SCAN_MAX = 512;
 const RETRY_MS = 15000;
-// Device and server clocks differ a little: a check-in this much before the
-// device's scan time still counts as that scan.
-const SKEW_MS = 120000;
 
 // parseScan returns the ticket token of a scanned text: the part after the
 // last "/ticket/" without query or fragment, or the trimmed text itself.
@@ -64,8 +61,8 @@ function openStore(getStorage) {
 // A 200, 400 or 413 is final and the item is dropped. Anything else (403/404
 // from the host while the plugin is off or reloading, 429, 5xx, status 0, a
 // rejected call) keeps the item and stops the run.
-// An item sent before may have reached the server with its reply lost: an
-// "already" whose check-in is not older than the scan is then this scan's own.
+// Every item carries a random nonce in its body, the same on every retry: the
+// server answers ok (confirmed) when the check-in it finds is that nonce's own.
 function makeQueue({ send, store, onResult, onChange, onStall, schedule }) {
   let items = store.load();
   let running = false;
@@ -80,10 +77,16 @@ function makeQueue({ send, store, onResult, onChange, onStall, schedule }) {
     return event + "|" + (body.scan !== undefined ? "s:" + body.scan : "a:" + body.attendee_id);
   }
 
+  function newNonce() {
+    const b = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(b);
+    return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  }
+
   function add(event, body) {
     const key = keyOf(event, body);
     if (items.some((it) => it.key === key)) return false;
-    items = items.concat([{ key, event, body, at: Date.now() }]);
+    items = items.concat([{ key, event, body: { ...body, nonce: newNonce() }, at: Date.now() }]);
     changed();
     return true;
   }
@@ -110,8 +113,6 @@ function makeQueue({ send, store, onResult, onChange, onStall, schedule }) {
       while (items.length > 0) {
         const item = items[0];
         let res;
-        item.attempts = (item.attempts || 0) + 1;
-        store.save(items);
         try {
           res = await send(item.event, item.body);
         } catch (_) {
@@ -129,10 +130,6 @@ function makeQueue({ send, store, onResult, onChange, onStall, schedule }) {
           if (!outcome || typeof outcome.result !== "string") {
             retryLater();
             return;
-          }
-          if (outcome.result === "already" && item.attempts > 1 && outcome.attendee) {
-            const when = Date.parse(outcome.attendee.checked_in_at);
-            if (when >= item.at - SKEW_MS) outcome = { ...outcome, result: "ok", confirmed: true };
           }
         } else if (status === 400 || status === 413) {
           outcome = { result: "error" };

@@ -662,12 +662,16 @@ const REFUSED_TEXT = {
 };
 
 const ckStore = openStore(() => window.localStorage);
+let ckStalled = false;
 const ckQueue = makeQueue({
   send: (ev, body) => hatamoto.route("POST", `/admin/events/${encodeURIComponent(ev)}/checkin`, body, null),
   store: ckStore,
   onResult: showScanResult,
-  onChange: renderQueue,
-  onStall: (status) => say(`Server not reachable (${status}); scans are kept and retried.`, true),
+  onChange: () => {
+    renderQueue();
+    if (ckStalled && ckQueue && ckQueue.size() === 0) { ckStalled = false; say(""); }
+  },
+  onStall: (status) => { ckStalled = true; say(`Server not reachable (${status}); scans are kept and retried.`, true); },
   schedule: (fn, ms) => setTimeout(fn, ms),
 });
 

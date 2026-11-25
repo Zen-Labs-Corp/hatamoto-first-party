@@ -21,6 +21,7 @@ type ckRow struct {
 	anonymised bool
 	at         *time.Time
 	by         *string
+	nonce      any
 }
 
 // checkinHost fakes the check-in statements on top of the mail fake (the key).
@@ -56,7 +57,7 @@ func newCheckinHost(t *testing.T) *checkinHost {
 			return nil
 		}
 		view := func(r *ckRow) map[string]any {
-			return map[string]any{"id": r.id, "name": r.name, "type_name": "Standard", "checked_in_at": r.at, "checked_in_by": r.by,
+			return map[string]any{"id": r.id, "name": r.name, "type_name": "Standard", "checked_in_at": r.at, "checked_in_by": r.by, "checked_in_nonce": r.nonce,
 				"event_id": r.event, "status": r.status, "anonymised": r.anonymised}
 		}
 		switch {
@@ -70,7 +71,7 @@ func newCheckinHost(t *testing.T) *checkinHost {
 				return cell(nil)
 			}
 			now, by := time.Date(2027, 1, 1, 20, 0, h.updates, 0, time.UTC), ar[2].(string)
-			r.at, r.by = &now, &by
+			r.at, r.by, r.nonce = &now, &by, ar[3]
 			return cell(view(r))
 		case strings.Contains(sql, "AS anonymised"):
 			h.selects++
@@ -81,7 +82,7 @@ func newCheckinHost(t *testing.T) *checkinHost {
 		case strings.HasPrefix(sql, "UPDATE attendees SET checked_in_at = NULL"):
 			for _, r := range h.rows {
 				if r.id == ar[0] && r.at != nil {
-					r.at, r.by = nil, nil
+					r.at, r.by, r.nonce = nil, nil, nil
 					return jsonInto(`{"rows_affected":1}`, out)
 				}
 			}
@@ -149,6 +150,44 @@ func TestScanOKThenAlready(t *testing.T) {
 	if again["checked_in_at"] != first["checked_in_at"] || again["checked_in_by"] != first["checked_in_by"] {
 		t.Errorf("already must show the original: %+v vs %+v", again, first)
 	}
+}
+
+func TestScanNonce(t *testing.T) {
+	h := newCheckinHost(t)
+	tok := h.token(t, kindTicket, 0)
+	mine := func(n string) string {
+		b, _ := json.Marshal(map[string]string{"scan": tok, "nonce": n})
+		return string(b)
+	}
+	code, body := scan(t, "e1", mine("aaaaaaaa11111111"))
+	wantResult(t, code, body, "ok", "")
+	if body["confirmed"] != nil {
+		t.Error("a first check-in is not 'confirmed'")
+	}
+	first := body["attendee"].(map[string]any)
+	// the retry of the same scan (reply lost): ok, confirmed, same holder data
+	code, body = scan(t, "e1", mine("aaaaaaaa11111111"))
+	wantResult(t, code, body, "ok", "")
+	if body["confirmed"] != true {
+		t.Errorf("same nonce must be confirmed: %+v", body)
+	}
+	if again := body["attendee"].(map[string]any); again["name"] != "Ana" || again["checked_in_at"] != first["checked_in_at"] {
+		t.Errorf("confirmed shows the original check-in: %+v", again)
+	}
+	if _, leaked := body["attendee"].(map[string]any)["checked_in_nonce"]; leaked {
+		t.Error("the stored nonce must not be returned")
+	}
+	// another scan of the ticket: a different nonce, none, are duplicates
+	code, body = scan(t, "e1", mine("bbbbbbbb22222222"))
+	wantResult(t, code, body, "already", "")
+	code, body = scan(t, "e1", scanBody(tok))
+	wantResult(t, code, body, "already", "")
+	// a check-in without a nonce is never confirmed by an empty nonce
+	h.rows[1].event = "e1"
+	code, body = scan(t, "e1", `{"attendee_id":2}`)
+	wantResult(t, code, body, "ok", "")
+	code, body = scan(t, "e1", `{"attendee_id":2}`)
+	wantResult(t, code, body, "already", "")
 }
 
 func TestScanAcceptsURLAndBareToken(t *testing.T) {
@@ -230,7 +269,8 @@ func TestScanBadBodiesAre400(t *testing.T) {
 	for name, b := range map[string]string{
 		"both": `{"scan":"x","attendee_id":1}`, "neither": `{}`, "empty scan": `{"scan":""}`,
 		"too long": scanBody(strings.Repeat("a", scanMax+1)), "negative id": `{"attendee_id":-1}`,
-		"unknown key": `{"scan":"x","extra":1}`, "not json": `nope`,
+		"unknown key": `{"scan":"x","extra":1}`, "short nonce": `{"attendee_id":1,"nonce":"abc"}`,
+		"bad nonce chars": `{"attendee_id":1,"nonce":"abcdefgh!?"}`, "long nonce": `{"attendee_id":1,"nonce":"` + strings.Repeat("a", 65) + `"}`, "not json": `nope`,
 	} {
 		if code, body := scan(t, "e1", b); code != 400 || body["ok"] != false {
 			t.Errorf("%s: %d %+v", name, code, body)
@@ -262,8 +302,8 @@ func TestUncheck(t *testing.T) {
 	if code, body := post(t, "/admin/attendees/{id}/uncheck", "1", editor, ""); code != 200 || body["ok"] != true {
 		t.Fatalf("uncheck: %d %+v", code, body)
 	}
-	if h.rows[0].at != nil || h.rows[0].by != nil {
-		t.Error("uncheck clears both columns")
+	if h.rows[0].at != nil || h.rows[0].by != nil || h.rows[0].nonce != nil {
+		t.Error("uncheck clears all check-in columns")
 	}
 	if code, body := post(t, "/admin/attendees/{id}/uncheck", "1", editor, ""); code != 409 || body["ok"] != false {
 		t.Errorf("not checked in: %d %+v", code, body)

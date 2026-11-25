@@ -29,7 +29,12 @@ var codePrefixRe = regexp.MustCompile(`^[0-9a-f]{4,32}$`)
 type checkinBody struct {
 	Scan       string `json:"scan"`
 	AttendeeID int64  `json:"attendee_id"`
+	// Nonce is optional: one random id per queued scan, kept with the check-in
+	// so a retry whose reply was lost can tell its own check-in from another's.
+	Nonce string `json:"nonce"`
 }
+
+var nonceRe = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
 
 // checkedIn is what a scan shows of the ticket it let in or found already in.
 type checkedIn struct {
@@ -46,6 +51,7 @@ type ticketState struct {
 	EventID    string `json:"event_id"`
 	Status     string `json:"status"`
 	Anonymised bool   `json:"anonymised"`
+	Nonce      string `json:"checked_in_nonce"`
 }
 
 // scanToken is the ticket token in what a QR code holds: the part after the
@@ -126,7 +132,8 @@ func serveCheckinScan(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 	if msg := decodeBody(r, &b); msg != "" {
 		return failReply(http.StatusBadRequest, msg)
 	}
-	if (b.Scan != "") == (b.AttendeeID != 0) || len(b.Scan) > scanMax || b.AttendeeID < 0 {
+	if (b.Scan != "") == (b.AttendeeID != 0) || len(b.Scan) > scanMax || b.AttendeeID < 0 ||
+		(b.Nonce != "" && !nonceRe.MatchString(b.Nonce)) {
 		return failReply(http.StatusBadRequest, "bad request")
 	}
 	where, key := "a.id = $1", any(b.AttendeeID)
@@ -141,12 +148,16 @@ func serveCheckinScan(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 		}
 		where, key = "a.code = $1", code
 	}
+	var nonce any // NULL when the scan sent none
+	if b.Nonce != "" {
+		nonce = b.Nonce
+	}
 	var done *checkedIn
-	err := dbJSON(`WITH u AS (UPDATE attendees a SET checked_in_at = now(), checked_in_by = $3 FROM orders o
+	err := dbJSON(`WITH u AS (UPDATE attendees a SET checked_in_at = now(), checked_in_by = $3, checked_in_nonce = $4 FROM orders o
 WHERE `+where+` AND a.event_id = $2 AND a.status = 'active' AND a.checked_in_at IS NULL
   AND o.id = a.order_id AND o.anonymised_at IS NULL
 RETURNING a.id, o.name, (SELECT t.name FROM ticket_types t WHERE t.id = a.type_id) AS type_name, a.checked_in_at, a.checked_in_by)
-SELECT coalesce((SELECT to_jsonb(u) FROM u), 'null'::jsonb)`, &done, key, eventID, u.ID)
+SELECT coalesce((SELECT to_jsonb(u) FROM u), 'null'::jsonb)`, &done, key, eventID, u.ID, nonce)
 	if err != nil {
 		return unavailable()
 	}
@@ -156,7 +167,7 @@ SELECT coalesce((SELECT to_jsonb(u) FROM u), 'null'::jsonb)`, &done, key, eventI
 	var s *ticketState
 	err = dbJSON(`SELECT coalesce((SELECT to_jsonb(x) FROM (
 SELECT a.id, CASE WHEN o.anonymised_at IS NULL THEN o.name ELSE '(removed)' END AS name, t.name AS type_name,
-  a.checked_in_at, a.checked_in_by, a.event_id, a.status, o.anonymised_at IS NOT NULL AS anonymised
+  a.checked_in_at, a.checked_in_by, coalesce(a.checked_in_nonce, '') AS checked_in_nonce, a.event_id, a.status, o.anonymised_at IS NOT NULL AS anonymised
 FROM attendees a JOIN orders o ON o.id = a.order_id JOIN ticket_types t ON t.id = a.type_id
 WHERE `+where+`) x), 'null'::jsonb)`, &s, key)
 	if err != nil {
@@ -169,6 +180,9 @@ WHERE `+where+`) x), 'null'::jsonb)`, &s, key)
 		return refused("other_event")
 	case s.Status != "active":
 		return refusedTicket(s)
+	case s.CheckedInAt != nil && b.Nonce != "" && s.Nonce == b.Nonce:
+		// This very scan checked the ticket in and its reply was lost.
+		return jsonReply(http.StatusOK, map[string]any{"ok": true, "result": "ok", "confirmed": true, "attendee": s.checkedIn})
 	case s.CheckedInAt != nil:
 		return scanAnswer("already", s.checkedIn)
 	}
@@ -191,7 +205,7 @@ func serveUncheck(u *sdk.HTTPUser, rawID string) sdk.HTTPResponse {
 	if !ok {
 		return failReply(http.StatusBadRequest, "bad id")
 	}
-	n, err := dbExecN(`UPDATE attendees SET checked_in_at = NULL, checked_in_by = NULL WHERE id = $1 AND checked_in_at IS NOT NULL`, id)
+	n, err := dbExecN(`UPDATE attendees SET checked_in_at = NULL, checked_in_by = NULL, checked_in_nonce = NULL WHERE id = $1 AND checked_in_at IS NOT NULL`, id)
 	if err != nil {
 		return unavailable()
 	}
