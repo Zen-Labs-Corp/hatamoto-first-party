@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # load-check.sh - load every plugin's build/ through the core loader at the commit pinned in
-# .hatamoto-core (package parse + the asset read install and serve run), so a file the host
-# refuses fails here. Run scripts/build-plugin.sh first. One line per plugin; exit 1 on any FAIL.
+# .hatamoto-core (package parse, the asset read install and serve run, and the template
+# registration and compile that follows), so a file or template the host refuses fails here. Run scripts/build-plugin.sh first. One line per plugin; exit 1 on any FAIL.
 # Usage: scripts/load-check.sh [plugins/<name> ...]   (default: every plugins/*/)
-# Env:   HATAMOTO_CORE_SRC  a core checkout at the pin (skips the fetch)
+# Env:   HATAMOTO_CORE_SRC  a core checkout, normally at the pin (skips the fetch); the helper is
+#        copied in for the run and removed after, and a HEAD other than the pin is said in the header
 # The core source is fetched once into ${XDG_CACHE_HOME:-~/.cache}/hatamoto-first-party/core-src-<sha>/.
 set -euo pipefail
 die() { echo "load-check: $*" >&2; exit 1; }
@@ -26,7 +27,9 @@ if [ ! -f "$src/backend/go.mod" ]; then
   mv "$tmp" "$src" 2>/dev/null || [ -f "$src/backend/go.mod" ] || die "cannot place the core source in $src"
 fi
 core=$(cat "$src/.load-check-core" 2>/dev/null || echo "${sha:0:12}")
-mkdir -p "$src/backend/cmd/fp-loadcheck"
+helper=$src/backend/cmd/fp-loadcheck
+trap 'rm -rf "$helper"' EXIT
+mkdir -p "$helper"
 cp "$root/scripts/loadcheck/main.go" "$src/backend/cmd/fp-loadcheck/main.go"
 dirs=("$@")
 [ ${#dirs[@]} -gt 0 ] || dirs=("$root"/plugins/*/)
@@ -35,6 +38,12 @@ for d in "${dirs[@]}"; do
   d=${d%/}; [[ $d = /* ]] || d=$PWD/$d
   args+=("$(basename "$d")=$d/build")
 done
-echo "load-check: core $core (.hatamoto-core pin)"
+head=$(git -C "$src" rev-parse HEAD 2>/dev/null || true)
+if [ -n "${HATAMOTO_CORE_SRC:-}" ] && [ "$head" != "$sha" ]; then
+  echo "load-check: WARNING core checkout HEAD ${head:0:12} is not the .hatamoto-core pin ${sha:0:12}" >&2
+  echo "load-check: core ${head:0:12} (NOT the pin)"
+else
+  echo "load-check: core $core (.hatamoto-core pin)"
+fi
 cd "$src/backend"
 GOWORK=off GOFLAGS= go run ./cmd/fp-loadcheck "${args[@]}"
