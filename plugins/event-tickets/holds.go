@@ -43,10 +43,11 @@ type holdResult struct {
 }
 
 // heldShareOK limits the seats that unpaid, unexpired holds may take of one
-// ticket type to max(10, half of its capacity), so unauthenticated
-// checkouts can never freeze a whole type. Counted from a snapshot, so
-// requests racing each other may overshoot by a few seats; the capacity check
-// on taken stays exact.
+// ticket type to max(10, half of its total capacity). The share is of the
+// capacity, not of the seats left: once half of a type is sold, the rest can
+// all sit in holds, and a type of 20 seats or fewer can be held in full.
+// Counted from a snapshot, so requests racing each other may overshoot by a
+// few seats; the capacity check on taken stays exact.
 const heldShareOK = `lk.held + w.qty <= greatest(10, lk.capacity / 2)`
 
 // holdCart takes the seats of every line of a cart, counts the coupon use and

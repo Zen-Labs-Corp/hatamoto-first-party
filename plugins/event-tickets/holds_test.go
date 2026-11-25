@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -307,6 +308,20 @@ func TestCountEventIgnoresLapsedHoldsInTheHourlyCap(t *testing.T) {
 	for _, want := range []string{"NOT (status IN ('expired', 'cancelled') AND paid_at IS NULL)"} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("counts lack %q", want)
+		}
+	}
+}
+
+// The hold share is of the total capacity, so it can hold a whole type; the
+// docs must not promise otherwise.
+func TestHoldShareDocsDoNotPromiseNoFreeze(t *testing.T) {
+	for _, f := range []string{"README.md", "holds.go"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(strings.ToLower(string(b)), "never freeze") {
+			t.Errorf("%s claims holds can never freeze a type", f)
 		}
 	}
 }

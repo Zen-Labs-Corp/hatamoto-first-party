@@ -79,7 +79,7 @@ Orders are anonymised the number of months set in **Keep attendee details for** 
 - Tickets are held for 15 minutes while a buyer pays. A Stripe session can stay open up to 30 minutes; a payment that arrives after the hold ended re-takes the tickets if they are still free, and is refunded otherwise.
 - One currency per site. Taxes are not calculated.
 - At most 2 unpaid holds per email address at a time; a buyer over the limit is asked to try again later. A cart that would push a type over its hold share (below) is answered as sold out for that type. A hold that lapsed or was cancelled does not count towards the 200 orders per hour an event takes.
-- Holds are unauthenticated: anyone can start a checkout, so at most half of a type's seats (at least 10) can sit in unpaid 15-minute holds at a time.
+- Holds are unauthenticated: anyone can start a checkout. At most max(10, half of a type's total capacity) seats of a type can sit in unpaid 15-minute holds at a time. That is a share of the capacity, not of the seats left: once half of a type is sold, the remaining seats can all be held, and a type of 20 seats or fewer can be held in full.
 - At most 10 tickets per booking, 10 extra questions per event.
 - QR images in emails need an absolute site address: the event's address, or the **Site address** setting.
 - Attendees cannot cancel their own tickets yet; you cancel them from the Attendees tab.
