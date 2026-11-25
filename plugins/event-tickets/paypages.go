@@ -83,8 +83,16 @@ func servePayReturn(tok string, query map[string][]string) sdk.HTTPResponse {
 		return notFound()
 	}
 	status := o.Status
-	if o.Provider == "stripe" && (status == "pending" || status == "expired") && queryValue(query["session_id"]) == o.Ref {
-		if st, err := reconcileStripe(o); err == nil && st != "" {
+	if status == "pending" || status == "expired" {
+		var st string
+		var err error
+		switch {
+		case o.Provider == "stripe" && queryValue(query["session_id"]) == o.Ref:
+			st, err = reconcileStripe(o)
+		case o.Provider == "paypal" && queryValue(query["token"]) == o.Ref:
+			st, err = reconcilePayPal(o)
+		}
+		if err == nil && st != "" {
 			status = st
 		}
 	}
@@ -111,6 +119,15 @@ func reconcileStripe(o *payOrderRow) (string, error) {
 		return "", err
 	}
 	if _, err := completePayment(o.ID, "stripe", sess.PaymentIntent, sess.AmountTotal, sess.Currency); err != nil {
+		return "", err
+	}
+	return readOrderStatus(o.ID)
+}
+
+// reconcilePayPal captures the PayPal order the buyer just approved, when the
+// hold still allows it, and returns the order's status afterwards.
+func reconcilePayPal(o *payOrderRow) (string, error) {
+	if _, err := capturePayPal(loadSettings(), o.ID, newDeadline(webhookBudget)); err != nil {
 		return "", err
 	}
 	return readOrderStatus(o.ID)

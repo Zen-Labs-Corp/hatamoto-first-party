@@ -56,3 +56,22 @@ func formatMoney(cents int64, cur string) string {
 	}
 	return decimalAmount(cents, cur) + " " + strings.ToUpper(cur)
 }
+
+// parseAmount reads a decimal amount string as minor units, the reverse of
+// decimalAmount: "12.50" is 1250 USD, "1200" is 1200 JPY. Anything that is not
+// a plain non-negative decimal with at most the currency's decimals is false.
+func parseAmount(s, cur string) (int64, bool) {
+	exp := currencyExp(cur)
+	whole, frac, dot := strings.Cut(s, ".")
+	if whole == "" || len(whole) > 12 || (dot && (frac == "" || len(frac) > exp)) {
+		return 0, false
+	}
+	frac += strings.Repeat("0", exp-len(frac))
+	for _, r := range whole + frac {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+	}
+	n, err := strconv.ParseInt(whole+frac, 10, 64)
+	return n, err == nil
+}

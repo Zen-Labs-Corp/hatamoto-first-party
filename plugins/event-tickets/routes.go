@@ -55,6 +55,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveCheckout(r), nil
 		case "/stripe/webhook":
 			return serveStripeWebhook(r), nil
+		case "/paypal/webhook":
+			return servePayPalWebhook(r), nil
 		case "/admin/events/{id}/types":
 			return serveSaveType(r, r.PathValues["id"]), nil
 		case "/admin/types/{id}/delete":

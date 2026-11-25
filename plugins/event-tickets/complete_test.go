@@ -31,7 +31,9 @@ type shop struct {
 	key      []byte
 	clock    time.Time
 	secret   string        // webhook secret
-	tick     time.Duration // the clock moves this much with every provider call
+	tick     time.Duration // the clock moves this much with every provider call (to a URL with tickOn)
+	tickOn   string
+	live     bool // the hold has not lapsed
 
 	mails    []map[string]any
 	queued   []string // kind of queued mails
@@ -49,7 +51,7 @@ const (
 func newShop(t *testing.T) *shop {
 	t.Helper()
 	w := &shop{
-		status: "pending", provider: "stripe", ref: "cs_test_1", payCode: "00112233445566778899aabbccddeeff", total: 2030, cur: "USD", attend: "pending", seats: true,
+		status: "pending", provider: "stripe", ref: "cs_test_1", payCode: "00112233445566778899aabbccddeeff", total: 2030, cur: "USD", attend: "pending", seats: true, live: true,
 		events: map[string]string{}, answers: map[string][2]string{}, key: []byte("0123456789abcdef0123456789abcdef"),
 		clock: time.Date(2027, 1, 1, 12, 0, 0, 0, time.UTC), secret: testStripeSecret,
 	}
@@ -80,7 +82,9 @@ func newShop(t *testing.T) *shop {
 			f := fetched{method: a["method"].(string), url: a["url"].(string), headers: a["headers"].(map[string]string)}
 			f.body, _ = a["body"].(string)
 			w.fetches = append(w.fetches, f)
-			w.clock = w.clock.Add(w.tick)
+			if strings.Contains(f.url, w.tickOn) {
+				w.clock = w.clock.Add(w.tick)
+			}
 			ans, ok := w.answers[f.method+" "+f.url]
 			if !ok {
 				ans = [2]string{"404", `{}`}
@@ -114,6 +118,9 @@ func newShop(t *testing.T) *shop {
 				w.status, w.paid, w.attend = "paid", true, "active"
 			}
 			return cell(jsonText(ok))
+		case strings.Contains(sql, "'live', coalesce(expires_at"):
+			return cell(`{"status":"` + w.status + `","provider":"` + w.provider + `","provider_ref":"` + w.ref + `","pay_code":"` + w.payCode + `","total_cents":` +
+				itoa(w.total) + `,"currency":"` + w.cur + `","paid":` + jsonText(w.paid) + `,"live":` + jsonText(w.live) + `}`)
 		case strings.Contains(sql, "'paid', paid_at IS NOT NULL"):
 			return cell(`{"status":"` + w.status + `","total_cents":` + itoa(w.total) + `,"currency":"` + w.cur + `","paid":` + jsonText(w.paid) + `}`)
 		case strings.Contains(sql, "total_cents = 0 RETURNING"):
@@ -135,7 +142,7 @@ func newShop(t *testing.T) *shop {
 			write()
 			ok := w.seats && (w.status == "expired" || w.status == "cancelled") && !w.paid
 			if ok {
-				w.status, w.attend = "pending", "pending"
+				w.status, w.attend, w.live = "pending", "pending", true
 			}
 			return cell(jsonText(ok))
 		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET status = 'refunded'"):
@@ -167,6 +174,11 @@ func newShop(t *testing.T) *shop {
 				return cell(`[]`)
 			}
 			return cell(`[{"code":"` + shopCode + `","type_name":"GA"}]`)
+		case strings.Contains(sql, "WHERE provider = 'paypal' AND provider_ref = $1"):
+			if w.provider == "paypal" && ar[0] == w.ref {
+				return cell(`{"id":42,"status":"` + w.status + `"}`)
+			}
+			return cell(`null`)
 		case strings.Contains(sql, "FROM orders WHERE pay_code = $1"):
 			if ar[0] != w.payCode {
 				return cell(`null`)
