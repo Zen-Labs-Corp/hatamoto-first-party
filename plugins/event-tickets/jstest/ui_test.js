@@ -350,6 +350,7 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
     const calls = [];
     const campaigns = [
       { id: 9, subject: "Last tickets", segment: { event_id: "e1", not_bought: true }, status: "sending", send_at: "2027-03-01T10:00:00Z", total: 10, sent: 4, opens: 2, clicks: 1, buys: 1 },
+      { id: 7, subject: "Later", segment: {}, status: "scheduled", send_at: "2027-03-05T14:30:00Z", total: 0, sent: 0, opens: 0, clicks: 0, buys: null },
       { id: 8, subject: "Hello", segment: {}, status: "sent", send_at: "2027-02-01T10:00:00Z", total: 0, sent: 0, opens: 0, clicks: 0, buys: null },
     ];
     const emailsCtx = (canRefund) => load({
@@ -372,11 +373,12 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
     assert.equal(ec.els["#em-hours"].value, "24");
     assert.equal(ec.els["#em-quota"].textContent, "Sends up to 22 emails every 5 minutes (site quota 360 per hour).");
     const crow = ec.els["#cm-rows"].children;
-    assert.equal(crow.length, 2);
+    assert.equal(crow.length, 3);
+    assert.equal(crow[1].children[2].textContent, "Scheduled 2027-03-05 14:30 UTC");
     same(crow[0].children.slice(0, 7).map((c) => c.textContent || c.children[0]), ["Last tickets", "Summer Jazz, not bought", "Sending", "4 / 10", "2 (50%)", "1 (25%)", "1"]);
     assert.equal(crow[0].children[7].children[0].textContent, "Cancel");
-    assert.equal(crow[1].children[7].children.length, 0, "a sent campaign has no cancel button");
-    same(crow[1].children.slice(1, 7).map((c) => c.textContent || c.children[0]), ["Everyone with a ticket", "Sent", "0 / 0", "0 (-)", "0 (-)", "n/a"]);
+    assert.equal(crow[2].children[7].children.length, 0, "a sent campaign has no cancel button");
+    same(crow[2].children.slice(1, 7).map((c) => c.textContent || c.children[0]), ["Everyone with a ticket", "Sent", "0 / 0", "0 (-)", "0 (-)", "n/a"]);
     ec.els["#em-thanks"].checked = true;
     ec.els["#em-hours"].value = "48";
     same(ec.api.automationsBody(), { changed: true, reminder: true, reminder_hours: 48, thanks: true });

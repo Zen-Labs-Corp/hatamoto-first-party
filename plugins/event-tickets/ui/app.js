@@ -43,6 +43,11 @@ function day(iso) {
   return iso ? String(iso).slice(0, 10) : "";
 }
 
+// dayTime renders an ISO instant as "2027-03-01 10:00 UTC".
+function dayTime(iso) {
+  return iso ? `${String(iso).slice(0, 10)} ${String(iso).slice(11, 16)} UTC` : "";
+}
+
 function cell(...kids) { return el("td", {}, ...kids); }
 
 function button(text, onClick, props = {}) {
@@ -1078,7 +1083,7 @@ function segmentText(seg, events = []) {
 }
 
 function statusText(c) {
-  return c.status === "scheduled" ? `Scheduled ${day(c.send_at)}` : c.status.charAt(0).toUpperCase() + c.status.slice(1);
+  return c.status === "scheduled" ? `Scheduled ${dayTime(c.send_at)}` : c.status.charAt(0).toUpperCase() + c.status.slice(1);
 }
 
 async function openEmails() {
