@@ -247,7 +247,7 @@ func TestStripeWebhookLatePayment(t *testing.T) {
 	// the refund fails: 503 so Stripe sends it again, and the event is not remembered
 	w = newShop(t)
 	w.status, w.attend, w.seats = "expired", "expired", false
-	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"500", `{}`}
+	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"402", `{}`}
 	body := w.stripeBody("evt_1", "checkout.session.completed", "paid", 2030, "usd")
 	if code, _ = w.deliver(t, body); code != 503 || w.problem != "refund_failed" || len(w.events) != 0 || len(w.mails) != 0 {
 		t.Fatalf("refund fails: %d, problem %q, events %v", code, w.problem, w.events)
@@ -290,7 +290,7 @@ func TestSecretsNeverLeave(t *testing.T) {
 	run(paid, hdr) // replay
 	bad := map[string]string{"content-type": "application/json", "stripe-signature": hdr["Stripe-Signature"] + "00"}
 	run(paid, bad) // bad signature
-	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"500", `{"error":{"message":"bad key ` + testStripeKey + ` ` + testStripeSecret + `"}}`}
+	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"402", `{"error":{"message":"bad key ` + testStripeKey + ` ` + testStripeSecret + `"}}`}
 	w2 := w
 	w2.status, w2.attend, w2.seats, w2.paid = "expired", "expired", false, false
 	late := w2.stripeBody("evt_2", "checkout.session.completed", "paid", 2030, "usd")

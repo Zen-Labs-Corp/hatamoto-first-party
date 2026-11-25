@@ -156,9 +156,10 @@ SELECT to_jsonb(EXISTS (SELECT 1 FROM o))`, &done, orderID, paymentRef)
 
 // refundLate pays a claimed late payment back in full, then records it. The
 // idempotency key is the same on every try, so a retry after a kill reuses the
-// provider's refund. When the provider refuses, the claim is released and the
-// order marked refund_failed for the owner, and the error is returned so the
-// provider sends the message again.
+// provider's refund. The order is marked refund_failed for the owner and the
+// error is returned so the provider sends the message again. The claim is
+// released only when the provider clearly refused; after a timeout or an
+// answer that was not understood it stays, because the refund may have been made.
 func refundLate(orderID int64, provider, paymentRef string, amount int64, cur string) (string, error) {
 	s := loadSettings()
 	o, err := readPayPalOrder(orderID)
@@ -179,8 +180,17 @@ func refundLate(orderID int64, provider, paymentRef string, amount int64, cur st
 		err = errRefundFailed
 	}
 	if err != nil {
-		_ = dbExec(`UPDATE orders SET refund_claimed_at = NULL, problem = 'refund_failed', payment_ref = $2
+		if errors.Is(err, errProviderRefused) || errors.Is(err, errRefundFailed) {
+			// a definite refusal: nothing was refunded, so the claim may go
+			_ = dbExec(`UPDATE orders SET refund_claimed_at = NULL, problem = 'refund_failed', payment_ref = $2
     WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL`, orderID, paymentRef)
+		} else {
+			// a timeout or an unreadable answer: the provider may have refunded, so the
+			// claim stays (retakeHold never takes the seats of a claimed order) and lapses
+			// for the retry, which asks again under the same key
+			_ = dbExec(`UPDATE orders SET problem = 'refund_failed', payment_ref = $2
+    WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL`, orderID, paymentRef)
+		}
 		return "", errRefundFailed
 	}
 	if err := finishLateRefund(orderID); err != nil {

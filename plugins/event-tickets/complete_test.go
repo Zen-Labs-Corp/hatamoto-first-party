@@ -152,6 +152,12 @@ func newShop(t *testing.T) *shop {
 			write()
 			w.problem = "amount_mismatch"
 			return nil
+		case strings.HasPrefix(sql, "UPDATE orders SET problem = 'refund_failed'"): // unknown outcome: the claim stays
+			write()
+			if (w.status == "expired" || w.status == "cancelled") && !w.paid {
+				w.problem, w.payRef = "refund_failed", ar[1].(string)
+			}
+			return nil
 		case strings.HasPrefix(sql, "UPDATE orders SET refund_claimed_at = NULL, problem = 'refund_failed'"):
 			write()
 			if (w.status == "expired" || w.status == "cancelled") && !w.paid {
@@ -171,7 +177,7 @@ func newShop(t *testing.T) *shop {
 				w.racing()
 				w.racing = nil
 			}
-			ok := w.seats && (w.status == "expired" || w.status == "cancelled") && !w.paid && w.claimLapsed()
+			ok := w.seats && (w.status == "expired" || w.status == "cancelled") && !w.paid && w.claimed.IsZero()
 			if ok {
 				w.status, w.attend, w.live = "pending", "pending", true
 			}
@@ -392,7 +398,7 @@ func TestCompletePaymentWithNoSeatsLeftPaysBack(t *testing.T) {
 func TestCompletePaymentRefundFailureIsRetried(t *testing.T) {
 	w := newShop(t)
 	w.status, w.attend, w.seats = "expired", "expired", false
-	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"500", `{"error":{"message":"` + testStripeKey + `"}}`}
+	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"402", `{"error":{"message":"` + testStripeKey + `"}}`}
 	out, err := completePayment(shopOrder, "stripe", "pi_1", 2030, "USD")
 	if err == nil || out != "" || err.Error() != errRefundFailed.Error() || strings.Contains(err.Error(), "sk_") {
 		t.Fatalf("%q %v", out, err)
@@ -512,5 +518,34 @@ func TestLateRefundWithTooLittleTimeAnswersRetry(t *testing.T) {
 	out, err := completePayment(shopOrder, "stripe", "pi_1", 2030, "USD")
 	if err == nil || out != "" || len(w.fetches) != 0 || !w.claimed.IsZero() || w.status != "expired" {
 		t.Fatalf("%q %v, %d fetches, claimed %v, order %q", out, err, len(w.fetches), w.claimed, w.status)
+	}
+}
+
+// A refund that timed out may have been made. The claim stays, so when a seat
+// frees up and the claim lapses the retry goes back to the refund path under the
+// same key: the order is never retaken, never paid, and no confirmation is sent.
+func TestLateRefundAfterATimeoutIsNeverRetaken(t *testing.T) {
+	w := newShop(t)
+	w.status, w.attend, w.seats = "expired", "expired", false
+	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"503", `{}`} // unknown outcome
+	if out, err := completePayment(shopOrder, "stripe", "pi_1", 2030, "USD"); err == nil || out != "" || w.problem != "refund_failed" {
+		t.Fatalf("%q %v problem %q", out, err, w.problem)
+	}
+	if w.claimed.IsZero() {
+		t.Fatal("an unknown outcome released the claim")
+	}
+	w.seats = true // a seat frees up
+	w.clock = w.clock.Add(3 * time.Minute)
+	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"200", `{"id":"re_1"}`}
+	out, err := completePayment(shopOrder, "stripe", "pi_1", 2030, "USD")
+	if err != nil || out != outcomeRefunded || w.status != "refunded" || w.paid || w.wrote("INSERT INTO mail_queue") != 0 {
+		t.Fatalf("retry: %q %v, order %q paid %v", out, err, w.status, w.paid)
+	}
+	refunds := w.refundCalls()
+	if len(refunds) != 2 || refunds[0].headers["Idempotency-Key"] != refunds[1].headers["Idempotency-Key"] {
+		t.Errorf("refund calls %+v", refunds)
+	}
+	if len(w.mails) != 1 || w.attend != "refunded" { // the refund mail only
+		t.Errorf("%d mails, attendees %q", len(w.mails), w.attend)
 	}
 }
