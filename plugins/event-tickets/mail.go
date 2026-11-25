@@ -26,7 +26,8 @@ const (
 
 func init() {
 	guest.OnCron("mail", func(sdk.CronEvent) error {
-		drainMail(8*time.Second, 100)
+		expireHoldsStep(2 * time.Second)
+		drainMail(6*time.Second, 100)
 		return nil
 	})
 }

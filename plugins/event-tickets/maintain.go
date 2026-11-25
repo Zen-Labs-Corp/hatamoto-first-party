@@ -137,11 +137,15 @@ func entityGone(id string) bool {
 }
 
 // repairDrift sets taken back to what the tickets and held offers add up to.
+// Pending attendees count, all of them, lapsed or not: a lapsed hold still sits
+// in taken until expireHolds flips it and gives the seat back in one statement.
+// Leaving it out here would make this statement give the seat back first and
+// expireHolds again, and an undercount sells a seat twice.
 // Only rows untouched for 10 minutes are looked at, in the subquery and again
 // in the update, so a reservation that races this statement is never undone.
 func repairDrift() {
 	_ = dbExec(`UPDATE ticket_types t SET taken = x.n FROM (
-SELECT tt.id, (SELECT count(*) FROM attendees a WHERE a.type_id = tt.id AND a.status = 'active')
+SELECT tt.id, (SELECT count(*) FROM attendees a WHERE a.type_id = tt.id AND a.status IN ('active', 'pending'))
   + (SELECT count(*) FROM waitlist w WHERE w.type_id = tt.id AND w.status = 'offered') AS n
 FROM ticket_types tt WHERE tt.touched_at < now() - interval '10 minutes') x
 WHERE t.id = x.id AND t.taken <> x.n AND t.touched_at < now() - interval '10 minutes'`)
@@ -150,6 +154,10 @@ WHERE t.id = x.id AND t.taken <> x.n AND t.touched_at < now() - interval '10 min
 // anonymise clears the personal data of orders past retention, deletes the
 // waitlist entries of those events and the queued mail that points at nothing
 // any more. The attendee rows stay: counts and ticket codes are not personal.
+// Paid orders are anonymised like free ones and keep their amounts and provider
+// ids. Abandoned checkouts (a hold that lapsed or was cancelled, never paid) are
+// deleted after 7 days, and handled payment events after 90 days. The two
+// deletes name $1 only to keep the call shape of the other steps.
 func anonymise(months int, over func() bool) {
 	steps := []string{
 		`UPDATE orders SET name = '', email = '', answers = '{}'::jsonb, anonymised_at = now()
@@ -158,8 +166,13 @@ WHERE id IN (SELECT o.id FROM orders o LEFT JOIN events e ON e.entity_id = o.eve
 		`DELETE FROM waitlist WHERE id IN (SELECT w.id FROM waitlist w LEFT JOIN events e ON e.entity_id = w.event_id
   WHERE coalesce(e.ends_at, e.starts_at, w.created_at) < now() - make_interval(months => $1) LIMIT $2)`,
 		`DELETE FROM mail_queue WHERE id IN (SELECT q.id FROM mail_queue q
-  WHERE (q.kind = 'confirm' AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = q.ref_id AND o.anonymised_at IS NULL))
-     OR (q.kind <> 'confirm' AND NOT EXISTS (SELECT 1 FROM waitlist w WHERE w.id = q.ref_id)) LIMIT $2)`,
+  WHERE (q.kind IN ('confirm', 'refund') AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = q.ref_id AND o.anonymised_at IS NULL))
+     OR (q.kind NOT IN ('confirm', 'refund') AND NOT EXISTS (SELECT 1 FROM waitlist w WHERE w.id = q.ref_id)) LIMIT $2)`,
+		`DELETE FROM orders WHERE id IN (SELECT id FROM orders
+  WHERE status IN ('expired', 'cancelled') AND paid_at IS NULL AND provider IS NOT NULL
+  AND created_at < now() - interval '7 days' AND $1::int > 0 LIMIT $2)`,
+		`DELETE FROM payment_events WHERE (provider, event_id) IN (SELECT provider, event_id FROM payment_events
+  WHERE received_at < now() - interval '90 days' AND $1::int > 0 LIMIT $2)`,
 	}
 	for _, sql := range steps {
 		for range retainBatches {
