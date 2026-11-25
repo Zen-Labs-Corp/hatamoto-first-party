@@ -156,7 +156,8 @@ WHERE t.id = x.id AND t.taken <> x.n AND t.touched_at < now() - interval '10 min
 // any more. The attendee rows stay: counts and ticket codes are not personal.
 // Paid orders are anonymised like free ones and keep their amounts and provider
 // ids. Abandoned checkouts (a hold that lapsed or was cancelled, never paid) are
-// deleted after 7 days, and handled payment events after 90 days. The two
+// deleted after 7 days, only when nothing shows that money moved: no payment or
+// capture id, no problem flag (refund_failed, amount_mismatch), nothing refunded, and handled payment events after 90 days. The two
 // deletes name $1 only to keep the call shape of the other steps.
 func anonymise(months int, over func() bool) {
 	steps := []string{
@@ -170,6 +171,7 @@ WHERE id IN (SELECT o.id FROM orders o LEFT JOIN events e ON e.entity_id = o.eve
      OR (q.kind NOT IN ('confirm', 'refund') AND NOT EXISTS (SELECT 1 FROM waitlist w WHERE w.id = q.ref_id)) LIMIT $2)`,
 		`DELETE FROM orders WHERE id IN (SELECT id FROM orders
   WHERE status IN ('expired', 'cancelled') AND paid_at IS NULL AND provider IS NOT NULL
+  AND payment_ref IS NULL AND problem IS NULL AND refunded_cents = 0
   AND created_at < now() - interval '7 days' AND $1::int > 0 LIMIT $2)`,
 		`DELETE FROM payment_events WHERE (provider, event_id) IN (SELECT provider, event_id FROM payment_events
   WHERE received_at < now() - interval '90 days' AND $1::int > 0 LIMIT $2)`,

@@ -321,9 +321,9 @@ func TestMaintainRetentionOfPaidState(t *testing.T) {
 	if o == nil {
 		t.Fatal("abandoned checkouts are never deleted")
 	}
-	for _, want := range []string{"status IN ('expired', 'cancelled')", "paid_at IS NULL", "provider IS NOT NULL", "interval '7 days'", "LIMIT $2", "$1::int"} {
+	for _, want := range []string{"status IN ('expired', 'cancelled')", "paid_at IS NULL", "provider IS NOT NULL", "payment_ref IS NULL", "problem IS NULL", "refunded_cents = 0", "interval '7 days'", "LIMIT $2", "$1::int"} {
 		if !strings.Contains(o.sql, want) {
-			t.Errorf("abandoned-order delete lacks %q", want)
+			t.Errorf("abandoned-order delete must keep orders that hold money, it lacks %q", want)
 		}
 	}
 	p := h.first("DELETE FROM payment_events")
