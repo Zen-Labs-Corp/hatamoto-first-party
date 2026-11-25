@@ -284,3 +284,38 @@ func TestManifestSDKValidate(t *testing.T) {
 		t.Errorf("core would refuse this manifest: %v", err)
 	}
 }
+
+// TestManifestWasmExports fails when the manifest needs an export that
+// exports_wasip1.go does not declare: core then skips the hook silently
+// ("cron job has no export; not scheduled").
+func TestManifestWasmExports(t *testing.T) {
+	m := loadManifest(t)
+	raw, err := os.ReadFile("exports_wasip1.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(raw)
+	has := func(name string) bool {
+		return regexp.MustCompile(`(?m)^//go:wasmexport ` + regexp.QuoteMeta(name) + `$`).MatchString(src)
+	}
+	for _, c := range m.Cron {
+		if name := "on_cron_" + c.Name; !has(name) {
+			t.Errorf("cron job %q has no //go:wasmexport %s", c.Name, name)
+		}
+	}
+	for hook := range m.Limits.HookTimeouts {
+		name := hook
+		switch {
+		case hook == "builder.data":
+			name = "filter_builder_data"
+		case strings.Contains(hook, "."):
+			name = "on_" + strings.ReplaceAll(hook, ".", "_")
+		}
+		if !has(name) {
+			t.Errorf("hook timeout %q has no //go:wasmexport %s", hook, name)
+		}
+	}
+	if len(m.Routes) > 0 && !has("http_handle") {
+		t.Error("routes are declared but there is no //go:wasmexport http_handle")
+	}
+}
