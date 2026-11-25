@@ -78,6 +78,7 @@ Orders are anonymised the number of months set in **Keep attendee details for** 
 - There is one ticket pool per event: the dates of a recurring event share it.
 - Tickets are held for 15 minutes while a buyer pays. A Stripe session can stay open up to 30 minutes; a payment that arrives after the hold ended re-takes the tickets if they are still free, and is refunded otherwise.
 - One currency per site. Taxes are not calculated.
+- At most 2 unpaid holds per email address and 20 unpaid holds per event at a time; a buyer over the limit is asked to try again later. A hold that lapsed or was cancelled does not count towards the 200 orders per hour an event takes.
 - At most 10 tickets per booking, 10 extra questions per event.
 - QR images in emails need an absolute site address: the event's address, or the **Site address** setting.
 - Attendees cannot cancel their own tickets yet; you cancel them from the Attendees tab.

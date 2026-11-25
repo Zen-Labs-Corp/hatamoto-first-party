@@ -275,3 +275,16 @@ func TestCountEventCountsOpenHolds(t *testing.T) {
 		t.Error("open holds of the address are counted")
 	}
 }
+
+func TestCountEventIgnoresLapsedHoldsInTheHourlyCap(t *testing.T) {
+	h := newHoldHost(t)
+	if _, err := countEvent("e1", "ana@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	sql := h.dbCalls()[0].sql
+	for _, want := range []string{"'open_holds'", "status = 'pending' AND expires_at > now()", "NOT (status IN ('expired', 'cancelled') AND paid_at IS NULL)"} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("counts lack %q", want)
+		}
+	}
+}
