@@ -7,7 +7,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// hashCost is the bcrypt cost. 11 measured ~180 ms per hash in wazero (the runtime core uses).
+// hashCost is the bcrypt cost. Cost 11: ~180 ms per hash in wazero (compiled), measured with
+// BenchmarkHashCost (cost 10: 90 ms, 12: 358 ms); route timeout 10 s; gates run before any hash.
 const hashCost = 11
 
 // Password length bounds in bytes; bcrypt refuses more than 72.
