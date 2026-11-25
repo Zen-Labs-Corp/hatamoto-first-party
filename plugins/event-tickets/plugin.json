@@ -4,6 +4,7 @@
   "sdk": "^0.22",
   "description": "Free tickets, RSVP, paid tickets, attendees, check-in, seating and event emails for the event-calendar plugin.",
   "permissions": ["settings", "db", "entities.read", "mail.send", "builder.data", "builder.island"],
+  "ui": { "title": "Event tickets", "entry": "index.html", "roles": ["owner", "editor"] },
   "builder_sources": [
     { "name": "tickets", "label": "Tickets of this event", "kind": "items" }
   ],

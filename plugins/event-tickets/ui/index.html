@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Event tickets</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main>
+    <h1>Event tickets</h1>
+    <nav class="tabs">
+      <button id="tab-events" type="button" class="tab">Events</button>
+      <button id="tab-attendees" type="button" class="tab">Attendees</button>
+      <button id="tab-settings" type="button" class="tab">Settings</button>
+    </nav>
+    <p id="notice" class="notice" hidden></p>
+
+    <section id="panel-events" hidden>
+      <div class="row">
+        <label>Search <input id="ev-search" type="text" maxlength="100"></label>
+        <button id="ev-go" type="button">Search</button>
+      </div>
+      <p id="ev-state" class="muted"></p>
+      <table id="ev-table" hidden>
+        <thead>
+          <tr><th>Event</th><th>Taken/Capacity</th><th>Waiting</th><th>Action</th></tr>
+        </thead>
+        <tbody id="ev-rows"></tbody>
+      </table>
+      <button id="ev-more" type="button" hidden>More</button>
+
+      <section id="ed" class="panel-box" hidden>
+        <h2 id="ed-title"></h2>
+        <div id="ed-types"></div>
+        <button id="ed-add" type="button">Add ticket type</button>
+        <h2>Questions for the buyer</h2>
+        <p class="muted">Asked once per booking, next to name and email. Up to 10.</p>
+        <div id="ed-fields"></div>
+        <div class="row">
+          <button id="ed-add-field" type="button">Add question</button>
+          <button id="ed-save-fields" type="button">Save fields</button>
+        </div>
+        <button id="ed-close" type="button">Close</button>
+      </section>
+    </section>
+
+    <section id="panel-attendees" hidden>
+      <label>Event <select id="at-event"></select></label>
+      <p id="at-state" class="muted"></p>
+      <table id="at-table" hidden>
+        <thead>
+          <tr><th>Name</th><th>Email</th><th>Ticket</th><th>Status</th><th>Booked</th><th>Action</th></tr>
+        </thead>
+        <tbody id="at-rows"></tbody>
+      </table>
+      <h2>Waitlist</h2>
+      <p id="wl-state" class="muted"></p>
+      <table id="wl-table" hidden>
+        <thead>
+          <tr><th>Name</th><th>Email</th><th>Ticket</th><th>Status</th><th>Joined</th></tr>
+        </thead>
+        <tbody id="wl-rows"></tbody>
+      </table>
+      <button id="at-more" type="button" hidden>Next page</button>
+      <h2>Export CSV</h2>
+      <p class="muted">Select the path, copy it, put your site address in front and open it in the browser while you are signed in to the admin.</p>
+      <input id="at-csv" class="copy" type="text" readonly>
+    </section>
+
+    <section id="panel-settings" hidden>
+      <table id="st-table">
+        <tbody id="st-rows"></tbody>
+      </table>
+      <p class="muted">Change these in the plugin settings form.</p>
+      <p class="muted">Attendee names and email addresses are erased the number of months above after the event ended. Ticket counts stay.</p>
+    </section>
+  </main>
+  <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
