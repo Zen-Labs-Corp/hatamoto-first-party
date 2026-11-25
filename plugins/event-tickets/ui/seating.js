@@ -96,6 +96,9 @@ const seating = (() => {
     const data = await h.api("GET", `/admin/maps/${encodeURIComponent(id)}`);
     state.map = data.map;
     state.seats = data.seats || [];
+    // the list line follows the map as sections change
+    const at = state.maps.findIndex((x) => x.id === data.map.id);
+    if (at >= 0) { state.maps[at] = data.map; renderMaps(); }
     renderEditor();
   }
 
