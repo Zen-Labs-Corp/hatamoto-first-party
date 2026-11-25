@@ -1,12 +1,12 @@
 {
   "name": "event-tickets",
   "version": "0.2.0",
-  "sdk": "^0.22",
+  "sdk": "^0.22.2",
   "description": "Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.",
   "permissions": ["settings", "db", "entities.read", "mail.send", "http.fetch", "builder.data", "builder.island"],
   "allowed_hosts": ["api.stripe.com", "api-m.paypal.com", "api-m.sandbox.paypal.com"],
   "request_headers": ["stripe-signature", "paypal-transmission-id", "paypal-transmission-time", "paypal-transmission-sig", "paypal-cert-url", "paypal-auth-algo"],
-  "ui": { "title": "Event tickets", "entry": "index.html", "roles": ["owner", "editor"] },
+  "ui": { "title": "Event tickets", "entry": "index.html", "roles": ["owner", "editor"], "allow": ["camera"] },
   "builder_sources": [
     { "name": "tickets", "label": "Tickets of this event", "kind": "items" }
   ],
@@ -53,7 +53,10 @@
     { "method": "GET", "path": "/admin/coupons", "roles": ["owner", "editor"] },
     { "method": "POST", "path": "/admin/coupons", "roles": ["owner"] },
     { "method": "POST", "path": "/admin/coupons/{id}/delete", "roles": ["owner"] },
-    { "method": "POST", "path": "/admin/events/{id}/bundles", "roles": ["owner"] }
+    { "method": "POST", "path": "/admin/events/{id}/bundles", "roles": ["owner"] },
+    { "method": "GET", "path": "/admin/events/{id}/checkin", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/events/{id}/checkin", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/attendees/{id}/uncheck", "roles": ["owner", "editor"] }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },
