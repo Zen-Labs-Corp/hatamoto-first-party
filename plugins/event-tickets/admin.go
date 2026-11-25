@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -179,8 +180,13 @@ func serveEventDetail(u *sdk.HTTPUser, id string) sdk.HTTPResponse {
 	if err != nil {
 		return unavailable()
 	}
+	maps, err := mapChoices()
+	if err != nil {
+		return unavailable()
+	}
 	reply := map[string]any{
 		"event": ev, "types": types, "fields": fields, "bundles": bundles, "default_capacity": s.DefaultCapacity,
+		"maps": maps,
 	}
 	if u.Role == "owner" {
 		splits, err := listSplits(id)
@@ -194,7 +200,9 @@ func serveEventDetail(u *sdk.HTTPUser, id string) sdk.HTTPResponse {
 
 // typeBody is the body of POST /admin/events/{id}/types. A missing waitlist
 // or on_sale means true; a missing capacity means the default capacity; a
-// missing price means free.
+// missing price means free. section_id binds the type to a seating section
+// (its capacity then comes from the section), 0 drops the binding, and a
+// missing one leaves a type as it is.
 type typeBody struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
@@ -203,6 +211,8 @@ type typeBody struct {
 	OnSale   *bool  `json:"on_sale"`
 	Position int    `json:"position"`
 	Price    *int64 `json:"price_cents"`
+
+	SectionID *int64 `json:"section_id"`
 }
 
 // serveSaveType answers POST /admin/events/{id}/types: add a ticket type, or
@@ -243,6 +253,9 @@ func serveSaveType(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 	if b.OnSale != nil {
 		t.OnSale = *b.OnSale
 	}
+	if b.SectionID != nil && *b.SectionID < 0 {
+		return failReply(http.StatusBadRequest, "bad request")
+	}
 	e, found, err := readEvent(eventID, s)
 	if err != nil {
 		return unavailable()
@@ -250,8 +263,25 @@ func serveSaveType(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 	if !found {
 		return failReply(http.StatusNotFound, "not found")
 	}
+	switch {
+	case b.SectionID == nil && b.ID != 0: // unchanged: a bound type stays bound
+		cur, err := listTypes(eventID)
+		if err != nil {
+			return unavailable()
+		}
+		if i := slices.IndexFunc(cur, func(c ticketType) bool { return c.ID == b.ID }); i >= 0 {
+			t.SectionID = cur[i].SectionID
+		}
+	case b.SectionID != nil && *b.SectionID > 0:
+		t.SectionID = b.SectionID
+	case b.SectionID != nil:
+		t.Unbind = true
+	}
 	switch err := saveType(t); {
-	case errors.Is(err, errCapacityBelowTaken), errors.Is(err, errTooManyTypes):
+	case errors.Is(err, errSeatedNeedsPrice):
+		return failReply(http.StatusUnprocessableEntity, err.Error())
+	case errors.Is(err, errCapacityBelowTaken), errors.Is(err, errTooManyTypes),
+		errors.Is(err, errOtherMap), errors.Is(err, errSectionTaken), errors.Is(err, errSectionUsed):
 		return failReply(http.StatusConflict, err.Error())
 	case errors.Is(err, errNotFound):
 		return failReply(http.StatusNotFound, "not found")

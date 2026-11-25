@@ -190,3 +190,34 @@ func serveSetBlocked(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 	}
 	return jsonReply(http.StatusOK, map[string]any{"ok": true, "changed": n})
 }
+
+// mapChoice is a map as the type rows of the event editor offer it.
+type mapChoice struct {
+	ID       int64           `json:"id"`
+	Name     string          `json:"name"`
+	Sections []sectionChoice `json:"sections"`
+}
+
+type sectionChoice struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Tier string `json:"tier"`
+}
+
+// mapChoices lists the maps with just what a type row needs to pick a section.
+func mapChoices() ([]mapChoice, error) {
+	maps, err := listMaps()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]mapChoice, 0, len(maps))
+	for _, m := range maps {
+		c := mapChoice{ID: m.ID, Name: m.Name, Sections: []sectionChoice{}}
+		for _, s := range m.Sections {
+			c.Sections = append(c.Sections, sectionChoice{s.ID, s.Name, s.Kind, s.Tier})
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}

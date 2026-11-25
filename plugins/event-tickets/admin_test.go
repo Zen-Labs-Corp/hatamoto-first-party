@@ -22,6 +22,7 @@ type adminHost struct {
 	fields     string
 	stats      string
 	exists     bool
+	bound      string // answer of the statements that bind a type to a section
 	insertRows int
 	updateRows int
 	deleteRows int
@@ -70,6 +71,10 @@ func newAdminHost(t *testing.T) *adminHost {
 			return rows(1)
 		case strings.HasPrefix(sql, "INSERT INTO events"), strings.HasPrefix(sql, "WITH d AS"):
 			return nil
+		case strings.Contains(sql, "FROM seat_maps m"):
+			return cell(`[]`)
+		case strings.HasPrefix(sql, "WITH sec AS"), strings.HasPrefix(sql, "WITH cur AS"):
+			return cell(h.bound)
 		case strings.Contains(sql, "EXISTS"):
 			return cell(jsonText(h.exists))
 		case strings.Contains(sql, "FROM ticket_types WHERE event_id"):

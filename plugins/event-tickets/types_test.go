@@ -208,3 +208,143 @@ func TestSaveTypeWithPrice(t *testing.T) {
 		t.Errorf("update %s %s", u.sql, jsonText(u.args))
 	}
 }
+
+const boundOK = `{"n":1,"section":true,"type":true,"priced":true,"one_map":true,"free":true,"movable":true,"roomy":true,"room":true}`
+
+func TestSaveBoundAdd(t *testing.T) {
+	h := newAdminHost(t)
+	h.bound = boundOK
+	code, body := post(t, "/admin/events/{id}/types", "e1", editor, `{"name":"Stalls","price_cents":2500,"capacity":999,"section_id":12}`)
+	if code != 200 {
+		t.Fatalf("%d %v", code, body)
+	}
+	c := h.sawSQL("WITH sec AS")
+	if c == nil {
+		t.Fatal("no bound statement")
+	}
+	// the form capacity never reaches the statement; the section sets it
+	if got := jsonText(c.args); got != `["e1","Stalls",true,0,2500,12,20]` {
+		t.Errorf("args %s", got)
+	}
+	for _, want := range []string{"INSERT INTO ticket_types", "sec.cap", "$5::bigint > 0", "os.map_id <> (SELECT map_id FROM sec)",
+		"o.section_id = $6", "count(*) FROM ticket_types WHERE event_id = $1) < $7", "NOT st.blocked", "waitlist"} {
+		if !strings.Contains(c.sql, want) {
+			t.Errorf("statement lacks %q", want)
+		}
+	}
+	if h.sawSQL("INSERT INTO ticket_types") != nil {
+		t.Error("the unbound insert must not run for a bound type")
+	}
+}
+
+func TestSaveBoundChange(t *testing.T) {
+	h := newAdminHost(t)
+	h.bound = boundOK
+	if code, body := post(t, "/admin/events/{id}/types", "e1", editor, `{"id":7,"name":"Stalls","price_cents":2500,"section_id":12}`); code != 200 {
+		t.Fatalf("%d %v", code, body)
+	}
+	c := h.sawSQL("WITH sec AS")
+	if got := jsonText(c.args); got != `[7,"e1","Stalls",true,0,2500,12]` {
+		t.Errorf("args %s", got)
+	}
+	for _, want := range []string{"c.section_id = $7 OR c.taken = 0", "c.taken <= s.cap", "o.id <> $1", "FOR UPDATE", "section_id = sec.id"} {
+		if !strings.Contains(c.sql, want) {
+			t.Errorf("statement lacks %q", want)
+		}
+	}
+}
+
+func TestSaveBoundRefusals(t *testing.T) {
+	cases := []struct {
+		name, answer string
+		code         int
+		text         string
+	}{
+		{"free seats", `{"n":0,"section":true,"type":true,"priced":false,"one_map":true,"free":true,"movable":true,"roomy":true}`, 422, "A seat section needs a price above zero"},
+		{"other map", `{"n":0,"section":true,"type":true,"priced":true,"one_map":false,"free":true,"movable":true,"roomy":true}`, 409, "An event uses one map; this section is on another map"},
+		{"section used", `{"n":0,"section":true,"type":true,"priced":true,"one_map":true,"free":false,"movable":true,"roomy":true}`, 409, "Another ticket type of this event already uses this section"},
+		{"sold", `{"n":0,"section":true,"type":true,"priced":true,"one_map":true,"free":true,"movable":false,"roomy":true}`, 409, "This ticket type has sold tickets; add a new type for another section"},
+		{"too small", `{"n":0,"section":true,"type":true,"priced":true,"one_map":true,"free":true,"movable":true,"roomy":false}`, 409, "capacity below tickets already taken"},
+		{"no section", `{"n":0,"section":false,"type":true,"priced":true,"one_map":true,"free":true,"movable":true,"roomy":false}`, 404, "not found"},
+		{"no type", `{"n":0,"section":true,"type":false,"priced":true,"one_map":true,"free":true,"movable":false,"roomy":false}`, 404, "not found"},
+	}
+	for _, c := range cases {
+		h := newAdminHost(t)
+		h.bound = c.answer
+		code, body := post(t, "/admin/events/{id}/types", "e1", editor, `{"id":7,"name":"Stalls","price_cents":0,"section_id":12}`)
+		if code != c.code || body["error"] != c.text {
+			t.Errorf("%s: %d %v", c.name, code, body)
+		}
+		if h.sawSQL("INSERT INTO events") != nil {
+			t.Errorf("%s: a refused save snapshots nothing", c.name)
+		}
+	}
+	h := newAdminHost(t)
+	h.bound = `{"n":0,"section":true,"priced":true,"one_map":true,"free":true,"room":false}`
+	if code, body := post(t, "/admin/events/{id}/types", "e1", editor, `{"name":"Stalls","price_cents":5,"section_id":12}`); code != 409 || body["error"] != "too many ticket types" {
+		t.Errorf("add over the cap: %d %v", code, body)
+	}
+	if code, _ := post(t, "/admin/events/{id}/types", "e1", editor, `{"name":"Stalls","section_id":-1}`); code != 400 {
+		t.Errorf("negative section: %d", code)
+	}
+}
+
+func TestSaveTypeKeepsOrDropsBinding(t *testing.T) {
+	h := newAdminHost(t)
+	h.types = `[{"id":7,"event_id":"e1","name":"Stalls","capacity":100,"taken":0,"waitlist":false,"on_sale":true,"position":0,"price_cents":2500,"section_id":12,"seated":true}]`
+	h.bound = boundOK
+	// no section_id in the body: the type stays bound
+	if code, _ := post(t, "/admin/events/{id}/types", "e1", editor, `{"id":7,"name":"Stalls","price_cents":2500}`); code != 200 {
+		t.Fatal(code)
+	}
+	if c := h.sawSQL("WITH sec AS"); c == nil || c.args[len(c.args)-1] != int64(12) {
+		t.Errorf("kept binding: %+v", c)
+	}
+	// section_id 0: unbound, only while nothing is sold
+	h = newAdminHost(t)
+	h.bound = `{"n":1,"found":true,"sold":false}`
+	if code, _ := post(t, "/admin/events/{id}/types", "e1", editor, `{"id":7,"name":"Stalls","capacity":40,"price_cents":2500,"section_id":0}`); code != 200 {
+		t.Fatal(code)
+	}
+	c := h.sawSQL("WITH cur AS")
+	if c == nil || !strings.Contains(c.sql, "section_id = NULL") || !strings.Contains(c.sql, "cur.taken = 0") {
+		t.Errorf("unbind statement: %+v", c)
+	}
+	h.bound = `{"n":0,"found":true,"sold":true}`
+	if code, body := post(t, "/admin/events/{id}/types", "e1", editor, `{"id":7,"name":"Stalls","capacity":40,"price_cents":2500,"section_id":0}`); code != 409 {
+		t.Errorf("unbind with sales: %d %v", code, body)
+	}
+}
+
+func TestUnboundUpdateNeverTouchesBoundTypes(t *testing.T) {
+	h := newAdminHost(t)
+	post(t, "/admin/events/{id}/types", "e1", editor, `{"id":7,"name":"Standard","capacity":5}`)
+	if c := h.sawSQL("UPDATE ticket_types SET name"); c == nil || !strings.Contains(c.sql, "AND section_id IS NULL") {
+		t.Errorf("the plain update must leave a bound type's capacity to its section: %+v", c)
+	}
+}
+
+func TestEventDetailOffersMaps(t *testing.T) {
+	h := newAdminHost(t)
+	h.types = `[{"id":7,"event_id":"e1","name":"Stalls","capacity":100,"taken":0,"waitlist":false,"on_sale":true,"position":0,"price_cents":2500,"section_id":12,"seated":true}]`
+	callHost0 := callHost
+	callHost = func(fn string, args, out any) error {
+		if a, _ := args.(map[string]any); strings.Contains(fmt.Sprint(a["sql"]), "FROM seat_maps m") {
+			return jsonInto(`{"rows":[[[{"id":3,"name":"Hall","seats":60,"sections":[{"id":12,"map_id":3,"kind":"grid","name":"Stalls","tier":"Std","position":0,"rows":["A"],"seats_per_row":60,"capacity":0}]}]]]}`, out)
+		}
+		return callHost0(fn, args, out)
+	}
+	code, body := get(t, "/admin/events/{id}", "e1", editor, nil)
+	maps, _ := body["maps"].([]any)
+	if code != 200 || len(maps) != 1 {
+		t.Fatalf("%d %v", code, body)
+	}
+	sec := maps[0].(map[string]any)["sections"].([]any)[0].(map[string]any)
+	if sec["name"] != "Stalls" || sec["tier"] != "Std" || sec["kind"] != "grid" || sec["id"] != float64(12) || sec["rows"] != nil {
+		t.Errorf("section choice = %v", sec)
+	}
+	ty := body["types"].([]any)[0].(map[string]any)
+	if ty["section_id"] != float64(12) || ty["seated"] != true {
+		t.Errorf("type = %v", ty)
+	}
+}
