@@ -70,7 +70,7 @@ func TestConnectNeedsConfirmation(t *testing.T) {
 		}
 	}
 	f := loginFixture(t)
-	resp := postFrom(newRegistry(nil), "/password/connect", "k-eve", "same-origin", url.Values{"password": {goodPw}, "password2": {goodPw}, "confirm": {"Eve"}})
+	resp := postFrom(newRegistry(nil), "/password/connect", "k-eve", "same-origin", url.Values{"password": {goodPw}, "password2": {goodPw}, "confirm": {" eve "}})
 	if resp.CommenterSession == nil || !resp.CommenterSession.Link || f.logins[f.byKey["k-eve"].ID] == nil {
 		t.Fatalf("confirmed connect: got %+v", resp)
 	}

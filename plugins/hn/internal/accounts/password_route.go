@@ -2,6 +2,7 @@ package accounts
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 	"hatamoto.dev/sdk"
@@ -92,7 +93,7 @@ func connectHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, err
 		// The link is permanent and core gives no proof of who holds the browser, so the
 		// member must spell out the action: their username and the new password twice.
 		f := req.Form()
-		if f.Get("confirm") != v.Username || f.Get("password") != f.Get("password2") {
+		if core.UsernameLower(strings.TrimSpace(f.Get("confirm"))) != core.UsernameLower(v.Username) || f.Get("password") != f.Get("password2") {
 			return fail(noticePwConfirm)
 		}
 		hash, err := hashPassword(f.Get("password"))
