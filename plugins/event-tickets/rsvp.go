@@ -52,11 +52,13 @@ type rsvpBody struct {
 
 // tokenType is a ticket type as the form sees it, with live counts.
 type tokenType struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Left     int    `json:"left"`
-	SoldOut  bool   `json:"sold_out"`
-	Waitlist bool   `json:"waitlist"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Left      int    `json:"left"`
+	SoldOut   bool   `json:"sold_out"`
+	Waitlist  bool   `json:"waitlist"`
+	Price     int64  `json:"price_cents"`
+	PriceText string `json:"price"`
 }
 
 func rsvpOK(extra map[string]any) sdk.HTTPResponse {
@@ -78,11 +80,13 @@ func serveToken(query map[string][]string) sdk.HTTPResponse {
 	if err != nil {
 		return failReply(http.StatusServiceUnavailable, laterError)
 	}
+	currency := loadSettings().Currency
 	out := []tokenType{}
 	for _, t := range types {
 		if t.OnSale {
 			left := max(t.Capacity-t.Taken, 0)
-			out = append(out, tokenType{ID: t.ID, Name: t.Name, Left: left, SoldOut: left == 0, Waitlist: t.Waitlist})
+			out = append(out, tokenType{ID: t.ID, Name: t.Name, Left: left, SoldOut: left == 0, Waitlist: t.Waitlist && t.Price == 0,
+				Price: t.Price, PriceText: formatMoney(t.Price, currency)})
 		}
 	}
 	if len(out) == 0 {
@@ -172,7 +176,8 @@ func serveRSVP(r sdk.HTTPRequest) sdk.HTTPResponse {
 		return failReply(http.StatusTooManyRequests, tooManyError)
 	}
 	for _, it := range items {
-		if !slices.ContainsFunc(types, func(t ticketType) bool { return t.ID == it.Type && t.OnSale }) {
+		// a priced ticket is only sold through /checkout
+		if !slices.ContainsFunc(types, func(t ticketType) bool { return t.ID == it.Type && t.OnSale && t.Price == 0 }) {
 			return failReply(http.StatusUnprocessableEntity, fieldsError)
 		}
 	}
@@ -283,7 +288,7 @@ func rsvpAbort(orderID int64, status int, soldOutTypes []int64) sdk.HTTPResponse
 // rsvpWaitlist adds the person to the waitlist of a sold-out type.
 func rsvpWaitlist(key []byte, b rsvpBody, name, email string, types []ticketType, counts eventCounts) sdk.HTTPResponse {
 	i := slices.IndexFunc(types, func(t ticketType) bool { return t.ID == b.WaitlistType })
-	if i < 0 || !types[i].OnSale || !types[i].Waitlist || types[i].Taken < types[i].Capacity {
+	if i < 0 || !types[i].OnSale || !types[i].Waitlist || types[i].Price > 0 || types[i].Taken < types[i].Capacity {
 		return failReply(http.StatusConflict, "no waitlist for this ticket")
 	}
 	if counts.Waiting >= maxWaitingPerEvent {

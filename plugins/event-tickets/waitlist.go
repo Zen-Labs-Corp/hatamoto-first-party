@@ -40,7 +40,7 @@ func promoteNext(typeID int64) (waitID int64, ok bool) {
 	var id *int64
 	err := dbJSON(`WITH w AS (SELECT id FROM waitlist WHERE type_id = $1 AND status = 'waiting' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED),
  t AS (UPDATE ticket_types SET taken = taken + 1, touched_at = now()
-    WHERE id = $1 AND on_sale AND taken + 1 <= capacity AND EXISTS (SELECT 1 FROM w)
+    WHERE id = $1 AND on_sale AND price_cents = 0 AND taken + 1 <= capacity AND EXISTS (SELECT 1 FROM w)
     AND `+eventOpenSQL("ticket_types.event_id")+` RETURNING id),
  u AS (UPDATE waitlist SET status = 'offered', offered_at = now(), expires_at = now() + interval '`+offerWindow+`'
     WHERE id = (SELECT id FROM w) AND EXISTS (SELECT 1 FROM t) RETURNING id)
@@ -114,6 +114,7 @@ func claimOffer(waitCode, ticketCode string) (orderID int64, ok bool, err error)
 		OrderID int64 `json:"order_id"`
 	}
 	err = dbJSON(`WITH w AS (UPDATE waitlist SET status = 'claimed' WHERE code = $1 AND status = 'offered' AND expires_at > now() AND `+eventOpenSQL("waitlist.event_id")+`
+    AND EXISTS (SELECT 1 FROM ticket_types t WHERE t.id = waitlist.type_id AND t.price_cents = 0)
     RETURNING id, event_id, type_id, name, email),
  o AS (INSERT INTO orders (event_id, name, email, waitlist_id) SELECT event_id, name, email, id FROM w RETURNING id, event_id),
  a AS (INSERT INTO attendees (order_id, event_id, type_id, code) SELECT o.id, o.event_id, w.type_id, $2 FROM o, w RETURNING code)

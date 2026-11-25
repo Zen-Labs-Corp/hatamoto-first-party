@@ -181,7 +181,8 @@ func serveEventDetail(u *sdk.HTTPUser, id string) sdk.HTTPResponse {
 }
 
 // typeBody is the body of POST /admin/events/{id}/types. A missing waitlist
-// or on_sale means true; a missing capacity means the default capacity.
+// or on_sale means true; a missing capacity means the default capacity; a
+// missing price means free.
 type typeBody struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
@@ -189,6 +190,7 @@ type typeBody struct {
 	Waitlist *bool  `json:"waitlist"`
 	OnSale   *bool  `json:"on_sale"`
 	Position int    `json:"position"`
+	Price    *int64 `json:"price_cents"`
 }
 
 // serveSaveType answers POST /admin/events/{id}/types: add a ticket type, or
@@ -216,6 +218,12 @@ func serveSaveType(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 	}
 	if t.Capacity < 1 || t.Capacity > maxCapacity {
 		return failReply(http.StatusBadRequest, "capacity must be between 1 and 100000")
+	}
+	if b.Price != nil {
+		t.Price = *b.Price
+	}
+	if t.Price < 0 || t.Price > maxPriceCents {
+		return failReply(http.StatusBadRequest, "price must be between 0 and 99999999")
 	}
 	if b.Waitlist != nil {
 		t.Waitlist = *b.Waitlist

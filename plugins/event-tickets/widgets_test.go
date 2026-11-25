@@ -304,7 +304,7 @@ func TestTicketsSeed(t *testing.T) {
 		}
 	}
 	// every attribute the seed reads is one the source sets, and the other way round
-	item := ticketItem(ticketType{ID: 1, EventID: "e", Name: "n", Capacity: 1})
+	item := ticketItem(ticketType{ID: 1, EventID: "e", Name: "n", Capacity: 1}, "USD")
 	for p, from := range bound {
 		if k, ok := strings.CutPrefix(from, "loop.item.attributes."); ok {
 			if _, has := item.Attrs[k]; !has {

@@ -32,6 +32,9 @@ func builderHost(t *testing.T, types string, dbErr error) *[]call {
 		a, _ := args.(map[string]any)
 		sql, _ := a["sql"].(string)
 		ar, _ := a["args"].([]any)
+		if fn == sdk.FnSettingsGet {
+			return jsonInto(`{"currency":"EUR"}`, out)
+		}
 		calls = append(calls, call{fn, sql, ar})
 		if fn != sdk.FnDBQuery || !strings.Contains(sql, "FROM ticket_types WHERE event_id") {
 			t.Fatalf("unexpected host call %s %s", fn, sql)
@@ -87,6 +90,14 @@ func TestBuilderItems(t *testing.T) {
 	// sold out with a waitlist
 	if vip.Title != "VIP" || vip.Attrs["left"] != "0" || vip.Attrs["sold_out"] != "1" || vip.Attrs["waitlist"] != "1" {
 		t.Errorf("vip = %+v", vip)
+	}
+}
+
+func TestBuilderShowsThePrice(t *testing.T) {
+	builderHost(t, `[{"id":9,"event_id":"e1","name":"Paid","capacity":3,"taken":0,"waitlist":false,"on_sale":true,"position":0,"price_cents":1250}]`, nil)
+	got, _ := runBuilder(t, ticketsQuery("e1"))
+	if p := got.Results[0].Items[0].Attrs["price"]; p != "12.50 EUR" {
+		t.Errorf("price = %q", p)
 	}
 }
 

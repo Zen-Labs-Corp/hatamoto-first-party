@@ -16,9 +16,10 @@ const (
 	maxNameRunes      = 80
 	maxCapacity       = 100000
 	maxPosition       = 1000
+	maxPriceCents     = 99999999
 )
 
-// ticketType is one kind of free ticket of an event. Left is Capacity - Taken.
+// ticketType is one kind of ticket of an event, free when Price is 0. Left is Capacity - Taken.
 type ticketType struct {
 	ID       int64  `json:"id"`
 	EventID  string `json:"event_id"`
@@ -28,6 +29,7 @@ type ticketType struct {
 	Waitlist bool   `json:"waitlist"`
 	OnSale   bool   `json:"on_sale"`
 	Position int    `json:"position"`
+	Price    int64  `json:"price_cents"` // minor units of the currency setting
 }
 
 // field is a question asked once per order.
@@ -55,7 +57,7 @@ var onSeatsFreed = promoteAll
 func listTypes(eventID string) ([]ticketType, error) {
 	out := []ticketType{}
 	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.position, t.id), '[]'::jsonb) FROM (
-SELECT id, event_id, name, capacity, taken, waitlist, on_sale, position FROM ticket_types WHERE event_id = $1) t`, &out, eventID)
+SELECT id, event_id, name, capacity, taken, waitlist, on_sale, position, price_cents FROM ticket_types WHERE event_id = $1) t`, &out, eventID)
 	return out, err
 }
 
@@ -80,13 +82,17 @@ func typeExists(id int64, eventID string) (bool, error) {
 
 // saveType adds a ticket type (t.ID 0) or changes one of the event. Changing
 // the capacity below the tickets already taken is refused; the check and the
-// write are one statement. The number of types per event is capped.
+// write are one statement. The number of types per event is capped. A priced
+// type has no waitlist: seats of a priced type are only taken by paying.
 func saveType(t ticketType) error {
+	if t.Price > 0 {
+		t.Waitlist = false
+	}
 	if t.ID == 0 {
-		n, err := dbExecN(`INSERT INTO ticket_types (event_id, name, capacity, waitlist, on_sale, position)
-SELECT $1, $2, $3, $4, $5, $6
+		n, err := dbExecN(`INSERT INTO ticket_types (event_id, name, capacity, waitlist, on_sale, position, price_cents)
+SELECT $1, $2, $3, $4, $5, $6, $8
 WHERE (SELECT count(*) FROM ticket_types WHERE event_id = $1) < $7`,
-			t.EventID, t.Name, t.Capacity, t.Waitlist, t.OnSale, t.Position, maxTypesPerEvent)
+			t.EventID, t.Name, t.Capacity, t.Waitlist, t.OnSale, t.Position, maxTypesPerEvent, t.Price)
 		if err != nil {
 			return err
 		}
@@ -95,9 +101,9 @@ WHERE (SELECT count(*) FROM ticket_types WHERE event_id = $1) < $7`,
 		}
 		return nil
 	}
-	n, err := dbExecN(`UPDATE ticket_types SET name = $3, capacity = $4, waitlist = $5, on_sale = $6, position = $7, touched_at = now()
+	n, err := dbExecN(`UPDATE ticket_types SET name = $3, capacity = $4, waitlist = $5, on_sale = $6, position = $7, price_cents = $8, touched_at = now()
 WHERE id = $1 AND event_id = $2 AND taken <= $4`,
-		t.ID, t.EventID, t.Name, t.Capacity, t.Waitlist, t.OnSale, t.Position)
+		t.ID, t.EventID, t.Name, t.Capacity, t.Waitlist, t.OnSale, t.Position, t.Price)
 	if err != nil {
 		return err
 	}
