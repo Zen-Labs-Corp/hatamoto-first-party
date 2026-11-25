@@ -584,7 +584,23 @@ func TestKeylessClaimSkipsSignupBucket(t *testing.T) {
 	wantRefusal(t, r.RunGates(core.GateSignup, anon), nSignupRate)
 	claim := gateReq(core.GateSignup, nil, "", "", "")
 	claim.Req = core.NewRequest(sdk.HTTPRequest{CommenterKey: "ck"})
+	claim.Claim = true
 	if err := r.RunGates(core.GateSignup, claim); err != nil || len(db.Execs) != 0 {
 		t.Fatalf("claim: err = %v, execs = %+v", err, db.Execs)
 	}
+}
+
+// A password sign-up by a visitor who already carries a commenter key is not a claim: without
+// client.key it still counts toward the site-wide cap.
+func TestKeylessSignupWithCommenterKeyIsCounted(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db := &fakeDB{Query: func(string, []any) (any, error) {
+		return jsonRow(map[string]any{"net_n": signupSitePerHour}), nil
+	}}
+	install(t, db)
+	r := core.NewRegistry()
+	Register(r)
+	req := gateReq(core.GateSignup, nil, "", "", "")
+	req.Req = core.NewRequest(sdk.HTTPRequest{CommenterKey: "ck"})
+	wantRefusal(t, r.RunGates(core.GateSignup, req), nSignupRate)
 }

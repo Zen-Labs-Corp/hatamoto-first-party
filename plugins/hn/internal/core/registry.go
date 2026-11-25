@@ -59,6 +59,9 @@ type GateReq struct {
 	Req    *Request
 	Target string
 	Domain string
+	// Claim marks a username claim after an email sign-in (set only by the claim route).
+	// The signup gate does not count it in the keyless site-wide bucket.
+	Claim bool
 	// Ring is set by the vote gate when the vote comes from a network that already
 	// gave this story its counted votes for the day; the caller stores the vote
 	// without counting it. Story votes only; never a refusal.

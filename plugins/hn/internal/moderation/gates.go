@@ -159,7 +159,7 @@ func gateSignup(req *core.GateReq) error {
 	net, addr := netKey(req), addrKey(req)
 	netLimit := signupNetPerHour
 	if net == "" && addr == "" {
-		if req.Req.CommenterKey != "" {
+		if req.Claim {
 			// A username claim: core verified the email session and rate-limits that sign-in,
 			// so it must not share the site-wide bucket with anonymous password sign-ups.
 			return nil
