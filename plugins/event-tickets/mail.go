@@ -358,11 +358,20 @@ type queuedMail struct {
 	Attempts int    `json:"attempts"`
 }
 
-func dueMail() ([]queuedMail, error) {
-	var rows []queuedMail
-	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(q) ORDER BY q.id), '[]'::jsonb) FROM (
-SELECT id, kind, ref_id, attempts FROM mail_queue WHERE next_at <= now() ORDER BY id LIMIT 20) q`, &rows)
-	return rows, err
+// mailLease is how long a claimed entry is hidden from other drains while it
+// is being sent.
+const mailLease = "2 minutes"
+
+// claimMail takes the oldest due entry in one statement: the lease moves its
+// next_at forward, so a drain running at the same time (the cron, an inline
+// drain, another instance) skips it. nil when nothing is due.
+func claimMail() (*queuedMail, error) {
+	var q *queuedMail
+	err := dbJSON(`WITH c AS (SELECT id FROM mail_queue WHERE next_at <= now() ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED),
+ u AS (UPDATE mail_queue m SET next_at = now() + interval '`+mailLease+`' FROM c WHERE m.id = c.id
+    RETURNING m.id, m.kind, m.ref_id, m.attempts)
+SELECT coalesce((SELECT to_jsonb(u) FROM u), 'null'::jsonb)`, &q)
+	return q, err
 }
 
 // drainMail sends queued mail in order, at most max entries within budget.
@@ -371,30 +380,24 @@ SELECT id, kind, ref_id, attempts FROM mail_queue WHERE next_at <= now() ORDER B
 // is dropped.
 func drainMail(budget time.Duration, max int) {
 	deadline := now().Add(budget)
-	for done := 0; done < max; {
-		rows, err := dueMail()
-		if err != nil || len(rows) == 0 {
+	for done := 0; done < max && !now().After(deadline); done++ {
+		q, err := claimMail()
+		if err != nil || q == nil {
 			return
 		}
-		for _, q := range rows {
-			if done >= max || now().After(deadline) {
-				return
-			}
-			done++
-			_, err := deliver(q.Kind, q.RefID)
-			var he *sdk.HostError
-			switch {
-			case err == nil:
-				_ = dbExec(`DELETE FROM mail_queue WHERE id = $1`, q.ID)
-			case errors.As(err, &he) && (he.Code == sdk.ErrRateLimited || he.Code == sdk.ErrUnavailable):
-				return
-			case q.Attempts+1 >= maxMailAttempts:
-				_ = dbExec(`DELETE FROM mail_queue WHERE id = $1`, q.ID)
-			default:
-				delay := min(mailBackoff<<q.Attempts, maxMailBackoff)
-				_ = dbExec(`UPDATE mail_queue SET attempts = attempts + 1, next_at = now() + $2 * interval '1 second' WHERE id = $1`,
-					q.ID, int64(delay/time.Second))
-			}
+		_, err = deliver(q.Kind, q.RefID)
+		var he *sdk.HostError
+		switch {
+		case err == nil:
+			_ = dbExec(`DELETE FROM mail_queue WHERE id = $1`, q.ID)
+		case errors.As(err, &he) && (he.Code == sdk.ErrRateLimited || he.Code == sdk.ErrUnavailable):
+			return // the lease runs out and the entry is tried again
+		case q.Attempts+1 >= maxMailAttempts:
+			_ = dbExec(`DELETE FROM mail_queue WHERE id = $1`, q.ID)
+		default:
+			delay := min(mailBackoff<<q.Attempts, maxMailBackoff)
+			_ = dbExec(`UPDATE mail_queue SET attempts = attempts + 1, next_at = now() + $2 * interval '1 second' WHERE id = $1`,
+				q.ID, int64(delay/time.Second))
 		}
 	}
 }

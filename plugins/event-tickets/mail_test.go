@@ -17,6 +17,8 @@ type mailHost struct {
 	order    string
 	waiting  string
 	queue    []queuedMail
+	leased   map[int64]bool
+	claims   []string
 	mailErrs []error // answers of mail.send in turn; nil = sent
 	key      string
 	mails    []map[string]any
@@ -56,12 +58,18 @@ func newMailHost(t *testing.T) *mailHost {
 			return jsonInto(`{"rows":[[`+h.order+`]]}`, out)
 		case strings.Contains(sql, "FROM waitlist w JOIN"):
 			return jsonInto(`{"rows":[[`+h.waiting+`]]}`, out)
-		case strings.Contains(sql, "FROM mail_queue WHERE next_at"):
-			rows := h.queue
-			if len(rows) > 20 {
-				rows = rows[:20]
+		case strings.Contains(sql, "FOR UPDATE SKIP LOCKED"):
+			h.claims = append(h.claims, sql)
+			for _, q := range h.queue {
+				if !h.leased[q.ID] {
+					if h.leased == nil {
+						h.leased = map[int64]bool{}
+					}
+					h.leased[q.ID] = true // the claim hides the row from the next one
+					return jsonInto(`{"rows":[[`+jsonText(q)+`]]}`, out)
+				}
 			}
-			return jsonInto(`{"rows":[[`+jsonText(rows)+`]]}`, out)
+			return jsonInto(`{"rows":[[null]]}`, out)
 		case strings.HasPrefix(sql, "DELETE FROM mail_queue"), strings.HasPrefix(sql, "UPDATE mail_queue"):
 			h.writes = append(h.writes, call{fn, sql, ar})
 			id := int64(ar[0].(int64))
@@ -273,5 +281,27 @@ func TestDrainDropsVanishedRows(t *testing.T) {
 	drainMail(1e9, 100)
 	if len(h.mails) != 0 || h.wrote("DELETE FROM mail_queue") != 1 {
 		t.Errorf("%d mails, writes %+v", len(h.mails), h.writes)
+	}
+}
+
+func TestDrainClaimsBeforeSending(t *testing.T) {
+	h := newMailHost(t)
+	h.queue = []queuedMail{{ID: 1, Kind: kindConfirm, RefID: 7}}
+	drainMail(1e9, 100)
+	if len(h.claims) == 0 {
+		t.Fatal("no claim statement")
+	}
+	for _, want := range []string{"FOR UPDATE SKIP LOCKED", "SET next_at = now() +", "RETURNING"} {
+		if !strings.Contains(h.claims[0], want) {
+			t.Errorf("claim lacks %q: %s", want, h.claims[0])
+		}
+	}
+	// a second drain while the first still holds the row finds nothing to send
+	h.queue = []queuedMail{{ID: 2, Kind: kindConfirm, RefID: 8}}
+	h.mails = nil
+	h.leased = map[int64]bool{2: true}
+	drainMail(1e9, 100)
+	if len(h.mails) != 0 {
+		t.Error("a claimed entry was sent by a second drain")
 	}
 }

@@ -65,7 +65,7 @@ func newWaitHost(t *testing.T) *waitHost {
 			h.promote = h.promote[1:]
 			return cell(v)
 		case strings.Contains(sql, "FROM mail_queue WHERE next_at"):
-			return cell(`[]`)
+			return cell(`null`)
 		case strings.Contains(sql, "FROM orders o WHERE"):
 			return cell(twoTickets)
 		case strings.HasPrefix(sql, "INSERT INTO mail_queue"), strings.HasPrefix(sql, "UPDATE orders SET mailed_at"), strings.HasPrefix(sql, "INSERT INTO events"):
