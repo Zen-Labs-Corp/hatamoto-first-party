@@ -1,6 +1,6 @@
 {
   "name": "hn",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "sdk": "^0.27",
   "description": "A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation on top of Hatamoto's core comments.",
   "permissions": ["db", "settings", "site.scripts", "entities.write.own", "comments.read", "comments.moderate", "client.key"],

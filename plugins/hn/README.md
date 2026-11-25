@@ -2,7 +2,7 @@
 
 A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation on top of Hatamoto's core comments.
 
-Status: 0.1.0 is the skeleton. It declares the whole plugin map (permissions, routes, pages, cron jobs, settings, content type), ships every migration and wires one package per phase through a single registry. Behaviour arrives phase by phase.
+Status: 1.0.0, the first release: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in. Built against core v1.4.5 and SDK v0.27.0.
 
 ## Layout
 
@@ -113,7 +113,7 @@ Public routes are served at `/p/hn/...`; admin routes need the owner.
 
 ## Permissions
 
-Declared once in 0.1.0: adding one later makes every install grant again.
+Declared once in 0.1.0 and unchanged in 1.0.0: adding one later makes every install grant again.
 
 | Permission | Used by | Why |
 |---|---|---|
