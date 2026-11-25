@@ -92,7 +92,7 @@ Written by moderation.
 | `net_bans` | `net_key` primary key, `reason`, `expires_at` null |
 | `rate_events` | `id` identity, `kind`, `key`; index `(kind, key, created_at)` |
 | `mod_log` | `id` identity, `actor`, `action`, `target`, `detail` |
-| `kills` (041) | `kind` story or comment, `target_id` uuid, `cause` flags, owner or ban, primary key `(kind, target_id)` |
+| `kills` (041) | `kind` story or comment, `target_id` uuid, `cause` flags, owner, ban or domain (042: a site ban), primary key `(kind, target_id)` |
 
 ## 050_parity
 
