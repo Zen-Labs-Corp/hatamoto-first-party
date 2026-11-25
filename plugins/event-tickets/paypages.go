@@ -38,6 +38,7 @@ type payOrderRow struct {
 	Ref      string `json:"provider_ref"`
 	EventID  string `json:"event_id"`
 	PayCode  string `json:"pay_code"`
+	Charged  bool   `json:"charged"` // paid_at is set: money may have moved
 }
 
 // orderByToken verifies a return or cancel token and reads its order.
@@ -51,7 +52,7 @@ func orderByToken(tok string) (key []byte, o *payOrderRow, ok bool) {
 		return nil, nil, false
 	}
 	err = dbJSON(`SELECT coalesce((SELECT jsonb_build_object('id', id, 'status', status, 'provider', coalesce(provider, ''),
-    'provider_ref', coalesce(provider_ref, ''), 'event_id', event_id, 'pay_code', pay_code)
+    'provider_ref', coalesce(provider_ref, ''), 'event_id', event_id, 'pay_code', pay_code, 'charged', paid_at IS NOT NULL)
 FROM orders WHERE pay_code = $1), 'null'::jsonb)`, &o, payCode)
 	if err != nil || o == nil {
 		return nil, nil, false
@@ -106,6 +107,9 @@ func servePayReturn(tok string, query map[string][]string) sdk.HTTPResponse {
 		return htmlPage(http.StatusOK, pageData{Title: "Confirming your payment", Lines: []string{
 			"We are confirming your payment. Your tickets are sent by email as soon as it is confirmed. This page can be reloaded.",
 		}, Links: back})
+	}
+	if status == "cancelled" && o.Charged { // cancelled after it was paid: never say nothing was charged
+		return htmlPage(http.StatusOK, pageData{Title: "Order cancelled", Lines: []string{"This order was cancelled. If you paid, ask the organiser about a refund."}, Links: back})
 	}
 	return htmlPage(http.StatusOK, pageData{Title: "Reservation ended", Lines: []string{"Your reservation ended. You were not charged."}, Links: back})
 }
@@ -172,6 +176,8 @@ func servePayCancel(tok string) sdk.HTTPResponse {
 	title, line := "Payment cancelled", "Your payment was cancelled and you were not charged."
 	if st == "paid" || st == "refunded" {
 		title, line = "Order already paid", "This order was already paid, so it was not cancelled. Use the link in your confirmation email."
+	} else if st == "cancelled" && o.Charged {
+		title, line = "Order cancelled", "This order was cancelled. If you paid, ask the organiser about a refund."
 	}
 	return htmlPage(http.StatusOK, pageData{Title: title, Lines: []string{line}, Links: back})
 }

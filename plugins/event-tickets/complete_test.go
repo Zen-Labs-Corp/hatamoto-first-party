@@ -197,7 +197,7 @@ func newShop(t *testing.T) *shop {
 			if ar[0] != w.payCode {
 				return cell(`null`)
 			}
-			return cell(`{"id":42,"status":"` + w.status + `","provider":"` + w.provider + `","provider_ref":"` + w.ref + `","event_id":"e1","pay_code":"` + w.payCode + `"}`)
+			return cell(`{"id":42,"status":"` + w.status + `","provider":"` + w.provider + `","provider_ref":"` + w.ref + `","event_id":"e1","pay_code":"` + w.payCode + `","charged":` + jsonText(w.paid) + `}`)
 		}
 		t.Errorf("unexpected host call %q %q", fn, sql)
 		return nil

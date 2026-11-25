@@ -114,6 +114,18 @@ func TestReturnPageByStatus(t *testing.T) {
 	}
 }
 
+// An order cancelled after it was paid is not "not charged", on either page.
+func TestPayPagesDoNotDenyAChargeOnACancelledPaidOrder(t *testing.T) {
+	w := newShop(t)
+	w.status, w.paid = "cancelled", true
+	for _, pattern := range []string{"/return/{token}", "/cancel/{token}"} {
+		r := w.page(t, pattern, w.orderToken(), nil)
+		if r.Status != 200 || strings.Contains(r.Body, "not charged") || !strings.Contains(r.Body, "If you paid") {
+			t.Errorf("%s: %d %s", pattern, r.Status, r.Body)
+		}
+	}
+}
+
 func TestPayPagesRefuseForgedTokens(t *testing.T) {
 	w := newShop(t)
 	good := w.orderToken()
