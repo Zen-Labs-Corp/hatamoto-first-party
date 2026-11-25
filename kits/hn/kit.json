@@ -259,6 +259,48 @@
           }
         }
       ]
+    },
+    {
+      "slug": "faq",
+      "name": "FAQ",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "content",
+          "props": {
+            "headline": "Frequently asked questions",
+            "body": "<h3>How are stories ranked?</h3><p>By points and age: a story with more points ranks higher, and every story sinks as it gets older.</p><h3>What is karma?</h3><p>The points your stories and comments have earned. It is shown on your profile.</p><h3>Why can I not flag yet?</h3><p>Flagging needs some karma, and the site sets how much. Earn karma with good stories and comments.</p><h3>What does [dead] mean?</h3><p>A story or comment that was flagged by members or removed by a moderator. Turn on showdead in your profile to see dead items; you can vouch for a dead item if you have enough karma.</p><h3>What is noprocrast?</h3><p>A profile setting that locks you out of the site for a while after a visit of the length you choose, to help you stay away.</p><h3>What are favorites and hide?</h3><p>Favorite a story or comment to keep it on your favorites list. Hide a story to remove it from your lists.</p><h3>How does my account work?</h3><p>An account is a username and a password. An email address is optional, is never shown to anyone, and nothing is sent to it. Use log out everywhere on your profile to sign every browser out.</p><h3>Can I read the site as data?</h3><p>Yes, see the API page.</p>"
+          }
+        }
+      ]
+    },
+    {
+      "slug": "lists",
+      "name": "Lists",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "content",
+          "props": {
+            "headline": "Lists",
+            "body": "<ul><li><a href=\"/front\">front</a>: Past front pages, day by day</li><li><a href=\"/best\">best</a>: The best stories</li><li><a href=\"/newest\">newest</a>: The newest stories</li><li><a href=\"/newcomments\">newcomments</a>: The newest comments</li><li><a href=\"/ask\">ask</a>: Ask posts</li><li><a href=\"/show\">show</a>: Show posts</li><li><a href=\"/jobs\">jobs</a>: Jobs</li><li><a href=\"/search\">search</a>: Search stories and comments</li></ul>"
+          }
+        }
+      ]
+    },
+    {
+      "slug": "api-docs",
+      "name": "API",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "content",
+          "props": {
+            "headline": "API",
+            "body": "<p>A read-only JSON API and RSS feeds. They show only what a signed-out visitor sees.</p><ul><li><code>/p/hn/api/feed/{name}?p=N</code>: a page of a feed. Answer: <code>{\"items\":[...],\"page\":N,\"has_more\":bool}</code></li><li><code>/p/hn/api/item/{number}</code>: one item. Answer: <code>{\"id\",\"type\",\"title\",\"url\",\"text\",\"by\",\"points\",\"comments\",\"created_at\"}</code></li><li><code>/p/hn/api/user/{name}</code>: one member. Answer: <code>{\"name\",\"created_at\",\"karma\",\"about\"}</code></li><li><code>/p/hn/rss?feed=news|newest|ask|show|jobs|best</code>: RSS 2.0, 30 items.</li></ul><p>An unknown feed, item or user answers 404 <code>{\"error\":\"not found\"}</code>.</p>"
+          }
+        }
+      ]
     }
   ],
   "menus": [
@@ -293,6 +335,28 @@
         {
           "label": "submit",
           "url": "/submit"
+        }
+      ]
+    },
+    {
+      "location": "footer",
+      "name": "Footer",
+      "items": [
+        {
+          "label": "Guidelines",
+          "url": "/guidelines"
+        },
+        {
+          "label": "FAQ",
+          "url": "/faq"
+        },
+        {
+          "label": "Lists",
+          "url": "/lists"
+        },
+        {
+          "label": "API",
+          "url": "/api-docs"
         }
       ]
     }

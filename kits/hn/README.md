@@ -7,11 +7,16 @@ details: [../../plugins/hn/README.md](../../plugins/hn/README.md).
 ## What it creates
 
 - Content type **Stories** (`hn-story`), addressed as `/item/<number>`.
-- 16 pages: News, Newest, Past, Best, Ask, Show, Jobs, From, Submit, Comments,
-  Threads, Login, User, Favorites, Search and Guidelines. One page per path the
-  plugin serves, so the plugin fills each one.
+- 19 pages: News, Newest, Past, Best, Ask, Show, Jobs, From, Submit, Comments,
+  Threads, Login, User, Favorites, Search, Guidelines, FAQ, Lists and API. One page per
+  path the plugin serves, so the plugin fills each one; the last three are plain text.
 - Header menu: new, past, comments, ask, show, jobs, submit.
+- Footer menu: Guidelines, FAQ, Lists, API. On a site whose footer location already holds
+  a menu, the kit keeps it: add the items by hand.
 - The `hn` plugin and the `hn-classic` theme, from the registry.
+
+Security, Legal and Contact are not included: their text depends on who runs the site.
+Write them as pages and add them to the Footer menu in the admin.
 
 ## What the owner ticks on the review screen
 
