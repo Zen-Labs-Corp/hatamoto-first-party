@@ -21,6 +21,9 @@ func onEntityPublishedExport() int32 { return guest.Run(sdk.EntityPublished.Expo
 //go:wasmexport on_entity_deleted
 func onEntityDeletedExport() int32 { return guest.Run(sdk.EntityDeleted.Export()) }
 
+//go:wasmexport on_cron_mail
+func onCronMailExport() int32 { return guest.Run(guest.CronExport("mail")) }
+
 //go:wasmexport http_handle
 func httpHandle() int32 { return guest.Run(guest.HTTPExport) }
 

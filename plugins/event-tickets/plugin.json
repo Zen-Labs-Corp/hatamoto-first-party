@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "sdk": "^0.22",
   "description": "Free tickets, RSVP, paid tickets, attendees, check-in, seating and event emails for the event-calendar plugin.",
-  "permissions": ["settings", "db", "entities.read"],
+  "permissions": ["settings", "db", "entities.read", "mail.send"],
   "limits": {
     "memory_pages": 256,
     "max_instances": 4,
@@ -12,7 +12,8 @@
       "entity.created": 5000,
       "entity.updated": 5000,
       "entity.published": 5000,
-      "entity.deleted": 5000
+      "entity.deleted": 5000,
+      "on_cron_mail": 10000
     }
   },
   "routes": [
@@ -24,6 +25,9 @@
     { "method": "GET", "path": "/admin/settings", "roles": ["owner", "editor"] },
     { "method": "GET", "path": "/ticket/{token}", "public": true },
     { "method": "GET", "path": "/ticket/{token}/qr.png", "public": true }
+  ],
+  "cron": [
+    { "name": "mail", "every": "5m" }
   ],
   "settings_schema": {
     "type": "object",
