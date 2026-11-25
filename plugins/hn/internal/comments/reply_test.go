@@ -179,3 +179,73 @@ func TestReplyPageLowercasesID(t *testing.T) {
 		t.Errorf("content: %+v", c)
 	}
 }
+
+func replyHTML(t *testing.T, reg *core.Registry, key, id string) string {
+	t.Helper()
+	b, _ := replyBlock(t, replyCtx(t, reg, key, map[string]string{"id": id}))
+	out := renderBlock(t, parseSections(t), b)
+	return out[strings.Index(out, "</style>")+len("</style>"):] // the shared style names every class
+}
+
+func TestReplySectionForm(t *testing.T) {
+	replyFake(t)
+	out := replyHTML(t, newRegistry(nil), "k1", cid(3))
+	for _, want := range []string{
+		`action="/-/comments/` + eid1 + `"`, `data-hm-cform`, `name="hm_ct" value="__hmcf_tok__"`, `name="parent" value="` + cid(3) + `"`,
+		`name="__hmcf_body__"`, `data-hn-reply`, `name="__hmcf_hp__"`, `>reply</button>`, `>context</a>`,
+		`on: <a href="/item/7">Seven</a>`, `<a href="/item/7?id=` + cid(2) + `">parent</a>`, `▲`, `<p>b 0003</p>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s in %s", want, out)
+		}
+	}
+	for _, bad := range []string{`<textarea`, `__hmcf_name__`, `__hmcf_email__`, `>reply</a>`, `hn-login`} {
+		if strings.Contains(out, bad) {
+			t.Errorf("unexpected %s in %s", bad, out)
+		}
+	}
+	if n := strings.Count(out, "data-hm-cform"); n != 1 {
+		t.Errorf("%d marked forms, want 1", n)
+	}
+}
+
+func TestReplySectionFlagButton(t *testing.T) {
+	replyFake(t)
+	r := core.NewRegistry()
+	r.Register("accounts", func(*core.Registry) {})
+	r.Register("stories", func(*core.Registry) {})
+	r.Register("comments", Register)
+	r.Register("moderation", func(r *core.Registry) {
+		r.RowActions(func(*core.User, core.Item) []core.Action {
+			return []core.Action{{Label: "flag", Href: "/p/hn/flag/comment/x", Class: "hn-flag", Post: true}}
+		})
+	})
+	if out := replyHTML(t, r, "k1", cid(3)); !strings.Contains(out, `action="/p/hn/flag/comment/x"><button type="submit" class="hn-flag">flag</button>`) {
+		t.Errorf("no flag button: %s", out)
+	}
+}
+
+func TestReplySectionStates(t *testing.T) {
+	f := replyFake(t)
+	out := replyHTML(t, newRegistry(nil), "k9", cid(3))
+	if !strings.Contains(out, `pick a username</a>`) || strings.Contains(out, "data-hm-cform") || !strings.Contains(out, `id="c-`+cid(3)+`"`) {
+		t.Errorf("noname: %s", out)
+	}
+	out = replyHTML(t, newRegistry(nil), "", cid(3))
+	if !strings.Contains(out, `action="`+core.LoginAction+`"`) || !strings.Contains(out, `name="next" value="/reply?id=`+cid(3)+`"`) || strings.Contains(out, "data-hm-cform") {
+		t.Errorf("signed out: %s", out)
+	}
+	out = replyHTML(t, newRegistry(nil), "k1", "not-a-uuid")
+	if !strings.Contains(out, "No such item.") || strings.Contains(out, "hn-c") || strings.Contains(out, "data-hm-cform") {
+		t.Errorf("none: %s", out)
+	}
+	st := f.subtrees[cid(3)]
+	st.Ancestors = make([]sdk.CommentItem, replyMaxDepth-1)
+	f.subtrees[cid(3)] = st
+	for _, key := range []string{"k1", ""} {
+		out = replyHTML(t, newRegistry(nil), key, cid(3))
+		if !strings.Contains(out, `id="c-`+cid(3)+`"`) || strings.Contains(out, "data-hm-cform") || strings.Contains(out, "hn-login") || strings.Contains(out, "pick a username") {
+			t.Errorf("deep (%q): %s", key, out)
+		}
+	}
+}
