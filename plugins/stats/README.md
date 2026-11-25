@@ -37,8 +37,8 @@ site that receives the pings (hatamoto.dev).
   counts are summed over the month. The install IDs are kept in those monthly rows
   with no end date.
 - **Who sees it**: only the site owner, as totals on the plugin's admin page, plus
-  a Sites table listing the hosts that reported one in the last 30 days (host,
-  version, last seen; no install ID). The Sites list is self-reported and
+  an Active installs table listing every install seen in the last 30 days (host
+  when one was reported, version, channel, last seen; no install ID). The host is self-reported and
   unverified: any install can send any valid name. It is display-only; the plugin
   never fetches or links a host. `host` is the name the install reports, which may
   be a private name. There is no public stats page, no
@@ -93,9 +93,10 @@ stats documentation on https://hatamoto.dev/docs.
   core version is its error count divided by the install-days that listed it. The
   jump flag marks a plugin on a core version when at least 3 installs report it
   there, its rate is above zero and at least twice the rate on the next lower
-  core version with data in the window. It also returns `sites`: per install its
-  newest report that carried a host in the last 30 days (whatever `days` says),
-  newest first, at most 200 rows, as host, version and last seen.
+  core version with data in the window. It also returns `sites`: every install
+  active in the last 30 days (whatever `days` says) with the version, channel and
+  day of its newest ping and the host of its newest report that carried one (`""`
+  when none did), newest first, installs with a host first, at most 1,000 rows.
 - **Rollup**: the `rollup` cron job (hourly) folds months older than the
   retention window, oldest first, up to 3 months per run. It is a cron job, so it
   only runs while Hatamoto's background worker is running; the clock restarts
@@ -140,8 +141,8 @@ stable channel. It is not listed in the public plugin registry.
 ## Limits
 
 - The overview is ten queries (headline, channels, versions, trend, and six for
-  detailed reports, the last the Sites list) and builds the splits and the jump flag in the plugin. The
-  detailed queries return at most 1,000 rows each (Sites: 200) and have not been measured at
+  detailed reports, the last the Active installs list) and builds the splits and the jump flag in the plugin. The
+  detailed queries return at most 1,000 rows each (the Active installs list too) and have not been measured at
   scale.
 - The first four queries (headline, channels, versions, trend) were measured on a
   local PostgreSQL with 10,000 installs that pinged every day for 13 months (about 4 million daily rows, the worst
