@@ -23,6 +23,10 @@ type fakeUsers struct {
 
 	setViewer    []sdk.CommentViewerArgs
 	setViewerErr error
+
+	ensured    []string          // accounts passed to comments.identity.ensure, in order
+	ensureErr  error             // answer of every ensure call when set
+	ensureKeys map[string]string // per-account key override; default "ck-"+account
 }
 
 var fakeCreated = time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC)
@@ -107,6 +111,19 @@ func installFake(t *testing.T) *fakeUsers {
 				return map[string]any{"rows": [][]any{}}, nil
 			}
 			return coretest.Rows(u), nil
+		},
+		sdk.FnCommentsIdentityEnsure: func(raw json.RawMessage) (any, error) {
+			var a sdk.CommentsIdentityArgs
+			_ = json.Unmarshal(raw, &a)
+			f.ensured = append(f.ensured, a.Account)
+			if f.ensureErr != nil {
+				return nil, f.ensureErr
+			}
+			key := "ck-" + a.Account
+			if k, ok := f.ensureKeys[a.Account]; ok {
+				key = k
+			}
+			return sdk.CommentsIdentityEnsured{CommenterKey: key}, nil
 		},
 		sdk.FnCommentsSetViewer: func(raw json.RawMessage) (any, error) {
 			var a sdk.CommentViewerArgs

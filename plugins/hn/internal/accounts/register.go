@@ -25,6 +25,7 @@ const (
 	noticeTryAgain      core.Notice = "try_again"
 	noticeWelcome       core.Notice = "welcome"
 	noticeProfileSaved  core.Notice = "profile_saved"
+	noticePwBad         core.Notice = "pw_bad"
 )
 
 // Register adds this phase's handlers to r. plugin.go calls it once, in phase order.
@@ -38,9 +39,11 @@ func Register(r *core.Registry) {
 	core.DefineNotice(noticeTryAgain, "Something went wrong, try again.")
 	core.DefineNotice(noticeWelcome, "Welcome! Your account is ready.")
 	core.DefineNotice(noticeProfileSaved, "Profile updated.")
+	core.DefineNotice(noticePwBad, "Passwords are 8 to 72 characters.")
 
 	r.Route("POST /username", claimHandler(r))
 	r.Route("POST /profile", profileHandler)
+	r.Route("POST /signup", sessionRoute(signupHandler(r)))
 	r.Draft(draftName)
 	r.PageAll(userbar)
 	r.Page("/login", loginPage)
