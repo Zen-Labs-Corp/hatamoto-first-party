@@ -25,6 +25,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveEventDetail(r.User, r.PathValues["id"]), nil
 		case "/admin/settings":
 			return serveSettings(r.User), nil
+		case "/ticket/{token}":
+			return serveTicket(r.PathValues["token"]), nil
+		case "/ticket/{token}/qr.png":
+			return serveTicketQR(r.PathValues["token"]), nil
 		}
 	}
 	if r.Method == http.MethodPost {
