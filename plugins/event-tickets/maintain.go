@@ -175,6 +175,9 @@ WHERE id IN (SELECT o.id FROM orders o LEFT JOIN events e ON e.entity_id = o.eve
   AND created_at < now() - interval '7 days' AND $1::int > 0 LIMIT $2)`,
 		`DELETE FROM payment_events WHERE (provider, event_id) IN (SELECT provider, event_id FROM payment_events
   WHERE received_at < now() - interval '90 days' AND $1::int > 0 LIMIT $2)`,
+		`DELETE FROM payouts WHERE id IN (SELECT id FROM payouts WHERE paid_on < (now() - make_interval(months => $1))::date LIMIT $2)`,
+		`DELETE FROM split_rules WHERE id IN (SELECT r.id FROM split_rules r JOIN events e ON e.entity_id = r.event_id
+  WHERE coalesce(e.ends_at, e.starts_at) < now() - make_interval(months => $1) LIMIT $2)`,
 	}
 	for _, sql := range steps {
 		for range retainBatches {

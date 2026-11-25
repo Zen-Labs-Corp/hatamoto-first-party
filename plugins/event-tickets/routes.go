@@ -88,6 +88,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveSaveFields(r, r.PathValues["id"]), nil
 		case "/admin/events/{id}/bundles":
 			return serveSaveBundles(r, r.PathValues["id"]), nil
+		case "/admin/events/{id}/splits":
+			return serveSaveSplits(r, r.PathValues["id"]), nil
 		case "/admin/orders/{id}/refund":
 			return serveRefund(r, r.PathValues["id"]), nil
 		case "/admin/orders/{id}/cancel":

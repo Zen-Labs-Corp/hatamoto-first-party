@@ -340,3 +340,17 @@ func TestMaintainRetentionOfPaidState(t *testing.T) {
 		}
 	}
 }
+
+// Payout records and split rules hold payout addresses: they follow the retention setting.
+func TestMaintainRetentionOfPayouts(t *testing.T) {
+	h := newMaintainHost(t)
+	maintain(maintainBudget)
+	p := h.first("DELETE FROM payouts")
+	if p == nil || !strings.Contains(p.sql, "paid_on < (now() - make_interval(months => $1))::date") || !strings.Contains(p.sql, "LIMIT $2") {
+		t.Errorf("payout records are deleted after the retention months: %+v", p)
+	}
+	s := h.first("DELETE FROM split_rules")
+	if s == nil || !strings.Contains(s.sql, "coalesce(e.ends_at, e.starts_at)") || !strings.Contains(s.sql, "LIMIT $2") {
+		t.Errorf("split rules of past events are deleted: %+v", s)
+	}
+}

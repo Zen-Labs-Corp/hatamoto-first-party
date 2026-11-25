@@ -56,7 +56,8 @@
     { "method": "POST", "path": "/admin/events/{id}/bundles", "roles": ["owner"] },
     { "method": "GET", "path": "/admin/events/{id}/checkin", "roles": ["owner", "editor"] },
     { "method": "POST", "path": "/admin/events/{id}/checkin", "roles": ["owner", "editor"] },
-    { "method": "POST", "path": "/admin/attendees/{id}/uncheck", "roles": ["owner", "editor"] }
+    { "method": "POST", "path": "/admin/attendees/{id}/uncheck", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/events/{id}/splits", "roles": ["owner"] }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },
