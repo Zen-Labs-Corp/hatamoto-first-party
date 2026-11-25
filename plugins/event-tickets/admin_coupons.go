@@ -9,7 +9,7 @@ import (
 	"hatamoto.dev/sdk"
 )
 
-// Coupons and bundle rules, edited from the admin page by the owner and editor.
+// Coupons and bundle rules, listed for the owner and editor, changed by the owner only: a discount is money.
 
 const maxBundleRules = 10
 
@@ -74,7 +74,7 @@ SELECT id, code, kind, value, coalesce(event_id, '') AS event_id, coalesce(type_
 
 // serveSaveCoupon answers POST /admin/coupons. A code that is taken is a 409.
 func serveSaveCoupon(r sdk.HTTPRequest) sdk.HTTPResponse {
-	if r.User == nil {
+	if r.User == nil || r.User.Role != "owner" {
 		return forbidden()
 	}
 	var b couponBody
@@ -146,7 +146,7 @@ SELECT jsonb_build_object('id', (SELECT id FROM u), 'exists', EXISTS (SELECT 1 F
 // serveDeleteCoupon answers POST /admin/coupons/{id}/delete. A coupon that was
 // used stays in the orders' history: it is switched off instead of deleted.
 func serveDeleteCoupon(u *sdk.HTTPUser, rawID string) sdk.HTTPResponse {
-	if u == nil {
+	if u == nil || u.Role != "owner" {
 		return forbidden()
 	}
 	id, ok := parseID(rawID)
@@ -181,7 +181,7 @@ type bundleBody struct {
 // serveSaveBundles answers POST /admin/events/{id}/bundles with the event's
 // whole rule list, and answers the saved rules.
 func serveSaveBundles(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
-	if r.User == nil {
+	if r.User == nil || r.User.Role != "owner" {
 		return forbidden()
 	}
 	if !idOK(eventID) {

@@ -126,8 +126,9 @@ func TestManifest(t *testing.T) {
 		{"GET", "/admin/coupons", false}, {"POST", "/admin/coupons", false}, {"POST", "/admin/coupons/{id}/delete", false},
 		{"POST", "/admin/events/{id}/bundles", false},
 	}
-	// Refund and order cancel move money or tickets: the owner only (the handlers check again).
-	ownerOnly := map[string]bool{"/admin/orders/{id}/refund": true, "/admin/orders/{id}/cancel": true}
+	// Refund, order cancel, coupon changes and bundle rules move or give away money: the owner only (the handlers check again).
+	ownerOnly := map[string]bool{"/admin/orders/{id}/refund": true, "/admin/orders/{id}/cancel": true,
+		"/admin/coupons/{id}/delete": true, "/admin/events/{id}/bundles": true}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
 	}
@@ -137,7 +138,7 @@ func TestManifest(t *testing.T) {
 			t.Errorf("route %d = %+v, want %+v", i, r, w)
 		}
 		wantRoles := []string{"owner", "editor"}
-		if ownerOnly[w.path] {
+		if ownerOnly[w.path] || (w.method == "POST" && w.path == "/admin/coupons") {
 			wantRoles = []string{"owner"}
 		}
 		if !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {

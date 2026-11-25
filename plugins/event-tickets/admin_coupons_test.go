@@ -60,7 +60,7 @@ func (h *couponAdminHost) stmt(prefix string) *call {
 
 func TestSaveCouponInsert(t *testing.T) {
 	h := newCouponAdminHost(t)
-	code, body := post(t, "/admin/coupons", "", editor, `{"code":" summer10 ","kind":"percent","value":10,"max_uses":100,"expires_at":"2027-06-30"}`)
+	code, body := post(t, "/admin/coupons", "", owner, `{"code":" summer10 ","kind":"percent","value":10,"max_uses":100,"expires_at":"2027-06-30"}`)
 	if code != 200 || body["id"] != float64(5) {
 		t.Fatalf("%d %v", code, body)
 	}
@@ -74,7 +74,7 @@ func TestSaveCouponInsert(t *testing.T) {
 func TestSaveCouponUpdateAndConflicts(t *testing.T) {
 	h := newCouponAdminHost(t)
 	body := `{"id":5,"code":"SUMMER10","kind":"fixed","value":500,"event_id":"e1","type_id":3,"active":false,"expires_at":"2027-06-30T10:00:00+02:00"}`
-	if code, _ := post(t, "/admin/coupons", "", editor, body); code != 200 {
+	if code, _ := post(t, "/admin/coupons", "", owner, body); code != 200 {
 		t.Fatalf("update: %d", code)
 	}
 	st := h.stmt("WITH u AS (UPDATE coupons SET code")
@@ -82,19 +82,19 @@ func TestSaveCouponUpdateAndConflicts(t *testing.T) {
 		t.Fatalf("args %+v", st)
 	}
 	h.save = `{"id":null,"exists":true}`
-	if code, _ := post(t, "/admin/coupons", "", editor, body); code != 409 {
+	if code, _ := post(t, "/admin/coupons", "", owner, body); code != 409 {
 		t.Errorf("taken code on update: %d", code)
 	}
 	h.save = `{"id":null,"exists":false}`
-	if code, _ := post(t, "/admin/coupons", "", editor, body); code != 404 {
+	if code, _ := post(t, "/admin/coupons", "", owner, body); code != 404 {
 		t.Errorf("unknown coupon: %d", code)
 	}
 	h.save = `{"id":null,"exists":true}`
-	if code, _ := post(t, "/admin/coupons", "", editor, `{"code":"SUMMER10","kind":"percent","value":10}`); code != 409 {
+	if code, _ := post(t, "/admin/coupons", "", owner, `{"code":"SUMMER10","kind":"percent","value":10}`); code != 409 {
 		t.Errorf("taken code on insert: %d", code)
 	}
 	h.save = `{"id":null,"exists":false}`
-	if code, _ := post(t, "/admin/coupons", "", editor, `{"code":"SUMMER10","kind":"percent","value":10,"type_id":99}`); code != 400 {
+	if code, _ := post(t, "/admin/coupons", "", owner, `{"code":"SUMMER10","kind":"percent","value":10,"type_id":99}`); code != 400 {
 		t.Errorf("type of another event: %d", code)
 	}
 }
@@ -114,7 +114,7 @@ func TestSaveCouponRefusesBadBodies(t *testing.T) {
 		"unknown key":   `{"code":"SUMMER","kind":"fixed","value":5,"used":0}`,
 		"negative id":   `{"id":-1,"code":"SUMMER","kind":"fixed","value":5}`,
 	} {
-		if code, _ := post(t, "/admin/coupons", "", editor, body); code != 400 {
+		if code, _ := post(t, "/admin/coupons", "", owner, body); code != 400 {
 			t.Errorf("%s: %d", name, code)
 		}
 	}
@@ -129,18 +129,18 @@ func TestCouponListAndDelete(t *testing.T) {
 	if code, body := get(t, "/admin/coupons", "", editor, nil); code != 200 || len(body["coupons"].([]any)) != 1 {
 		t.Fatalf("list: %d %v", code, body)
 	}
-	if code, body := post(t, "/admin/coupons/{id}/delete", "5", editor, `{}`); code != 200 || body["deleted"] != true {
+	if code, body := post(t, "/admin/coupons/{id}/delete", "5", owner, `{}`); code != 200 || body["deleted"] != true {
 		t.Errorf("delete: %d %v", code, body)
 	}
 	h.del = `{"deleted":false,"deactivated":true}`
-	if code, body := post(t, "/admin/coupons/{id}/delete", "5", editor, `{}`); code != 200 || body["deleted"] != false {
+	if code, body := post(t, "/admin/coupons/{id}/delete", "5", owner, `{}`); code != 200 || body["deleted"] != false {
 		t.Errorf("used coupon is switched off: %d %v", code, body)
 	}
 	h.del = `{"deleted":false,"deactivated":false}`
-	if code, _ := post(t, "/admin/coupons/{id}/delete", "5", editor, `{}`); code != 404 {
+	if code, _ := post(t, "/admin/coupons/{id}/delete", "5", owner, `{}`); code != 404 {
 		t.Errorf("unknown: %d", code)
 	}
-	if code, _ := post(t, "/admin/coupons/{id}/delete", "x", editor, `{}`); code != 400 {
+	if code, _ := post(t, "/admin/coupons/{id}/delete", "x", owner, `{}`); code != 400 {
 		t.Errorf("bad id: %d", code)
 	}
 }
@@ -148,7 +148,7 @@ func TestCouponListAndDelete(t *testing.T) {
 func TestSaveBundles(t *testing.T) {
 	h := newCouponAdminHost(t)
 	h.bundles = `[{"id":1,"type_ids":[5],"min_qty":4,"kind":"percent","value":15}]`
-	code, body := post(t, "/admin/events/{id}/bundles", "e1", editor,
+	code, body := post(t, "/admin/events/{id}/bundles", "e1", owner,
 		`{"rules":[{"type_ids":[5],"min_qty":4,"kind":"percent","value":15},{"type_ids":[5,6],"all_types":true,"min_qty":2,"kind":"fixed","value":300}]}`)
 	if code != 200 || len(body["bundles"].([]any)) != 1 {
 		t.Fatalf("%d %v", code, body)
@@ -158,7 +158,7 @@ func TestSaveBundles(t *testing.T) {
 		t.Fatalf("statement %+v", st)
 	}
 	// an empty list clears the rules
-	if code, _ := post(t, "/admin/events/{id}/bundles", "e1", editor, `{"rules":[]}`); code != 200 {
+	if code, _ := post(t, "/admin/events/{id}/bundles", "e1", owner, `{"rules":[]}`); code != 200 {
 		t.Errorf("clear: %d", code)
 	}
 }
@@ -176,14 +176,35 @@ func TestSaveBundlesRefusesBadRules(t *testing.T) {
 		"bad type id":      `{"rules":[{"type_ids":[0],"min_qty":2,"kind":"percent","value":5}]}`,
 		"unknown key":      `{"rules":[],"x":1}`,
 	} {
-		if code, _ := post(t, "/admin/events/{id}/bundles", "e1", editor, body); code != 400 {
+		if code, _ := post(t, "/admin/events/{id}/bundles", "e1", owner, body); code != 400 {
 			t.Errorf("%s: %d", name, code)
 		}
 	}
-	if code, _ := post(t, "/admin/events/{id}/bundles", "a b", editor, `{"rules":[]}`); code != 400 {
+	if code, _ := post(t, "/admin/events/{id}/bundles", "a b", owner, `{"rules":[]}`); code != 400 {
 		t.Errorf("bad event: %d", code)
 	}
 	if h.stmt("WITH d AS (DELETE FROM bundle_rules") != nil {
 		t.Error("a bad body wrote")
+	}
+}
+
+// A discount is money: an editor may look at the coupons but not change them.
+func TestCouponsAndBundlesAreOwnerOnly(t *testing.T) {
+	h := newCouponAdminHost(t)
+	for name, c := range map[string][3]string{
+		"save":    {"/admin/coupons", "", `{"code":"FREE100","kind":"percent","value":100}`},
+		"delete":  {"/admin/coupons/{id}/delete", "5", `{}`},
+		"bundles": {"/admin/events/{id}/bundles", "e1", `{"rules":[]}`},
+	} {
+		for _, u := range []*sdk.HTTPUser{editor, nil} {
+			if code, _ := post(t, c[0], c[1], u, c[2]); code != 403 {
+				t.Errorf("%s as %v: %d", name, u, code)
+			}
+		}
+	}
+	for _, call := range h.calls {
+		if !strings.HasPrefix(call.sql, "SELECT") {
+			t.Errorf("a forbidden request wrote: %q", call.sql)
+		}
 	}
 }

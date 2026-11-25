@@ -51,9 +51,9 @@
     { "method": "POST", "path": "/admin/orders/{id}/refund", "roles": ["owner"] },
     { "method": "POST", "path": "/admin/orders/{id}/cancel", "roles": ["owner"] },
     { "method": "GET", "path": "/admin/coupons", "roles": ["owner", "editor"] },
-    { "method": "POST", "path": "/admin/coupons", "roles": ["owner", "editor"] },
-    { "method": "POST", "path": "/admin/coupons/{id}/delete", "roles": ["owner", "editor"] },
-    { "method": "POST", "path": "/admin/events/{id}/bundles", "roles": ["owner", "editor"] }
+    { "method": "POST", "path": "/admin/coupons", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/coupons/{id}/delete", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/events/{id}/bundles", "roles": ["owner"] }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },
