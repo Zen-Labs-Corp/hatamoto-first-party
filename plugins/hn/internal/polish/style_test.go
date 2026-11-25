@@ -237,12 +237,22 @@ func TestThreadIndentFromDepth(t *testing.T) {
 	}
 }
 
-// Sections carry no inline <style> and no hard-coded colour: the shared
-// partial (static, so strict CSP is unaffected) holds every rule, on tokens.
+// Sections and partials carry no inline <style> and no hard-coded colour: the
+// shared style partial (static, so strict CSP is unaffected) holds every rule,
+// on tokens, so it is the one file exempt.
 func TestSectionsHaveNoInlineStyleOrColour(t *testing.T) {
 	files, err := filepath.Glob("../../sections/*.html")
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no sections: %v", err)
+	}
+	partials, err := filepath.Glob("../../partials/*.html")
+	if err != nil || len(partials) == 0 {
+		t.Fatalf("no partials: %v", err)
+	}
+	for _, f := range partials {
+		if filepath.Base(f) != "style.html" {
+			files = append(files, f)
+		}
 	}
 	hex := regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b`)
 	for _, f := range files {
