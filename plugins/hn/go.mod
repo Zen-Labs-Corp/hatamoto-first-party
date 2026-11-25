@@ -6,7 +6,7 @@ toolchain go1.27.3
 
 require (
 	golang.org/x/net v0.62.0
-	hatamoto.dev/sdk v0.27.0-rc.1
+	hatamoto.dev/sdk v0.27.0
 )
 
 require github.com/extism/go-pdk v1.1.3 // indirect
