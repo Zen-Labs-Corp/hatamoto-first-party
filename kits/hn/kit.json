@@ -1,15 +1,16 @@
 {
   "name": "hn",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kit": 1,
-  "sdk": "^0.27",
+  "sdk": "^0.29",
   "title": "Hacker News style community",
   "description": "A link and discussion community: submit stories, vote, comment in threads, with a classic look.",
   "requires": [
     "comment.policy",
     "comment.rank",
     "plugin.entity-write",
-    "comment.signin"
+    "comment.signin",
+    "comment.identity"
   ],
   "plugins": [
     {

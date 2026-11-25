@@ -26,11 +26,18 @@ details: [../../plugins/hn/README.md](../../plugins/hn/README.md).
 
 `grant: "all"` gives the plugin the permissions an owner needs no second thought
 for. Every permission the review screen marks "Handle with care" stays a separate
-tick. For hn there are three to tick:
+tick. For hn there are four to tick:
 
 - `entities.write.own`: the plugin creates and edits stories in its own content type.
 - `comments.moderate`: flags, vouches and moderator actions on comments.
-- `client.key`: a pseudonymous key per visitor, for rate limits and network bans.
+- `client.key`: a pseudonymous key per visitor, for the sign-up and login rate limits
+  and for network bans.
+- `comments.identity`: lets the plugin sign members in with their username and password
+  (core v1.4.6 or newer). It also needs `comments.read` and the plugin's content type,
+  which hn already has. Without it Create Account answers that sign-up is not possible
+  and members can only use the email link. Revoking only this grant later does not sign
+  anyone out (issued cookies stay valid until they expire or are signed out under
+  Commenters); uninstalling hn does sign every member out.
 
 The plugin also declares `site.scripts`, for multi-line submit text and votes without
 a reload. Hatamoto does not grant it to a community package, so you have nothing to
@@ -40,7 +47,7 @@ tick: the plugin falls back to a single-line submit text field and votes reload 
 
 ```
 hatamoto kit apply hn --accept-comment-warnings \
-  --grant hn:entities.write.own,hn:comments.moderate,hn:client.key
+  --grant hn:entities.write.own,hn:comments.moderate,hn:client.key,hn:comments.identity
 ```
 
 Add `--activate-theme --homepage` on a site that is not fresh. `--dry-run` prints the
@@ -54,5 +61,6 @@ Until then, kill spam from the **Recent** tab of the News moderation page. You c
 
 ## Core features
 
-`requires` lists `comment.policy`, `comment.rank`, `plugin.entity-write` and
-`comment.signin`. A core that lacks one refuses the kit.
+`requires` lists `comment.policy`, `comment.rank`, `plugin.entity-write`,
+`comment.signin` and `comment.identity` (core v1.4.6 or newer). A core that lacks one
+refuses the kit.
