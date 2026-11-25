@@ -107,7 +107,8 @@ func serveStripeWebhook(r sdk.HTTPRequest) sdk.HTTPResponse {
 	}
 	obj := ev.Data.Object
 	switch ev.Type {
-	case "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.expired":
+	case "checkout.session.completed", "checkout.session.async_payment_succeeded",
+		"checkout.session.async_payment_failed", "checkout.session.expired":
 	default:
 		return webhookReply(http.StatusOK, "ignored")
 	}
@@ -128,11 +129,17 @@ func serveStripeWebhook(r sdk.HTTPRequest) sdk.HTTPResponse {
 
 	outcome := "ignored"
 	switch {
-	case ev.Type == "checkout.session.expired":
+	case ev.Type == "checkout.session.expired" || ev.Type == "checkout.session.async_payment_failed":
 		if _, err := releaseHold(order.ID, "expired"); err != nil {
 			return webhookReply(http.StatusServiceUnavailable, "unavailable")
 		}
 		outcome = "expired"
+	case obj.PaymentStatus == "unpaid" && ev.Type == "checkout.session.completed":
+		// a delayed method: money may still arrive, so the payment is marked
+		// and the order is never taken for abandoned
+		if err := markPaymentRef(order.ID, obj.PaymentIntent); err != nil {
+			return webhookReply(http.StatusServiceUnavailable, "unavailable")
+		}
 	case obj.PaymentStatus == "paid":
 		outcome, err = completePayment(order.ID, "stripe", obj.PaymentIntent, obj.AmountTotal, obj.Currency)
 		if err != nil {

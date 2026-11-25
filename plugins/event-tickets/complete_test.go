@@ -23,6 +23,7 @@ type shop struct {
 	cur      string
 	paid     bool // paid_at is set
 	problem  string
+	payRef   string // payment_ref
 	refunded int64
 	attend   string // status of the attendees
 	seats    bool   // retakeHold finds free seats
@@ -131,6 +132,12 @@ func newShop(t *testing.T) *shop {
 				w.status, w.paid, w.attend = "paid", true, "active"
 			}
 			return cell(jsonText(ok))
+		case strings.HasPrefix(sql, "UPDATE orders SET payment_ref = $2 WHERE id = $1 AND status IN"):
+			write()
+			if w.payRef == "" && !w.paid {
+				w.payRef = ar[1].(string)
+			}
+			return nil
 		case strings.HasPrefix(sql, "UPDATE orders SET problem = 'amount_mismatch'"):
 			write()
 			w.problem = "amount_mismatch"

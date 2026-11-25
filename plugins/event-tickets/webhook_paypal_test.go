@@ -463,3 +463,18 @@ func TestPayPalSecretsNeverLeave(t *testing.T) {
 		}
 	}
 }
+
+// A PENDING capture may still turn into money: the order keeps the capture id,
+// which keeps the retention delete away from it; a declined one keeps nothing.
+func TestPayPalPendingCaptureKeepsItsID(t *testing.T) {
+	w := newPayPalShop(t)
+	w.answers[ppCapture] = [2]string{"201", captureStatus("PENDING", "20.30", "USD", w.payCode)}
+	if _, status := w.hook(t, w.approvedBody("WH-1")); status != "pending" || w.payRef != "CAP1" {
+		t.Errorf("pending: %q, payment_ref %q", status, w.payRef)
+	}
+	w = newPayPalShop(t)
+	w.answers[ppCapture] = [2]string{"201", captureStatus("DECLINED", "20.30", "USD", w.payCode)}
+	if _, status := w.hook(t, w.approvedBody("WH-1")); status != "pending" || w.payRef != "" {
+		t.Errorf("declined: %q, payment_ref %q", status, w.payRef)
+	}
+}

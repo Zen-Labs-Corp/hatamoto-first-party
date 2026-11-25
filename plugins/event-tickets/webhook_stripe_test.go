@@ -172,6 +172,9 @@ func TestStripeWebhookUnpaidSessionWaits(t *testing.T) {
 	if code != 200 || status != "ignored" || w.status != "pending" || len(w.mails) != 0 {
 		t.Fatalf("%d %q, order %q", code, status, w.status)
 	}
+	if w.payRef != "pi_1" {
+		t.Errorf("payment_ref %q: a delayed payment must leave a marker", w.payRef)
+	}
 	if code, status = w.deliver(t, w.stripeBody("evt_2", "checkout.session.async_payment_succeeded", "paid", 2030, "usd")); code != 200 || status != "paid" || w.status != "paid" {
 		t.Fatalf("async: %d %q, order %q", code, status, w.status)
 	}
@@ -307,5 +310,14 @@ func TestSecretsNeverLeave(t *testing.T) {
 	}
 	if len(leaks) != 0 {
 		t.Errorf("secrets left the plugin: %v", leaks)
+	}
+}
+
+func TestStripeWebhookAsyncPaymentFailedReleasesTheHold(t *testing.T) {
+	w := newShop(t)
+	w.deliver(t, w.stripeBody("evt_1", "checkout.session.completed", "unpaid", 2030, "usd"))
+	code, status := w.deliver(t, w.stripeBody("evt_2", "checkout.session.async_payment_failed", "unpaid", 2030, "usd"))
+	if code != 200 || status != "expired" || w.status != "expired" || w.released != 1 {
+		t.Fatalf("%d %q, order %q", code, status, w.status)
 	}
 }

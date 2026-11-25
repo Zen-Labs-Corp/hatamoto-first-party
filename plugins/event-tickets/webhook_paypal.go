@@ -113,6 +113,11 @@ func capturePayPal(s settings, orderID int64, dl deadline) (outcome string, err 
 		return "", err
 	}
 	if got.CaptureStatus != "COMPLETED" {
+		if got.CaptureStatus == "PENDING" { // money may still arrive: keep the order out of retention deletes
+			if err := markPaymentRef(orderID, got.CaptureID); err != nil {
+				return "", err
+			}
+		}
 		return "pending", nil
 	}
 	minor, ok := parseAmount(got.Value, got.Currency)
@@ -123,6 +128,16 @@ func capturePayPal(s settings, orderID int64, dl deadline) (outcome string, err 
 		return outcomeMismatch, nil
 	}
 	return completePayment(orderID, "paypal", got.CaptureID, minor, got.Currency)
+}
+
+// markPaymentRef records the payment id of a payment that is not settled yet
+// (a PayPal capture that is PENDING, a Stripe delayed method), so the order
+// shows that money may have moved. completePayment overwrites it on success.
+func markPaymentRef(orderID int64, ref string) error {
+	if ref == "" {
+		return nil
+	}
+	return dbExec(`UPDATE orders SET payment_ref = $2 WHERE id = $1 AND status IN ('pending', 'expired', 'cancelled') AND paid_at IS NULL AND payment_ref IS NULL`, orderID, ref)
 }
 
 // markMismatch flags an order whose payment does not match it, for the owner.
