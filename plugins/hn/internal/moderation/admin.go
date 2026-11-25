@@ -17,6 +17,7 @@ import (
 
 const (
 	sqlQueue   = `SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.dead, x.flags DESC, x.last DESC), '[]'::jsonb) FROM (SELECT f.kind, f.target_id AS id, COALESCE(s.item_no, cs.item_no, 0) AS item_no, COALESCE(s.title, '') AS title, COALESCE(cm.body_html, '') AS body_html, COALESCE(su.username, cm.author_name, '') AS "by", f.n AS flags, f.last, (k.cause IS NOT NULL OR COALESCE(s.dead, false)) AS dead, COALESCE(k.cause, CASE WHEN s.dead THEN 'flags' ELSE '' END) AS cause FROM (SELECT kind, target_id, count(*) AS n, max(created_at) AS last FROM flags GROUP BY kind, target_id UNION ALL SELECT k.kind, k.target_id, 0, k.created_at FROM kills k WHERE NOT EXISTS (SELECT 1 FROM flags fl WHERE fl.kind = k.kind AND fl.target_id = k.target_id)) f LEFT JOIN story_meta s ON f.kind = 'story' AND s.entity_id = f.target_id LEFT JOIN users su ON su.id = s.author_id LEFT JOIN comment_meta cm ON f.kind = 'comment' AND cm.comment_id = f.target_id LEFT JOIN story_meta cs ON cs.entity_id = cm.entity_id LEFT JOIN kills k ON k.kind = f.kind AND k.target_id = f.target_id WHERE s.entity_id IS NOT NULL OR cm.comment_id IS NOT NULL ORDER BY (k.cause IS NOT NULL OR COALESCE(s.dead, false)), f.n DESC, f.last DESC LIMIT 100) x`
+	sqlRecent  = `SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.at DESC), '[]'::jsonb) FROM ((SELECT 'story' AS kind, s.entity_id AS id, s.item_no, s.title, '' AS body_html, COALESCE(u.username, '') AS "by", 0 AS flags, (k.cause IS NOT NULL OR s.dead) AS dead, COALESCE(k.cause, CASE WHEN s.dead THEN 'flags' ELSE '' END) AS cause, s.created_at AS at FROM story_meta s LEFT JOIN users u ON u.id = s.author_id LEFT JOIN kills k ON k.kind = 'story' AND k.target_id = s.entity_id ORDER BY s.created_at DESC LIMIT 50) UNION ALL (SELECT 'comment', c.comment_id, COALESCE(cs.item_no, 0), '', c.body_html, COALESCE(cu.username, c.author_name, ''), 0, (k.cause IS NOT NULL), COALESCE(k.cause, ''), c.created_at FROM comment_meta c LEFT JOIN story_meta cs ON cs.entity_id = c.entity_id LEFT JOIN users cu ON cu.id = c.author_id LEFT JOIN kills k ON k.kind = 'comment' AND k.target_id = c.comment_id ORDER BY c.created_at DESC LIMIT 50)) x`
 	sqlUsers   = `SELECT COALESCE(jsonb_agg(to_jsonb(x)), '[]'::jsonb) FROM (SELECT u.username AS name, b.mode, b.reason, b.created_at FROM bans b JOIN users u ON u.id = b.user_id ORDER BY b.created_at DESC LIMIT 200) x`
 	sqlDomains = `SELECT COALESCE(jsonb_agg(to_jsonb(x)), '[]'::jsonb) FROM (SELECT domain, reason, created_at FROM banned_domains ORDER BY created_at DESC LIMIT 500) x`
 	sqlNets    = `SELECT jsonb_build_object('bans', (SELECT COALESCE(jsonb_agg(to_jsonb(b)), '[]'::jsonb) FROM (SELECT net_key, reason, expires_at FROM net_bans WHERE expires_at IS NULL OR expires_at > $1::timestamptz ORDER BY created_at DESC LIMIT 200) b), 'noisy', (SELECT COALESCE(jsonb_agg(to_jsonb(n)), '[]'::jsonb) FROM (SELECT key AS net_key, count(*) AS events FROM rate_events WHERE kind IN ('vote_net', 'signup_net') AND created_at > $1::timestamptz - interval '24 hours' GROUP BY key ORDER BY count(*) DESC LIMIT 50) n))`
@@ -142,6 +143,39 @@ func excerpt(bodyHTML string) string {
 	return s
 }
 
+// itemRows answers the {items: [...]} of an item list: the queue and the recent view.
+func itemRows(sql string) sdk.HTTPResponse {
+	var rows []struct {
+		Kind     string    `json:"kind"`
+		ID       string    `json:"id"`
+		ItemNo   int64     `json:"item_no"`
+		Title    string    `json:"title"`
+		BodyHTML string    `json:"body_html"`
+		By       string    `json:"by"`
+		Flags    int       `json:"flags"`
+		Dead     bool      `json:"dead"`
+		Cause    string    `json:"cause"`
+		Last     time.Time `json:"last"`
+		At       time.Time `json:"at"`
+	}
+	if err := core.QueryJSON(sql, &rows); err != nil {
+		return failed()
+	}
+	items := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		title := r.Title
+		if r.Kind == kindComment {
+			title = excerpt(r.BodyHTML)
+		}
+		item := map[string]any{"kind": r.Kind, "id": r.ID, "item_no": r.ItemNo, "title": title, "by": r.By, "flags": r.Flags, "dead": r.Dead, "cause": r.Cause}
+		if !r.At.IsZero() {
+			item["at"] = r.At
+		}
+		items = append(items, item)
+	}
+	return writeJSON(200, map[string]any{"items": items})
+}
+
 func handleQueue(q *core.Request) sdk.HTTPResponse {
 	view := "queue"
 	if v := q.Query["view"]; len(v) > 0 && v[0] != "" {
@@ -149,30 +183,9 @@ func handleQueue(q *core.Request) sdk.HTTPResponse {
 	}
 	switch view {
 	case "queue":
-		var rows []struct {
-			Kind     string    `json:"kind"`
-			ID       string    `json:"id"`
-			ItemNo   int64     `json:"item_no"`
-			Title    string    `json:"title"`
-			BodyHTML string    `json:"body_html"`
-			By       string    `json:"by"`
-			Flags    int       `json:"flags"`
-			Dead     bool      `json:"dead"`
-			Cause    string    `json:"cause"`
-			Last     time.Time `json:"last"`
-		}
-		if err := core.QueryJSON(sqlQueue, &rows); err != nil {
-			return failed()
-		}
-		items := make([]map[string]any, 0, len(rows))
-		for _, r := range rows {
-			title := r.Title
-			if r.Kind == kindComment {
-				title = excerpt(r.BodyHTML)
-			}
-			items = append(items, map[string]any{"kind": r.Kind, "id": r.ID, "item_no": r.ItemNo, "title": title, "by": r.By, "flags": r.Flags, "dead": r.Dead, "cause": r.Cause})
-		}
-		return writeJSON(200, map[string]any{"items": items})
+		return itemRows(sqlQueue)
+	case "recent":
+		return itemRows(sqlRecent)
 	case "users":
 		return list("users", sqlUsers)
 	case "domains":

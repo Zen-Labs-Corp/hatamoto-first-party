@@ -373,6 +373,31 @@ func TestAdminViews(t *testing.T) {
 
 // The queue must rank live targets before dead ones inside the LIMIT and skip
 // targets whose story or comment row is gone.
+func TestAdminRecentView(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	rows := []map[string]any{
+		{"kind": "story", "id": storyUUID, "item_no": 5, "title": "Hello", "by": "bob", "flags": 0, "dead": false, "cause": "", "body_html": "", "at": "2026-01-02T03:00:00Z"},
+		{"kind": "comment", "id": commentID, "item_no": 5, "title": "", "by": "ann", "flags": 0, "dead": true, "cause": "owner", "body_html": "<p>hi</p>", "at": "2026-01-02T02:00:00Z"},
+	}
+	install(t, &fakeDB{Query: func(got string, _ []any) (any, error) {
+		if got != sqlRecent {
+			t.Errorf("unexpected sql %q", got)
+		}
+		return jsonRow(rows), nil
+	}})
+	out := wantStatus(t, adminCall(t, "GET", "/admin/queue", nil, map[string][]string{"view": {"recent"}}, "", owner), 200)
+	items, _ := out["items"].([]any)
+	if len(items) != 2 || items[0].(map[string]any)["at"] != "2026-01-02T03:00:00Z" || items[1].(map[string]any)["title"] != "hi" {
+		t.Fatalf("items = %v", out)
+	}
+	// owner only, like every admin view
+	install(t, bobDB())
+	wantStatus(t, adminCall(t, "GET", "/admin/queue", nil, map[string][]string{"view": {"recent"}}, "", &sdk.HTTPUser{ID: "u2", Role: "editor"}), 403)
+	if strings.Count(sqlRecent, "LIMIT 50") != 2 || !strings.Contains(sqlRecent, "ORDER BY x.at DESC") {
+		t.Error("recent view is not the newest 50 stories + 50 comments, newest first")
+	}
+}
+
 func TestQueueSQLShape(t *testing.T) {
 	inner := sqlQueue[strings.Index(sqlQueue, "FROM (SELECT f.kind"):]
 	order := strings.Index(inner, "ORDER BY (k.cause IS NOT NULL OR COALESCE(s.dead, false)), f.n DESC")
