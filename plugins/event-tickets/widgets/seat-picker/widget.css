@@ -1,0 +1,17 @@
+.hm-event-tickets_seat-picker{display:block;margin:var(--hm-space-4,1rem) 0;padding:var(--hm-space-4,1rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-event-tickets_seat-picker[hidden]{display:none}
+.hm-event-tickets_seat-picker h3{margin:0 0 var(--hm-space-2,.5rem);font-size:1.25rem}
+.hm-event-tickets_seat-picker .stage{margin:0 0 var(--hm-space-2,.5rem);padding:.25rem;text-align:center;letter-spacing:.2em;background:var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-event-tickets_seat-picker .section{margin:0 0 var(--hm-space-4,1rem);overflow-x:auto}
+.hm-event-tickets_seat-picker .section h4{margin:0 0 var(--hm-space-2,.5rem);font-size:1rem}
+.hm-event-tickets_seat-picker .zone{margin:0 0 var(--hm-space-2,.5rem)}
+.hm-event-tickets_seat-picker .seat-row{display:flex;gap:.25rem;align-items:center;margin:0 0 .25rem}
+.hm-event-tickets_seat-picker .row-label{min-width:2rem;font-weight:600}
+.hm-event-tickets_seat-picker .seat{min-width:1.75rem;height:1.75rem;padding:0;font:inherit;line-height:1;cursor:pointer;border:1px solid var(--hm-color-border,#d8dce3);border-radius:.25rem;background:transparent;color:inherit}
+.hm-event-tickets_seat-picker .seat.taken{cursor:not-allowed;opacity:.45}
+.hm-event-tickets_seat-picker .seat.yours{font-weight:700;border-color:var(--hm-color-accent,#1a56db)}
+.hm-event-tickets_seat-picker .seat.gap{visibility:hidden}
+.hm-event-tickets_seat-picker .legend{margin:0 0 var(--hm-space-2,.5rem);color:var(--hm-color-muted,#5b6475)}
+.hm-event-tickets_seat-picker .hold{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:0 0 var(--hm-space-2,.5rem)}
+.hm-event-tickets_seat-picker .hold button{padding:.4rem 1rem;font:inherit;cursor:pointer}
+.hm-event-tickets_seat-picker .status{margin:0;color:var(--hm-color-muted,#5b6475)}

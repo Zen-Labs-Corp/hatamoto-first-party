@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "x-hm": {
+    "label": "Seat picker",
+    "hint": "Seat map for events with seating. Place it above Tickets"
+  },
+  "properties": {
+    "heading": {
+      "type": "string",
+      "maxLength": 120
+    }
+  }
+}
