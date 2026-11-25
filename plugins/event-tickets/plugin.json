@@ -1,18 +1,64 @@
 {
   "name": "event-tickets",
   "version": "0.1.0",
-  "sdk": "^0.8",
+  "sdk": "^0.22",
   "description": "Free tickets, RSVP, paid tickets, attendees, check-in, seating and event emails for the event-calendar plugin.",
-  "permissions": ["settings"],
-  "limits": { "memory_pages": 256, "max_instances": 4 },
+  "permissions": ["settings", "db"],
+  "limits": { "memory_pages": 256, "max_instances": 4, "max_output_bytes": 2097152 },
   "settings_schema": {
     "type": "object",
     "properties": {
-      "greeting": {
+      "currency": {
         "type": "string",
-        "title": "Greeting",
-        "description": "Published as a meta tag on every public page. Leave empty to add nothing.",
-        "maxLength": 64
+        "title": "Currency",
+        "description": "Three-letter currency code, for example USD or EUR. Tickets are free for now; paid tickets will use it.",
+        "default": "USD",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "sender_name": {
+        "type": "string",
+        "title": "Sender name",
+        "description": "Signs the emails sent to attendees, for example the name of your organisation. Leave empty to sign with the site name.",
+        "default": "",
+        "maxLength": 80
+      },
+      "confirmation_text": {
+        "type": "string",
+        "title": "Confirmation message",
+        "description": "Extra text added to every confirmation email, for example how to find the entrance. Leave empty to add nothing.",
+        "default": "",
+        "maxLength": 2000
+      },
+      "default_capacity": {
+        "type": "integer",
+        "title": "Default number of tickets",
+        "description": "Pre-filled when you add a ticket type to an event.",
+        "default": 50,
+        "minimum": 1,
+        "maximum": 100000
+      },
+      "retention_months": {
+        "type": "integer",
+        "title": "Keep attendee details for (months)",
+        "description": "Names and email addresses are erased this many months after the event ended. Ticket counts stay.",
+        "default": 24,
+        "minimum": 1,
+        "maximum": 120
+      },
+      "site_url": {
+        "type": "string",
+        "title": "Site address",
+        "description": "Address of the site, used for QR images in emails when the event address is a path only",
+        "default": "",
+        "maxLength": 200,
+        "pattern": "^(https?://[^\\s/]+)?$"
+      },
+      "schema_slug": {
+        "type": "string",
+        "title": "Event content type",
+        "description": "Leave empty to use Calendar event and any older Event type. Or name one content type.",
+        "default": "",
+        "pattern": "^([a-z][a-z0-9_-]{0,63})?$"
       }
     }
   }
