@@ -348,3 +348,11 @@ func TestEmailsKeepsTheListWhenTheBuysCountFails(t *testing.T) {
 		t.Errorf("list failure: %d %s, want 503", r.Status, r.Body)
 	}
 }
+
+// send_at is shown as "<date> <hh:mm> UTC" by slicing the string, so the
+// statement must render it in UTC whatever the session time zone is.
+func TestCampaignStatsSendAtIsUTC(t *testing.T) {
+	if !strings.Contains(campaignStatsSQL, `c.send_at AT TIME ZONE 'UTC'`) {
+		t.Error("send_at must be rendered in UTC by the statement")
+	}
+}

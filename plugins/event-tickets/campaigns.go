@@ -197,7 +197,8 @@ SELECT to_jsonb(EXISTS (SELECT 1 FROM c))`, &found, id)
 const campaignStatsSQL = `SELECT coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'subject', x.subject, 'segment', x.segment,
     'status', x.status, 'send_at', x.send_at, 'total', x.total, 'sent', x.sent, 'opens', x.opens, 'clicks', x.clicks)
   ORDER BY x.id DESC), '[]'::jsonb)
-FROM (SELECT c.id, c.subject, c.segment, c.status, c.send_at,
+FROM (SELECT c.id, c.subject, c.segment, c.status,
+  to_char(c.send_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS send_at,
   (SELECT count(*) FROM email_sends s WHERE s.kind = 'campaign' AND s.ref_id = c.id) AS total,
   (SELECT count(*) FROM email_sends s WHERE s.kind = 'campaign' AND s.ref_id = c.id AND s.status = 'sent') AS sent,
   (SELECT count(*) FROM email_sends s WHERE s.kind = 'campaign' AND s.ref_id = c.id AND s.opened_at IS NOT NULL) AS opens,
