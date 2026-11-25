@@ -22,6 +22,7 @@ type eventHost struct {
 	entity   string // entities.get answer; "" = not found
 	getErr   error
 	hasTypes bool
+	snapshot string // the stored signature as a jsonb cell, "" = never seen
 	calls    []call
 }
 
@@ -43,6 +44,13 @@ func (h *eventHost) install(t *testing.T) {
 				return &sdk.HostError{Code: sdk.ErrNotFound}
 			}
 			return jsonInto(h.entity, out)
+		case strings.Contains(sql, "FROM events WHERE entity_id"):
+			if h.snapshot == "" {
+				return jsonInto(`{"rows":[[null]]}`, out)
+			}
+			return jsonInto(`{"rows":[[`+h.snapshot+`]]}`, out)
+		case strings.HasPrefix(sql, "INSERT INTO event_changes"):
+			return nil
 		case strings.Contains(sql, "EXISTS"):
 			return jsonInto(`{"rows":[[`+jsonText(h.hasTypes)+`]]}`, out)
 		case strings.HasPrefix(sql, "INSERT INTO events"), strings.HasPrefix(sql, "UPDATE "):
@@ -104,7 +112,7 @@ func TestHookSnapshot(t *testing.T) {
 	if c == nil {
 		t.Fatal("no snapshot written")
 	}
-	want := []any{"e1", "calendar-event", "Gig", "2027-03-01T19:00:00Z", "2027-03-01T21:00:00Z", "published"}
+	want := []any{"e1", "calendar-event", "Gig", "2027-03-01T19:00:00Z", "2027-03-01T21:00:00Z", "published", ""}
 	if jsonText(c.args) != jsonText(want) {
 		t.Errorf("args %s, want %s", jsonText(c.args), jsonText(want))
 	}

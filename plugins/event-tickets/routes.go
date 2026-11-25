@@ -48,6 +48,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveOrders(r.User, r.Query), nil
 		case "/admin/coupons":
 			return serveCoupons(r.User), nil
+		case "/admin/emails":
+			return serveEmails(r.User), nil
 		case "/token":
 			return serveToken(r.Query), nil
 		case "/waitlist/{token}/claim":
@@ -58,6 +60,12 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return servePayReturn(r.PathValues["token"], r.Query), nil
 		case "/cancel/{token}":
 			return servePayCancel(r.PathValues["token"]), nil
+		case "/o/{token}":
+			return serveOpen(r.PathValues["token"]), nil
+		case "/c/{token}":
+			return serveClick(r.PathValues["token"], r.Query), nil
+		case "/u/{token}":
+			return serveUnsub(r.PathValues["token"], r.Query), nil
 		case "/ticket/{token}":
 			return serveTicket(r.PathValues["token"]), nil
 		case "/ticket/{token}/qr.png":
@@ -106,6 +114,14 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveSaveCoupon(r), nil
 		case "/admin/coupons/{id}/delete":
 			return serveDeleteCoupon(r.User, r.PathValues["id"]), nil
+		case "/admin/emails/automations":
+			return serveSaveAutomations(r), nil
+		case "/admin/campaigns/count":
+			return serveCampaignCount(r), nil
+		case "/admin/campaigns":
+			return serveCreateCampaign(r), nil
+		case "/admin/campaigns/{id}/cancel":
+			return serveCancelCampaign(r.User, r.PathValues["id"]), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil

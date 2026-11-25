@@ -30,6 +30,9 @@ func filterBuilderData() int32 { return guest.Run(sdk.BuilderData.Export()) }
 //go:wasmexport on_cron_maintain
 func onCronMaintainExport() int32 { return guest.Run(guest.CronExport("maintain")) }
 
+//go:wasmexport on_cron_emails
+func onCronEmailsExport() int32 { return guest.Run(guest.CronExport("emails")) }
+
 //go:wasmexport http_handle
 func httpHandle() int32 { return guest.Run(guest.HTTPExport) }
 

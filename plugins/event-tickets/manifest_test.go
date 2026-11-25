@@ -77,7 +77,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m := loadManifest(t)
-	if m.Name != "event-tickets" || m.Version != "0.4.0" {
+	if m.Name != "event-tickets" || m.Version != "0.5.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 
@@ -105,7 +105,7 @@ func TestManifest(t *testing.T) {
 	if len(m.BuilderSources) != 1 || m.BuilderSources[0].Name != "tickets" {
 		t.Errorf("builder_sources = %+v", m.BuilderSources)
 	}
-	if len(m.Cron) != 2 || m.Cron[0].Name != "mail" || m.Cron[0].Every != "5m" || m.Cron[1].Name != "maintain" || m.Cron[1].Every != "1h" {
+	if len(m.Cron) != 3 || m.Cron[2].Name != "emails" || m.Cron[2].Every != "5m" || m.Cron[0].Name != "mail" || m.Cron[0].Every != "5m" || m.Cron[1].Name != "maintain" || m.Cron[1].Every != "1h" {
 		t.Errorf("cron = %+v", m.Cron)
 	}
 
@@ -130,12 +130,17 @@ func TestManifest(t *testing.T) {
 		{"POST", "/admin/attendees/{id}/uncheck", false},
 		{"POST", "/admin/events/{id}/splits", false}, {"GET", "/admin/payouts", false},
 		{"GET", "/admin/payouts.csv", false}, {"POST", "/admin/payouts/mark", false}, {"POST", "/admin/payouts/unmark", false},
+		{"GET", "/admin/emails", false}, {"POST", "/admin/emails/automations", false},
+		{"POST", "/admin/campaigns/count", false}, {"POST", "/admin/campaigns", false}, {"POST", "/admin/campaigns/{id}/cancel", false},
+		{"GET", "/o/{token}", true}, {"GET", "/c/{token}", true}, {"GET", "/u/{token}", true},
 	}
 	// Refund, order cancel, coupon changes and bundle rules move or give away money: the owner only (the handlers check again).
 	ownerOnly := map[string]bool{"/admin/orders/{id}/refund": true, "/admin/orders/{id}/cancel": true,
 		"/admin/coupons/{id}/delete": true, "/admin/events/{id}/bundles": true,
 		"/admin/events/{id}/splits": true, "/admin/payouts": true,
-		"/admin/payouts.csv": true, "/admin/payouts/mark": true, "/admin/payouts/unmark": true}
+		"/admin/payouts.csv": true, "/admin/payouts/mark": true, "/admin/payouts/unmark": true,
+		"/admin/emails": true, "/admin/emails/automations": true,
+		"/admin/campaigns/count": true, "/admin/campaigns": true, "/admin/campaigns/{id}/cancel": true}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
 	}
@@ -226,7 +231,7 @@ func TestManifest(t *testing.T) {
 }
 
 func TestShippedFiles(t *testing.T) {
-	for _, f := range []string{"migrations/001_init.sql", "migrations/002_paid.sql", "migrations/003_checkin.sql", "migrations/004_payouts.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
+	for _, f := range []string{"migrations/001_init.sql", "migrations/002_paid.sql", "migrations/003_checkin.sql", "migrations/004_payouts.sql", "migrations/005_emails.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
 		exists(t, f)
 	}
 }
@@ -277,5 +282,40 @@ func TestManifestSDKValidate(t *testing.T) {
 	}
 	if err := m.Validate(); err != nil {
 		t.Errorf("core would refuse this manifest: %v", err)
+	}
+}
+
+// TestManifestWasmExports fails when the manifest needs an export that
+// exports_wasip1.go does not declare: core then skips the hook silently
+// ("cron job has no export; not scheduled").
+func TestManifestWasmExports(t *testing.T) {
+	m := loadManifest(t)
+	raw, err := os.ReadFile("exports_wasip1.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(raw)
+	has := func(name string) bool {
+		return regexp.MustCompile(`(?m)^//go:wasmexport ` + regexp.QuoteMeta(name) + `$`).MatchString(src)
+	}
+	for _, c := range m.Cron {
+		if name := "on_cron_" + c.Name; !has(name) {
+			t.Errorf("cron job %q has no //go:wasmexport %s", c.Name, name)
+		}
+	}
+	for hook := range m.Limits.HookTimeouts {
+		name := hook
+		switch {
+		case hook == "builder.data":
+			name = "filter_builder_data"
+		case strings.Contains(hook, "."):
+			name = "on_" + strings.ReplaceAll(hook, ".", "_")
+		}
+		if !has(name) {
+			t.Errorf("hook timeout %q has no //go:wasmexport %s", hook, name)
+		}
+	}
+	if len(m.Routes) > 0 && !has("http_handle") {
+		t.Error("routes are declared but there is no //go:wasmexport http_handle")
 	}
 }

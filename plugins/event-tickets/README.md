@@ -2,7 +2,7 @@
 
 Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.
 
-Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with coupons, bundle discounts, fees and refunds. Each event has ticket types with a capacity, a booking form on the event page, a confirmation email with one QR code per ticket, a waitlist for sold-out free types and an admin page with the attendee list. Door check-in works from a phone by scanning the ticket QR code. Seating is not part of it yet.
+Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with coupons, bundle discounts, fees and refunds. Each event has ticket types with a capacity, a booking form on the event page, a confirmation email with one QR code per ticket, a waitlist for sold-out free types and an admin page with the attendee list. Door check-in works from a phone by scanning the ticket QR code. The plugin also mails attendees when an event changes, before it starts and after it, and sends segmented campaigns with open, click and buy counts. Seating is not part of it yet.
 
 ## Use
 
@@ -19,6 +19,7 @@ Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with co
 11. **Check-in**: open the **Check-in** tab at the door and pick the event. The line at the top shows how many tickets are checked in. **Scan QR (camera)** opens the camera dialog: take one photo of the ticket's QR code (on a phone screen or on paper) and the ticket is checked in; one photo per tap, and if no code is found you tap again. The result is listed as **OK**, **ALREADY CHECKED IN** (with the time of the first check-in) or **REFUSED** (not a valid ticket, a ticket for another event, or a ticket that is cancelled, refunded, expired or not paid). **Undo** next to an OK result takes the check-in back after you confirm. To check someone in by hand, search by name or by the start of the ticket code and press **Check in**. The owner must grant the camera on the plugin's Permissions tab first; without it, search still works.
 12. **Weak signal**: a scan that cannot reach the server is kept in an offline queue shown under the list and sent in order when the connection is back (the page retries every 15 seconds). A queued scan that turns out to be already checked in or refused is reported in the list like any other.
 13. **Payouts** (owner only): under **Tickets** on an event, **Payout splits** lists who is owed a share of its ticket money: a name, a payout email and either a percent (for example 80 or 12.5) or a fixed amount per ticket. The **Payouts** tab shows, for a calendar month, what each payee is owed, with gross, refunds, fees, share and the amount owed. After you have paid someone by hand, **Mark paid** records the date and a reference; **Undo** removes the record. For a spreadsheet, the tab shows the path `/api/v1/p/event-tickets/admin/payouts.csv?period=YYYY-MM`: copy it, put your site address in front and open it in the browser while you are signed in to the admin. It is a report only: the plugin sends no money.
+14. **Emails** (owner only): the **Emails** tab has the automatic mails and the campaigns. Ticket confirmation is always sent. **Event changed** mails the people with a ticket when the date, the place or the status (cancelled, postponed) of an event changes; **Reminder** mails them the chosen number of hours before it starts (24 by default); **Thank-you** mails them after it ended. Changed and reminder are on by default, thank-you is off. Each person gets one mail per event, however many tickets they hold. **New campaign** writes a mail (text, or a small set of HTML tags) to a segment: an event, a ticket type, checked in or not, bought before a date, RSVP only, or people who bought another event but not this one. **Count recipients** shows how many people that is. Send it now or at a time. The table shows sent, opens, clicks and buys (people who bought within 7 days of a click). Every mail has an unsubscribe link. Mails are paced to leave room for ticket confirmations: up to three quarters of the site's recipients-per-hour quota, spread over 5-minute runs, which is 22 mails every 5 minutes at the default 360 per hour, so a campaign to 300 people takes about an hour. Set the **Site address** setting first: links in the mails need it.
 
 ## Settings
 
@@ -47,7 +48,7 @@ The **Settings** tab of the admin page shows the current values; change them in 
 - `entities.read`: reads the event's name, dates, status, address and join link.
 - `db`: keeps ticket types, fields, orders, attendees, the waitlist, the mail queue and the signing key in the plugin's own database.
 - `settings`: reads the settings above (defaults, sender name, retention).
-- `mail.send`: sends the confirmation with one QR code per ticket and the waitlist mails. It respects the site's recipients-per-hour quota: mail over the quota is queued and retried.
+- `mail.send`: sends the confirmation with one QR code per ticket, the waitlist mails and the event-changed, reminder, thank-you and campaign mails. It respects the site's recipients-per-hour quota: mail over the quota is queued and retried. The plugin reads the quota from the host (360 per hour when it is not reported) and sends bulk mail at up to three quarters of it, so a quarter stays free for confirmations.
 - `http.fetch`: talks to the payment providers you configure, and only to `api.stripe.com`, `api-m.paypal.com` and `api-m.sandbox.paypal.com`: it opens checkout sessions and PayPal orders, captures PayPal payments, checks that a PayPal webhook is genuine and makes refunds. A site that installed an earlier version has to grant it again.
 - `builder.data`: feeds the **Tickets** list on event pages (ticket types, with how many are left).
 - `builder.island`: runs the booking form on the event page; a widget cannot hold a form on its own.
@@ -74,6 +75,10 @@ All of it lives in the plugin's own database:
 - **PayPal access token**: cached in the plugin database for a short time.
 - **Attendees**: one row per ticket, with its status and a random ticket code. The code is part of the ticket link. A checked-in ticket also keeps the check-in time and the id of the admin user who checked it in.
 - **Waitlist**: name, email address and status of everyone who joined.
+- **Campaigns**: the subject, body and segment you wrote, and the links in them, kept 13 months.
+- **Send log** of the automatic and campaign mails: the order id, a SHA-256 hash of the lowercased email address (not the address), the status, the first open and first click times and their counts. Opens are counted per send, only when the mail app loads the image, and only by the send's own token: no IP address, user agent or other header is stored for opens or clicks. Kept 13 months.
+- **Change markers**: which event changed (date, place or status), kept 13 months.
+- **Unsubscribe list**: the same email hash, kept until the person subscribes again. A hash is pseudonymous, not anonymous: it can be matched against an address someone already knows.
 - **Mail queue**: ids of the mails still to be sent, never the text or the address.
 - **Event dates**, copied from the event so the retention job knows when it ended.
 - **Signing key**: the key that signs the booking form's token is generated on first use and kept in the plugin database. It is never a setting and is never shown.
@@ -103,6 +108,13 @@ Orders are anonymised the number of months set in **Keep attendee details for** 
 - A fixed per-ticket amount counts tickets that were not refunded and whose type has a price today. Each rule is capped at the event's base on its own, so several rules together can go above it. Percent rules of one event cannot add up to more than 100.
 - Events without split rules do not appear. Orders with a payment problem are left out and counted above the table.
 - Payouts and split rules are for owners only: editors do not see them.
+- Emails are for owners only too: editors do not see the tab.
+- Unsubscribing is a link and a confirm page, not a one-click button, and the mails carry no List-Unsubscribe header, until the core allows forms on plugin pages.
+- A link to another site opens a small page with a plain link instead of redirecting; only links to this site redirect.
+- When a venue entity changes, the mail says the place changed and points to the event page; it does not name the venue.
+- Reminder and thank-you go to orders with an active ticket, never to the waitlist. Campaigns never go to the waitlist either.
+- Automatic and campaign mails stop for a person who unsubscribed; ticket confirmations, refunds and waitlist mails still arrive.
+- Buys disappear from a campaign's count when the order is anonymised, since the match is by email.
 
 ## Build
 

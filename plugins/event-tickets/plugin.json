@@ -1,6 +1,6 @@
 {
   "name": "event-tickets",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "sdk": "^0.22.2",
   "description": "Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.",
   "permissions": ["settings", "db", "entities.read", "mail.send", "http.fetch", "builder.data", "builder.island"],
@@ -21,7 +21,8 @@
       "entity.deleted": 5000,
       "builder.data": 450,
       "on_cron_mail": 10000,
-      "on_cron_maintain": 10000
+      "on_cron_maintain": 10000,
+      "on_cron_emails": 10000
     }
   },
   "routes": [
@@ -61,11 +62,20 @@
     { "method": "GET", "path": "/admin/payouts", "roles": ["owner"] },
     { "method": "GET", "path": "/admin/payouts.csv", "roles": ["owner"] },
     { "method": "POST", "path": "/admin/payouts/mark", "roles": ["owner"] },
-    { "method": "POST", "path": "/admin/payouts/unmark", "roles": ["owner"] }
+    { "method": "POST", "path": "/admin/payouts/unmark", "roles": ["owner"] },
+    { "method": "GET", "path": "/admin/emails", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/emails/automations", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/campaigns/count", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/campaigns", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/campaigns/{id}/cancel", "roles": ["owner"] },
+    { "method": "GET", "path": "/o/{token}", "public": true },
+    { "method": "GET", "path": "/c/{token}", "public": true },
+    { "method": "GET", "path": "/u/{token}", "public": true }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },
-    { "name": "maintain", "every": "1h" }
+    { "name": "maintain", "every": "1h" },
+    { "name": "emails", "every": "5m" }
   ],
   "settings_schema": {
     "type": "object",

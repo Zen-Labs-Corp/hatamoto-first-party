@@ -20,7 +20,12 @@ const (
 	kindTicket = "ticket"
 	kindWait   = "wait"
 	kindOrder  = "order"
+	kindUnsub  = "unsub"
+	kindOpen   = "open"
 )
+
+// kindClick is the kind of the token of link n of a campaign mail.
+func kindClick(n int) string { return "click." + strconv.Itoa(n) }
 
 var tokenRe = regexp.MustCompile(`^[0-9a-f]{32}\.[0-9a-f]{32}$`)
 
