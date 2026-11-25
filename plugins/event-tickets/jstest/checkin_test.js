@@ -96,6 +96,60 @@ function harness(send, store) {
   assert.deepEqual(h.results.map((r) => r[1]), ["error", "ok"]);
   assert.equal(h.q.size(), 0);
 
+  // 6b. host 403/404 (plugin off or reloading) keep the scan and retry; only 400/413 are final
+  for (const status of [403, 404]) {
+    const stalls = [];
+    let up = false;
+    h = harness(async () => (up ? reply(200, { ok: true, result: "ok" }) : reply(status, { error: "x" })));
+    h.q.add("1", { scan: "x" });
+    await h.q.sync();
+    assert.equal(h.q.size(), 1, "kept on " + status);
+    assert.equal(h.results.length, 0);
+    assert.equal(h.timers.length, 1);
+    up = true;
+    await h.timers[0].fn();
+    assert.deepEqual(h.results.map((r) => r[1]), ["ok"]);
+    assert.equal(h.q.size(), 0);
+  }
+  h = harness(async () => reply(413, {}));
+  h.q.add("1", { scan: "big" });
+  await h.q.sync();
+  assert.deepEqual(h.results.map((r) => r[1]), ["error"]);
+  const stalled = [];
+  const hs = makeQueue({ send: async () => reply(404, {}), store: openStore(() => { throw new Error(); }), onStall: (s) => stalled.push(s), schedule() {} });
+  hs.add("1", { scan: "x" });
+  await hs.sync();
+  assert.deepEqual(stalled, [404]);
+
+  // 6c. reply lost after the server committed: the retry's "already" is this scan's own
+  const checkedAt = new Date(Date.now() + 5000).toISOString();
+  const att = { id: 1, checked_in_at: checkedAt };
+  let first = true;
+  h = harness(async () => {
+    if (first) { first = false; throw new Error("reply lost"); }
+    return reply(200, { ok: true, result: "already", attendee: att });
+  });
+  h.q.add("1", { scan: "t" });
+  await h.q.sync();
+  await h.timers[0].fn();
+  assert.deepEqual(h.results.map((r) => r[1]), ["ok"], "retried item, check-in not before the scan");
+  // an earlier check-in (someone else's) stays "already", also on retry
+  first = true;
+  att.checked_in_at = new Date(Date.now() - 3600000).toISOString();
+  h = harness(async () => {
+    if (first) { first = false; throw new Error("reply lost"); }
+    return reply(200, { ok: true, result: "already", attendee: att });
+  });
+  h.q.add("1", { scan: "t" });
+  await h.q.sync();
+  await h.timers[0].fn();
+  assert.deepEqual(h.results.map((r) => r[1]), ["already"]);
+  // a first attempt is never rewritten
+  h = harness(async () => reply(200, { ok: true, result: "already", attendee: { checked_in_at: new Date(Date.now() + 5000).toISOString() } }));
+  h.q.add("1", { scan: "t" });
+  await h.q.sync();
+  assert.deepEqual(h.results.map((r) => r[1]), ["already"]);
+
   // 7. duplicates are ignored; remove() undoes a queued scan
   h = harness(async () => { throw new Error("offline"); });
   assert.equal(h.q.add("1", { scan: "t" }), true);

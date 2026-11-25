@@ -45,14 +45,14 @@ let clock = 1000000;
 class FakeDate extends Date { static now() { return clock; } }
 
 // load runs the page; respond(method, path) returns {status, body}.
-async function load({ respond, timers = [] }) {
+async function load({ respond, timers = [], camera = { available: false } }) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   const routes = [];
   const document = { querySelector: (s) => els[s], createElement: (t) => new Node(t), execCommand: () => true };
   const hatamoto = {
     ready: Promise.resolve(),
-    camera: { available: false },
+    camera,
     route: async (method, p, body, query) => {
       routes.push({ method, p });
       return respond(method, p);
@@ -130,6 +130,28 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   ctx.api.showScanResult({ event: "2", body: { scan: "t" } }, { ok: true, result: "refused", reason: "other_event" });
   assert.equal(ctx.els["#ck-log"].children[0].children[2].textContent, "REFUSED: ticket is for another event");
   assert.equal(ctx.els["#ck-log"].children.length, 3);
+
+  // a final error is not REFUSED: it says to scan again and when it was scanned
+  ctx.api.showScanResult({ event: "2", body: { scan: "t" }, at: Date.UTC(2026, 0, 1, 19, 2) }, { result: "error" });
+  assert.match(ctx.els["#ck-log"].children[0].children[2].textContent, /^NOT SENT: scan again or search \(scanned \d\d:\d\d\)$/);
+  // a retry-confirmed scan reads OK, not ALREADY
+  ctx.api.showScanResult({ event: "2", body: { scan: "t" } }, { result: "ok", confirmed: true, attendee: { id: 7, name: "Cy", type_name: "GA", checked_in_at: "2026-01-01T19:02:00Z" } });
+  assert.match(ctx.els["#ck-log"].children[0].children[2].textContent, /^OK \(confirmed on retry\) \d\d:\d\d$/);
+
+  // a cancelled capture right after another one is core's cooldown: say so, never retry
+  let captures = 0;
+  ctx = await load({ respond: quiet, camera: { available: true, capture: async () => { captures++; return { ok: false, error: "cancelled" }; } } });
+  ctx.api.state.checkinEvent = "1";
+  await ctx.api.scanClick();
+  assert.ok(ctx.els["#notice"].hidden, "the first cancel is silent");
+  clock += 1000;
+  await ctx.api.scanClick();
+  assert.match(ctx.els["#notice"].textContent, /Wait a few seconds/);
+  assert.equal(captures, 2, "no automatic retry");
+  clock += 6000;
+  ctx.els["#notice"].hidden = true;
+  await ctx.api.scanClick();
+  assert.ok(ctx.els["#notice"].hidden, "after the cooldown a cancel is silent again");
 
   // money is exact: no floating point, decimals from the currency
   api = (await load({ respond: quiet })).api;

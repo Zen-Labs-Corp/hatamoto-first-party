@@ -667,6 +667,7 @@ const ckQueue = makeQueue({
   store: ckStore,
   onResult: showScanResult,
   onChange: renderQueue,
+  onStall: (status) => say(`Server not reachable (${status}); scans are kept and retried.`, true),
   schedule: (fn, ms) => setTimeout(fn, ms),
 });
 
@@ -679,19 +680,20 @@ function clockTime(when) {
 }
 
 // scanSummary turns the route's answer into the log entry for one scan.
-function scanSummary(outcome) {
+function scanSummary(outcome, item) {
   const a = outcome.attendee || {};
   const when = clockTime(a.checked_in_at);
-  if (outcome.result === "ok") return { cls: "ck-ok", label: `OK ${when}`.trim(), name: a.name, type: a.type_name, id: a.id };
+  if (outcome.result === "ok") return { cls: "ck-ok", label: `OK${outcome.confirmed ? " (confirmed on retry)" : ""} ${when}`.trim(), name: a.name, type: a.type_name, id: a.id };
   if (outcome.result === "already") return { cls: "ck-already", label: `ALREADY CHECKED IN ${when}`.trim(), name: a.name, type: a.type_name };
   if (outcome.result === "refused") {
     return { cls: "ck-refused", label: `REFUSED: ${REFUSED_TEXT[outcome.reason] || "not accepted"}`, name: a.name, type: a.type_name };
   }
-  return { cls: "ck-refused", label: "REFUSED: the server did not accept this scan", name: "", type: "" };
+  const scanned = item ? clockTime(item.at) : "";
+  return { cls: "ck-refused", label: `NOT SENT: scan again or search${scanned ? ` (scanned ${scanned})` : ""}`, name: "", type: "" };
 }
 
 function showScanResult(item, outcome) {
-  const entry = scanSummary(outcome);
+  const entry = scanSummary(outcome, item);
   entry.event = item.event;
   state.checkinLog = [entry, ...state.checkinLog].slice(0, LOG_MAX);
   renderLog();
@@ -791,6 +793,9 @@ function decodePhoto(uri) {
 
 // scanClick must call capture() first, in the click itself: core only opens
 // the camera for a person's click, and it is never retried here.
+let lastNoPhotoAt = 0;
+const CAMERA_COOLDOWN_MS = 5000;
+
 function scanClick() {
   if (!hatamoto.camera || !hatamoto.camera.available) {
     say("Grant the camera on the plugin's Permissions tab.", true);
@@ -806,6 +811,12 @@ function scanClick() {
   return shot.then(async (r) => {
     if (!r.ok) {
       if (r.error !== "cancelled") say(`Camera ${r.error}.`, true);
+      else if (Date.now() - lastNoPhotoAt < CAMERA_COOLDOWN_MS) {
+        // Core answers "cancelled" without a dialog during its cooldown.
+        say("Wait a few seconds and try again.", true);
+        return;
+      }
+      lastNoPhotoAt = Date.now();
       return;
     }
     const token = parseScan(await decodePhoto(r.image));
@@ -852,6 +863,6 @@ hatamoto.ready.then(async () => {
 if (typeof module !== "undefined") {
   module.exports = {
     csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest,
-    feesText, submitRefund, openRefund, state, showScanResult, clockTime,
+    feesText, submitRefund, openRefund, state, showScanResult, clockTime, scanClick, ckQueue,
   };
 }

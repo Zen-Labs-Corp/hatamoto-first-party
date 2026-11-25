@@ -6,6 +6,9 @@
 const QUEUE_KEY = "event-tickets:checkin-queue";
 const SCAN_MAX = 512;
 const RETRY_MS = 15000;
+// Device and server clocks differ a little: a check-in this much before the
+// device's scan time still counts as that scan.
+const SKEW_MS = 120000;
 
 // parseScan returns the ticket token of a scanned text: the part after the
 // last "/ticket/" without query or fragment, or the trimmed text itself.
@@ -56,10 +59,14 @@ function openStore(getStorage) {
 //   onResult(item, outcome)  outcome is the route's answer ({result: ok|already|refused, ...})
 //                            or {result: "error"} for a request the server refused outright
 //   onChange()               the queue changed
+//   onStall(status)          optional: a run stopped on an HTTP status (not a rejected call)
 //   schedule(fn, ms)         runs fn later
-// A 200 or a 4xx (not 429) is final and the item is dropped. Anything else
-// (429, 5xx, status 0, a rejected call) keeps the item and stops the run.
-function makeQueue({ send, store, onResult, onChange, schedule }) {
+// A 200, 400 or 413 is final and the item is dropped. Anything else (403/404
+// from the host while the plugin is off or reloading, 429, 5xx, status 0, a
+// rejected call) keeps the item and stops the run.
+// An item sent before may have reached the server with its reply lost: an
+// "already" whose check-in is not older than the scan is then this scan's own.
+function makeQueue({ send, store, onResult, onChange, onStall, schedule }) {
   let items = store.load();
   let running = false;
   let retryPending = false;
@@ -103,6 +110,8 @@ function makeQueue({ send, store, onResult, onChange, schedule }) {
       while (items.length > 0) {
         const item = items[0];
         let res;
+        item.attempts = (item.attempts || 0) + 1;
+        store.save(items);
         try {
           res = await send(item.event, item.body);
         } catch (_) {
@@ -121,9 +130,14 @@ function makeQueue({ send, store, onResult, onChange, schedule }) {
             retryLater();
             return;
           }
-        } else if (status >= 400 && status < 500 && status !== 429) {
+          if (outcome.result === "already" && item.attempts > 1 && outcome.attendee) {
+            const when = Date.parse(outcome.attendee.checked_in_at);
+            if (when >= item.at - SKEW_MS) outcome = { ...outcome, result: "ok", confirmed: true };
+          }
+        } else if (status === 400 || status === 413) {
           outcome = { result: "error" };
         } else {
+          if (onStall && status) onStall(status);
           retryLater();
           return;
         }
