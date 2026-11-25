@@ -11,7 +11,7 @@ CREATE TABLE split_rules (
     created_at  timestamptz NOT NULL DEFAULT now(),
     CHECK (kind <> 'percent' OR value <= 10000)
 );
-CREATE INDEX split_rules_event_idx ON split_rules (event_id, position);
+CREATE UNIQUE INDEX split_rules_event_idx ON split_rules (event_id, position);
 CREATE TABLE payouts (
     id          bigserial PRIMARY KEY,
     period      text NOT NULL CHECK (period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'), -- UTC month of orders.paid_at

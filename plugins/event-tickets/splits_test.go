@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -140,5 +141,24 @@ func TestEventDetailSplitsOnlyForOwner(t *testing.T) {
 	_, body = get(t, "/admin/events/{id}", "e1", owner, nil)
 	if s, has := body["splits"]; !has || len(s.([]any)) != 0 {
 		t.Errorf("owner detail: %v", body)
+	}
+}
+
+// Two saves of one event must not stack their rules: the schema refuses duplicate positions
+// (migration 004 is unreleased, so the index is edited in place), and the button is off while saving.
+func TestSplitSaveIsSingleFlight(t *testing.T) {
+	mig, err := os.ReadFile("migrations/004_payouts.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mig), "CREATE UNIQUE INDEX split_rules_event_idx ON split_rules (event_id, position)") {
+		t.Error("split_rules needs a unique (event_id, position) index")
+	}
+	js, err := os.ReadFile("ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(js), `$("#ed-save-splits").addEventListener("click", async (ev) => {`) || !strings.Contains(string(js), "btn.disabled = true;") {
+		t.Error("the Save splits button is disabled while the save runs")
 	}
 }

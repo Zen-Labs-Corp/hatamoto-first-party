@@ -326,13 +326,19 @@ $("#ed-add-split").addEventListener("click", () => {
   ed.splits.push(splitRule({ kind: "percent" }));
   renderEditor();
 });
-$("#ed-save-splits").addEventListener("click", () => run(async () => {
-  const ed = state.editing;
-  const data = await api("POST", `/admin/events/${encodeURIComponent(ed.id)}/splits`, splitsBody(ed.splits));
-  ed.splits = (data.splits || []).map(splitRule);
-  say("Saved.");
-  renderEditor();
-}));
+$("#ed-save-splits").addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  await run(async () => {
+    const ed = state.editing;
+    const data = await api("POST", `/admin/events/${encodeURIComponent(ed.id)}/splits`, splitsBody(ed.splits));
+    ed.splits = (data.splits || []).map(splitRule);
+    say("Saved.");
+    renderEditor();
+  });
+  btn.disabled = false;
+});
 $("#ed-add-field").addEventListener("click", () => {
   const ed = state.editing;
   if (ed.fields.length >= MAX_FIELDS) { say(`At most ${MAX_FIELDS} questions.`, true); return; }
