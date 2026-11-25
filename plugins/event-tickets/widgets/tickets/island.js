@@ -125,7 +125,7 @@ function mount(box, env) {
   const steppers = {}; // ticket type id -> its minus and plus buttons
   // The seat picker (another widget) tells which seats the buyer holds. Their
   // types are locked to the picked count while a hold is there.
-  const bus = { on: env.on || (() => {}), emit: env.emit || (() => {}) };
+  const bus = { on: env.on, emit: env.emit };
   let hold = "";
   let seated = new Set();
   const inputs = {};
@@ -582,6 +582,8 @@ if (typeof document !== "undefined") {
     now: () => Date.now(),
     delay: (fn, ms) => setTimeout(fn, ms),
     go: (u) => location.assign(u),
+    emit: (name, detail) => document.dispatchEvent(new CustomEvent(name, { detail })),
+    on: (name, fn) => document.addEventListener(name, fn),
   };
   for (const box of document.querySelectorAll(".hm-event-tickets_tickets")) mount(box, env);
 }

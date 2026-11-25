@@ -105,7 +105,7 @@ const THREE = { ...TOKEN, types: [{ id: 5, name: "Standard", left: 8, sold_out: 
 const threeRows = () => [row(5, "e1", "Standard"), row(8, "e1", "Student"), row(6, "e1", "VIP", { "data-sold-out": "1", "data-waitlist": "1" })];
 
 // env with a script of answers and a clock the test moves
-function setup({ attrs, rows, bus, post = answer(200, { ok: true, tickets: ["/p/event-tickets/ticket/a.b"] }), token = answer(200, TOKEN), quote = answer(200, QUOTE) } = {}) {
+function setup({ attrs, rows, bus = { handlers: {}, sent: [] }, post = answer(200, { ok: true, tickets: ["/p/event-tickets/ticket/a.b"] }), token = answer(200, TOKEN), quote = answer(200, QUOTE) } = {}) {
   const calls = [];
   const gone = []; // pages the browser was sent to
   let clock = 1_000_000;
@@ -122,10 +122,8 @@ function setup({ attrs, rows, bus, post = answer(200, { ok: true, tickets: ["/p/
     // a delay moves the clock instead of waiting
     delay: (fn, ms) => { clock += ms; fn(); },
   };
-  if (bus) {
-    env.on = (name, fn) => { bus.handlers[name] = fn; };
-    env.emit = (name, detail) => bus.sent.push({ name, detail });
-  }
+  env.on = (name, fn) => { bus.handlers[name] = fn; };
+  env.emit = (name, detail) => bus.sent.push({ name, detail });
   const b = box(attrs, rows);
   const form = s.mount(b, env);
   return { b, form, calls, gone, advance: (ms) => { clock += ms; }, now: () => clock };
