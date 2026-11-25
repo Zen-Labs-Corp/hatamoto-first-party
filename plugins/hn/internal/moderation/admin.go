@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"html"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -25,6 +26,11 @@ const (
 	sqlBanDelete    = `DELETE FROM bans WHERE user_id = $1`
 	sqlDomainUpsert = `INSERT INTO banned_domains (domain, reason, created_at) VALUES ($1, $2, $3::timestamptz) ON CONFLICT (domain) DO UPDATE SET reason = EXCLUDED.reason`
 	sqlDomainDelete = `DELETE FROM banned_domains WHERE domain = $1`
+	// sqlDomainKill kills the live stories of a banned site and its subdomains
+	// (the effect of kill() for a story, set-based).
+	sqlDomainKill = `WITH s AS (UPDATE story_meta SET dead = true WHERE NOT dead AND (domain = $1 OR domain LIKE '%.' || $1) RETURNING entity_id) INSERT INTO kills (kind, target_id, cause, created_at) SELECT 'story', entity_id, 'domain', $2::timestamptz FROM s ON CONFLICT (kind, target_id) DO NOTHING`
+	// sqlDomainRevive brings back the stories a site ban killed once no remaining ban covers them.
+	sqlDomainRevive = `WITH k AS (DELETE FROM kills k USING story_meta s WHERE k.kind = 'story' AND k.cause = 'domain' AND k.target_id = s.entity_id AND (s.domain = $1 OR s.domain LIKE '%.' || $1) AND NOT EXISTS (SELECT 1 FROM banned_domains d WHERE s.domain = d.domain OR s.domain LIKE '%.' || d.domain) RETURNING k.target_id) UPDATE story_meta SET dead = false FROM k WHERE story_meta.entity_id = k.target_id`
 	sqlNetUpsert    = `INSERT INTO net_bans (net_key, reason, expires_at, created_at) VALUES ($1, $2, $3::timestamptz, $4::timestamptz) ON CONFLICT (net_key) DO UPDATE SET reason = EXCLUDED.reason, expires_at = EXCLUDED.expires_at`
 	sqlNetDelete    = `DELETE FROM net_bans WHERE net_key = $1`
 )
@@ -247,8 +253,12 @@ func handleDomainBan(q *core.Request) sdk.HTTPResponse {
 	if _, err := core.Exec(sqlDomainUpsert, d, reason, nowArg()); err != nil {
 		return failed()
 	}
-	writeLog("owner", "domain-ban", "domain:"+d, "")
-	return ok(map[string]any{"domain": d})
+	n, err := core.Exec(sqlDomainKill, d, nowArg())
+	if err != nil {
+		return failed()
+	}
+	writeLog("owner", "domain-ban", "domain:"+d, "killed "+strconv.FormatInt(n, 10))
+	return ok(map[string]any{"domain": d, "killed": n})
 }
 
 func handleDomainRemove(q *core.Request) sdk.HTTPResponse {
@@ -263,8 +273,12 @@ func handleDomainRemove(q *core.Request) sdk.HTTPResponse {
 	if _, err := core.Exec(sqlDomainDelete, d); err != nil {
 		return failed()
 	}
-	writeLog("owner", "domain-remove", "domain:"+d, "")
-	return ok(nil)
+	n, err := core.Exec(sqlDomainRevive, d)
+	if err != nil {
+		return failed()
+	}
+	writeLog("owner", "domain-remove", "domain:"+d, "restored "+strconv.FormatInt(n, 10))
+	return ok(map[string]any{"restored": n})
 }
 
 func handleNetBan(q *core.Request) sdk.HTTPResponse {

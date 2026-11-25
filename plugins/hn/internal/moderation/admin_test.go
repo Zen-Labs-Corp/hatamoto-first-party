@@ -145,6 +145,59 @@ func TestAdminDomains(t *testing.T) {
 	}
 }
 
+func TestAdminDomainKillsAndRestoresStories(t *testing.T) {
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	pinNow(t, now)
+	db := &fakeDB{Exec: func(sql string, _ []any) (int64, error) {
+		switch sql {
+		case sqlDomainKill:
+			return 3, nil
+		case sqlDomainRevive:
+			return 2, nil
+		}
+		return 1, nil
+	}}
+	install(t, db)
+	out := wantStatus(t, asOwner(t, "POST", "/admin/domains", nil, `{"domain":"Spam.example","reason":"spam"}`), 200)
+	if out["killed"] != float64(3) {
+		t.Fatalf("out = %v", out)
+	}
+	if len(db.Execs) < 2 || !strings.HasPrefix(db.Execs[0].SQL, "INSERT INTO banned_domains") || db.Execs[1].SQL != sqlDomainKill ||
+		db.Execs[1].Args[0] != "spam.example" || db.Execs[1].Args[1] != now.Format(time.RFC3339Nano) {
+		t.Fatalf("execs = %+v", db.Execs)
+	}
+	out = wantStatus(t, asOwner(t, "POST", "/admin/domains/remove", nil, `{"domain":"spam.example"}`), 200)
+	if out["restored"] != float64(2) {
+		t.Fatalf("out = %v", out)
+	}
+	if n := len(db.Execs); n < 3 || db.Execs[n-3].SQL != sqlDomainDelete || db.Execs[n-2].SQL != sqlDomainRevive || db.Execs[n-2].Args[0] != "spam.example" {
+		t.Fatalf("remove order: %+v", db.Execs)
+	}
+	logs := execs(db, sqlLogInsert)
+	if len(logs) != 2 || logs[0].Args[3] != "killed 3" || logs[1].Args[3] != "restored 2" {
+		t.Fatalf("log = %+v", logs)
+	}
+	for _, want := range []string{"WHERE NOT dead", "'domain'", "ON CONFLICT (kind, target_id) DO NOTHING"} {
+		if !strings.Contains(sqlDomainKill, want) {
+			t.Errorf("kill SQL lacks %q", want)
+		}
+	}
+	for _, want := range []string{"NOT EXISTS (SELECT 1 FROM banned_domains", "k.cause = 'domain'"} {
+		if !strings.Contains(sqlDomainRevive, want) {
+			t.Errorf("revive SQL lacks %q", want)
+		}
+	}
+	// a kill that fails answers 500; a retry is safe
+	fail := &fakeDB{Exec: func(sql string, _ []any) (int64, error) {
+		if sql == sqlDomainKill {
+			return 0, hostErr(sdk.ErrUnavailable)
+		}
+		return 1, nil
+	}}
+	install(t, fail)
+	wantStatus(t, asOwner(t, "POST", "/admin/domains", nil, `{"domain":"spam.example"}`), 500)
+}
+
 func TestAdminDomainsIDN(t *testing.T) {
 	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
 	db := &fakeDB{}

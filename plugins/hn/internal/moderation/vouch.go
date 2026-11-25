@@ -29,7 +29,7 @@ func handleVouch(q *core.Request) (sdk.HTTPResponse, error) {
 	switch {
 	case !t.Dead:
 		return refuse(q, back, nVouchAlive)
-	case t.Cause == causeOwner || t.Cause == causeBan:
+	case t.Cause == causeOwner || t.Cause == causeBan || t.Cause == causeDomain:
 		return refuse(q, back, nVouchLocked)
 	case u.Karma < core.LoadSettings().VouchKarma:
 		return refuse(q, back, nVouchKarma)
