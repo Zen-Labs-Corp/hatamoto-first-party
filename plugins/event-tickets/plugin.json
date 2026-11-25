@@ -77,7 +77,10 @@
     { "method": "POST", "path": "/admin/maps/{id}/delete", "roles": ["owner", "editor"] },
     { "method": "POST", "path": "/admin/maps/{id}/sections", "roles": ["owner", "editor"] },
     { "method": "POST", "path": "/admin/sections/{id}/delete", "roles": ["owner", "editor"] },
-    { "method": "POST", "path": "/admin/sections/{id}/seats", "roles": ["owner", "editor"] }
+    { "method": "POST", "path": "/admin/sections/{id}/seats", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/seats/{event}", "public": true },
+    { "method": "POST", "path": "/seats/hold", "public": true },
+    { "method": "DELETE", "path": "/seats/hold/{token}", "public": true }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },

@@ -56,6 +56,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveMap(r.User, r.PathValues["id"]), nil
 		case "/token":
 			return serveToken(r.Query), nil
+		case "/seats/{event}":
+			return serveSeatMap(r.PathValues["event"]), nil
 		case "/waitlist/{token}/claim":
 			return serveClaim(r.PathValues["token"], r.Query), nil
 		case "/waitlist/{token}/leave":
@@ -84,6 +86,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveQuote(r), nil
 		case "/checkout":
 			return serveCheckout(r), nil
+		case "/seats/hold":
+			return serveSeatHold(r), nil
 		case "/stripe/webhook":
 			return serveStripeWebhook(r), nil
 		case "/paypal/webhook":
@@ -136,6 +140,12 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveDeleteSection(r.User, r.PathValues["id"]), nil
 		case "/admin/sections/{id}/seats":
 			return serveSetBlocked(r, r.PathValues["id"]), nil
+		}
+	}
+	if r.Method == http.MethodDelete {
+		switch r.Pattern {
+		case "/seats/hold/{token}":
+			return serveSeatRelease(r.PathValues["token"], r.Query), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil
