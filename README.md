@@ -87,9 +87,10 @@ scripts/load-check.sh plugins/gtm        # after build-plugin.sh: the core loade
 CI runs it for every plugin it builds. The first run fetches the pinned core
 source and caches it; `HATAMOTO_CORE_SRC` overrides it. A refusal that is known
 and fixed in the plugin later is listed in `scripts/load-check-known.txt`
-(`<plugin> <substring of the reason>`): it prints `KNOWN FAIL` and does not fail
-the run, but a different reason still fails, and so does a listed plugin that now
-passes (remove it from the list).
+(`<plugin> <substring of one refusal>`, several lines per plugin): it prints
+`KNOWN FAIL` and does not fail the run only when every refusal of the plugin
+matches a listed line. Any other refusal still fails, and so does a listed plugin
+that now passes (remove it from the list).
 
 Needs Go (the `toolchain` line of each `go.mod` pins it) and `jq`; `node` runs
 any `*_test.js`. No `go.work`: every plugin builds alone with `GOWORK=off`, as

@@ -94,5 +94,25 @@ LOAD_CHECK_KNOWN=$known check "known: listed + different reason still fails" 1 '
 printf 'good whatever\n' >"$known"
 LOAD_CHECK_KNOWN=$known check "known: listed + now passing fails" 1 'good \.+ OK \(remove it from load-check-known\.txt\)' "$tmp/plugins/good"
 
+printf 'scriptmark site.scripts\n' >"$known"
+printf '{{define "section-fx_block"}}<button onclick="x()">go</button>{{end}}{{define "plugin/scriptmark/ok_name"}}{{if}}{{end}}\n' >"$tmp/plugins/scriptmark/build/partials/ok_name.html"
+LOAD_CHECK_KNOWN=$known check "known: the listed reason plus one more refusal still fails" 1 'scriptmark \.+ FAIL core would refuse' "$tmp/plugins/scriptmark"
+printf 'scriptmark\n' >"$known"
+LOAD_CHECK_KNOWN=$known check "known: an entry without a reason is a config error" 1 'has no reason' "$tmp/plugins/scriptmark"
+rm "$tmp/plugins/scriptmark/build/partials/ok_name.html"
+printf '{{define "plugin/scriptmark/ok_name"}}ok{{end}}\n' >"$tmp/plugins/scriptmark/build/partials/ok_name.html"
+
+# the helper stopping early: a fake helper (LOAD_CHECK_HELPER_SRC) that prints one verdict then dies
+printf 'package main\nimport ("fmt";"os")\nfunc main() { fmt.Println("  good ... FAIL x"); os.Exit(%s) }\n' 1 >"$tmp/h1.go"
+printf 'package main\nimport ("fmt";"os")\nfunc main() { fmt.Println("  good ... FAIL x"); os.Exit(%s) }\n' 137 >"$tmp/h2.go"
+LOAD_CHECK_HELPER_SRC=$tmp/h1.go check "helper prints a verdict for one of two plugins" 1 'stopped early' "$tmp/plugins/good" "$tmp/plugins/bad-name"
+LOAD_CHECK_HELPER_SRC=$tmp/h2.go check "helper exits with a code other than 0/1" 1 'helper exited 137' "$tmp/plugins/good"
+
+# core panics on a same-file define that calls a cross-file partial (the old hn shape);
+# this case flips when core fixes the panic
+fixture panics
+printf '{{define "plugin/panics/aa"}}{{template "plugin/panics/ok_name"}}{{end}}{{define "section-fx_block"}}{{template "plugin/panics/aa"}}{{end}}\n' >"$tmp/plugins/panics/build/sections/fx_block.html"
+check "core panic on the templates is a FAIL" 1 'panics \.+ FAIL core panics on the templates' "$tmp/plugins/panics"
+
 ((fails == 0)) || { echo "test-load-check: $fails case(s) failed" >&2; exit 1; }
 echo "test-load-check: all cases passed"
