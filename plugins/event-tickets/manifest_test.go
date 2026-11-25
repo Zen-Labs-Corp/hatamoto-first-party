@@ -12,11 +12,19 @@ import (
 )
 
 type manifestFile struct {
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	SDK         string   `json:"sdk"`
-	Permissions []string `json:"permissions"`
-	Cron        []struct {
+	Name           string   `json:"name"`
+	Version        string   `json:"version"`
+	SDK            string   `json:"sdk"`
+	Permissions    []string `json:"permissions"`
+	BuilderSources []struct {
+		Name string `json:"name"`
+	} `json:"builder_sources"`
+	UI struct {
+		Title string   `json:"title"`
+		Entry string   `json:"entry"`
+		Roles []string `json:"roles"`
+	} `json:"ui"`
+	Cron []struct {
 		Name  string `json:"name"`
 		Every string `json:"every"`
 	} `json:"cron"`
@@ -77,20 +85,45 @@ func TestManifest(t *testing.T) {
 		t.Errorf("sdk range %q, go.mod %q", m.SDK, got)
 	}
 
-	allowed := []string{"entities.read", "db", "settings", "mail.send", "builder.data", "builder.island"}
-	for _, p := range m.Permissions {
-		if !slices.Contains(allowed, p) {
-			t.Errorf("permission %q is not one this plugin may ask for", p)
+	wantPerms := []string{"builder.data", "builder.island", "db", "entities.read", "mail.send", "settings"}
+	if perms := slices.Sorted(slices.Values(m.Permissions)); !slices.Equal(perms, wantPerms) {
+		t.Errorf("permissions = %v, want %v", perms, wantPerms)
+	}
+	if len(m.BuilderSources) != 1 || m.BuilderSources[0].Name != "tickets" {
+		t.Errorf("builder_sources = %+v", m.BuilderSources)
+	}
+	if len(m.Cron) != 2 || m.Cron[0].Name != "mail" || m.Cron[0].Every != "5m" || m.Cron[1].Name != "maintain" || m.Cron[1].Every != "1h" {
+		t.Errorf("cron = %+v", m.Cron)
+	}
+
+	wantRoutes := []struct {
+		method, path string
+		public       bool
+	}{
+		{"GET", "/admin/events", false}, {"GET", "/admin/events/{id}", false},
+		{"POST", "/admin/events/{id}/types", false}, {"POST", "/admin/types/{id}/delete", false},
+		{"POST", "/admin/events/{id}/fields", false}, {"GET", "/admin/events/{id}/attendees", false},
+		{"GET", "/admin/events/{id}/attendees.csv", false}, {"POST", "/admin/attendees/{id}/resend", false},
+		{"POST", "/admin/attendees/{id}/cancel", false}, {"GET", "/admin/settings", false},
+		{"GET", "/token", true}, {"POST", "/rsvp", true},
+		{"GET", "/waitlist/{token}/claim", true}, {"GET", "/waitlist/{token}/leave", true},
+		{"GET", "/ticket/{token}", true}, {"GET", "/ticket/{token}/qr.png", true},
+	}
+	if len(m.Routes) != len(wantRoutes) {
+		t.Fatalf("routes = %+v", m.Routes)
+	}
+	for i, r := range m.Routes {
+		w := wantRoutes[i]
+		if r.Method != w.method || r.Path != w.path || r.Public != w.public {
+			t.Errorf("route %d = %+v, want %+v", i, r, w)
+		}
+		if wantRoles := []string{"owner", "editor"}; !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {
+			t.Errorf("route %s roles = %v", r.Path, r.Roles)
 		}
 	}
 
-	for _, r := range m.Routes {
-		switch {
-		case r.Public && len(r.Roles) != 0:
-			t.Errorf("public route %s %s has roles %v", r.Method, r.Path, r.Roles)
-		case !r.Public && !slices.Equal(r.Roles, []string{"owner", "editor"}):
-			t.Errorf("admin route %s %s roles = %v, want owner and editor", r.Method, r.Path, r.Roles)
-		}
+	if m.UI.Title != "Event tickets" || m.UI.Entry != "index.html" || !slices.Equal(m.UI.Roles, []string{"owner", "editor"}) {
+		t.Errorf("ui = %+v", m.UI)
 	}
 
 	known := []string{"builder.data", "entity.created", "entity.updated", "entity.published", "entity.deleted"}
@@ -135,7 +168,31 @@ func TestManifest(t *testing.T) {
 }
 
 func TestShippedFiles(t *testing.T) {
-	exists(t, "migrations/001_init.sql")
+	for _, f := range []string{"migrations/001_init.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
+		exists(t, f)
+	}
+}
+
+// Every permission is explained in the README, and the QR library's licence is named.
+func TestReadmeExplainsPermissions(t *testing.T) {
+	m := loadManifest(t)
+	raw, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, ok := strings.Cut(string(raw), "## Permissions")
+	if !ok {
+		t.Fatal("README has no Permissions section")
+	}
+	section, _, _ := strings.Cut(after, "\n## ")
+	for _, p := range m.Permissions {
+		if !strings.Contains(section, "- `"+p+"`") {
+			t.Errorf("README Permissions does not explain %s", p)
+		}
+	}
+	if !strings.Contains(string(raw), "boombuler/barcode") || !strings.Contains(string(raw), "MIT") {
+		t.Error("README must credit boombuler/barcode and its MIT licence")
+	}
 }
 
 // TestManifestSDKValidate runs the manifest through the validation core
