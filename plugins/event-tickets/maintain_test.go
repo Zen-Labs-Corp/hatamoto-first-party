@@ -13,19 +13,20 @@ import (
 // maintainHost fakes the host for the hourly job: it answers each step's
 // statement from its fields, advances a clock on every call and records them.
 type maintainHost struct {
-	settings string
-	expired  string // types the expiry statement frees, as a jsonb cell
-	expiries int    // expiry batches that still find something
-	closed   string // waitlist entries the closed-event statement ends
-	stale    string // event ids with an old snapshot
-	entities map[string]string
-	orders   []int64 // rows_affected of each orders batch in turn
-	other    int64   // rows_affected of the other retention deletes
-	dbErr    error
-	tick     time.Duration // the clock moves this much on every call
-	clock    time.Time
-	calls    []call
-	freed    []int64
+	settings     string
+	expired      string // types the expiry statement frees, as a jsonb cell
+	expiries     int    // expiry batches that still find something
+	closed       string // waitlist entries the closed-event statement ends
+	stale        string // event ids with an old snapshot
+	snapshotCell string // stored signature of an event, "" = never seen
+	entities     map[string]string
+	orders       []int64 // rows_affected of each orders batch in turn
+	other        int64   // rows_affected of the other retention deletes
+	dbErr        error
+	tick         time.Duration // the clock moves this much on every call
+	clock        time.Time
+	calls        []call
+	freed        []int64
 }
 
 func newMaintainHost(t *testing.T) *maintainHost {
@@ -65,6 +66,13 @@ func newMaintainHost(t *testing.T) *maintainHost {
 			return cell(h.expired)
 		case strings.HasPrefix(sql, "WITH c AS (UPDATE waitlist SET status = 'expired'"):
 			return cell(h.closed)
+		case strings.Contains(sql, "FROM events WHERE entity_id"):
+			if h.snapshotCell != "" {
+				return cell(h.snapshotCell)
+			}
+			return cell(`null`)
+		case strings.HasPrefix(sql, "INSERT INTO event_changes"):
+			return nil
 		case strings.Contains(sql, "SELECT DISTINCT event_id FROM ticket_types"):
 			return cell(h.stale)
 		case strings.HasPrefix(sql, "UPDATE orders SET name"):

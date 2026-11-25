@@ -55,6 +55,8 @@ type event struct {
 	End         time.Time
 	HasEnd      bool
 	JoinPublic  bool
+	Venue       string // change key: "id:<entity id>", "text:<name|address|city>" or ""
+	VenueText   string // venue name and city for mails, empty when only a venue entity is chosen
 }
 
 // readEvent reads one event entity. It reports false, with no error, when the
@@ -89,6 +91,7 @@ func readEvent(id string, s settings) (event, bool, error) {
 		AllDay:      attrBool(attrs, "all_day"),
 		JoinPublic:  joinPublic(attrs),
 	}
+	e.Venue, e.VenueText = venueOf(attrs)
 	if start, ok := parseTime(attrString(attrs, "start_at"), loc); ok {
 		e.Start = start
 		if end, ok := parseTime(attrString(attrs, "end_at"), loc); ok && !end.Before(start) {
@@ -111,6 +114,32 @@ func parseTime(s string, loc *time.Location) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+// venueOf reads where an event takes place: a chosen venue entity wins, else
+// the typed name, address and city. The key detects changes, the text is for mails.
+func venueOf(m map[string]any) (key, text string) {
+	if ids, _ := m["venue"].([]any); len(ids) > 0 {
+		if id, _ := ids[0].(string); strings.TrimSpace(id) != "" {
+			return "id:" + strings.TrimSpace(id), ""
+		}
+	}
+	name, addr, city := attrString(m, "venue_name"), attrString(m, "venue_address"), attrString(m, "venue_city")
+	if name == "" && addr == "" && city == "" {
+		return "", ""
+	}
+	text = strings.Join(nonEmpty(name, city), ", ")
+	return "text:" + name + "|" + addr + "|" + city, text
+}
+
+func nonEmpty(parts ...string) []string {
+	var out []string
+	for _, p := range parts {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // attrString returns a string attribute, empty when missing or not a string.
@@ -199,11 +228,12 @@ func snapshotEvent(e event) error {
 	if e.EventStatus == "cancelled" || e.EventStatus == "postponed" {
 		status = e.EventStatus // the snapshot is what the waitlist statements read
 	}
-	return dbExec(`INSERT INTO events (entity_id, schema_slug, name, starts_at, ends_at, status)
-VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6)
+	return dbExec(`INSERT INTO events (entity_id, schema_slug, name, starts_at, ends_at, status, venue_key)
+VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6, $7)
 ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, name = EXCLUDED.name,
-    starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, status = EXCLUDED.status, seen_at = now()`,
-		e.ID, e.SchemaSlug, e.Name, starts, ends, status)
+    starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, status = EXCLUDED.status,
+    venue_key = EXCLUDED.venue_key, seen_at = now()`,
+		e.ID, e.SchemaSlug, e.Name, starts, ends, status, e.Venue)
 }
 
 // hasTypes reports whether the event has any ticket type.
@@ -230,7 +260,7 @@ func onEntity(ev sdk.EntityEvent) error {
 	switch {
 	case err != nil:
 	case ok:
-		_ = snapshotEvent(e)
+		_ = observeEvent(e)
 	default:
 		_ = dbExec(`UPDATE events SET status = 'unpublished', seen_at = now() WHERE entity_id = $1`, ev.ID)
 	}

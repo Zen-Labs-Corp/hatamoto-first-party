@@ -117,7 +117,7 @@ ORDER BY e.seen_at NULLS FIRST, t.event_id LIMIT $1) x`, &ids, snapshotBatch)
 		case err != nil:
 			return // the host is struggling: try again next hour
 		case ok:
-			_ = snapshotEvent(e)
+			_ = observeEvent(e)
 		case entityGone(id):
 			_ = dbExec(`UPDATE events SET status = 'deleted', seen_at = now() WHERE entity_id = $1`, id)
 			_ = dbExec(`UPDATE ticket_types SET on_sale = false, touched_at = now() WHERE event_id = $1`, id)
