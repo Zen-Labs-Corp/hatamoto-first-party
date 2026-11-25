@@ -62,6 +62,43 @@ func TestNormalizeURLPort(t *testing.T) {
 	}
 }
 
+func TestNormalizeURLIDN(t *testing.T) {
+	_, k1, d1, err := core.NormalizeURL("http://münchen-qa.example/a")
+	if err != nil || d1 != "xn--mnchen-qa-q9a.example" {
+		t.Fatalf("got %q %v", d1, err)
+	}
+	canon, k2, _, _ := core.NormalizeURL("http://xn--mnchen-qa-q9a.example/a")
+	if k1 != k2 {
+		t.Errorf("keys %q %q", k1, k2)
+	}
+	if c, k3, _, _ := core.NormalizeURL("http://MÜNCHEN-qa.example:8080/a"); k3 != "xn--mnchen-qa-q9a.example/a" || c != "http://xn--mnchen-qa-q9a.example:8080/a" {
+		t.Errorf("canon %q key %q", c, k3)
+	}
+	if c, _, _, _ := core.NormalizeURL("http://münchen-qa.example/a"); c != canon {
+		t.Errorf("canon %q, want %q", c, canon)
+	}
+	if _, _, d, err := core.NormalizeURL("http://a_b.example/"); err != nil || d != "a_b.example" {
+		t.Errorf("underscore host: %q %v", d, err)
+	}
+	if _, _, _, err := core.NormalizeURL("http://a\ufffdb.example/"); err == nil {
+		t.Error("invalid IDN host accepted")
+	}
+}
+
+func TestASCIIHost(t *testing.T) {
+	for in, want := range map[string]string{
+		"Example.COM": "example.com", "münchen-qa.example": "xn--mnchen-qa-q9a.example",
+		"MÜNCHEN-qa.example": "xn--mnchen-qa-q9a.example", "a_b.example": "a_b.example",
+	} {
+		if got, ok := core.ASCIIHost(in); !ok || got != want {
+			t.Errorf("ASCIIHost(%q) = %q %v, want %q", in, got, ok, want)
+		}
+	}
+	if _, ok := core.ASCIIHost("a\ufffdb.example"); ok {
+		t.Error("U+FFFD host converted")
+	}
+}
+
 func TestValidUsername(t *testing.T) {
 	for in, ok := range map[string]bool{
 		"a": false, "ab": true, strings.Repeat("a", 15): true, strings.Repeat("a", 16): false,

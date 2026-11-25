@@ -49,11 +49,17 @@ func userID(req *core.GateReq) int64 {
 	return req.User.ID
 }
 
-// domainHost is a host in the form banned_domains is matched in: lower-case,
+// domainHost is a host in the form banned_domains is matched in: lower-case punycode,
 // without "www." and a trailing dot. The SQL matches the host and its parents,
 // so the match does not depend on how many labels the host has.
 func domainHost(d string) string {
-	d = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(d)), ".")
+	d = strings.TrimSpace(d)
+	if a, ok := core.ASCIIHost(d); ok {
+		d = a
+	} else {
+		d = strings.ToLower(d)
+	}
+	d = strings.TrimSuffix(d, ".")
 	return strings.TrimPrefix(d, "www.")
 }
 

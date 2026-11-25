@@ -145,6 +145,24 @@ func TestAdminDomains(t *testing.T) {
 	}
 }
 
+func TestAdminDomainsIDN(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db := &fakeDB{}
+	install(t, db)
+	out := wantStatus(t, asOwner(t, "POST", "/admin/domains", nil, `{"domain":"MÜNCHEN-qa.example","reason":"spam"}`), 200)
+	if out["domain"] != "xn--mnchen-qa-q9a.example" {
+		t.Fatalf("out = %v", out)
+	}
+	if d := execs(db, "INSERT INTO banned_domains"); len(d) != 1 || d[0].Args[0] != "xn--mnchen-qa-q9a.example" {
+		t.Fatalf("inserts = %+v", d)
+	}
+	wantStatus(t, asOwner(t, "POST", "/admin/domains/remove", nil, `{"domain":"münchen-qa.example"}`), 200)
+	if d := execs(db, "DELETE FROM banned_domains"); len(d) != 1 || d[0].Args[0] != "xn--mnchen-qa-q9a.example" {
+		t.Fatalf("deletes = %+v", d)
+	}
+	wantStatus(t, asOwner(t, "POST", "/admin/domains", nil, "{\"domain\":\"a\\ufffdb.example\"}"), 400)
+}
+
 func TestAdminNets(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	pinNow(t, now)

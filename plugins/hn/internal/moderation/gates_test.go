@@ -80,6 +80,14 @@ func TestGates(t *testing.T) {
 				t.Fatalf("domains arg = %v", got)
 			}
 		})
+		t.Run("a unicode host is sent as punycode", func(t *testing.T) {
+			db := answer(map[string]any{})
+			install(t, db)
+			_ = r.RunGates(core.GateSubmit, gateReq(core.GateSubmit, member(10), "", "", "münchen-qa.example"))
+			if got := db.Queries[0].Args[1]; !sameList(got, "xn--mnchen-qa-q9a.example") {
+				t.Fatalf("domains arg = %v", got)
+			}
+		})
 		t.Run("deep host is sent whole and matched by suffix in SQL", func(t *testing.T) {
 			deep := "a.b.c.d.e.f.g.h.i.j.example.com"
 			db := answer(map[string]any{})
@@ -296,7 +304,7 @@ func TestGates(t *testing.T) {
 }
 
 func TestDomainHost(t *testing.T) {
-	for in, want := range map[string]string{"WWW.A.b.Example.com.": "a.b.example.com", " example.com ": "example.com", "": ""} {
+	for in, want := range map[string]string{"WWW.A.b.Example.com.": "a.b.example.com", "www.MÜNCHEN-qa.example.": "xn--mnchen-qa-q9a.example", " example.com ": "example.com", "": ""} {
 		if got := domainHost(in); got != want {
 			t.Errorf("domainHost(%q) = %q, want %q", in, got, want)
 		}

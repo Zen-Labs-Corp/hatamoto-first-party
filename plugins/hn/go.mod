@@ -10,4 +10,7 @@ require (
 	hatamoto.dev/sdk v0.27.0
 )
 
-require github.com/extism/go-pdk v1.1.3 // indirect
+require (
+	github.com/extism/go-pdk v1.1.3 // indirect
+	golang.org/x/text v0.44.0 // indirect
+)

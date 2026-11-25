@@ -223,9 +223,14 @@ func handleUnban(q *core.Request) sdk.HTTPResponse {
 	return ok(nil)
 }
 
-// cleanDomain lower-cases a domain and drops "www.".
+// cleanDomain lower-cases a domain, converts a unicode spelling to punycode and
+// drops "www.".
 func cleanDomain(s string) (string, bool) {
-	d := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(s)), "www.")
+	d, ok := core.ASCIIHost(strings.TrimSpace(s))
+	if !ok {
+		return "", false
+	}
+	d = strings.TrimPrefix(strings.TrimSuffix(d, "."), "www.")
 	return d, len(d) <= 253 && domainRe.MatchString(d)
 }
 
