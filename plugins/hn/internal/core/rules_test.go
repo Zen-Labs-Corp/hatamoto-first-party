@@ -46,6 +46,22 @@ func TestNormalizeURL(t *testing.T) {
 	}
 }
 
+func TestNormalizeURLPort(t *testing.T) {
+	for _, bad := range []string{"http://a.example:99999/", "http://a.example:65536/", "http://a.example:0/", "http://a.example:abc/"} {
+		if _, _, _, err := core.NormalizeURL(bad); err == nil {
+			t.Errorf("NormalizeURL(%q) accepted", bad)
+		}
+	}
+	for _, good := range []string{"http://a.example:65535/", "http://a.example:8080/x", "http://a.example:/x"} {
+		if _, _, _, err := core.NormalizeURL(good); err != nil {
+			t.Errorf("NormalizeURL(%q) = %v", good, err)
+		}
+	}
+	if canon, _, _, _ := core.NormalizeURL("http://a.example:8080/x"); canon != "http://a.example:8080/x" {
+		t.Errorf("canon %q", canon)
+	}
+}
+
 func TestValidUsername(t *testing.T) {
 	for in, ok := range map[string]bool{
 		"a": false, "ab": true, strings.Repeat("a", 15): true, strings.Repeat("a", 16): false,

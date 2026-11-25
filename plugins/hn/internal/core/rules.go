@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -21,7 +22,7 @@ func CleanTitle(s string) (string, error) {
 }
 
 // NormalizeURL checks a story link (http or https, a host, no userinfo, at most
-// 2000 bytes) and returns it without the fragment (canon), the key two links to
+// 2000 bytes, a port, if any, of 1 to 65535) and returns it without the fragment (canon), the key two links to
 // the same page share (key) and its host without a trailing "." or a leading
 // "www." (domain).
 func NormalizeURL(raw string) (canon, key, domain string, err error) {
@@ -32,6 +33,11 @@ func NormalizeURL(raw string) (canon, key, domain string, err error) {
 	u, perr := url.Parse(raw)
 	if perr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
 		return "", "", "", errors.New("url must be an http or https link")
+	}
+	if p := u.Port(); p != "" {
+		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
+			return "", "", "", errors.New("url has an invalid port")
+		}
 	}
 	u.Fragment = ""
 	u.RawFragment = ""
