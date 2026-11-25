@@ -152,10 +152,10 @@ func TestUIDetailedPanels(t *testing.T) {
 	if end := strings.Index(html[body:], "</section>"); sites < body+end {
 		t.Error("#sites is inside the detailed section")
 	}
-	if !strings.Contains(html, "<h2>Sites (last 30 days)</h2>") {
-		t.Error("index.html lacks the Sites heading")
+	if !strings.Contains(html, "<h2>Active installs (last 30 days)</h2>") {
+		t.Error("index.html lacks the active installs heading")
 	}
-	for _, want := range []string{"No sites have reported an address yet.", "Sites could not be loaded.", `$("#sites")`} {
+	for _, want := range []string{"No active installs in the last 30 days.", "Active installs could not be loaded.", `"(no address)"`, `$("#sites")`} {
 		if !strings.Contains(js, want) {
 			t.Errorf("ui/app.js lacks %q", want)
 		}

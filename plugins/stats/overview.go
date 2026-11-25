@@ -37,11 +37,12 @@ type overview struct {
 	DetailedUnavailable bool `json:"detailed_unavailable"`
 }
 
-// siteRow is one install's newest report that carried a host; the install ID
-// is never sent to the page.
+// siteRow is one active install: its newest host ("" when it never reported
+// one in the window) and its newest ping. The install ID is never sent to the page.
 type siteRow struct {
 	Host     string `json:"host"`
 	Version  string `json:"version"`
+	Channel  string `json:"channel"`
 	LastSeen string `json:"last_seen"`
 }
 
@@ -244,9 +245,12 @@ func buildErrors(rows []errRow) errorsTable {
 	return out
 }
 
-// qSites: per install its newest report that carried a host in the window
-// ($1 exclusive, $2 inclusive), newest first, capped.
-const qSites = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.last_seen DESC, t.host), '[]'::jsonb) FROM (SELECT host, version, last_seen FROM (SELECT DISTINCT ON (install) host, core_version AS version, to_char(day, 'YYYY-MM-DD') AS last_seen FROM detail_daily WHERE host IS NOT NULL AND day > $1::date AND day <= $2::date ORDER BY install, day DESC) s ORDER BY last_seen DESC, host LIMIT 200) t`
+// qSites: every install active in the window ($1 exclusive, $2 inclusive) with
+// the version, channel and day of its newest ping and the host of its newest
+// Detailed report that carried one ("" when none did). Newest first, installs
+// with a host before those without, capped. Both lookups are one index probe
+// per install, like latestInWindow.
+const qSites = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.last_seen DESC, t.host = '', t.host), '[]'::jsonb) FROM (SELECT coalesce(h.host, '') AS host, l.version, l.channel, to_char(l.day, 'YYYY-MM-DD') AS last_seen FROM (SELECT DISTINCT install FROM installs_daily WHERE day > $1::date AND day <= $2::date) w CROSS JOIN LATERAL (SELECT d.version, d.channel, d.day FROM installs_daily d WHERE d.install = w.install AND d.day > $1::date AND d.day <= $2::date ORDER BY d.day DESC LIMIT 1) l LEFT JOIN LATERAL (SELECT x.host FROM detail_daily x WHERE x.install = w.install AND x.host IS NOT NULL AND x.day > $1::date AND x.day <= $2::date ORDER BY x.day DESC LIMIT 1) h ON true ORDER BY l.day DESC, h.host IS NULL, h.host LIMIT 1000) t`
 
 // sitesDays is the fixed Sites window, independent of the page's day selector.
 const sitesDays = 30

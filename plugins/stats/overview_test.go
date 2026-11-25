@@ -235,10 +235,10 @@ func TestOverviewEmptyDetailedIsEmptyArrays(t *testing.T) {
 func TestOverviewSites(t *testing.T) {
 	stubNow(t)
 	calls := fakeDBWith(t, map[string]string{
-		qSites: `[{"host":"example.com","version":"v1.4.2","last_seen":"2026-10-28"},{"host":"blog.example.org","version":"v1.4.1","last_seen":"2026-10-27"}]`,
+		qSites: `[{"host":"example.com","version":"v1.4.2","channel":"stable","last_seen":"2026-10-28"},{"host":"","version":"v1.3.2","channel":"edge","last_seen":"2026-10-28"},{"host":"blog.example.org","version":"v1.4.1","channel":"stable","last_seen":"2026-10-27"}]`,
 	})
 	res, o := overviewGet(t, map[string][]string{"days": {"7"}})
-	if res.Status != 200 || len(o.Sites) != 2 || o.Sites[0] != (siteRow{"example.com", "v1.4.2", "2026-10-28"}) || o.Sites[1].Host != "blog.example.org" {
+	if res.Status != 200 || len(o.Sites) != 3 || o.Sites[0] != (siteRow{"example.com", "v1.4.2", "stable", "2026-10-28"}) || o.Sites[1] != (siteRow{"", "v1.3.2", "edge", "2026-10-28"}) || o.Sites[2].Host != "blog.example.org" {
 		t.Fatalf("%d %+v", res.Status, o.Sites)
 	}
 	if strings.Contains(res.Body, `"install"`) {
@@ -260,13 +260,16 @@ func TestOverviewSites(t *testing.T) {
 }
 
 func TestSitesQueryShape(t *testing.T) {
-	for _, want := range []string{"LIMIT 200", "host IS NOT NULL", "ORDER BY last_seen DESC, host", "DISTINCT ON (install)", "ORDER BY install, day DESC", "'[]'::jsonb"} {
+	for _, want := range []string{"LIMIT 1000", "FROM installs_daily WHERE", "LEFT JOIN LATERAL", "x.host IS NOT NULL", "ORDER BY l.day DESC, h.host IS NULL, h.host", "'[]'::jsonb"} {
 		if !strings.Contains(qSites, want) {
 			t.Errorf("qSites lacks %q", want)
 		}
 	}
-	if !strings.Contains(qSites, "SELECT host, version, last_seen FROM (") {
-		t.Error("outer select must list only host, version and last_seen")
+	if strings.Contains(qSites, "DISTINCT ON") {
+		t.Error("qSites must probe the newest row per install, not sort the window")
+	}
+	if !strings.Contains(qSites, "(SELECT coalesce(h.host, '') AS host, l.version, l.channel, to_char(l.day, 'YYYY-MM-DD') AS last_seen FROM (") {
+		t.Error("outer select must list only host, version, channel and last_seen")
 	}
 }
 

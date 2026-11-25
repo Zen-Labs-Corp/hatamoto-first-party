@@ -199,9 +199,9 @@ async function load() {
   barRows($("#channels"), o.active === 0 ? [] : o.channels);
   trend($("#trend"), o.trend);
   detailed(o);
-  renderTable($("#sites"), ["Host", "Version", "Last seen"],
-    (o.sites || []).map((s) => [s.host, s.version, s.last_seen]),
-    o.detailed_unavailable ? "Sites could not be loaded." : "No sites have reported an address yet.");
+  renderTable($("#sites"), ["Site", "Version", "Channel", "Last seen"],
+    (o.sites || []).map((s) => [s.host || { text: "(no address)", cls: "muted" }, s.version, s.channel, s.last_seen]),
+    o.detailed_unavailable ? "Active installs could not be loaded." : "No active installs in the last 30 days.");
 }
 
 async function main() {
