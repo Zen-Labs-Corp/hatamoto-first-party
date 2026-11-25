@@ -40,13 +40,17 @@ func loginHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, error
 		if valid {
 			target = core.UsernameLower(name)
 		}
-		if err := r.RunGates(core.GateLogin, &core.GateReq{Kind: core.GateLogin, Req: req, Target: target}); err != nil {
+		gr := &core.GateReq{Kind: core.GateLogin, Req: req, Target: target}
+		if err := r.RunGates(core.GateLogin, gr); err != nil {
 			if req.WantsJSON() {
 				return core.JSONError(429, "too many login attempts"), nil
 			}
 			return core.Respond(req, core.WithNotice("/login", gateNotice(err, noticeTryAgain)), nil), nil
 		}
 		bad := func() (sdk.HTTPResponse, error) {
+			if gr.Failed != nil {
+				gr.Failed()
+			}
 			return core.Respond(req, core.WithNotice("/login", noticeBadLogin), map[string]string{"error": core.NoticeText(string(noticeBadLogin))}), nil
 		}
 		var l *login

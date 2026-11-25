@@ -182,8 +182,8 @@ func gateSignup(req *core.GateReq) error {
 }
 
 // gateLogin runs before a password is checked (login and password change). Target is the
-// lower-case username when it is a valid name, whether or not it exists, else "". Attempts
-// count (the gate cannot see the outcome); a key over its limit adds no more rows. The
+// lower-case username when it is a valid name, whether or not it exists, else "". Per-key limits
+// count attempts; the all-networks and keyless caps count wrong passwords only (Failed). The
 // refusal never depends on whether the username exists.
 func gateLogin(req *core.GateReq) error {
 	user, addr, net := req.Target, addrKey(req), netKey(req)
@@ -221,10 +221,13 @@ func gateLogin(req *core.GateReq) error {
 	}
 	userOver, allOver := res.UserN >= loginUserPerHour, res.UserAllN >= loginUserAllPerHour
 	addrOver, netOver := res.AddrN >= loginAddrPerHour, res.NetN >= netLimit
-	recordRates(now, "login_user", keyBelow(userKey, userOver), "login_user_all", keyBelow(user, allOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
-	if (user != "" && (userOver || allOver)) || (addr != "" && addrOver) || (net != "" && netOver) {
+	refused := (user != "" && (userOver || allOver)) || (addr != "" && addrOver) || (net != "" && netOver)
+	recordRates(now, "login_user", keyBelow(userKey, userOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
+	if refused {
+		// A refused request adds nothing to the all-networks cap: one address cannot fill it.
 		return refusal{nLoginRate}
 	}
+	req.Failed = func() { recordRates(now, "login_user_all", user) }
 	return nil
 }
 

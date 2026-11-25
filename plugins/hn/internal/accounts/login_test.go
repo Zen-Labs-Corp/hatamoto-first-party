@@ -208,3 +208,19 @@ func TestLoginRefusesOtherOrigins(t *testing.T) {
 		t.Errorf("side effects: %d %v", *n, f.ensured)
 	}
 }
+
+// Only a wrong password is reported back to the login gate (it feeds the caps that a real login must not use up).
+func TestLoginReportsOnlyFailures(t *testing.T) {
+	loginFixture(t)
+	failed := 0
+	r := newGateRegistry(core.GateLogin, func(g *core.GateReq) error { g.Failed = func() { failed++ }; return nil })
+	if resp := doLogin(r, "Ann", annPw); resp.CommenterSession == nil || failed != 0 {
+		t.Fatalf("good password: %+v failed=%d", resp, failed)
+	}
+	for _, name := range []string{"Ann", "nobody"} {
+		doLogin(r, name, "wrong horse!")
+	}
+	if failed != 2 {
+		t.Fatalf("failed = %d, want 2", failed)
+	}
+}

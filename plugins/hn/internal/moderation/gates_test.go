@@ -369,14 +369,14 @@ func TestGates(t *testing.T) {
 			m, _ := row.(map[string]any)
 			kinds += m["kind"].(string) + " "
 		}
-		if kinds != "login_user login_user_all login_addr login_net " {
+		if kinds != "login_user login_addr login_net " {
 			t.Fatalf("rate rows = %q", kinds)
 		}
 		t.Run("a key over its limit is not recorded", func(t *testing.T) {
 			db := counts(false, 10, 0, 0)
 			wantRefusal(t, run(db, "ann"), nLoginRate)
 			rows, _ := db.Execs[0].Args[1].([]any)
-			if len(db.Execs) != 1 || len(rows) != 3 {
+			if len(db.Execs) != 1 || len(rows) != 2 {
 				t.Fatalf("execs = %+v", db.Execs)
 			}
 		})
@@ -488,4 +488,54 @@ func sameList(got any, want ...string) bool {
 		}
 	}
 	return true
+}
+
+// ratesDB is a rate_events table: the gate's check query counts its rows, its record
+// statement adds to it.
+func ratesDB() (*fakeDB, map[string]int) {
+	rows := map[string]int{}
+	return &fakeDB{
+		Query: func(_ string, a []any) (any, error) {
+			n := func(kind string, key any) int { return rows[kind+"|"+key.(string)] }
+			return jsonRow(map[string]any{
+				"user_n": n("login_user", a[0]), "addr_n": n("login_addr", a[1]),
+				"net_n": n("login_net", a[2]), "user_all_n": n("login_user_all", a[4]),
+			}), nil
+		},
+		Exec: func(_ string, a []any) (int64, error) {
+			for _, row := range a[1].([]any) {
+				m := row.(map[string]any)
+				rows[m["kind"].(string)+"|"+m["key"].(string)]++
+			}
+			return 1, nil
+		},
+	}, rows
+}
+
+// One address cannot lock a name out of other networks: requests the per-address and
+// per-name limits refuse add nothing to the all-networks cap.
+func TestLoginAllNetworksCapIgnoresRefusedRequests(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db, rows := ratesDB()
+	install(t, db)
+	r := core.NewRegistry()
+	Register(r)
+	login := func(net, addr string) error {
+		req := gateReq(core.GateLogin, nil, net, addr, "")
+		req.Target = "mod"
+		err := r.RunGates(core.GateLogin, req)
+		if err == nil && req.Failed != nil {
+			req.Failed() // every attempt has a wrong password
+		}
+		return err
+	}
+	for i := 0; i < 200; i++ {
+		_ = login("net1", "addr1")
+	}
+	if n := rows["login_user_all|mod"]; n >= loginUserAllPerHour || n > loginUserPerHour {
+		t.Fatalf("one address filled the all-networks cap: %d rows", n)
+	}
+	if err := login("net2", "addr2"); err != nil {
+		t.Fatalf("another network is locked out: %v", err)
+	}
 }

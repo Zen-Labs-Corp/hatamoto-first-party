@@ -66,6 +66,10 @@ type GateReq struct {
 	// Stored is set by the vote gate and called by the caller once a story vote row was
 	// really inserted: counted is false for a Ring vote. A repeat vote never calls it.
 	Stored func(counted bool)
+	// Failed is set by the login gate when it let the attempt through and is called by the
+	// caller after a wrong password. Only failures count toward the all-networks and
+	// site-wide login caps.
+	Failed func()
 }
 
 // Item is a story or comment row, for row actions.
