@@ -21,6 +21,7 @@ Every table has `created_at timestamptz NOT NULL DEFAULT now()` unless noted.
 | Table | File | Phase |
 |---|---|---|
 | `users` | `010_accounts.sql` | accounts |
+| `user_logins` | `011_accounts_password.sql` | accounts |
 | `item_numbers` | `020_stories.sql` | stories |
 | `story_meta` | `020_stories.sql` | stories |
 | `story_votes` | `020_stories.sql` | stories |
@@ -48,6 +49,16 @@ Written by accounts (karma is also changed by stories and comments through `core
 | Table | Columns |
 |---|---|
 | `users` | `id`, `commenter_key` text unique, `username`, `username_lower` unique, `about` default '', `karma` integer default 1, `showdead` boolean default false, `noprocrast` boolean default false, `maxvisit` integer default 20, `minaway` integer default 180 |
+
+## 011_accounts_password
+
+Written by accounts only. The host runs plugin migrations out of order, so 011 applies after 051 on sites that already run an earlier version.
+
+| Table | Columns |
+|---|---|
+| `user_logins` | `user_id` primary key, references `users` (cascade), `account` text unique (plugin-owned id passed to `comments.identity.*`, 32 hex chars), `pw_hash` (bcrypt), `email` default '' (optional, never shown), `pw_changed_at` |
+
+The hash and the email never leave this table (`users` is read as `to_jsonb(u)`). `users.commenter_key` is the key `comments.identity.ensure` returned for an account created with a password; login re-attaches the row when core gave the account a new commenter (for example after a reinstall). An email-link member who connects a password keeps their key.
 
 ## 020_stories
 
