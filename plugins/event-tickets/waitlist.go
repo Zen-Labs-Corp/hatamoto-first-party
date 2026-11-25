@@ -39,27 +39,33 @@ SELECT coalesce((SELECT to_jsonb(id) FROM u), 'null'::jsonb)`, &id, typeID)
 }
 
 // promoteAll offers seats until nobody waits or none is free.
-func promoteAll(typeID int64) {
+func promoteAll(typeID int64) { promoteCount(typeID) }
+
+// promoteCount is promoteAll that says how many seats it offered.
+func promoteCount(typeID int64) int {
+	n := 0
 	for range maxPromotions {
 		if _, ok := promoteNext(typeID); !ok {
-			return
+			break
 		}
+		n++
 	}
+	return n
 }
 
 // cancelAttendee cancels an active ticket and frees its seat, then offers the
-// seat to the waitlist. ok is false when the ticket is not active.
-func cancelAttendee(id int64) (typeID int64, ok bool) {
+// seat to the waitlist; promoted is how many seats it offered. ok is false
+// when the ticket is not active.
+func cancelAttendee(id int64) (typeID int64, promoted int, ok bool) {
 	var tid *int64
 	err := dbJSON(`WITH a AS (UPDATE attendees SET status = 'cancelled', cancelled_at = now()
     WHERE id = $1 AND status = 'active' RETURNING type_id),
  t AS (UPDATE ticket_types t SET taken = taken - 1, touched_at = now() FROM a WHERE t.id = a.type_id RETURNING t.id)
 SELECT coalesce((SELECT to_jsonb(id) FROM t), 'null'::jsonb)`, &tid, id)
 	if err != nil || tid == nil {
-		return 0, false
+		return 0, 0, false
 	}
-	promoteAll(*tid)
-	return *tid, true
+	return *tid, promoteCount(*tid), true
 }
 
 // waitEntry is a waitlist entry as its pages read it.

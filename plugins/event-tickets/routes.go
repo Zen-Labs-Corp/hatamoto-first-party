@@ -23,6 +23,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveEvents(r.User, r.Query), nil
 		case "/admin/events/{id}":
 			return serveEventDetail(r.User, r.PathValues["id"]), nil
+		case "/admin/events/{id}/attendees":
+			return serveAttendees(r.User, r.PathValues["id"], r.Query), nil
+		case "/admin/events/{id}/attendees.csv":
+			return serveAttendeesCSV(r.User, r.PathValues["id"]), nil
 		case "/admin/settings":
 			return serveSettings(r.User), nil
 		case "/token":
@@ -45,6 +49,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveSaveType(r, r.PathValues["id"]), nil
 		case "/admin/types/{id}/delete":
 			return serveDeleteType(r.User, r.PathValues["id"]), nil
+		case "/admin/attendees/{id}/resend":
+			return serveResend(r.User, r.PathValues["id"]), nil
+		case "/admin/attendees/{id}/cancel":
+			return serveCancel(r.User, r.PathValues["id"]), nil
 		case "/admin/events/{id}/fields":
 			return serveSaveFields(r, r.PathValues["id"]), nil
 		}

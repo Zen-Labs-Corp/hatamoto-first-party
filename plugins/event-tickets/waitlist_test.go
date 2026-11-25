@@ -122,9 +122,9 @@ func TestCancelAttendeePromotes(t *testing.T) {
 	h := newWaitHost(t)
 	h.attendee = `6`
 	h.promote = []string{`3`}
-	typeID, ok := cancelAttendee(12)
-	if !ok || typeID != 6 {
-		t.Fatalf("%d %v", typeID, ok)
+	typeID, promoted, ok := cancelAttendee(12)
+	if !ok || typeID != 6 || promoted != 1 {
+		t.Fatalf("%d %d %v", typeID, promoted, ok)
 	}
 	cancel, promote := h.order("UPDATE attendees SET status = 'cancelled'"), h.order("SET status = 'offered'")
 	if cancel < 0 || promote < cancel {
@@ -155,7 +155,7 @@ func TestCancelAttendeePromotes(t *testing.T) {
 
 func TestCancelAttendeeIsIdempotent(t *testing.T) {
 	h := newWaitHost(t) // the statement finds no active ticket
-	if _, ok := cancelAttendee(12); ok {
+	if _, _, ok := cancelAttendee(12); ok {
 		t.Error("already cancelled")
 	}
 	if h.count("SET status = 'offered'") != 0 || h.count("INSERT INTO mail_queue") != 0 {
