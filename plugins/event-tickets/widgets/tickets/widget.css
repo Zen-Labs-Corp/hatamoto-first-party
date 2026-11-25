@@ -1,0 +1,12 @@
+.hm-event-tickets_tickets{display:block;margin:var(--hm-space-4,1rem) 0;padding:var(--hm-space-4,1rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-event-tickets_tickets h3{margin:0 0 var(--hm-space-2,.5rem);font-size:1.25rem}
+.hm-event-tickets_tickets .field{display:flex;flex-direction:column;gap:.25rem;margin:0 0 var(--hm-space-2,.5rem)}
+.hm-event-tickets_tickets .field input,.hm-event-tickets_tickets .field textarea{padding:.4rem .5rem;border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem);font:inherit;max-width:100%}
+.hm-event-tickets_tickets .field .invalid{border-color:var(--hm-color-danger,#b3261e)}
+.hm-event-tickets_tickets .trap{width:0;height:0;margin:0;padding:0;border:0;overflow:hidden;opacity:0}
+.hm-event-tickets_tickets button{padding:.4rem 1rem;font:inherit;cursor:pointer}
+.hm-event-tickets_tickets .status{margin:var(--hm-space-2,.5rem) 0 0;color:var(--hm-color-muted,#5b6475)}
+.hm-event-tickets_tickets .types{display:block}
+.hm-event-tickets_tickets .row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:0 0 var(--hm-space-2,.5rem)}
+.hm-event-tickets_tickets .field select{padding:.4rem .5rem;font:inherit}
+.hm-event-tickets_tickets .links{margin:var(--hm-space-2,.5rem) 0 0;padding:0;list-style:none}

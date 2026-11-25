@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "sdk": "^0.22",
   "description": "Free tickets, RSVP, paid tickets, attendees, check-in, seating and event emails for the event-calendar plugin.",
-  "permissions": ["settings", "db", "entities.read", "mail.send"],
+  "permissions": ["settings", "db", "entities.read", "mail.send", "builder.data", "builder.island"],
+  "builder_sources": [
+    { "name": "tickets", "label": "Tickets of this event", "kind": "items" }
+  ],
   "limits": {
     "memory_pages": 256,
     "max_instances": 4,
@@ -13,6 +16,7 @@
       "entity.updated": 5000,
       "entity.published": 5000,
       "entity.deleted": 5000,
+      "builder.data": 450,
       "on_cron_mail": 10000
     }
   },

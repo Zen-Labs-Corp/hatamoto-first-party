@@ -1,0 +1,1 @@
+<div {{.Attrs}} data-type="{{.P.type_id}}" data-event="{{.P.event_id}}" data-sold-out="{{.P.sold_out}}" data-waitlist="{{.P.waitlist}}"><span class="name">{{.P.name}}</span> <span class="price">{{.P.price}}</span> {{if .P.sold_out}}<span class="left">Sold out</span>{{else}}<span class="left">{{.P.left}} left</span>{{end}}</div>
