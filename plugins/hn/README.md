@@ -2,6 +2,12 @@
 
 A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation, built on core comments.
 
+## Upgrading to 1.2.0
+
+Update the plugin, then re-apply kit `hn` 1.0.2 to create the `/reply` page. The plugin cannot create a page and cannot tell whether it exists, so until the kit is applied again every reply link on `/threads`, `/newcomments` and the comment focus pages is a 404. Applying the kit adds only what is missing and keeps every existing page.
+
+`/best` is gone from the page paths and nothing redirects it: best stories are `/news?view=best`. A site that applied an older kit still has the CMS page `best`, which now renders an empty list; delete that page, or point it elsewhere (a stored redirect to `/news?view=best` in the admin). Links that name `/best`, such as the `lists` page text, need the same edit by hand.
+
 Status: 1.2.0: the reply page (`/reply?id=<comment>`), and best stories moved to `/news?view=best` to stay within the 16 page path limit. Before that, 1.1.0: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in, plus password accounts and the abuse fixes (voting-ring damping, IDN domain bans, port check, domain ban kills, network-banned votes, Origin check, Recent moderation view). Built against core v1.4.6 and SDK v0.29.0.
 
 ## Layout
