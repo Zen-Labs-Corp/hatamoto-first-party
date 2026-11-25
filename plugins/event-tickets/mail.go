@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"html/template"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -258,7 +259,7 @@ func composeConfirm(orderID int64) (m outMail, ok bool, err error) {
 func receiptRows(o *orderMail) []receiptRow {
 	var rows []receiptRow
 	for _, l := range o.Lines {
-		rows = append(rows, receiptRow{plainText(l.Name, false) + " x " + itoa(int64(l.Qty)), formatMoney(l.Unit*int64(l.Qty), o.Currency)})
+		rows = append(rows, receiptRow{plainText(l.Name, false) + " x " + strconv.Itoa(l.Qty), formatMoney(l.Unit*int64(l.Qty), o.Currency)})
 	}
 	if o.Discount > 0 {
 		rows = append(rows, receiptRow{"Discount", "-" + formatMoney(o.Discount, o.Currency)})
