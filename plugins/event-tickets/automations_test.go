@@ -16,6 +16,7 @@ type autoHost struct {
 	markers string // ids of unfanned markers, a jsonb array
 	what    string // event_changes.what of the one marker, "" = none
 	inserts []call
+	picks   []call
 	meta    []call
 }
 
@@ -28,13 +29,14 @@ func newAutoHost(t *testing.T) *autoHost {
 		ar, _ := a["args"].([]any)
 		switch {
 		case strings.Contains(sql, "FROM event_changes WHERE fanned_at IS NULL"):
+			h.picks = append(h.picks, call{fn, sql, ar})
 			return jsonInto(`{"rows":[[`+h.markers+`]]}`, out)
 		case strings.Contains(sql, "FROM event_changes WHERE id"):
 			if h.what == "" {
 				return jsonInto(`{"rows":[[null]]}`, out)
 			}
 			return jsonInto(`{"rows":[[`+jsonText(h.what)+`]]}`, out)
-		case strings.HasPrefix(sql, "WITH c AS (UPDATE event_changes"), strings.HasPrefix(sql, "INSERT INTO email_sends"):
+		case strings.HasPrefix(sql, "WITH p AS (SELECT id, what"), strings.HasPrefix(sql, "INSERT INTO email_sends"):
 			h.inserts = append(h.inserts, call{fn, sql, ar})
 			return nil
 		case strings.HasPrefix(sql, "INSERT INTO meta (key, value) VALUES ('email."):
@@ -48,38 +50,47 @@ func newAutoHost(t *testing.T) *autoHost {
 
 func never() bool { return false }
 
-func TestFanoutChangesOncePerMarker(t *testing.T) {
+func TestFanoutChangesOncePerEventAndCoalesces(t *testing.T) {
 	h := newAutoHost(t)
-	h.markers = `[7,8]`
+	h.markers = `["e1","e2"]`
 	fanoutChanges(defaultAutomations(), never)
 	if len(h.inserts) != 2 {
-		t.Fatalf("%d statements, want one per marker", len(h.inserts))
+		t.Fatalf("%d statements, want one per event", len(h.inserts))
 	}
 	c := h.inserts[0]
-	for _, want := range []string{"UPDATE event_changes SET fanned_at = now() WHERE id = $1 AND fanned_at IS NULL", "ON CONFLICT DO NOTHING",
+	for _, want := range []string{
+		"UPDATE event_changes SET fanned_at = now()", "AND fanned_at IS NULL RETURNING id",
+		"r.created_at > now() - interval '10 minutes'",                                                   // only a settled event
+		"WHEN id = (SELECT max(id) FROM p)",                                                              // the newest marker carries the union of what changed
+		"(SELECT count(*) FROM d) = (SELECT count(*) FROM p)",                                            // all or nothing, so a second instance finds nothing
+		"(SELECT old_sig FROM p ORDER BY id LIMIT 1) = (SELECT new_sig FROM p ORDER BY id DESC LIMIT 1)", // undone: no mail
+		"SELECT max(id) FROM p", "ON CONFLICT DO NOTHING",
 		"DISTINCT ON (lower(o.email))", "NOT EXISTS (SELECT 1 FROM unsubscribes", "o.status IN ('confirmed', 'paid')", "o.anonymised_at IS NULL", "gen_random_uuid()"} {
 		if !strings.Contains(c.sql, want) {
 			t.Errorf("statement lacks %q", want)
 		}
 	}
-	if jsonText(c.args) != `[7,true]` || jsonText(h.inserts[1].args) != `[8,true]` {
+	if jsonText(c.args) != `["e1",true]` || jsonText(h.inserts[1].args) != `["e2",true]` {
 		t.Errorf("args %s %s", jsonText(c.args), jsonText(h.inserts[1].args))
 	}
 	if strings.Contains(c.sql, "ana@") || strings.Contains(c.sql, "email_sends (kind, ref_id, event_id, order_id, email_hash, code, email") {
 		t.Error("an address must not be stored in email_sends")
 	}
+	if pick := h.picks[0]; !strings.Contains(pick.sql, "HAVING max(created_at) <= now() - interval '10 minutes'") || pick.args[0] != changeEventsPerRun {
+		t.Errorf("the pick must wait for a quiet event: %s %v", pick.sql, pick.args)
+	}
 
-	// the switch off still consumes the marker, with no recipients
+	// the switch off still consumes the markers, with no recipients
 	h = newAutoHost(t)
-	h.markers = `[9]`
+	h.markers = `["e9"]`
 	off := defaultAutomations()
 	off.Changed = false
 	fanoutChanges(off, never)
-	if len(h.inserts) != 1 || jsonText(h.inserts[0].args) != `[9,false]` {
+	if len(h.inserts) != 1 || jsonText(h.inserts[0].args) != `["e9",false]` {
 		t.Errorf("off: %+v", h.inserts)
 	}
 
-	// nothing unfanned: nothing written
+	// nothing settled: nothing written
 	h = newAutoHost(t)
 	fanoutChanges(defaultAutomations(), never)
 	if len(h.inserts) != 0 {

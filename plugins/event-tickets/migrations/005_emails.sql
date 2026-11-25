@@ -7,6 +7,8 @@ CREATE TABLE event_changes (
     event_id   text NOT NULL,
     change_key text NOT NULL,
     what       text NOT NULL CHECK (what ~ '^(date|venue|status)(,(date|venue|status))*$'),
+    old_sig    text,                                -- the signatures either side of the change, to spot a change that was undone
+    new_sig    text,
     created_at timestamptz NOT NULL DEFAULT now(),
     fanned_at  timestamptz,
     UNIQUE (event_id, change_key));

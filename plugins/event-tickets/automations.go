@@ -36,23 +36,38 @@ func init() {
 	composers["thanks"] = composeAuto
 }
 
-const changeMarkersPerRun = 20
+const (
+	changeEventsPerRun = 20
+	changeSettle       = "10 minutes" // an event's markers wait until its last one is this old
+)
 
-// fanoutChanges turns each unfanned change marker into sends, once: the same
-// statement marks it fanned and inserts, so a second run or a second instance
-// finds nothing. With the switch off the marker is still consumed, so turning
-// the mail on later does not mail old changes.
+// fanoutChanges turns the change markers of an event into sends, once. It
+// waits until the event has had no new marker for changeSettle, so quick
+// successive saves become one mail. Then one statement consumes all the
+// markers of the event and writes sends for the newest only, unless the last
+// signature equals the one before the first marker (the change was undone).
+// Being one statement, a second run or instance finds nothing. With the
+// switch off the markers are still consumed, so turning the mail on later does
+// not mail old changes.
 func fanoutChanges(a automations, over func() bool) {
-	var ids []int64
-	if err := dbJSON(`SELECT coalesce(jsonb_agg(x.id ORDER BY x.id), '[]'::jsonb)
-FROM (SELECT id FROM event_changes WHERE fanned_at IS NULL ORDER BY id LIMIT $1) x`, &ids, changeMarkersPerRun); err != nil {
+	var events []string
+	if err := dbJSON(`SELECT coalesce(jsonb_agg(x.event_id ORDER BY x.first), '[]'::jsonb)
+FROM (SELECT event_id, min(id) AS first FROM event_changes WHERE fanned_at IS NULL
+  GROUP BY event_id HAVING max(created_at) <= now() - interval '`+changeSettle+`' ORDER BY min(id) LIMIT $1) x`, &events, changeEventsPerRun); err != nil {
 		return
 	}
-	for _, id := range ids {
+	for _, id := range events {
 		if over() {
 			return
 		}
-		_ = dbExec(`WITH c AS (UPDATE event_changes SET fanned_at = now() WHERE id = $1 AND fanned_at IS NULL RETURNING id, event_id)
+		_ = dbExec(`WITH p AS (SELECT id, what, old_sig, new_sig FROM event_changes WHERE event_id = $1 AND fanned_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM event_changes r WHERE r.event_id = $1 AND r.fanned_at IS NULL AND r.created_at > now() - interval '`+changeSettle+`')),
+ d AS (UPDATE event_changes SET fanned_at = now(),
+    what = CASE WHEN id = (SELECT max(id) FROM p) THEN (SELECT string_agg(w, ',' ORDER BY w) FROM (SELECT DISTINCT unnest(string_to_array(what, ',')) AS w FROM p) x) ELSE what END
+    WHERE id IN (SELECT id FROM p) AND fanned_at IS NULL RETURNING id),
+ c AS (SELECT (SELECT max(id) FROM p) AS id, $1::text AS event_id
+    WHERE (SELECT count(*) FROM d) = (SELECT count(*) FROM p) AND (SELECT count(*) FROM p) > 0
+    AND NOT coalesce((SELECT old_sig FROM p ORDER BY id LIMIT 1) = (SELECT new_sig FROM p ORDER BY id DESC LIMIT 1), false))
 INSERT INTO email_sends (kind, ref_id, event_id, order_id, email_hash, code)
 SELECT DISTINCT ON (lower(o.email)) 'changed', c.id, c.event_id, o.id, `+hashSQL+`, `+codeSQL+`
 FROM c JOIN orders o ON o.event_id = c.event_id

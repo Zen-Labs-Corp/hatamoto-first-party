@@ -109,8 +109,8 @@ func observeEvent(e event) error {
 	nw := sigOf(e)
 	if old, err := readSnapshot(e.ID); err == nil {
 		if what := diffSig(old, nw, now()); len(what) > 0 {
-			_ = dbExec(`INSERT INTO event_changes (event_id, change_key, what) VALUES ($1, $2, $3)
-ON CONFLICT (event_id, change_key) DO NOTHING`, e.ID, changeKey(old, nw), strings.Join(what, ","))
+			_ = dbExec(`INSERT INTO event_changes (event_id, change_key, what, old_sig, new_sig) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (event_id, change_key) DO NOTHING`, e.ID, changeKey(old, nw), strings.Join(what, ","), old.text(), nw.text())
 		}
 	}
 	return snapshotEvent(e)

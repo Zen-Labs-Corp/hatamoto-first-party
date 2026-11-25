@@ -40,6 +40,9 @@ func TestDetectDateChangeInsertsOneMarker(t *testing.T) {
 			if !strings.Contains(c.sql, "ON CONFLICT (event_id, change_key) DO NOTHING") || c.args[2] != "date" || c.args[0] != "e1" {
 				t.Errorf("marker %s %v", c.sql, c.args)
 			}
+			if old, nw := c.args[3].(string), c.args[4].(string); old == "" || nw == "" || old == nw {
+				t.Errorf("the marker must keep both signatures to spot an undone change: %q %q", old, nw)
+			}
 		}
 	}
 	if n != 1 {
