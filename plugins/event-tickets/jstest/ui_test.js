@@ -32,7 +32,7 @@ const IDS = [
   "#ev-search", "#ev-go", "#ev-state", "#ev-table", "#ev-rows", "#ev-more", "#ed", "#ed-title", "#ed-types", "#ed-add",
   "#ed-fields", "#ed-add-field", "#ed-save-fields", "#ed-close", "#at-event", "#at-state", "#at-table", "#at-rows",
   "#wl-state", "#wl-table", "#wl-rows", "#at-more", "#at-csv", "#st-rows",
-  "#tab-orders", "#panel-orders", "#ed-bundles", "#ed-add-bundle", "#ed-save-bundles", "#or-status", "#or-event", "#or-search", "#or-go",
+  "#tab-orders", "#panel-orders", "#ed-bundle-box", "#cp-form", "#ed-bundles", "#ed-add-bundle", "#ed-save-bundles", "#or-status", "#or-event", "#or-search", "#or-go",
   "#or-state", "#or-table", "#or-rows", "#or-more", "#or-refund", "#or-refund-title", "#or-refund-amount", "#or-refund-cur",
   "#or-refund-tickets", "#or-refund-act", "#or-refund-close", "#cp-state", "#cp-table", "#cp-rows", "#cp-title", "#cp-code", "#cp-kind",
   "#cp-value", "#cp-max", "#cp-until", "#cp-event", "#cp-active", "#cp-save", "#cp-reset", "#or-fees",
@@ -175,6 +175,7 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
     assert.equal(rows.length, 2);
     const actions = rows[0].children[6].children.map((b) => b.textContent);
     same(actions, can ? ["Refund", "Cancel"] : []);
+    assert.equal(ctx.els["#cp-form"].hidden, !can, "editors do not see the coupon form");
     assert.equal(rows[0].children[3].children[0], "112.00 USD");
     assert.equal(rows[0].children[4].children[0], "Stripe");
     assert.equal(rows[1].children[3].children[0], "Free");

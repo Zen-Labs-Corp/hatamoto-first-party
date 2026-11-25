@@ -229,11 +229,15 @@ function bundleRow(rule, i) {
     button("Remove", () => { ed.bundles.splice(i, 1); renderEditor(); }));
 }
 
+// isOwner: coupons and bundles are changed by owners only (an editor would get a 403).
+function isOwner() { return Boolean(state.settings.can_refund); }
+
 function renderEditor() {
   const ed = state.editing;
   $("#ed").hidden = !ed;
   if (!ed) return;
   $("#ed-title").textContent = `Tickets for ${ed.name}`;
+  $("#ed-bundle-box").hidden = !isOwner(); // the server answers 403 to an editor
   $("#ed-types").replaceChildren(...ed.types.map(typeRow));
   $("#ed-bundles").replaceChildren(...ed.bundles.map(bundleRow));
   $("#ed-fields").replaceChildren(...ed.fields.map(fieldRow));
@@ -415,7 +419,7 @@ function orderStatus(o) {
 }
 
 function orderRow(o) {
-  const owner = Boolean(state.settings.can_refund);
+  const owner = isOwner();
   const left = o.total_cents - o.refunded_cents;
   // a cancelled order that was paid still holds money the owner can give back
   const canRefund = owner && (o.status === "paid" || (o.status === "cancelled" && Boolean(o.paid_at))) && PROVIDERS[o.provider] && left > 0;
@@ -530,7 +534,7 @@ function couponRow(c) {
   const uses = c.max_uses ? `${c.used}/${c.max_uses}` : String(c.used);
   return el("tr", {},
     cell(c.code + (c.active ? "" : " (off)")), cell(couponValue(c)), cell(uses), cell(day(c.expires_at)), cell(couponScope(c)),
-    el("td", { className: "actions" }, button("Edit", () => editCoupon(c)), button("Delete", () => deleteCoupon(c))));
+    el("td", { className: "actions" }, ...(isOwner() ? [button("Edit", () => editCoupon(c)), button("Delete", () => deleteCoupon(c))] : [])));
 }
 
 async function loadCoupons() {
@@ -603,6 +607,7 @@ function feesText(s) {
 
 function openOrders() {
   $("#or-fees").textContent = `Fees: ${feesText(state.settings)}. Change them in the plugin settings form.`;
+  $("#cp-form").hidden = !isOwner();
   loadOrders(false);
   loadCoupons();
 }
