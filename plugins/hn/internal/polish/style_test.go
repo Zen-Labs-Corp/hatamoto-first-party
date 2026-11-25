@@ -224,7 +224,7 @@ func TestStyleArrowNoBox(t *testing.T) {
 // The thread row carries only its depth inline; the shared partial turns it
 // into the margin, so the narrow-screen --hn-indent applies.
 func TestThreadIndentFromDepth(t *testing.T) {
-	raw, err := os.ReadFile("../../sections/hn_threads.html")
+	raw, err := os.ReadFile("../../partials/comment_row.html")
 	if err != nil {
 		t.Fatal(err)
 	}
