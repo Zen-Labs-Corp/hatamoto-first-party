@@ -155,6 +155,94 @@ func TestGates(t *testing.T) {
 				t.Error("vote query does not read net_bans with the expiry clause")
 			}
 		})
+		t.Run("voting ring", func(t *testing.T) {
+			ringDB := func(storyNo, ringN int) *fakeDB {
+				return &fakeDB{Query: func(sql string, _ []any) (any, error) {
+					return jsonRow(map[string]any{"story_no": storyNo, "ring_n": ringN}), nil
+				}}
+			}
+			vote := func(net string) *core.GateReq {
+				g := gateReq(core.GateVote, member(10), net, "addr1", "")
+				g.Target = "5b0e6a3c-0000-4000-8000-000000000001"
+				return g
+			}
+			ringRows := func(db *fakeDB) []map[string]string {
+				var out []map[string]string
+				for _, e := range db.Execs {
+					if e.SQL != sqlRateRecord {
+						continue
+					}
+					rows, _ := e.Args[1].([]any)
+					for _, r := range rows {
+						if m, _ := r.(map[string]any); m["kind"] == "vote_ring" {
+							out = append(out, map[string]string{"kind": "vote_ring", "key": m["key"].(string)})
+						}
+					}
+				}
+				return out
+			}
+			for _, n := range []int{0, 1} {
+				db := ringDB(12, n)
+				install(t, db)
+				g := vote("net1")
+				if err := r.RunGates(core.GateVote, g); err != nil || g.Ring {
+					t.Fatalf("ring_n %d: err %v ring %v", n, err, g.Ring)
+				}
+				rows := ringRows(db)
+				if len(rows) != 1 || rows[0]["key"] != "net1:"+g.Target {
+					t.Fatalf("ring_n %d: rows = %v", n, rows)
+				}
+				if got := db.Queries[0].Args[5]; got != g.Target {
+					t.Fatalf("target arg = %v", got)
+				}
+				if got := db.Queries[0].Args[6]; got != "net1:"+g.Target {
+					t.Fatalf("ring arg = %v", got)
+				}
+			}
+			db := ringDB(12, 2)
+			install(t, db)
+			g := vote("net12345678")
+			if err := r.RunGates(core.GateVote, g); err != nil || !g.Ring {
+				t.Fatalf("err %v ring %v", err, g.Ring)
+			}
+			if rows := ringRows(db); len(rows) != 0 {
+				t.Fatalf("rows = %v", rows)
+			}
+			logs := execs(db, sqlLogInsert)
+			if len(logs) != 1 || logs[0].Args[0] != "ring" || logs[0].Args[1] != "ring-vote" || logs[0].Args[2] != "story:12" || logs[0].Args[3] != "net:net12345" {
+				t.Fatalf("log = %+v", logs)
+			}
+			// a comment vote has no story number: no ring row, never marked
+			db = ringDB(0, 5)
+			install(t, db)
+			g = vote("net1")
+			if err := r.RunGates(core.GateVote, g); err != nil || g.Ring || len(ringRows(db)) != 0 {
+				t.Fatalf("comment vote: err %v ring %v rows %v", err, g.Ring, ringRows(db))
+			}
+			// no network key, no check
+			db = ringDB(12, 5)
+			install(t, db)
+			g = vote("")
+			if err := r.RunGates(core.GateVote, g); err != nil || g.Ring || db.Queries[0].Args[6] != "" {
+				t.Fatalf("no net: err %v ring %v", err, g.Ring)
+			}
+			// a rate refusal never marks and records no ring row
+			db = &fakeDB{Query: func(string, []any) (any, error) {
+				return jsonRow(map[string]any{"story_no": 12, "ring_n": 5, "user_n": 30}), nil
+			}}
+			install(t, db)
+			g = vote("net1")
+			wantRefusal(t, r.RunGates(core.GateVote, g), nVoteRate)
+			if g.Ring || len(ringRows(db)) != 0 {
+				t.Fatalf("rate refusal: ring %v rows %v", g.Ring, ringRows(db))
+			}
+			// a query error fails open: counted
+			install(t, &fakeDB{Query: func(string, []any) (any, error) { return nil, hostErr(sdk.ErrUnavailable) }})
+			g = vote("net1")
+			if err := r.RunGates(core.GateVote, g); err != nil || g.Ring {
+				t.Fatalf("error: err %v ring %v", err, g.Ring)
+			}
+		})
 		t.Run("records rate rows", func(t *testing.T) {
 			db := counts(false, 0, 0, 0)
 			install(t, db)

@@ -57,6 +57,10 @@ type GateReq struct {
 	Req    *Request
 	Target string
 	Domain string
+	// Ring is set by the vote gate when the vote comes from a network that already
+	// gave this story its counted votes for the day; the caller stores the vote
+	// without counting it. Story votes only; never a refusal.
+	Ring bool
 }
 
 // Item is a story or comment row, for row actions.

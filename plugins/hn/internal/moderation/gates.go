@@ -10,7 +10,7 @@ import (
 
 const (
 	sqlSubmitCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, EXISTS(SELECT 1 FROM banned_domains d JOIN jsonb_array_elements_text($2::jsonb) h(host) ON h.host = d.domain OR h.host LIKE '%.' || d.domain) AS domain, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net) x`
-	sqlVoteCheck   = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, (SELECT count(*) FROM rate_events WHERE kind = 'vote_user' AND key = $2 AND created_at > $5::timestamptz - interval '1 minute') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_addr' AND key = $3 AND created_at > $5::timestamptz - interval '1 minute') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_net' AND key = $4 AND created_at > $5::timestamptz - interval '1 minute') AS net_n, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $4 AND (expires_at IS NULL OR expires_at > $5::timestamptz)) AS net) x`
+	sqlVoteCheck   = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked, (SELECT count(*) FROM rate_events WHERE kind = 'vote_user' AND key = $2 AND created_at > $5::timestamptz - interval '1 minute') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_addr' AND key = $3 AND created_at > $5::timestamptz - interval '1 minute') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'vote_net' AND key = $4 AND created_at > $5::timestamptz - interval '1 minute') AS net_n, EXISTS(SELECT 1 FROM net_bans WHERE net_key = $4 AND (expires_at IS NULL OR expires_at > $5::timestamptz)) AS net, COALESCE((SELECT item_no FROM story_meta WHERE entity_id::text = $6), 0) AS story_no, (SELECT count(*) FROM rate_events WHERE kind = 'vote_ring' AND key = $7 AND created_at > $5::timestamptz - interval '24 hours') AS ring_n) x`
 	sqlSignupCheck = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $1 AND (expires_at IS NULL OR expires_at > $3::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'signup_net' AND key = $1 AND created_at > $3::timestamptz - interval '1 hour') AS net_n, (SELECT count(*) FROM rate_events WHERE kind = 'signup_addr' AND key = $2 AND created_at > $3::timestamptz - interval '1 hour') AS addr_n) x`
 	sqlLoginCheck  = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM net_bans WHERE net_key = $3 AND (expires_at IS NULL OR expires_at > $4::timestamptz)) AS net, (SELECT count(*) FROM rate_events WHERE kind = 'login_user' AND key = $1 AND created_at > $4::timestamptz - interval '1 hour') AS user_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_addr' AND key = $2 AND created_at > $4::timestamptz - interval '1 hour') AS addr_n, (SELECT count(*) FROM rate_events WHERE kind = 'login_net' AND key = $3 AND created_at > $4::timestamptz - interval '1 hour') AS net_n) x`
 	sqlBlocked     = `SELECT to_jsonb(x) FROM (SELECT EXISTS(SELECT 1 FROM bans WHERE user_id = $1 AND mode = 'blocked') AS blocked) x`
@@ -98,6 +98,8 @@ func gateVote(req *core.GateReq) error {
 		AddrN   int `json:"addr_n"`
 		NetN    int `json:"net_n"`
 		Net     bool
+		StoryNo int64 `json:"story_no"`
+		RingN   int   `json:"ring_n"`
 	}
 	user, addr, net := "", addrKey(req), netKey(req)
 	if req.User != nil {
@@ -106,8 +108,12 @@ func gateVote(req *core.GateReq) error {
 	if user == "" && addr == "" && net == "" {
 		return nil
 	}
+	ring := ""
+	if net != "" && req.Target != "" {
+		ring = net + ":" + req.Target
+	}
 	now := nowArg()
-	if err := core.QueryJSON(sqlVoteCheck, &res, userID(req), user, addr, net, now); err != nil {
+	if err := core.QueryJSON(sqlVoteCheck, &res, userID(req), user, addr, net, now, req.Target, ring); err != nil {
 		return nil
 	}
 	if res.Blocked {
@@ -119,9 +125,25 @@ func gateVote(req *core.GateReq) error {
 	userOver, addrOver, netOver := res.UserN >= voteUserPerMin, res.AddrN >= voteAddrPerMin, res.NetN >= voteNetPerMin
 	// A key already over its limit stays over without more rows, so a flood
 	// does not grow rate_events.
-	recordRates(now, "vote_user", keyBelow(user, userOver), "vote_addr", keyBelow(addr, addrOver), "vote_net", keyBelow(net, netOver))
-	if (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver) {
+	rateRefused := (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver)
+	// The ring check only marks a vote the rate limits let through: the caller
+	// stores a marked story vote without counting it, the voter is told nothing.
+	ringOver := !rateRefused && res.StoryNo > 0 && ring != "" && res.RingN >= ringVotesPerNet
+	ringKey := ""
+	if !rateRefused && res.StoryNo > 0 {
+		ringKey = keyBelow(ring, ringOver)
+	}
+	recordRates(now, "vote_user", keyBelow(user, userOver), "vote_addr", keyBelow(addr, addrOver), "vote_net", keyBelow(net, netOver), "vote_ring", ringKey)
+	if rateRefused {
 		return refusal{nVoteRate}
+	}
+	if ringOver {
+		req.Ring = true
+		prefix := net
+		if len(prefix) > 8 {
+			prefix = prefix[:8]
+		}
+		writeLog("ring", "ring-vote", "story:"+strconv.FormatInt(res.StoryNo, 10), "net:"+prefix)
 	}
 	return nil
 }

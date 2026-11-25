@@ -62,6 +62,9 @@ const (
 	loginAddrPerHour   = 20
 	loginNetPerHour    = 60
 	loginUserPerHour   = 10
+	// One network may add at most this many counted votes to one story in 24 hours;
+	// later ones are stored uncounted (voting-ring check).
+	ringVotesPerNet = 2
 )
 
 // defineNotices registers the texts of every notice code.
