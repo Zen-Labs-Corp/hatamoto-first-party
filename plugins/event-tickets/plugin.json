@@ -50,7 +50,7 @@
       "currency": {
         "type": "string",
         "title": "Currency",
-        "description": "Three-letter currency code, for example USD or EUR. Tickets are free for now; paid tickets will use it.",
+        "description": "Three-letter currency code of ticket prices, for example USD or EUR.",
         "default": "USD",
         "pattern": "^[A-Z]{3}$"
       },
@@ -98,6 +98,80 @@
         "description": "Leave empty to use Calendar event and any older Event type. Or name one content type.",
         "default": "",
         "pattern": "^([a-z][a-z0-9_-]{0,63})?$"
+      },
+      "stripe_secret_key": {
+        "type": "string",
+        "title": "Stripe secret key",
+        "description": "A secret or restricted key from your Stripe dashboard (sk_ or rk_). Stored here and never shown again.",
+        "default": "",
+        "writeOnly": true,
+        "pattern": "^$|^(sk|rk)_(test|live)_[A-Za-z0-9]{10,200}$"
+      },
+      "stripe_webhook_secret": {
+        "type": "string",
+        "title": "Stripe webhook signing secret",
+        "description": "The signing secret (whsec_) of the webhook endpoint you added in Stripe. Stored here and never shown again.",
+        "default": "",
+        "writeOnly": true,
+        "pattern": "^$|^whsec_[A-Za-z0-9]{10,200}$"
+      },
+      "paypal_client_id": {
+        "type": "string",
+        "title": "PayPal client ID",
+        "description": "From a REST app in your PayPal developer dashboard. Leave empty to not offer PayPal.",
+        "default": "",
+        "maxLength": 200
+      },
+      "paypal_secret": {
+        "type": "string",
+        "title": "PayPal secret",
+        "description": "The secret of the same REST app. Stored here and never shown again.",
+        "default": "",
+        "writeOnly": true,
+        "maxLength": 200
+      },
+      "paypal_webhook_id": {
+        "type": "string",
+        "title": "PayPal webhook ID",
+        "description": "The ID of the webhook you added to the REST app. Without it PayPal payments are still completed when the buyer returns to your site.",
+        "default": "",
+        "pattern": "^$|^[A-Z0-9]{8,40}$"
+      },
+      "paypal_sandbox": {
+        "type": "boolean",
+        "title": "PayPal test mode",
+        "description": "Use the PayPal sandbox instead of the live service. Turn it off to take real payments.",
+        "default": false
+      },
+      "fee_fixed_cents": {
+        "type": "integer",
+        "title": "Fixed fee (smallest currency unit)",
+        "description": "A fixed fee on paid orders in the smallest unit of the currency, for example 30 for 0.30 USD. 0 for none.",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 100000
+      },
+      "fee_percent_bp": {
+        "type": "integer",
+        "title": "Percentage fee (hundredths of a percent)",
+        "description": "A percentage fee on paid orders in hundredths of a percent: 250 is 2.5 %. 0 for none.",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 5000
+      },
+      "fee_per": {
+        "type": "string",
+        "title": "Fixed fee applies per",
+        "description": "Charge the fixed fee once per order, or once per paid ticket.",
+        "enum": ["order", "ticket"],
+        "default": "order"
+      },
+      "fee_payer": {
+        "type": "string",
+        "title": "Who pays the fee",
+        "description": "The buyer pays it on top of the ticket prices, or you absorb it and the buyer pays the ticket prices only.",
+        "enum": ["buyer", "organizer"],
+        "default": "buyer"
       }
     }
   }

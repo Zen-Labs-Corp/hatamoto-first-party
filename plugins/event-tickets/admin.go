@@ -310,9 +310,20 @@ func serveSettings(u *sdk.HTTPUser) sdk.HTTPResponse {
 		return forbidden()
 	}
 	s := loadSettings()
+	feePer, feePayer := "order", "buyer"
+	if s.FeePerTicket {
+		feePer = "ticket"
+	}
+	if s.FeeAbsorbed {
+		feePayer = "organizer"
+	}
 	return jsonReply(http.StatusOK, map[string]any{
 		"currency": s.Currency, "sender_name": s.SenderName, "confirmation_text_set": s.ConfirmationText != "",
 		"default_capacity": s.DefaultCapacity, "retention_months": s.RetentionMonths,
 		"site_url": s.SiteURL, "schema_slug": s.SchemaSlug,
+		"stripe_configured": s.stripeReady(), "paypal_configured": s.paypalReady(),
+		"paypal_webhook_set": s.PayPalWebhookID != "", "paypal_sandbox": s.PayPalSandbox,
+		"fee_fixed_cents": s.FeeFixed, "fee_percent_bp": s.FeeBP, "fee_per": feePer, "fee_payer": feePayer,
+		"currency_exponent": currencyExp(s.Currency), "can_refund": u.Role == "owner",
 	})
 }

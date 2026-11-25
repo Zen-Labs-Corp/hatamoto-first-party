@@ -15,6 +15,7 @@ var editor = &sdk.HTTPUser{ID: "u1", Role: "editor"}
 // adminHost fakes the host for the admin routes and records every call.
 type adminHost struct {
 	entity     string
+	settings   string            // settings.get answer; "" = the default below
 	listPages  map[string]string // entities.list answer by schema_slug
 	listErr    error
 	types      string // jsonb cell of the types query
@@ -42,6 +43,9 @@ func newAdminHost(t *testing.T) *adminHost {
 		cell := func(v string) error { return jsonInto(`{"rows":[[`+v+`]]}`, out) }
 		switch {
 		case fn == sdk.FnSettingsGet:
+			if h.settings != "" {
+				return jsonInto(h.settings, out)
+			}
 			return jsonInto(`{"default_capacity":30,"confirmation_text":"secret door code"}`, out)
 		case fn == sdk.FnEntitiesGet:
 			return jsonInto(h.entity, out)
@@ -227,5 +231,32 @@ func TestSettingsRouteHasNoSecrets(t *testing.T) {
 		if strings.Contains(jsonText(body), bad) {
 			t.Errorf("settings answer contains %q", bad)
 		}
+	}
+}
+
+// The settings answer says whether a provider is configured and never carries a secret.
+func TestSettingsRoutePaymentsAnswer(t *testing.T) {
+	h := newAdminHost(t)
+	h.settings = `{"currency":"JPY","stripe_secret_key":"sk_live_SECRETKEY123","stripe_webhook_secret":"whsec_SECRETHOOK123","paypal_client_id":"CLIENTID99","paypal_secret":"PAYPALSECRET99",
+"paypal_webhook_id":"WEBHOOK123","paypal_sandbox":true,"fee_fixed_cents":30,"fee_percent_bp":250,"fee_per":"ticket","fee_payer":"organizer"}`
+	owner := &sdk.HTTPUser{ID: "u0", Role: "owner"}
+	code, body := get(t, "/admin/settings", "", owner, nil)
+	if code != 200 || body["stripe_configured"] != true || body["paypal_configured"] != true || body["paypal_webhook_set"] != true ||
+		body["paypal_sandbox"] != true || body["fee_fixed_cents"] != float64(30) || body["fee_percent_bp"] != float64(250) ||
+		body["fee_per"] != "ticket" || body["fee_payer"] != "organizer" || body["currency_exponent"] != float64(0) || body["can_refund"] != true {
+		t.Fatalf("%d %v", code, body)
+	}
+	for _, bad := range []string{"SECRETKEY", "SECRETHOOK", "PAYPALSECRET", "CLIENTID99", "WEBHOOK123"} {
+		if strings.Contains(jsonText(body), bad) {
+			t.Errorf("settings answer contains %q", bad)
+		}
+	}
+	if _, body = get(t, "/admin/settings", "", editor, nil); body["can_refund"] != false {
+		t.Errorf("an editor cannot refund: %v", body["can_refund"])
+	}
+	h.settings = `{}`
+	if _, body = get(t, "/admin/settings", "", owner, nil); body["stripe_configured"] != false || body["paypal_configured"] != false ||
+		body["fee_per"] != "order" || body["fee_payer"] != "buyer" || body["currency_exponent"] != float64(2) {
+		t.Errorf("defaults: %v", body)
 	}
 }

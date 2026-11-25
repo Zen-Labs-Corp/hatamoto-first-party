@@ -39,12 +39,15 @@ type manifestFile struct {
 	} `json:"limits"`
 	Settings struct {
 		Properties map[string]struct {
-			Type    string `json:"type"`
-			Default any    `json:"default"`
-			Pattern string `json:"pattern"`
-			MaxLen  int    `json:"maxLength"`
-			Min     *int   `json:"minimum"`
-			Max     *int   `json:"maximum"`
+			Type      string   `json:"type"`
+			Desc      string   `json:"description"`
+			Default   any      `json:"default"`
+			Pattern   string   `json:"pattern"`
+			MaxLen    int      `json:"maxLength"`
+			WriteOnly bool     `json:"writeOnly"`
+			Enum      []string `json:"enum"`
+			Min       *int     `json:"minimum"`
+			Max       *int     `json:"maximum"`
 		} `json:"properties"`
 	} `json:"settings_schema"`
 }
@@ -137,8 +140,8 @@ func TestManifest(t *testing.T) {
 	}
 
 	p := m.Settings.Properties
-	if len(p) != 7 {
-		t.Errorf("%d settings, want 7", len(p))
+	if len(p) != 17 {
+		t.Errorf("%d settings, want 17", len(p))
 	}
 	if c := p["currency"]; c.Default != "USD" || !regexp.MustCompile(c.Pattern).MatchString("EUR") || regexp.MustCompile(c.Pattern).MatchString("eur") {
 		t.Errorf("currency = %+v", c)
@@ -160,10 +163,37 @@ func TestManifest(t *testing.T) {
 			t.Errorf("%s = %+v", key, p[key])
 		}
 	}
-	// the signing key lives in the plugin's own table: no secret setting
-	raw, _ := os.ReadFile("plugin.json")
-	if strings.Contains(string(raw), "writeOnly") {
-		t.Error("no setting may be a secret")
+	// the signing key lives in the plugin's own table; the provider secrets, and only they, are write-only
+	var secret []string
+	for k, c := range p {
+		if c.WriteOnly {
+			secret = append(secret, k)
+		}
+	}
+	slices.Sort(secret)
+	if !slices.Equal(secret, []string{"paypal_secret", "stripe_secret_key", "stripe_webhook_secret"}) {
+		t.Errorf("write-only settings = %v", secret)
+	}
+	if c := p["stripe_secret_key"]; !regexp.MustCompile(c.Pattern).MatchString("rk_live_abcdefghij") || regexp.MustCompile(c.Pattern).MatchString("pk_live_abcdefghij") || !regexp.MustCompile(c.Pattern).MatchString("") {
+		t.Errorf("stripe_secret_key = %+v", c)
+	}
+	if c := p["stripe_webhook_secret"]; !regexp.MustCompile(c.Pattern).MatchString("whsec_abcdefghij") || regexp.MustCompile(c.Pattern).MatchString("abcdefghij") {
+		t.Errorf("stripe_webhook_secret = %+v", c)
+	}
+	if c := p["fee_per"]; c.Default != "order" || !slices.Equal(c.Enum, []string{"order", "ticket"}) {
+		t.Errorf("fee_per = %+v", c)
+	}
+	if c := p["fee_payer"]; c.Default != "buyer" || !slices.Equal(c.Enum, []string{"buyer", "organizer"}) {
+		t.Errorf("fee_payer = %+v", c)
+	}
+	if c := p["fee_percent_bp"]; c.Default != float64(0) || *c.Max != 5000 {
+		t.Errorf("fee_percent_bp = %+v", c)
+	}
+	if c := p["paypal_sandbox"]; c.Type != "boolean" || c.Default != false {
+		t.Errorf("paypal_sandbox = %+v", c)
+	}
+	if strings.Contains(p["currency"].Desc, "free for now") {
+		t.Error("the currency text must not say tickets are free")
 	}
 }
 

@@ -28,6 +28,10 @@ var (
 	slugRe     = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 	currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 	siteURLRe  = regexp.MustCompile(`^https?://[^\s/]+$`)
+
+	stripeKeyRe     = regexp.MustCompile(`^(sk|rk)_(test|live)_[A-Za-z0-9]{10,200}$`)
+	stripeWebhookRe = regexp.MustCompile(`^whsec_[A-Za-z0-9]{10,200}$`)
+	paypalHookRe    = regexp.MustCompile(`^[A-Z0-9]{8,40}$`)
 )
 
 // now is the clock seam of tests.
@@ -44,11 +48,31 @@ type settings struct {
 	RetentionMonths  int
 	SiteURL          string
 	SchemaSlug       string
+
+	// Payments. Secrets are only ever read here, never answered or logged.
+	StripeKey           string
+	StripeWebhookSecret string
+	PayPalClientID      string
+	PayPalSecret        string
+	PayPalWebhookID     string
+	PayPalSandbox       bool
+	FeeFixed            int64 // minor units, per order or per priced ticket
+	FeeBP               int   // hundredths of a percent
+	FeePerTicket        bool  // fee_per = ticket
+	FeeAbsorbed         bool  // fee_payer = organizer
 }
 
 func defaultSettings() settings {
 	return settings{Currency: defaultCurrency, DefaultCapacity: defaultCapacity, RetentionMonths: defaultRetain}
 }
+
+// stripeReady reports whether Stripe checkout can be offered: it needs the key
+// to create sessions and the webhook secret to trust their completion.
+func (s settings) stripeReady() bool { return s.StripeKey != "" && s.StripeWebhookSecret != "" }
+
+// paypalReady reports whether PayPal can be offered. The webhook id is
+// optional: without it a payment is completed when the buyer returns.
+func (s settings) paypalReady() bool { return s.PayPalClientID != "" && s.PayPalSecret != "" }
 
 // slugs are the content types events are read from.
 func (s settings) slugs() []string {
@@ -72,6 +96,17 @@ func loadSettings() settings {
 		RetentionMonths  int    `json:"retention_months"`
 		SiteURL          string `json:"site_url"`
 		SchemaSlug       string `json:"schema_slug"`
+
+		StripeKey           string `json:"stripe_secret_key"`
+		StripeWebhookSecret string `json:"stripe_webhook_secret"`
+		PayPalClientID      string `json:"paypal_client_id"`
+		PayPalSecret        string `json:"paypal_secret"`
+		PayPalWebhookID     string `json:"paypal_webhook_id"`
+		PayPalSandbox       bool   `json:"paypal_sandbox"`
+		FeeFixed            int64  `json:"fee_fixed_cents"`
+		FeeBP               int    `json:"fee_percent_bp"`
+		FeePer              string `json:"fee_per"`
+		FeePayer            string `json:"fee_payer"`
 	}
 	if err := callHost(sdk.FnSettingsGet, struct{}{}, &raw); err != nil {
 		return s
@@ -97,5 +132,29 @@ func loadSettings() settings {
 	if slug := strings.TrimSpace(raw.SchemaSlug); slugRe.MatchString(slug) {
 		s.SchemaSlug = slug
 	}
+	if k := strings.TrimSpace(raw.StripeKey); stripeKeyRe.MatchString(k) {
+		s.StripeKey = k
+	}
+	if k := strings.TrimSpace(raw.StripeWebhookSecret); stripeWebhookRe.MatchString(k) {
+		s.StripeWebhookSecret = k
+	}
+	if id := strings.TrimSpace(raw.PayPalClientID); len(id) <= 200 {
+		s.PayPalClientID = id
+	}
+	if k := strings.TrimSpace(raw.PayPalSecret); len(k) <= 200 {
+		s.PayPalSecret = k
+	}
+	if id := strings.TrimSpace(raw.PayPalWebhookID); paypalHookRe.MatchString(id) {
+		s.PayPalWebhookID = id
+	}
+	s.PayPalSandbox = raw.PayPalSandbox
+	if raw.FeeFixed >= 0 && raw.FeeFixed <= 100000 {
+		s.FeeFixed = raw.FeeFixed
+	}
+	if raw.FeeBP >= 0 && raw.FeeBP <= 5000 {
+		s.FeeBP = raw.FeeBP
+	}
+	s.FeePerTicket = raw.FeePer == "ticket"
+	s.FeeAbsorbed = raw.FeePayer == "organizer"
 	return s
 }
