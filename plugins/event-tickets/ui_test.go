@@ -40,7 +40,7 @@ func TestUIHasNoInlineCodeOrMarkupInjection(t *testing.T) {
 	}
 }
 
-func TestUIIndexLoadsOnlyBridgeAndApp(t *testing.T) {
+func TestUIIndexScripts(t *testing.T) {
 	html := readUI(t, "index.html")
 	var srcs []string
 	for _, m := range regexp.MustCompile(`<script[^>]*>`).FindAllString(html, -1) {
@@ -50,8 +50,24 @@ func TestUIIndexLoadsOnlyBridgeAndApp(t *testing.T) {
 		}
 		srcs = append(srcs, s[1])
 	}
-	if len(srcs) != 2 || srcs[0] != "/plugin-ui/_sdk/bridge.js" || srcs[1] != "app.js" {
-		t.Fatalf("scripts %v", srcs)
+	if want := []string{"/plugin-ui/_sdk/bridge.js", "jsqr.js", "checkin.js", "app.js"}; !slices.Equal(srcs, want) {
+		t.Fatalf("scripts %v, want %v", srcs, want)
+	}
+}
+
+// The QR decoder is vendored unchanged, with its version and licence.
+func TestVendoredQRDecoder(t *testing.T) {
+	js := readUI(t, "jsqr.js")
+	if !strings.HasPrefix(js, "/* jsQR 1.4.0") {
+		t.Error("ui/jsqr.js lacks its version header")
+	}
+	for _, b := range []string{"eval(", "new Function"} {
+		if strings.Contains(js, b) {
+			t.Errorf("ui/jsqr.js contains %q", b)
+		}
+	}
+	if !strings.Contains(readUI(t, "jsqr.LICENSE"), "Apache License") {
+		t.Error("ui/jsqr.LICENSE is not the Apache licence")
 	}
 }
 
