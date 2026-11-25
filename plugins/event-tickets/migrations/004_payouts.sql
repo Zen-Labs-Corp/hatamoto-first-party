@@ -26,3 +26,4 @@ CREATE TABLE payouts (
 );
 CREATE UNIQUE INDEX payouts_key_idx ON payouts (period, payee_email, currency);
 CREATE INDEX orders_paid_idx ON orders (paid_at) WHERE paid_at IS NOT NULL;
+CREATE INDEX attendees_order_idx ON attendees (order_id);

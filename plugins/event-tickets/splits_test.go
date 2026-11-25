@@ -162,3 +162,14 @@ func TestSplitSaveIsSingleFlight(t *testing.T) {
 		t.Error("the Save splits button is disabled while the save runs")
 	}
 }
+
+// The report counts tickets per order; without this index every order scans the attendees table.
+func TestPayoutsMigrationIndexesAttendeesByOrder(t *testing.T) {
+	mig, err := os.ReadFile("migrations/004_payouts.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mig), "CREATE INDEX attendees_order_idx ON attendees (order_id)") {
+		t.Error("attendees needs an index on order_id for the payouts report")
+	}
+}
