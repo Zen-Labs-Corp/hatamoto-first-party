@@ -19,7 +19,7 @@ func TestHoldSeatStatement(t *testing.T) {
 	if len(h.calls) != 1 {
 		t.Fatalf("%d host calls, want one statement", len(h.calls))
 	}
-	if want := []any{"e1", "c0de", int64(9), 0, 12, maxTicketsPerOrder}; !reflect.DeepEqual(h.calls[0].args, want) {
+	if want := []any{"e1", "c0de", int64(9), 0, 12, maxTicketsPerOrder, maxOrdersPerHour}; !reflect.DeepEqual(h.calls[0].args, want) {
 		t.Errorf("args = %#v, want %#v", h.calls[0].args, want)
 	}
 	sql := h.calls[0].sql
@@ -31,11 +31,15 @@ func TestHoldSeatStatement(t *testing.T) {
 		"a.status IN ('pending', 'active')",    // a sold seat is never held
 		"h.code = $2 AND h.expires_at > now()", // the code's live seats
 		"< $6",                                 // seats per code
-		"greatest(10, s.capacity / 2)",         // held share of a type
-		"o.expires_at > now()",                 // pending tickets count towards it
-		"min(h.expires_at)",                    // a later seat inherits the first seat's window
-		"NOT EXISTS (SELECT 1 FROM mine)",      // holding it again changes nothing
+		"count(DISTINCT h.code)",               // codes started this hour
+		"created_at > now() - interval '1 hour'",
+		"< $7",                            // per-event ceiling on new codes
+		"min(h.expires_at)",               // a later seat inherits the first seat's window
+		"NOT EXISTS (SELECT 1 FROM mine)", // holding it again changes nothing
 	)
+	if strings.Contains(sql, "greatest(") || strings.Contains(sql, "hs.section_id") {
+		t.Error("a section-wide cap turns partial hoarding into a lockout")
+	}
 	if strings.Contains(sql, "OR seat_holds.code") || strings.Contains(sql, "OR code =") {
 		t.Error("the takeover must not touch a live row of the same code")
 	}
