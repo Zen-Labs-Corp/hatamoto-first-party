@@ -76,8 +76,9 @@ func TestSaveTypeCapacityBelowTaken(t *testing.T) {
 func TestSaveTypeRaisingCapacityOffersSeats(t *testing.T) {
 	newAdminHost(t)
 	var freed []int64
+	orig := onSeatsFreed
 	onSeatsFreed = func(id int64) { freed = append(freed, id) }
-	t.Cleanup(func() { onSeatsFreed = func(int64) {} })
+	t.Cleanup(func() { onSeatsFreed = orig })
 	if code, _ := post(t, "/admin/events/{id}/types", "e1", editor, `{"id":7,"name":"Standard","capacity":90}`); code != 200 {
 		t.Fatal(code)
 	}

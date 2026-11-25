@@ -27,6 +27,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveSettings(r.User), nil
 		case "/token":
 			return serveToken(r.Query), nil
+		case "/waitlist/{token}/claim":
+			return serveClaim(r.PathValues["token"], r.Query), nil
+		case "/waitlist/{token}/leave":
+			return serveLeave(r.PathValues["token"], r.Query), nil
 		case "/ticket/{token}":
 			return serveTicket(r.PathValues["token"]), nil
 		case "/ticket/{token}/qr.png":

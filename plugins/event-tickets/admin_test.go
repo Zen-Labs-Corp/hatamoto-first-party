@@ -29,6 +29,9 @@ type adminHost struct {
 }
 
 func newAdminHost(t *testing.T) *adminHost {
+	orig := onSeatsFreed
+	onSeatsFreed = func(int64) {} // the waitlist has its own tests
+	t.Cleanup(func() { onSeatsFreed = orig })
 	h := &adminHost{entity: gigEntity, types: `[]`, fields: `[]`, stats: `[]`, insertRows: 1, updateRows: 1}
 	callHost = func(fn string, args, out any) error {
 		a, _ := args.(map[string]any)

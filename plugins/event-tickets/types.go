@@ -48,9 +48,9 @@ var (
 	nonKeyRe   = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
-// onSeatsFreed is called with a ticket type whose capacity was raised, so a
-// waiting person can be offered the seats. The waitlist code sets it.
-var onSeatsFreed = func(typeID int64) {}
+// onSeatsFreed is called with a ticket type that was changed, so waiting
+// people can be offered the seats a raised capacity gives. Tests replace it.
+var onSeatsFreed = promoteAll
 
 func listTypes(eventID string) ([]ticketType, error) {
 	out := []ticketType{}
