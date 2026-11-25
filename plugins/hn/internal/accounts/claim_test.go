@@ -129,6 +129,16 @@ func TestClaimUsername(t *testing.T) {
 		}
 	})
 
+	t.Run("gate gets the lower-case name", func(t *testing.T) {
+		installFake(t)
+		var target string
+		r := newRegistry(func(g *core.GateReq) error { target = g.Target; return errors.New("closed") })
+		claim(r, "k1", "Bob")
+		if target != "bob" {
+			t.Fatalf("target = %q", target)
+		}
+	})
+
 	t.Run("gate picks the notice", func(t *testing.T) {
 		f := installFake(t)
 		r := newRegistry(func(*core.GateReq) error { return gateRefusal{} })
