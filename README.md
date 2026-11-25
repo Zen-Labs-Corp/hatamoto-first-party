@@ -61,6 +61,8 @@ comment settings, reviewed and ticked by the owner.
 plugins/<name>/        one plugin; <name> = plugin.json "name" = route prefix /p/<name>/
 template/              what scripts/new-plugin.sh copies
 scripts/build-plugin.sh   vet, test and build one plugin exactly as CI and the registry do
+scripts/load-check.sh     load plugin builds through the core loader at .hatamoto-core
+scripts/test-load-check.sh prove load-check.sh refuses a file the loader refuses
 scripts/new-plugin.sh     create plugins/<name> from the template
 scripts/changed-plugins.sh  which plugins a change touches (CI)
 kits/<name>/           one kit: kit.json (+ README.md)
@@ -69,7 +71,7 @@ scripts/build-kit.sh      check a kit and pack it for local tests
 scripts/test-check-kit.sh prove check-kit.sh refuses broken kits
 scripts/changed-kits.sh   which kits a change touches (CI)
 scripts/hatamoto-bin.sh   the hatamoto CLI built from the core commit in .hatamoto-core
-.hatamoto-core         the core commit whose CLI checks kits
+.hatamoto-core         the core commit that checks kits and plugin loads
 ```
 
 ## Build
@@ -77,6 +79,13 @@ scripts/hatamoto-bin.sh   the hatamoto CLI built from the core commit in .hatamo
 ```sh
 scripts/build-plugin.sh plugins/gtm      # -> plugins/gtm/build/
 ```
+
+```sh
+scripts/load-check.sh plugins/gtm        # after build-plugin.sh: the core loader reads build/
+```
+
+CI runs it for every plugin it builds. The first run fetches the pinned core
+source and caches it; `HATAMOTO_CORE_SRC` overrides it.
 
 Needs Go (the `toolchain` line of each `go.mod` pins it) and `jq`; `node` runs
 any `*_test.js`. No `go.work`: every plugin builds alone with `GOWORK=off`, as

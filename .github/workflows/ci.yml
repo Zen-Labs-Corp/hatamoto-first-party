@@ -2,7 +2,8 @@
 # plugins/ touches all of them), with the same script developers run:
 # scripts/build-plugin.sh. Checks every kit a change touches with
 # scripts/check-kit.sh against the core pinned in .hatamoto-core. Also proves the
-# template still scaffolds and builds.
+# template still scaffolds and builds. Loads every built plugin through the core
+# loader at the .hatamoto-core pin (scripts/load-check.sh).
 # Needs the public Hatamoto SDK (hatamoto.dev/sdk) to be fetchable.
 name: ci
 
@@ -68,6 +69,10 @@ jobs:
         env:
           PLUGIN: ${{ matrix.plugin }}
         run: scripts/build-plugin.sh "$PLUGIN"
+      - name: Load ${{ matrix.plugin }} through the core loader (commit pinned in .hatamoto-core)
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+        run: scripts/load-check.sh "$PLUGIN"
 
   kits:
     needs: changed
@@ -110,6 +115,10 @@ jobs:
           cache: false
       - name: Scaffold and build a plugin from template/
         run: scripts/new-plugin.sh template-check "Template check."
+      - name: Load the scaffold through the core loader
+        run: scripts/load-check.sh plugins/template-check
+      - name: load-check.sh refuses files the core loader refuses
+        run: scripts/test-load-check.sh
 
   # One stable check name for the branch ruleset (the matrix jobs are named per item), so
   # GitHub auto-merge waits for the whole workflow. A skipped job (nothing changed) counts as passed.
