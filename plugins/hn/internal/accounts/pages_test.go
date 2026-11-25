@@ -50,6 +50,12 @@ func TestPages(t *testing.T) {
 				if c["state"] != want {
 					t.Fatalf("%s: state %v, want %s", path, c["state"], want)
 				}
+				if c["logout_action"] != "/p/hn/logout" {
+					t.Fatalf("%s: logout_action %v", want, c["logout_action"])
+				}
+				if _, ok := c["logout_href"]; ok {
+					t.Fatalf("%s: logout_href still set", want)
+				}
 				if want == "named" && (c["name"] != "bob" || c["karma"] != 1 || c["user_href"] != "/user?id=bob") {
 					t.Fatalf("named content: %v", c)
 				}
@@ -73,8 +79,13 @@ func TestPages(t *testing.T) {
 		f.add("k1", "bob")
 		for key, want := range map[string]string{"": "out", "k2": "noname", "k1": "named"} {
 			b := block(t, renderPage(t, sdk.PageContext{Path: "/login", CommenterKey: key}), "hn_login")
-			if b.Content["state"] != want || b.Content["signin_action"] != "/-/comments/signin" {
+			c := b.Content
+			if c["state"] != want || c["login_action"] != "/p/hn/login" || c["signup_action"] != "/p/hn/signup" ||
+				c["logout_action"] != "/p/hn/logout" || c["email_signin_href"] != "/-/comments/signin" || c["next"] != "/login" {
 				t.Fatalf("%s: %v", want, b.Content)
+			}
+			if _, ok := c["reset_href"]; ok {
+				t.Fatalf("%s: reset_href set: %v", want, c)
 			}
 			if want == "named" && b.Content["name"] != "bob" {
 				t.Fatalf("named: %v", b.Content)
@@ -121,6 +132,70 @@ func TestPages(t *testing.T) {
 		}
 		if view("k1", "bob", "profile_saved")["notice"] != "Profile updated." || view("k1", "bob", "bogus")["notice"] != "" {
 			t.Fatal("notice text wrong")
+		}
+	})
+
+	t.Run("password keys on the profile", func(t *testing.T) {
+		f := installFake(t)
+		f.add("k1", "bob")
+		amy := f.add("k2", "amy")
+		f.addLogin(amy, "acc-amy", "hash")
+		f.logins[amy.ID].Email = "amy@example.com"
+		view := func(key, id string) map[string]any {
+			ctx := sdk.PageContext{Path: "/user", CommenterKey: key, Query: map[string]string{"id": id}}
+			return block(t, renderPage(t, ctx), "hn_user").Content
+		}
+		has := func(c map[string]any, keys ...string) {
+			t.Helper()
+			for _, k := range keys {
+				if _, ok := c[k]; !ok {
+					t.Errorf("missing %s in %v", k, c)
+				}
+			}
+		}
+		none := func(c map[string]any, keys ...string) {
+			t.Helper()
+			for _, k := range keys {
+				if _, ok := c[k]; ok {
+					t.Errorf("unexpected %s in %v", k, c)
+				}
+			}
+		}
+		withPw := view("k2", "amy")
+		if withPw["has_password"] != true || withPw["email"] != "amy@example.com" ||
+			withPw["password_action"] != "/p/hn/password" || withPw["logout_all_action"] != "/p/hn/logout/all" {
+			t.Fatalf("with password: %v", withPw)
+		}
+		none(withPw, "connect_action", "account", "pw_hash")
+		without := view("k1", "bob")
+		if without["has_password"] != false || without["connect_action"] != "/p/hn/password/connect" {
+			t.Fatalf("without password: %v", without)
+		}
+		none(without, "email", "password_action", "logout_all_action")
+		other := view("k1", "amy")
+		none(other, "has_password", "email", "password_action", "connect_action", "logout_all_action")
+		has(other, "submissions_href", "comments_href", "favorites_href")
+	})
+
+	t.Run("login read error offers no password forms", func(t *testing.T) {
+		f := installFake(t)
+		f.add("k1", "bob")
+		ctx := sdk.PageContext{Path: "/user", CommenterKey: "k1", Query: map[string]string{"id": "bob"}}
+		real := f.host.Fns["db.query"]
+		f.host.Fns["db.query"] = func(raw json.RawMessage) (any, error) {
+			if strings.Contains(string(raw), "user_logins") {
+				return nil, errBoom
+			}
+			return real(raw)
+		}
+		c := block(t, renderPage(t, ctx), "hn_user").Content
+		if c["found"] != true || c["has_password"] != false {
+			t.Fatalf("content: %v", c)
+		}
+		for _, k := range []string{"connect_action", "password_action", "logout_all_action", "email"} {
+			if _, ok := c[k]; ok {
+				t.Errorf("unexpected %s", k)
+			}
 		}
 	})
 
