@@ -20,3 +20,10 @@ td.actions button { margin-right: 4px; }
 input.copy { width: 100%; max-width: 640px; box-sizing: border-box; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0; }
 .panel-box { margin: 12px 0; padding: 8px 12px; border: 1px solid var(--color-kinu, #e2e0da); border-radius: 6px; }
+
+.ck-log { list-style: none; margin: 0; padding: 0; }
+.ck-log li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--color-kinu, #e2e0da); }
+.ck-ok { color: var(--color-success, #1b6e3c); font-weight: 600; }
+.ck-already { color: var(--color-warning, #8a5a00); font-weight: 600; }
+.ck-refused { color: var(--color-danger, #b3261e); font-weight: 600; }
+button.primary { padding: 8px 16px; font-weight: 600; }

@@ -73,14 +73,14 @@ func TestVendoredQRDecoder(t *testing.T) {
 
 // Core creates what a run stages as a draft, so the pages must not promise that
 
-// This part ships exactly four tabs.
+// This part ships exactly five tabs.
 func TestUITabs(t *testing.T) {
 	html := readUI(t, "index.html")
 	var ids []string
 	for _, m := range regexp.MustCompile(`<button id="(tab-[a-z]+)"`).FindAllStringSubmatch(html, -1) {
 		ids = append(ids, m[1])
 	}
-	if want := []string{"tab-events", "tab-attendees", "tab-orders", "tab-settings"}; !slices.Equal(ids, want) {
+	if want := []string{"tab-events", "tab-attendees", "tab-orders", "tab-checkin", "tab-settings"}; !slices.Equal(ids, want) {
 		t.Errorf("tabs %v, want %v", ids, want)
 	}
 	if strings.Contains(readUI(t, "app.js"), "hatamoto.host") {

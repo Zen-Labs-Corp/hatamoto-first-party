@@ -1,4 +1,4 @@
-// Event tickets admin page: Events, Attendees, Orders and Settings. It runs in a
+// Event tickets admin page: Events, Attendees, Orders, Check-in and Settings. It runs in a
 // sandboxed iframe and reaches the plugin only through the hatamoto bridge.
 // Text is set with textContent or value, never as markup. The frame cannot
 // download, so the CSV address is shown in a field that selects on click.
@@ -61,6 +61,7 @@ const state = {
   events: [], cursor: "", search: "", editing: null, attendeeEvent: "", page: 1,
   settings: {}, orders: [], orderCursor: "", orderFilter: { status: "", event: "", q: "" }, refunding: null,
   coupons: [], coupon: { id: 0, type_id: 0 },
+  checkinEvent: "", checkinLog: [],
 };
 
 // ---- Money. Amounts are whole minor units (cents) everywhere; the decimals of a
@@ -288,6 +289,9 @@ function fillEventPicker() {
   const keep = $("#or-event").value;
   $("#or-event").replaceChildren(...events);
   $("#or-event").value = keep;
+  const keepCk = state.checkinEvent;
+  $("#ck-event").replaceChildren(...state.events.map((e) => el("option", { value: e.id, textContent: e.name })));
+  if (keepCk) $("#ck-event").value = keepCk;
   $("#cp-event").replaceChildren(...events.map((o) => el("option", { value: o.value, textContent: o.textContent })));
 }
 
@@ -649,9 +653,181 @@ async function loadSettings() {
   $("#st-rows").replaceChildren(...rows.map(([k, v]) => el("tr", {}, el("th", { textContent: k }), cell(v))));
 }
 
+// ---- Check-in
+
+const LOG_MAX = 10;
+const REFUSED_TEXT = {
+  invalid: "not a valid ticket", other_event: "ticket is for another event", pending: "payment pending",
+  cancelled: "ticket cancelled", refunded: "ticket refunded", expired: "ticket expired",
+};
+
+const ckStore = openStore(() => window.localStorage);
+const ckQueue = makeQueue({
+  send: (ev, body) => hatamoto.route("POST", `/admin/events/${encodeURIComponent(ev)}/checkin`, body, null),
+  store: ckStore,
+  onResult: showScanResult,
+  onChange: renderQueue,
+  schedule: (fn, ms) => setTimeout(fn, ms),
+});
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+// clockTime is the local hh:mm of a timestamp (ISO text or milliseconds).
+function clockTime(when) {
+  const d = new Date(when);
+  return Number.isNaN(d.getTime()) ? "" : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// scanSummary turns the route's answer into the log entry for one scan.
+function scanSummary(outcome) {
+  const a = outcome.attendee || {};
+  const when = clockTime(a.checked_in_at);
+  if (outcome.result === "ok") return { cls: "ck-ok", label: `OK ${when}`.trim(), name: a.name, type: a.type_name, id: a.id };
+  if (outcome.result === "already") return { cls: "ck-already", label: `ALREADY CHECKED IN ${when}`.trim(), name: a.name, type: a.type_name };
+  if (outcome.result === "refused") {
+    return { cls: "ck-refused", label: `REFUSED: ${REFUSED_TEXT[outcome.reason] || "not accepted"}`, name: a.name, type: a.type_name };
+  }
+  return { cls: "ck-refused", label: "REFUSED: the server did not accept this scan", name: "", type: "" };
+}
+
+function showScanResult(item, outcome) {
+  const entry = scanSummary(outcome);
+  entry.event = item.event;
+  state.checkinLog = [entry, ...state.checkinLog].slice(0, LOG_MAX);
+  renderLog();
+  if (item.event === state.checkinEvent) refreshCheckin();
+}
+
+function undoButton(attendeeID, after) {
+  return confirmButton("Undo", "Confirm undo", "Click again to undo this check-in.", async () => {
+    const done = await run(() => api("POST", `/admin/attendees/${encodeURIComponent(attendeeID)}/uncheck`));
+    if (done) after();
+  });
+}
+
+function renderLog() {
+  $("#ck-log").replaceChildren(...state.checkinLog.map((e) => {
+    const kids = [el("strong", { textContent: e.name || "" }), el("span", { textContent: e.type || "" }), el("span", { className: e.cls, textContent: e.label })];
+    if (e.id && !e.undone) {
+      kids.push(undoButton(e.id, () => {
+        e.undone = true;
+        e.cls = "ck-already";
+        e.label = "UNDONE";
+        renderLog();
+        refreshCheckin();
+      }));
+    }
+    return el("li", {}, ...kids);
+  }));
+}
+
+function renderQueue() {
+  const n = ckQueue.size();
+  const oldest = n ? ckQueue.items()[0].at : 0;
+  $("#ck-queue").textContent = n ? `offline queue: ${n} (will sync when online), oldest scan ${clockTime(oldest)}` : "offline queue: 0";
+  $("#ck-warn").hidden = ckStore.persistent || n === 0;
+}
+
+function matchRow(m) {
+  let action;
+  if (m.status !== "active") action = el("span", { className: "muted", textContent: "not valid" });
+  else if (m.checked_in_at) {
+    action = el("span", {}, `Checked in ${clockTime(m.checked_in_at)} `, undoButton(m.id, () => searchCheckin()));
+  } else {
+    action = button("Check in", () => {
+      ckQueue.add(state.checkinEvent, { attendee_id: m.id });
+      ckQueue.sync();
+    });
+  }
+  return el("tr", {}, cell(m.name), cell(m.type_name), cell(m.status), cell(action));
+}
+
+// refreshCheckin reloads the count and, when a search is shown, its rows.
+async function refreshCheckin() {
+  const id = state.checkinEvent;
+  if (!id) return;
+  const q = $("#ck-search").value.trim();
+  const data = await run(() => api("GET", `/admin/events/${encodeURIComponent(id)}/checkin`, null, q ? { q } : {}));
+  if (!data || id !== state.checkinEvent) return;
+  $("#ck-count").textContent = `${data.checked}/${data.total} checked in`;
+  const list = data.matches || [];
+  $("#ck-match-table").hidden = !list.length;
+  $("#ck-match-state").textContent = q && !list.length ? "Nobody matches." : "";
+  $("#ck-matches").replaceChildren(...list.map(matchRow));
+}
+
+function searchCheckin() { return refreshCheckin(); }
+
+async function openCheckin() {
+  if (!state.events.length) await loadEvents(false);
+  if (!state.checkinEvent && state.events.length) state.checkinEvent = state.events[0].id;
+  $("#ck-event").value = state.checkinEvent;
+  $("#ck-camera-hint").hidden = Boolean(hatamoto.camera && hatamoto.camera.available);
+  renderQueue();
+  renderLog();
+  ckQueue.sync();
+  return refreshCheckin();
+}
+
+// decodePhoto reads a QR code from a captured photo (a data URI). It resolves
+// to the text, or "" when the photo holds no code.
+function decodePhoto(uri) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.addEventListener("load", () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const px = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(px.data, px.width, px.height, { inversionAttempts: "attemptBoth" });
+      resolve(code ? code.data : "");
+    });
+    img.addEventListener("error", () => resolve(""));
+    img.src = uri;
+  });
+}
+
+// scanClick must call capture() first, in the click itself: core only opens
+// the camera for a person's click, and it is never retried here.
+function scanClick() {
+  if (!hatamoto.camera || !hatamoto.camera.available) {
+    say("Grant the camera on the plugin's Permissions tab.", true);
+    return undefined;
+  }
+  const eventID = state.checkinEvent;
+  if (!eventID) {
+    say("Pick an event first.", true);
+    return undefined;
+  }
+  let shot;
+  try { shot = hatamoto.camera.capture(); } catch { say("Camera not available.", true); return undefined; }
+  return shot.then(async (r) => {
+    if (!r.ok) {
+      if (r.error !== "cancelled") say(`Camera ${r.error}.`, true);
+      return;
+    }
+    const token = parseScan(await decodePhoto(r.image));
+    if (!token) {
+      say("No QR code found, try again.", true);
+      return;
+    }
+    say("");
+    ckQueue.add(eventID, { scan: token });
+    ckQueue.sync();
+  }).catch(() => say("Camera not available.", true));
+}
+
+$("#ck-scan").addEventListener("click", scanClick);
+$("#ck-go").addEventListener("click", searchCheckin);
+$("#ck-search").addEventListener("keydown", (e) => { if (e.key === "Enter") searchCheckin(); });
+$("#ck-event").addEventListener("change", () => { state.checkinEvent = $("#ck-event").value; refreshCheckin(); });
+window.addEventListener("online", () => ckQueue.sync());
+
 // ---- Tabs
 
-const TABS = { events: () => loadEvents(false), attendees: () => loadAttendees(1), orders: openOrders, settings: loadSettings };
+const TABS = { events: () => loadEvents(false), attendees: () => loadAttendees(1), orders: openOrders, checkin: openCheckin, settings: loadSettings };
 const loaded = new Set();
 
 function showTab(name) {
@@ -660,7 +836,7 @@ function showTab(name) {
     $(`#tab-${tab}`).classList.toggle("active", tab === name);
   }
   say("");
-  if (name === "attendees" || name === "orders" || !loaded.has(name)) {
+  if (name === "attendees" || name === "orders" || name === "checkin" || !loaded.has(name)) {
     loaded.add(name);
     TABS[name]();
   }
@@ -676,6 +852,6 @@ hatamoto.ready.then(async () => {
 if (typeof module !== "undefined") {
   module.exports = {
     csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest,
-    feesText, submitRefund, openRefund, state,
+    feesText, submitRefund, openRefund, state, showScanResult, clockTime,
   };
 }
