@@ -1,6 +1,6 @@
 {
   "name": "event-tickets",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "sdk": "^0.22",
   "description": "Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.",
   "permissions": ["settings", "db", "entities.read", "mail.send", "http.fetch", "builder.data", "builder.island"],
