@@ -1,4 +1,4 @@
-// Event tickets admin page: Events, Attendees, Orders, Check-in and Settings. It runs in a
+// Event tickets admin page: Events, Attendees, Orders, Check-in, Payouts, Emails and Settings. It runs in a
 // sandboxed iframe and reaches the plugin only through the hatamoto bridge.
 // Text is set with textContent or value, never as markup. The frame cannot
 // download, so the CSV address is shown in a field that selects on click.
@@ -61,7 +61,7 @@ const PROVIDERS = { stripe: "Stripe", paypal: "PayPal" };
 const state = {
   events: [], cursor: "", search: "", editing: null, attendeeEvent: "", page: 1,
   settings: {}, orders: [], orderCursor: "", orderFilter: { status: "", event: "", q: "" }, refunding: null,
-  coupons: [], coupon: { id: 0, type_id: 0 }, payouts: null,
+  coupons: [], coupon: { id: 0, type_id: 0 }, payouts: null, emails: null,
   checkinEvent: "", checkinLog: [],
 };
 
@@ -1042,9 +1042,96 @@ $("#ck-search").addEventListener("keydown", (e) => { if (e.key === "Enter") sear
 $("#ck-event").addEventListener("change", () => { state.checkinEvent = $("#ck-event").value; refreshCheckin(); });
 window.addEventListener("online", () => ckQueue.sync());
 
+// ---- Emails (owner only)
+
+// automationsBody is the body of the automations route.
+function automationsBody() {
+  return {
+    changed: $("#em-changed").checked,
+    reminder: $("#em-reminder").checked,
+    reminder_hours: Number($("#em-hours").value),
+    thanks: $("#em-thanks").checked,
+  };
+}
+
+// percentText is n as a share of "of": "50%", or "-" when there is nothing to divide by.
+function percentText(n, of) { return of > 0 ? `${Math.round((100 * n) / of)}%` : "-"; }
+
+// segmentText describes who a campaign went to, from its segment JSON.
+function segmentText(seg, events = []) {
+  const s = seg || {};
+  const parts = [];
+  if (s.event_id) {
+    const ev = events.find((e) => e.id === s.event_id);
+    parts.push(ev ? ev.name : "One event");
+  }
+  if (s.type_id) parts.push("one ticket type");
+  if (s.checked_in === "yes") parts.push("checked in");
+  if (s.checked_in === "no") parts.push("not checked in");
+  if (s.rsvp_only) parts.push("RSVP only");
+  if (s.not_bought) parts.push("not bought");
+  if (s.bought_before) parts.push(`bought before ${s.bought_before}`);
+  return parts.length ? parts.join(", ") : "Everyone with a ticket";
+}
+
+function statusText(c) {
+  return c.status === "scheduled" ? `Scheduled ${day(c.send_at)}` : c.status.charAt(0).toUpperCase() + c.status.slice(1);
+}
+
+async function openEmails() {
+  const data = await run(() => api("GET", "/admin/emails"));
+  if (!data) return;
+  say("");
+  const a = data.automations || {};
+  $("#em-changed").checked = Boolean(a.changed);
+  $("#em-reminder").checked = Boolean(a.reminder);
+  $("#em-hours").value = String(a.reminder_hours || 24);
+  $("#em-thanks").checked = Boolean(a.thanks);
+  $("#em-quota").textContent = `Sends up to ${data.bulk_per_run} emails every 5 minutes (site quota ${data.quota} per hour).`;
+  state.emails = { campaigns: data.campaigns || [], siteOK: data.site_origin_ok !== false };
+  renderCampaigns();
+}
+
+function renderCampaigns() {
+  const { campaigns, siteOK } = state.emails;
+  $("#cm-state").textContent = !siteOK ? "Set Site URL in the plugin settings before you send a campaign." : campaigns.length ? "" : "No campaigns yet.";
+  $("#cm-table").hidden = !campaigns.length;
+  $("#cm-rows").replaceChildren(...campaigns.map(campaignRow));
+}
+
+function campaignRow(c) {
+  const num = (text) => el("td", { className: "num", textContent: text });
+  const act = el("td", { className: "actions" });
+  if (c.status === "scheduled" || c.status === "sending") {
+    act.append(confirmButton("Cancel", "Confirm cancel", "Click Confirm cancel to stop this campaign. Mails not yet sent are dropped.", () => cancelCampaign(c)));
+  }
+  return el("tr", {}, cell(c.subject), cell(segmentText(c.segment, state.events)), cell(statusText(c)),
+    num(`${c.sent} / ${c.total}`), num(`${c.opens} (${percentText(c.opens, c.sent)})`), num(`${c.clicks} (${percentText(c.clicks, c.sent)})`), num(String(c.buys)), act);
+}
+
+async function cancelCampaign(c) {
+  const data = await run(() => api("POST", `/admin/campaigns/${encodeURIComponent(c.id)}/cancel`));
+  if (!data) return;
+  say("Campaign cancelled.");
+  openEmails();
+}
+
+async function saveAutomations() {
+  const body = automationsBody();
+  if (!Number.isInteger(body.reminder_hours) || body.reminder_hours < 1 || body.reminder_hours > 168) {
+    say("Reminder hours: a whole number from 1 to 168.", true);
+    return;
+  }
+  const data = await run(() => api("POST", "/admin/emails/automations", body));
+  if (!data) return;
+  say("Saved.");
+}
+
+$("#em-save").addEventListener("click", saveAutomations);
+
 // ---- Tabs
 
-const TABS = { events: () => loadEvents(false), attendees: () => loadAttendees(1), orders: openOrders, checkin: openCheckin, payouts: openPayouts, settings: loadSettings };
+const TABS = { events: () => loadEvents(false), attendees: () => loadAttendees(1), orders: openOrders, checkin: openCheckin, payouts: openPayouts, emails: openEmails, settings: loadSettings };
 const loaded = new Set();
 
 function showTab(name) {
@@ -1053,7 +1140,7 @@ function showTab(name) {
     $(`#tab-${tab}`).classList.toggle("active", tab === name);
   }
   say("");
-  if (name === "attendees" || name === "orders" || name === "checkin" || name === "payouts" || !loaded.has(name)) {
+  if (name === "attendees" || name === "orders" || name === "checkin" || name === "payouts" || name === "emails" || !loaded.has(name)) {
     loaded.add(name);
     TABS[name]();
   }
@@ -1064,13 +1151,14 @@ for (const tab of Object.keys(TABS)) $(`#tab-${tab}`).addEventListener("click", 
 hatamoto.ready.then(async () => {
   await fetchSettings();
   $("#tab-payouts").hidden = !isOwner(); // the server answers 403 to an editor
+  $("#tab-emails").hidden = !isOwner();
   showTab("events");
 });
 
 if (typeof module !== "undefined") {
   module.exports = {
     csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest, splitsBody, parsePercent,
-    periodOptions, defaultPeriod, markRequest, shareText,
+    periodOptions, defaultPeriod, markRequest, shareText, automationsBody, percentText, segmentText,
     feesText, submitRefund, openRefund, state, showScanResult, clockTime, scanClick, ckQueue,
   };
 }

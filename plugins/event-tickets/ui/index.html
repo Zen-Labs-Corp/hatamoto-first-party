@@ -14,6 +14,7 @@
       <button id="tab-orders" type="button" class="tab">Orders</button>
       <button id="tab-checkin" type="button" class="tab">Check-in</button>
       <button id="tab-payouts" type="button" class="tab">Payouts</button>
+      <button id="tab-emails" type="button" class="tab">Emails</button>
       <button id="tab-settings" type="button" class="tab">Settings</button>
     </nav>
     <p id="notice" class="notice" hidden></p>
@@ -199,6 +200,34 @@
       <h2>Export CSV</h2>
       <p class="muted">Select the path, copy it, put your site address in front and open it in the browser while you are signed in to the admin.</p>
       <input id="po-csv" class="copy" type="text" readonly>
+    </section>
+
+    <section id="panel-emails" hidden>
+      <h2>Automations</h2>
+      <p><label><input id="em-confirm" type="checkbox" checked disabled> Ticket confirmation (always sent: it carries the tickets)</label></p>
+      <p><label><input id="em-changed" type="checkbox"> Event changed: date, place or status</label></p>
+      <p>
+        <label><input id="em-reminder" type="checkbox"> Reminder</label>
+        <input id="em-hours" type="number" min="1" max="168" step="1"> hours before the event
+      </p>
+      <p><label><input id="em-thanks" type="checkbox"> Thank-you after the event</label></p>
+      <div class="row">
+        <button id="em-save" type="button">Save</button>
+      </div>
+      <p id="em-quota" class="muted"></p>
+
+      <h2>Campaigns</h2>
+      <p id="cm-state" class="muted"></p>
+      <table id="cm-table" hidden>
+        <thead>
+          <tr><th>Subject</th><th>Segment</th><th>Status</th><th class="num">Sent</th><th class="num">Opens</th><th class="num">Clicks</th><th class="num">Buys</th><th></th></tr>
+        </thead>
+        <tbody id="cm-rows"></tbody>
+      </table>
+      <div class="row">
+        <button id="cm-new" type="button">New campaign</button>
+      </div>
+      <p class="muted">Every mail has an unsubscribe link. Opens count only when the mail app loads images.</p>
     </section>
 
     <section id="panel-settings" hidden>

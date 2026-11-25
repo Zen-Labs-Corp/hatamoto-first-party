@@ -41,6 +41,8 @@ const IDS = [
   "#cp-value", "#cp-max", "#cp-until", "#cp-event", "#cp-active", "#cp-save", "#cp-reset", "#or-fees", "#or-bundles",
   "#tab-checkin", "#panel-checkin", "#ck-event", "#ck-count", "#ck-scan", "#ck-search", "#ck-go", "#ck-camera-hint", "#ck-match-table",
   "#ck-matches", "#ck-match-state", "#ck-log", "#ck-queue", "#ck-warn",
+  "#tab-emails", "#panel-emails", "#em-confirm", "#em-changed", "#em-reminder", "#em-hours", "#em-thanks", "#em-save", "#em-quota",
+  "#cm-state", "#cm-table", "#cm-rows", "#cm-new",
 ];
 
 let clock = 1000000;
@@ -340,6 +342,52 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   await markGo.handlers.click();
   same(marks, ["/admin/payouts/mark"]);
   assert.equal(ctx.els["#po-mark"].hidden, true);
+
+  // Emails tab: owner only, automations, campaign rows
+  {
+    const calls = [];
+    const campaigns = [
+      { id: 9, subject: "Last tickets", segment: { event_id: "e1", not_bought: true }, status: "sending", send_at: "2027-03-01T10:00:00Z", total: 10, sent: 4, opens: 2, clicks: 1, buys: 1 },
+      { id: 8, subject: "Hello", segment: {}, status: "sent", send_at: "2027-02-01T10:00:00Z", total: 0, sent: 0, opens: 0, clicks: 0, buys: 0 },
+    ];
+    const emailsCtx = (canRefund) => load({
+      respond: (m, p) => {
+        if (p === "/admin/settings") return reply(200, { currency: "USD", currency_exponent: 2, can_refund: canRefund });
+        if (p === "/admin/events") return reply(200, { events: [{ id: "e1", name: "Summer Jazz", types: 1, taken: 0, capacity: 5, waiting: 0 }] });
+        if (p === "/admin/emails") return reply(200, { ok: true, automations: { changed: true, reminder: true, reminder_hours: 24, thanks: false }, quota: 360, bulk_per_run: 22, site_origin_ok: true, campaigns });
+        if (m === "POST") { calls.push(p); return reply(200, { ok: true }); }
+        return quiet(m, p);
+      },
+    });
+    let ec = await emailsCtx(false);
+    assert.equal(ec.els["#tab-emails"].hidden, true, "editors do not see the Emails tab");
+    ec = await emailsCtx(true);
+    assert.equal(ec.els["#tab-emails"].hidden, false);
+    ec.els["#tab-emails"].handlers.click();
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(ec.els["#em-changed"].checked, true);
+    assert.equal(ec.els["#em-thanks"].checked, false);
+    assert.equal(ec.els["#em-hours"].value, "24");
+    assert.equal(ec.els["#em-quota"].textContent, "Sends up to 22 emails every 5 minutes (site quota 360 per hour).");
+    const crow = ec.els["#cm-rows"].children;
+    assert.equal(crow.length, 2);
+    same(crow[0].children.slice(0, 7).map((c) => c.textContent || c.children[0]), ["Last tickets", "Summer Jazz, not bought", "Sending", "4 / 10", "2 (50%)", "1 (25%)", "1"]);
+    assert.equal(crow[0].children[7].children[0].textContent, "Cancel");
+    assert.equal(crow[1].children[7].children.length, 0, "a sent campaign has no cancel button");
+    same(crow[1].children.slice(1, 7).map((c) => c.textContent || c.children[0]), ["Everyone with a ticket", "Sent", "0 / 0", "0 (-)", "0 (-)", "0"]);
+    ec.els["#em-thanks"].checked = true;
+    ec.els["#em-hours"].value = "48";
+    same(ec.api.automationsBody(), { changed: true, reminder: true, reminder_hours: 48, thanks: true });
+    await ec.els["#em-save"].handlers.click();
+    same(calls, ["/admin/emails/automations"]);
+    ec.els["#em-hours"].value = "0";
+    await ec.els["#em-save"].handlers.click();
+    assert.equal(calls.length, 1, "bad hours are not sent");
+    assert.equal(ec.api.percentText(1, 3), "33%");
+    assert.equal(ec.api.percentText(0, 0), "-");
+    assert.equal(ec.api.segmentText({ event_id: "x", checked_in: "no", bought_before: "2027-01-15" }, []), "One event, not checked in, bought before 2027-01-15");
+    assert.equal(ec.api.segmentText({ rsvp_only: true }), "RSVP only");
+  }
 
   console.log("ok");
 })().catch((e) => { console.error(e); process.exit(1); });
