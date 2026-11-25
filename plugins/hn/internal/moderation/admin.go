@@ -2,6 +2,7 @@ package moderation
 
 import (
 	"encoding/json"
+	"errors"
 	"html"
 	"regexp"
 	"strconv"
@@ -24,6 +25,8 @@ const (
 	sqlLogList = `SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.id DESC), '[]'::jsonb) FROM (SELECT id, created_at AS at, actor, action, target, detail FROM mod_log ORDER BY id DESC LIMIT 200) x`
 
 	sqlBanUpsert    = `INSERT INTO bans (user_id, mode, reason, created_at) VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT (user_id) DO UPDATE SET mode = EXCLUDED.mode, reason = EXCLUDED.reason`
+	sqlLoginAccount = `SELECT to_jsonb(x) FROM (SELECT account FROM user_logins WHERE user_id = $1) x`
+	sqlLoginDelete  = `DELETE FROM user_logins WHERE user_id = $1`
 	sqlBanDelete    = `DELETE FROM bans WHERE user_id = $1`
 	sqlDomainUpsert = `INSERT INTO banned_domains (domain, reason, created_at) VALUES ($1, $2, $3::timestamptz) ON CONFLICT (domain) DO UPDATE SET reason = EXCLUDED.reason`
 	sqlDomainDelete = `DELETE FROM banned_domains WHERE domain = $1`
@@ -54,6 +57,7 @@ func registerAdmin(r *core.Registry) {
 	route("GET /admin/log", func(*core.Request) sdk.HTTPResponse { return list("log", sqlLogList) })
 	route("POST /admin/users/{name}/ban", handleBan)
 	route("POST /admin/users/{name}/unban", handleUnban)
+	route("POST /admin/users/{name}/password/remove", handlePasswordRemove)
 	route("POST /admin/domains", handleDomainBan)
 	route("POST /admin/domains/remove", handleDomainRemove)
 	route("POST /admin/nets/ban", handleNetBan)
@@ -239,6 +243,39 @@ func handleUnban(q *core.Request) sdk.HTTPResponse {
 		return failed()
 	}
 	writeLog("owner", "unban", "user:"+u.Username, "")
+	return ok(nil)
+}
+
+// handlePasswordRemove removes a member's password login (one that was connected without the
+// member's consent, say) and signs its browsers out. The member keeps username, comments and
+// karma and signs in with the email link again. Sessions are revoked first: when that fails
+// the login stays, so "removed" never leaves a working session behind.
+func handlePasswordRemove(q *core.Request) sdk.HTTPResponse {
+	var in struct{}
+	if resp, good := decodeJSON(q, &in); !good {
+		return resp
+	}
+	u, err := core.UserByName(q.PathValue("name"))
+	if err != nil {
+		return failed()
+	}
+	if u == nil {
+		return core.JSONError(404, "unknown member")
+	}
+	var l struct{ Account string }
+	if err := core.QueryJSON(sqlLoginAccount, &l, u.ID); err != nil {
+		if errors.Is(err, core.ErrNoRows) {
+			return core.JSONError(404, "that member has no password")
+		}
+		return failed()
+	}
+	if err := core.Call(sdk.FnCommentsIdentityRevoke, sdk.CommentsIdentityArgs{Account: l.Account}, &sdk.CommentsIdentityRevoked{}); err != nil {
+		return failed()
+	}
+	if _, err := core.Exec(sqlLoginDelete, u.ID); err != nil {
+		return failed()
+	}
+	writeLog("owner", "password-remove", "user:"+u.Username, "")
 	return ok(nil)
 }
 

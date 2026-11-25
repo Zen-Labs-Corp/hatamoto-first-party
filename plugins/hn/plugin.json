@@ -35,6 +35,7 @@
     { "method": "GET", "path": "/admin/queue" },
     { "method": "POST", "path": "/admin/users/{name}/ban" },
     { "method": "POST", "path": "/admin/users/{name}/unban" },
+    { "method": "POST", "path": "/admin/users/{name}/password/remove" },
     { "method": "POST", "path": "/admin/domains" },
     { "method": "POST", "path": "/admin/domains/remove" },
     { "method": "POST", "path": "/admin/nets/ban" },

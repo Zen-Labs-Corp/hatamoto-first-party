@@ -61,7 +61,7 @@ func TestAdminOwnerOnly(t *testing.T) {
 	install(t, bobDB())
 	routes := []struct{ method, pattern string }{
 		{"GET", "/admin/queue"}, {"GET", "/admin/log"},
-		{"POST", "/admin/users/{name}/ban"}, {"POST", "/admin/users/{name}/unban"},
+		{"POST", "/admin/users/{name}/ban"}, {"POST", "/admin/users/{name}/unban"}, {"POST", "/admin/users/{name}/password/remove"},
 		{"POST", "/admin/domains"}, {"POST", "/admin/domains/remove"},
 		{"POST", "/admin/nets/ban"}, {"POST", "/admin/nets/unban"},
 		{"POST", "/admin/items/kill"}, {"POST", "/admin/items/restore"},
@@ -414,4 +414,51 @@ func TestQueueSQLShape(t *testing.T) {
 	if !strings.Contains(sqlQueue, "ORDER BY x.dead, x.flags DESC") {
 		t.Error("outer order puts dead items first")
 	}
+}
+
+func TestAdminPasswordRemove(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	const route = "/admin/users/{name}/password/remove"
+	bob := map[string]string{"name": "bob"}
+	withLogin := func(has bool) *fakeDB {
+		db := bobDB()
+		inner := db.Query
+		db.Query = func(sql string, args []any) (any, error) {
+			if sql == sqlLoginAccount && has {
+				return jsonRow(map[string]any{"account": "acc-bob"}), nil
+			}
+			return inner(sql, args)
+		}
+		return db
+	}
+	t.Run("revokes, deletes and logs", func(t *testing.T) {
+		db := withLogin(true)
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 200)
+		if len(db.Revoked) != 1 || db.Revoked[0] != "acc-bob" {
+			t.Fatalf("revoked %v", db.Revoked)
+		}
+		if d := execs(db, sqlLoginDelete); len(d) != 1 || d[0].Args[0] != float64(9) {
+			t.Fatalf("deletes = %+v", d)
+		}
+		if logs := execs(db, sqlLogInsert); len(logs) != 1 || logs[0].Args[1] != "password-remove" || logs[0].Args[2] != "user:bob" {
+			t.Fatalf("log = %+v", logs)
+		}
+	})
+	t.Run("a failed revoke keeps the login", func(t *testing.T) {
+		db := withLogin(true)
+		db.Revoke = func(string) error { return hostErr(sdk.ErrUnavailable) }
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
+		if len(db.Execs) != 0 {
+			t.Fatalf("execs = %+v", db.Execs)
+		}
+	})
+	t.Run("no password, unknown member", func(t *testing.T) {
+		db := withLogin(false)
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 404)
+		install(t, &fakeDB{})
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 404)
+	})
 }

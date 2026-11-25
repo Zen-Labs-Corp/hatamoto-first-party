@@ -26,7 +26,10 @@ type fakeDB struct {
 	Exec     func(sql string, args []any) (int64, error) // db.exec; nil answers 1 row affected
 	Comments func(fn string, ids []string) (any, error)  // comments.mark_dead / comments.restore; nil answers all changed
 
+	Revoke func(account string) error // comments.identity.revoke; nil answers revoked
+
 	Queries, Execs []sqlCall
+	Revoked        []string
 }
 
 // user builds a users row.
@@ -92,6 +95,19 @@ func install(t *testing.T, db *fakeDB) *coretest.Host {
 				}
 			}
 			return map[string]any{"rows_affected": n}, nil
+		},
+		sdk.FnCommentsIdentityRevoke: func(a json.RawMessage) (any, error) {
+			var args sdk.CommentsIdentityArgs
+			if err := json.Unmarshal(a, &args); err != nil {
+				return nil, err
+			}
+			db.Revoked = append(db.Revoked, args.Account)
+			if db.Revoke != nil {
+				if err := db.Revoke(args.Account); err != nil {
+					return nil, err
+				}
+			}
+			return sdk.CommentsIdentityRevoked{Revoked: true}, nil
 		},
 		sdk.FnCommentsMarkDead: comments(sdk.FnCommentsMarkDead),
 		sdk.FnCommentsRestore:  comments(sdk.FnCommentsRestore),

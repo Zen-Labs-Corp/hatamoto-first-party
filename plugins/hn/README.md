@@ -98,7 +98,7 @@ Public routes are served at `/p/hn/...`; admin routes need the owner.
 | `POST /admin/jobs` | admin | P2 |
 | `POST /vote/comment/{id}` | public | P3 |
 | `POST /flag/{kind}/{id}`, `POST /vouch/{kind}/{id}` | public | P4 |
-| `GET /admin/queue`, `GET /admin/log`, `POST /admin/users/{name}/ban`, `POST /admin/users/{name}/unban`, `POST /admin/domains`, `POST /admin/domains/remove`, `POST /admin/nets/ban`, `POST /admin/nets/unban`, `POST /admin/items/kill`, `POST /admin/items/restore` | admin | P4 |
+| `GET /admin/queue`, `GET /admin/log`, `POST /admin/users/{name}/ban`, `POST /admin/users/{name}/unban`, `POST /admin/users/{name}/password/remove`, `POST /admin/domains`, `POST /admin/domains/remove`, `POST /admin/nets/ban`, `POST /admin/nets/unban`, `POST /admin/items/kill`, `POST /admin/items/restore` | admin | P4 |
 | `POST /favorite/{kind}/{id}`, `POST /unfavorite/{kind}/{id}`, `POST /hide/{id}`, `POST /unhide/{id}` | public | P5 |
 | `GET /rss`, `GET /api/feed/{name}`, `GET /api/item/{id}`, `GET /api/user/{name}` | public | P5 |
 | `GET /state/{entity_id}` | public | P6 |
@@ -114,7 +114,7 @@ A member is a username and a password, no email. The login page has two forms, L
 - A failed login answers the same "Bad login." for an unknown user and a wrong password, and both run one bcrypt compare (an unknown user against a dummy hash of the same cost), so neither the answer nor the time tells them apart. Create Account says "That username is taken." for a taken name.
 - Limits, counted per hour and checked before any hash is computed: sign-up 3 per address and 5 per network; login 20 per address, 60 per network, 10 per username and network, and 100 per username overall (attempts, right or wrong), and 10 password changes or connects per member. The address and network limits need the `client.key` grant; without it all requests share one site-wide limit (20 sign-ups and 120 logins per hour), so a flood is capped but also blocks everyone.
 - Logout is a POST (the `.hn-out` form in the user bar) that clears the core sign-in cookie. "Log out everywhere" on the own profile signs every browser of the account out.
-- A member who signed up with the email link connects a password with the separate "connect a password" form on their profile (they type their username and the new password twice; core gives no proof of who holds the browser, so a stolen signed-in browser can still connect a password) and keeps their username, comments and karma. This is the only action that joins a browser's existing sign-in to a password account; Create Account and Login never do. Changing a password needs the current one and signs the other browsers out.
+- A member who signed up with the email link connects a password with the separate "connect a password" form on their profile (they type their username and the new password twice; core gives no proof of who holds the browser, so a stolen signed-in browser can still connect a password, which the owner can undo with `POST /admin/users/{name}/password/remove`: it signs the account out and deletes the login) and keeps their username, comments and karma. This is the only action that joins a browser's existing sign-in to a password account; Create Account and Login never do. Changing a password needs the current one and signs the other browsers out.
 
 ### Uninstalling and reinstalling
 
