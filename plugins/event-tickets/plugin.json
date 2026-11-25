@@ -15,6 +15,14 @@
       "entity.deleted": 5000
     }
   },
+  "routes": [
+    { "method": "GET", "path": "/admin/events", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/admin/events/{id}", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/events/{id}/types", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/types/{id}/delete", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/events/{id}/fields", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/admin/settings", "roles": ["owner", "editor"] }
+  ],
   "settings_schema": {
     "type": "object",
     "properties": {

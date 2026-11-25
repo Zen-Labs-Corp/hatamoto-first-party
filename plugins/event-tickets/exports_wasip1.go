@@ -21,5 +21,8 @@ func onEntityPublishedExport() int32 { return guest.Run(sdk.EntityPublished.Expo
 //go:wasmexport on_entity_deleted
 func onEntityDeletedExport() int32 { return guest.Run(sdk.EntityDeleted.Export()) }
 
+//go:wasmexport http_handle
+func httpHandle() int32 { return guest.Run(guest.HTTPExport) }
+
 // main is never called: a c-shared wasm module is a reactor.
 func main() {}
