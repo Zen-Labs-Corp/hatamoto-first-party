@@ -40,6 +40,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveCheckinState(r.User, r.PathValues["id"], r.Query), nil
 		case "/admin/settings":
 			return serveSettings(r.User), nil
+		case "/admin/payouts":
+			return servePayouts(r.User, r.Query), nil
 		case "/admin/orders":
 			return serveOrders(r.User, r.Query), nil
 		case "/admin/coupons":
