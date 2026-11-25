@@ -254,7 +254,7 @@ func TestSectionsHaveNoInlineStyleOrColour(t *testing.T) {
 			files = append(files, f)
 		}
 	}
-	hex := regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b`)
+	hex := regexp.MustCompile(`(?:^|[^&\w])#[0-9a-fA-F]{3,8}\b`) // not an &#9650; entity
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {
