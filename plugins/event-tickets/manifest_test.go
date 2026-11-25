@@ -130,12 +130,14 @@ func TestManifest(t *testing.T) {
 		{"POST", "/admin/attendees/{id}/uncheck", false},
 		{"POST", "/admin/events/{id}/splits", false}, {"GET", "/admin/payouts", false},
 		{"GET", "/admin/payouts.csv", false}, {"POST", "/admin/payouts/mark", false}, {"POST", "/admin/payouts/unmark", false},
+		{"GET", "/admin/emails", false}, {"POST", "/admin/emails/automations", false},
 	}
 	// Refund, order cancel, coupon changes and bundle rules move or give away money: the owner only (the handlers check again).
 	ownerOnly := map[string]bool{"/admin/orders/{id}/refund": true, "/admin/orders/{id}/cancel": true,
 		"/admin/coupons/{id}/delete": true, "/admin/events/{id}/bundles": true,
 		"/admin/events/{id}/splits": true, "/admin/payouts": true,
-		"/admin/payouts.csv": true, "/admin/payouts/mark": true, "/admin/payouts/unmark": true}
+		"/admin/payouts.csv": true, "/admin/payouts/mark": true, "/admin/payouts/unmark": true,
+		"/admin/emails": true, "/admin/emails/automations": true}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
 	}

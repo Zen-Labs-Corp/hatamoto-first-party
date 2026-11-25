@@ -62,7 +62,9 @@
     { "method": "GET", "path": "/admin/payouts", "roles": ["owner"] },
     { "method": "GET", "path": "/admin/payouts.csv", "roles": ["owner"] },
     { "method": "POST", "path": "/admin/payouts/mark", "roles": ["owner"] },
-    { "method": "POST", "path": "/admin/payouts/unmark", "roles": ["owner"] }
+    { "method": "POST", "path": "/admin/payouts/unmark", "roles": ["owner"] },
+    { "method": "GET", "path": "/admin/emails", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/emails/automations", "roles": ["owner"] }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },

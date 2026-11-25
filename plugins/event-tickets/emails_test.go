@@ -29,7 +29,8 @@ func newEmailsHost(t *testing.T, n int) *emailsHost {
 		h.queue = append(h.queue, sendRow{ID: int64(i), Kind: "campaign", RefID: 1, OrderID: int64(i), EventID: "e1",
 			EmailHash: strings.Repeat(strconv.Itoa(i%10), 64), Code: strings.Repeat("a", 32)})
 	}
-	oldComposers := composers
+	oldComposers, oldFanouts := composers, fanouts
+	fanouts = nil // the fan-outs have their own tests
 	composers = map[string]func(s sendRow) (outMail, bool, error){
 		"campaign": func(s sendRow) (outMail, bool, error) {
 			return outMail{To: "ana@example.com", Subject: "Hi"}, true, nil
@@ -38,7 +39,7 @@ func newEmailsHost(t *testing.T, n int) *emailsHost {
 			return outMail{To: "ana@example.com", Subject: "Hi"}, true, nil
 		},
 	}
-	t.Cleanup(func() { composers = oldComposers })
+	t.Cleanup(func() { composers, fanouts = oldComposers, oldFanouts })
 	callHost = func(fn string, args, out any) error {
 		a, _ := args.(map[string]any)
 		sql, _ := a["sql"].(string)
@@ -230,9 +231,7 @@ func TestLoadAutomations(t *testing.T) {
 func TestRunEmailsFansOutBeforeSending(t *testing.T) {
 	h := newEmailsHost(t, 1)
 	var order []string
-	oldFanouts := fanouts
 	fanouts = []func(automations, func() bool){func(automations, func() bool) { order = append(order, "fanout") }}
-	t.Cleanup(func() { fanouts = oldFanouts })
 	composers["campaign"] = func(sendRow) (outMail, bool, error) {
 		order = append(order, "send")
 		return outMail{To: "a@example.com"}, true, nil
