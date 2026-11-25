@@ -227,6 +227,8 @@ func TestEmailsRoutes(t *testing.T) {
 			return jsonInto(`{"mail":{"recipients_per_hour":120}}`, out)
 		case strings.Contains(sql, "FROM meta WHERE key LIKE"):
 			return jsonInto(`{"rows":[[{"email.thanks":"true"}]]}`, out)
+		case strings.Contains(sql, "FROM (SELECT c.id, c.subject"):
+			return jsonInto(`{"rows":[[[]]]}`, out)
 		}
 		return callHost0(fn, args, out)
 	}

@@ -58,6 +58,8 @@ func newEmailsHost(t *testing.T, n int) *emailsHost {
 			err := h.mailErrs[0]
 			h.mailErrs = h.mailErrs[1:]
 			return err
+		case strings.HasPrefix(sql, "UPDATE campaigns c SET status = 'sent'"):
+			return nil // finishCampaigns
 		case strings.Contains(sql, "FROM meta WHERE key LIKE"):
 			return jsonInto(`{"rows":[[`+h.meta+`]]}`, out)
 		case strings.Contains(sql, "FOR UPDATE SKIP LOCKED"):
