@@ -16,7 +16,7 @@ var sectionTypes = []string{"hn_userbar", "hn_login", "hn_user"}
 
 func parseSections(t *testing.T) *template.Template {
 	t.Helper()
-	files := []string{"../../partials/style.html"}
+	files := []string{"../../partials/style.html", "../../partials/login_forms.html"}
 	for _, typ := range sectionTypes {
 		files = append(files, "../../sections/"+typ+".html")
 	}
@@ -119,6 +119,9 @@ func TestPagesSectionStates(t *testing.T) {
 		if strings.Contains(out, bad) {
 			t.Errorf("login out shows %q", bad)
 		}
+	}
+	if n := strings.Count(out, `id="hn-login-user"`); n != 1 {
+		t.Errorf("login out has %d hn-login-user ids, want 1", n)
 	}
 	hasLabels("login out", out, "hn-login-user", "hn-login-pw", "hn-signup-user", "hn-signup-pw")
 	has("login noname", render("/login", "k2", "hn_login"), `action="/p/hn/username"`, `name="username"`, `maxlength="15"`)

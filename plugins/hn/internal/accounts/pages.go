@@ -49,11 +49,8 @@ func place(p *core.Page, typ string, c map[string]any) {
 
 func loginPage(p *core.Page) error {
 	st, v := state(p)
-	c := map[string]any{
-		"state": st, "notice": core.NoticeText(p.Query("m")),
-		"next": "/login", "login_action": loginAction, "signup_action": signupAction,
-		"logout_action": logoutAction, "email_signin_href": signInURL,
-	}
+	c := core.LoginForms("/login")
+	c["state"], c["notice"], c["logout_action"] = st, core.NoticeText(p.Query("m")), logoutAction
 	if v != nil {
 		c["name"] = v.Username
 	}

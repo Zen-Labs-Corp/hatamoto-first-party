@@ -5,9 +5,9 @@ import "github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 // Paths: the core email-link sign-in (for members who signed up that way) and this plugin's
 // own session routes.
 const (
-	signInURL      = "/-/comments/signin"
-	loginAction    = "/p/hn/login"
-	signupAction   = "/p/hn/signup"
+	signInURL      = core.EmailSignInURL
+	loginAction    = core.LoginAction
+	signupAction   = core.SignupAction
 	logoutAction   = "/p/hn/logout"
 	logoutAll      = "/p/hn/logout/all"
 	passwordAction = "/p/hn/password"         // change, password members only
