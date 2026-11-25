@@ -25,6 +25,7 @@ type manifestFile struct {
 		Title string   `json:"title"`
 		Entry string   `json:"entry"`
 		Roles []string `json:"roles"`
+		Allow []string `json:"allow"`
 	} `json:"ui"`
 	Cron []struct {
 		Name  string `json:"name"`
@@ -76,7 +77,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m := loadManifest(t)
-	if m.Name != "event-tickets" || m.Version != "0.2.0" {
+	if m.Name != "event-tickets" || m.Version != "0.3.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 
@@ -86,7 +87,7 @@ func TestManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := regexp.MustCompile(`hatamoto\.dev/sdk v(\d+\.\d+\.\d+)`).FindSubmatch(mod)
-	if m.SDK != "^0.22" || got == nil || !strings.HasPrefix(string(got[1]), "0.22.") {
+	if m.SDK != "^0.22.2" || got == nil || !strings.HasPrefix(string(got[1]), "0.22.") {
 		t.Errorf("sdk range %q, go.mod %q", m.SDK, got)
 	}
 
@@ -125,6 +126,8 @@ func TestManifest(t *testing.T) {
 		{"GET", "/admin/orders", false}, {"POST", "/admin/orders/{id}/refund", false}, {"POST", "/admin/orders/{id}/cancel", false},
 		{"GET", "/admin/coupons", false}, {"POST", "/admin/coupons", false}, {"POST", "/admin/coupons/{id}/delete", false},
 		{"POST", "/admin/events/{id}/bundles", false},
+		{"GET", "/admin/events/{id}/checkin", false}, {"POST", "/admin/events/{id}/checkin", false},
+		{"POST", "/admin/attendees/{id}/uncheck", false},
 	}
 	// Refund, order cancel, coupon changes and bundle rules move or give away money: the owner only (the handlers check again).
 	ownerOnly := map[string]bool{"/admin/orders/{id}/refund": true, "/admin/orders/{id}/cancel": true,
@@ -146,7 +149,7 @@ func TestManifest(t *testing.T) {
 		}
 	}
 
-	if m.UI.Title != "Event tickets" || m.UI.Entry != "index.html" || !slices.Equal(m.UI.Roles, []string{"owner", "editor"}) {
+	if m.UI.Title != "Event tickets" || m.UI.Entry != "index.html" || !slices.Equal(m.UI.Roles, []string{"owner", "editor"}) || !slices.Equal(m.UI.Allow, []string{"camera"}) {
 		t.Errorf("ui = %+v", m.UI)
 	}
 
@@ -219,7 +222,7 @@ func TestManifest(t *testing.T) {
 }
 
 func TestShippedFiles(t *testing.T) {
-	for _, f := range []string{"migrations/001_init.sql", "migrations/002_paid.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
+	for _, f := range []string{"migrations/001_init.sql", "migrations/002_paid.sql", "migrations/003_checkin.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
 		exists(t, f)
 	}
 }
@@ -248,6 +251,12 @@ func TestReadmeExplainsPermissions(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "boombuler/barcode") || !strings.Contains(string(raw), "MIT") {
 		t.Error("README must credit boombuler/barcode and its MIT licence")
+	}
+	if !strings.Contains(string(raw), "jsQR") || !strings.Contains(string(raw), "Apache-2.0") {
+		t.Error("README must credit jsQR and its Apache-2.0 licence")
+	}
+	if slices.Contains(m.UI.Allow, "camera") && !strings.Contains(section, "camera") {
+		t.Error("README Permissions does not explain the camera")
 	}
 }
 

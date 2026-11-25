@@ -125,6 +125,7 @@ func TestAdminRoutesRefuseNoUser(t *testing.T) {
 	for _, c := range []struct{ method, pattern string }{
 		{"GET", "/admin/events"}, {"GET", "/admin/events/{id}"}, {"GET", "/admin/settings"},
 		{"POST", "/admin/events/{id}/types"}, {"POST", "/admin/types/{id}/delete"}, {"POST", "/admin/events/{id}/fields"},
+		{"GET", "/admin/events/{id}/checkin"}, {"POST", "/admin/events/{id}/checkin"}, {"POST", "/admin/attendees/{id}/uncheck"},
 	} {
 		code, _ := request(t, sdk.HTTPRequest{Method: c.method, Pattern: c.pattern, PathValues: map[string]string{"id": "e1"}, Body: `{}`})
 		if code != 403 {
@@ -142,10 +143,19 @@ func TestAdminBadIDs(t *testing.T) {
 		if code, _ := post(t, "/admin/events/{id}/types", id, editor, `{"name":"x"}`); code != 400 {
 			t.Errorf("types %q: %d", id, code)
 		}
+		if code, _ := get(t, "/admin/events/{id}/checkin", id, editor, nil); code != 400 {
+			t.Errorf("checkin state %q: %d", id, code)
+		}
+		if code, _ := post(t, "/admin/events/{id}/checkin", id, editor, `{"attendee_id":1}`); code != 400 {
+			t.Errorf("checkin scan %q: %d", id, code)
+		}
 	}
 	for _, id := range []string{"abc", "-1", "1 2", strings.Repeat("1", 19)} {
 		if code, _ := post(t, "/admin/types/{id}/delete", id, editor, ``); code != 400 {
 			t.Errorf("delete %q: %d", id, code)
+		}
+		if code, _ := post(t, "/admin/attendees/{id}/uncheck", id, editor, ``); code != 400 {
+			t.Errorf("uncheck %q: %d", id, code)
 		}
 	}
 	if h.sawSQL("DELETE") != nil || h.sawSQL("INSERT") != nil {

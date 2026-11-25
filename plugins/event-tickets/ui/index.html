@@ -12,6 +12,7 @@
       <button id="tab-events" type="button" class="tab">Events</button>
       <button id="tab-attendees" type="button" class="tab">Attendees</button>
       <button id="tab-orders" type="button" class="tab">Orders</button>
+      <button id="tab-checkin" type="button" class="tab">Check-in</button>
       <button id="tab-settings" type="button" class="tab">Settings</button>
     </nav>
     <p id="notice" class="notice" hidden></p>
@@ -135,6 +136,30 @@
       <p id="or-fees" class="muted"></p>
     </section>
 
+    <section id="panel-checkin" hidden>
+      <div class="row">
+        <label>Event <select id="ck-event"></select></label>
+        <strong id="ck-count"></strong>
+      </div>
+      <div class="row">
+        <button id="ck-scan" type="button" class="primary">Scan QR (camera)</button>
+        <label>or search <input id="ck-search" type="text" maxlength="64" placeholder="Name or ticket code"></label>
+        <button id="ck-go" type="button">Search</button>
+      </div>
+      <p id="ck-camera-hint" class="muted" hidden>The camera is off. Ask the site owner to grant it on the plugin's Permissions tab. Search still works.</p>
+      <table id="ck-match-table" hidden>
+        <thead>
+          <tr><th>Name</th><th>Ticket</th><th>Status</th><th>Action</th></tr>
+        </thead>
+        <tbody id="ck-matches"></tbody>
+      </table>
+      <p id="ck-match-state" class="muted"></p>
+      <h2>Last results</h2>
+      <ul id="ck-log" class="ck-log"></ul>
+      <p id="ck-queue" class="muted"></p>
+      <p id="ck-warn" class="notice error" hidden>Offline queue is kept in this page only: it is lost if you reload or close it.</p>
+    </section>
+
     <section id="panel-settings" hidden>
       <table id="st-table">
         <tbody id="st-rows"></tbody>
@@ -144,6 +169,8 @@
     </section>
   </main>
   <script src="/plugin-ui/_sdk/bridge.js"></script>
+  <script src="jsqr.js"></script>
+  <script src="checkin.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

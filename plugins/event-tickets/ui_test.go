@@ -25,7 +25,7 @@ func TestUIHasNoInlineCodeOrMarkupInjection(t *testing.T) {
 		" style=", `setAttribute("style"`, `setAttribute('style'`, ".style.", ".style[", "cssText",
 		"onclick=", "onload=", "onchange=", "<style", "<a ", "javascript:", "fetch(", "XMLHttpRequest",
 	}
-	for _, name := range []string{"index.html", "app.js", "app.css"} {
+	for _, name := range []string{"index.html", "app.js", "checkin.js", "app.css"} {
 		src := readUI(t, name)
 		for _, b := range banned {
 			if strings.Contains(src, b) {
@@ -40,7 +40,7 @@ func TestUIHasNoInlineCodeOrMarkupInjection(t *testing.T) {
 	}
 }
 
-func TestUIIndexLoadsOnlyBridgeAndApp(t *testing.T) {
+func TestUIIndexScripts(t *testing.T) {
 	html := readUI(t, "index.html")
 	var srcs []string
 	for _, m := range regexp.MustCompile(`<script[^>]*>`).FindAllString(html, -1) {
@@ -50,21 +50,37 @@ func TestUIIndexLoadsOnlyBridgeAndApp(t *testing.T) {
 		}
 		srcs = append(srcs, s[1])
 	}
-	if len(srcs) != 2 || srcs[0] != "/plugin-ui/_sdk/bridge.js" || srcs[1] != "app.js" {
-		t.Fatalf("scripts %v", srcs)
+	if want := []string{"/plugin-ui/_sdk/bridge.js", "jsqr.js", "checkin.js", "app.js"}; !slices.Equal(srcs, want) {
+		t.Fatalf("scripts %v, want %v", srcs, want)
+	}
+}
+
+// The QR decoder is vendored unchanged, with its version and licence.
+func TestVendoredQRDecoder(t *testing.T) {
+	js := readUI(t, "jsqr.js")
+	if !strings.HasPrefix(js, "/* jsQR 1.4.0") {
+		t.Error("ui/jsqr.js lacks its version header")
+	}
+	for _, b := range []string{"eval(", "new Function"} {
+		if strings.Contains(js, b) {
+			t.Errorf("ui/jsqr.js contains %q", b)
+		}
+	}
+	if !strings.Contains(readUI(t, "jsqr.LICENSE"), "Apache License") {
+		t.Error("ui/jsqr.LICENSE is not the Apache licence")
 	}
 }
 
 // Core creates what a run stages as a draft, so the pages must not promise that
 
-// This part ships exactly four tabs.
+// This part ships exactly five tabs.
 func TestUITabs(t *testing.T) {
 	html := readUI(t, "index.html")
 	var ids []string
 	for _, m := range regexp.MustCompile(`<button id="(tab-[a-z]+)"`).FindAllStringSubmatch(html, -1) {
 		ids = append(ids, m[1])
 	}
-	if want := []string{"tab-events", "tab-attendees", "tab-orders", "tab-settings"}; !slices.Equal(ids, want) {
+	if want := []string{"tab-events", "tab-attendees", "tab-orders", "tab-checkin", "tab-settings"}; !slices.Equal(ids, want) {
 		t.Errorf("tabs %v, want %v", ids, want)
 	}
 	if strings.Contains(readUI(t, "app.js"), "hatamoto.host") {

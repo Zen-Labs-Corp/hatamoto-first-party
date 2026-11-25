@@ -8,6 +8,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "ui", "app.js"), "utf8");
+const checkinSrc = fs.readFileSync(path.join(__dirname, "..", "ui", "checkin.js"), "utf8");
 
 class Node {
   constructor(tag) {
@@ -36,29 +37,37 @@ const IDS = [
   "#or-state", "#or-table", "#or-rows", "#or-more", "#or-refund", "#or-refund-title", "#or-refund-amount", "#or-refund-cur",
   "#or-refund-tickets", "#or-refund-act", "#or-refund-close", "#cp-state", "#cp-table", "#cp-rows", "#cp-title", "#cp-code", "#cp-kind",
   "#cp-value", "#cp-max", "#cp-until", "#cp-event", "#cp-active", "#cp-save", "#cp-reset", "#or-fees", "#or-bundles",
+  "#tab-checkin", "#panel-checkin", "#ck-event", "#ck-count", "#ck-scan", "#ck-search", "#ck-go", "#ck-camera-hint", "#ck-match-table",
+  "#ck-matches", "#ck-match-state", "#ck-log", "#ck-queue", "#ck-warn",
 ];
 
 let clock = 1000000;
-const fakeDate = { now: () => clock };
+class FakeDate extends Date { static now() { return clock; } }
 
 // load runs the page; respond(method, path) returns {status, body}.
-async function load({ respond, timers = [] }) {
+async function load({ respond, timers = [], camera = { available: false } }) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   const routes = [];
   const document = { querySelector: (s) => els[s], createElement: (t) => new Node(t), execCommand: () => true };
   const hatamoto = {
     ready: Promise.resolve(),
+    camera,
     route: async (method, p, body, query) => {
       routes.push({ method, p });
       return respond(method, p);
     },
   };
   const mod = { exports: {} };
-  vm.runInNewContext(src, {
-    document, hatamoto, module: mod, setTimeout: (fn) => timers.push(fn),
-    Date: fakeDate, encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean,
+  // The page scripts share one context, like the browser: checkin.js first.
+  const window = { addEventListener() {} };
+  Object.defineProperty(window, "localStorage", { get() { throw new Error("SecurityError"); } });
+  const context = vm.createContext({
+    document, hatamoto, window, module: mod, setTimeout: (fn) => timers.push(fn),
+    Date: FakeDate, crypto: globalThis.crypto, Uint8Array, encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean, Array, Map, Promise,
   });
+  vm.runInContext(checkinSrc, context);
+  vm.runInContext(src, context);
   await new Promise((r) => setTimeout(r, 10));
   routes.length = 0;
   return { els, routes, api: mod.exports };
@@ -105,6 +114,56 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   await ctx.api.cancelAttendee("7", btn);
   assert.deepEqual(ctx.routes[0], { method: "POST", p: "/admin/attendees/7/cancel" });
   assert.equal(btn.textContent, "Cancel");
+
+  // a scan answer "already" reads ALREADY CHECKED IN; a refused one says why
+  ctx = await load({ respond: quiet });
+  ctx.api.state.checkinEvent = "1";
+  ctx.api.showScanResult({ event: "2", body: { scan: "t" } }, { ok: true, result: "already", attendee: { id: 5, name: "Ben K.", type_name: "VIP", checked_in_at: "2026-01-01T18:55:00Z" } });
+  let row = ctx.els["#ck-log"].children[0];
+  assert.match(row.children[2].textContent, /^ALREADY CHECKED IN \d\d:\d\d$/);
+  assert.equal(row.children[0].textContent, "Ben K.");
+  assert.equal(row.children.length, 3, "no Undo on an already-checked-in row");
+  ctx.api.showScanResult({ event: "2", body: { scan: "t" } }, { ok: true, result: "ok", attendee: { id: 6, name: "Ana P.", type_name: "GA", checked_in_at: "2026-01-01T19:02:00Z" } });
+  row = ctx.els["#ck-log"].children[0];
+  assert.match(row.children[2].textContent, /^OK \d\d:\d\d$/);
+  assert.equal(row.children.length, 4, "OK rows have Undo");
+  ctx.api.showScanResult({ event: "2", body: { scan: "t" } }, { ok: true, result: "refused", reason: "other_event" });
+  assert.equal(ctx.els["#ck-log"].children[0].children[2].textContent, "REFUSED: ticket is for another event");
+  assert.equal(ctx.els["#ck-log"].children.length, 3);
+
+  // a final error is not REFUSED: it says to scan again and when it was scanned
+  ctx.api.showScanResult({ event: "2", body: { scan: "t" }, at: Date.UTC(2026, 0, 1, 19, 2) }, { result: "error" });
+  assert.match(ctx.els["#ck-log"].children[0].children[2].textContent, /^NOT SENT: scan again or search \(scanned \d\d:\d\d\)$/);
+  // a retry-confirmed scan reads OK, not ALREADY
+  ctx.api.showScanResult({ event: "2", body: { scan: "t" } }, { result: "ok", confirmed: true, attendee: { id: 7, name: "Cy", type_name: "GA", checked_in_at: "2026-01-01T19:02:00Z" } });
+  assert.match(ctx.els["#ck-log"].children[0].children[2].textContent, /^OK \(confirmed on retry\) \d\d:\d\d$/);
+
+  // the "Server not reachable" notice goes away when a later run drains the queue
+  let up = false;
+  const stallTimers = [];
+  ctx = await load({ timers: stallTimers, respond: (m, p) => (p.endsWith("/checkin") ? (up ? reply(200, { ok: true, result: "ok", attendee: { id: 1, name: "Ana" } }) : reply(404, {})) : quiet(m, p)) });
+  ctx.api.ckQueue.add("1", { scan: "t" });
+  await ctx.api.ckQueue.sync();
+  assert.match(ctx.els["#notice"].textContent, /Server not reachable \(404\)/);
+  up = true;
+  await stallTimers[0]();
+  assert.equal(ctx.api.ckQueue.size(), 0);
+  assert.ok(ctx.els["#notice"].hidden, "stall notice cleared once the queue drained");
+
+  // a cancelled capture right after another one is core's cooldown: say so, never retry
+  let captures = 0;
+  ctx = await load({ respond: quiet, camera: { available: true, capture: async () => { captures++; return { ok: false, error: "cancelled" }; } } });
+  ctx.api.state.checkinEvent = "1";
+  await ctx.api.scanClick();
+  assert.ok(ctx.els["#notice"].hidden, "the first cancel is silent");
+  clock += 1000;
+  await ctx.api.scanClick();
+  assert.match(ctx.els["#notice"].textContent, /Wait a few seconds/);
+  assert.equal(captures, 2, "no automatic retry");
+  clock += 6000;
+  ctx.els["#notice"].hidden = true;
+  await ctx.api.scanClick();
+  assert.ok(ctx.els["#notice"].hidden, "after the cooldown a cancel is silent again");
 
   // money is exact: no floating point, decimals from the currency
   api = (await load({ respond: quiet })).api;
