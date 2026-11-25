@@ -45,6 +45,18 @@ fixture bad-section
 mv "$tmp/plugins/bad-section/build/sections/fx_block.html" "$tmp/plugins/bad-section/build/sections/fx-block.html"
 check "hyphenated section" 1 'FAIL sections/fx-block\.html: name must match' "$tmp/plugins/bad-section"
 
+fixture outsidedef
+printf '{{define "plugin/outsidedef/ok_name"}}ok{{end}}{{define "head"}}x{{end}}\n' >"$tmp/plugins/outsidedef/build/partials/ok_name.html"
+check "partial defining a name outside plugin/<name>/" 1 'outsidedef \.+ FAIL core would refuse templates: .*defines "head"' "$tmp/plugins/outsidedef"
+
+fixture brokentpl
+printf '{{define "plugin/brokentpl/ok_name"}}{{if}}{{end}}\n' >"$tmp/plugins/brokentpl/build/partials/ok_name.html"
+check "partial that does not parse" 1 'brokentpl \.+ FAIL core would refuse templates: .*missing value for if' "$tmp/plugins/brokentpl"
+
+fixture foreigncall
+printf '{{define "plugin/foreigncall/ok_name"}}{{template "plugin/good/ok_name"}}{{end}}\n' >"$tmp/plugins/foreigncall/build/partials/ok_name.html"
+check "partial calling another plugin" 1 'foreigncall \.+ FAIL core would refuse templates: .*another plugin' "$tmp/plugins/foreigncall" "$tmp/plugins/good"
+
 mkdir -p "$tmp/plugins/nobuild"
 check "no build/" 1 'FAIL no build/' "$tmp/plugins/nobuild"
 
