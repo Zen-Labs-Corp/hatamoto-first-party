@@ -24,10 +24,10 @@ ALTER TABLE orders
     ADD COLUMN expires_at timestamptz,
     ADD COLUMN paid_at timestamptz,
     ADD COLUMN problem text CHECK (problem IS NULL OR problem IN ('amount_mismatch', 'refund_failed'));
-COMMENT ON COLUMN orders.lines IS 'Snapshot at hold time: [{type, name, qty, unit}]';
-COMMENT ON COLUMN orders.provider_ref IS 'Stripe session id or PayPal order id';
-COMMENT ON COLUMN orders.payment_ref IS 'Stripe payment intent or PayPal capture id';
-COMMENT ON COLUMN orders.pay_code IS '128-bit random, signed into the return and cancel links';
+-- orders.lines: snapshot at hold time, [{type, name, qty, unit}].
+-- orders.provider_ref: Stripe session id or PayPal order id.
+-- orders.payment_ref: Stripe payment intent or PayPal capture id.
+-- orders.pay_code: 128-bit random, signed into the return and cancel links.
 CREATE UNIQUE INDEX orders_provider_ref_idx ON orders (provider, provider_ref) WHERE provider_ref IS NOT NULL;
 CREATE INDEX orders_pending_idx ON orders (expires_at) WHERE status = 'pending';
 CREATE INDEX orders_status_idx ON orders (status, created_at);
