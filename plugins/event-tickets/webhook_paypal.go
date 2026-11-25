@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -150,9 +152,43 @@ func markMismatch(orderID int64) error {
 	return dbExec(`UPDATE orders SET problem = 'amount_mismatch' WHERE id = $1 AND status IN ('pending', 'expired', 'cancelled') AND paid_at IS NULL`, orderID)
 }
 
+// PayPal sends a webhook again for days after a failure; a transmission time
+// further in the future than a clock error is never genuine.
+const (
+	transmissionMaxAge  = 72 * time.Hour
+	transmissionMaxSkew = time.Hour
+)
+
+var (
+	authAlgoRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
+	sigRe      = regexp.MustCompile(`^[A-Za-z0-9+/=_-]+$`)
+)
+
+// plausiblePayPalHeaders is the cheap part of the signature check: all five
+// headers well-formed, the certificate on PayPal's own domain over https, and
+// a transmission time near now. PayPal's verify call still decides.
+func plausiblePayPalHeaders(h paypalHeaders) bool {
+	if !h.complete() || !idRe.MatchString(h.TransmissionID) || !sigRe.MatchString(h.TransmissionSig) || !authAlgoRe.MatchString(h.AuthAlgo) {
+		return false
+	}
+	u, err := url.Parse(h.CertURL)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" {
+		return false
+	}
+	if host := strings.ToLower(u.Hostname()); host != "paypal.com" && !strings.HasSuffix(host, ".paypal.com") {
+		return false
+	}
+	ts, err := time.Parse(time.RFC3339, h.TransmissionTime)
+	if err != nil {
+		return false
+	}
+	age := now().Sub(ts)
+	return age <= transmissionMaxAge && age >= -transmissionMaxSkew
+}
+
 // servePayPalWebhook handles POST /paypal/webhook. Nothing is decoded or
 // stored before PayPal's verify-webhook-signature answers SUCCESS for the body
-// as it came. Bad input is a 400, trouble on our side or at PayPal a 503
+// as it came; junk, other event types and events handled before never reach it. Bad input is a 400, trouble on our side or at PayPal a 503
 // (PayPal retries), the rest a 200.
 func servePayPalWebhook(r sdk.HTTPRequest) sdk.HTTPResponse {
 	if !webhookBody(r) {
@@ -169,12 +205,9 @@ func servePayPalWebhook(r sdk.HTTPRequest) sdk.HTTPResponse {
 	if !s.paypalReady() || s.PayPalWebhookID == "" || !h.complete() {
 		return webhookReply(http.StatusBadRequest, "bad signature")
 	}
-	dl := newDeadline(webhookBudget)
-	genuine, err := paypalVerifyWebhook(s, h, r.Body, dl)
-	if err != nil {
-		return webhookReply(http.StatusServiceUnavailable, "unavailable")
-	}
-	if !genuine {
+	// Anyone can post here, and every verify is an outbound call (and perhaps an
+	// OAuth call): what can be told apart from junk without PayPal is rejected first.
+	if !plausiblePayPalHeaders(h) {
 		return webhookReply(http.StatusBadRequest, "bad signature")
 	}
 	var ev paypalEvent
@@ -190,6 +223,14 @@ func servePayPalWebhook(r sdk.HTTPRequest) sdk.HTTPResponse {
 	}
 	if seen {
 		return webhookReply(http.StatusOK, outcomeDuplicate)
+	}
+	dl := newDeadline(webhookBudget)
+	genuine, err := paypalVerifyWebhook(s, h, r.Body, dl)
+	if err != nil {
+		return webhookReply(http.StatusServiceUnavailable, "unavailable")
+	}
+	if !genuine {
+		return webhookReply(http.StatusBadRequest, "bad signature")
 	}
 
 	var orderID int64

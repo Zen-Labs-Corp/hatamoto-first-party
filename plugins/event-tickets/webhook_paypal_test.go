@@ -478,3 +478,45 @@ func TestPayPalPendingCaptureKeepsItsID(t *testing.T) {
 		t.Errorf("declined: %q, payment_ref %q", status, w.payRef)
 	}
 }
+
+// Anonymous junk must cost no outbound call: no verify, no token.
+func TestPayPalWebhookJunkMakesNoProviderCall(t *testing.T) {
+	good := func() map[string]string { return ppHeaders() }
+	with := func(k, v string) map[string]string { h := good(); h[k] = v; return h }
+	without := func(k string) map[string]string { h := good(); delete(h, k); return h }
+	w := newPayPalShop(t)
+	approved := w.approvedBody("WH-1")
+	cases := map[string]struct {
+		body    string
+		headers map[string]string
+		code    int
+	}{
+		"no transmission id":   {approved, without("Paypal-Transmission-Id"), 400},
+		"no signature":         {approved, without("paypal-transmission-sig"), 400},
+		"no algo":              {approved, without("paypal-auth-algo"), 400},
+		"odd signature":        {approved, with("paypal-transmission-sig", "<script>"), 400},
+		"cert on another host": {approved, with("paypal-cert-url", "https://evil.example/paypal.com/certs"), 400},
+		"cert lookalike host":  {approved, with("paypal-cert-url", "https://api.paypal.com.evil.example/certs"), 400},
+		"cert over http":       {approved, with("paypal-cert-url", "http://api.paypal.com/certs"), 400},
+		"cert with userinfo":   {approved, with("paypal-cert-url", "https://api.paypal.com@evil.example/certs"), 400},
+		"old transmission":     {approved, with("paypal-transmission-time", "2026-12-01T12:00:00Z"), 400},
+		"future transmission":  {approved, with("paypal-transmission-time", "2027-01-01T15:00:00Z"), 400},
+		"odd time":             {approved, with("paypal-transmission-time", "yesterday"), 400},
+		"not json":             {"not json", good(), 400},
+		"no event id":          {`{"event_type":"CHECKOUT.ORDER.APPROVED"}`, good(), 400},
+		"unhandled event":      {`{"id":"WH-9","event_type":"BILLING.PLAN.CREATED"}`, good(), 200},
+	}
+	for name, c := range cases {
+		w := newPayPalShop(t)
+		code, _, _ := payPalHook(t, c.body, "", c.headers)
+		if code != c.code || len(w.fetches) != 0 {
+			t.Errorf("%s: %d, %d provider calls", name, code, len(w.fetches))
+		}
+	}
+	// an event handled before is not verified again
+	w = newPayPalShop(t)
+	w.events["WH-1"] = "paid"
+	if code, status := w.hook(t, approved); code != 200 || status != outcomeDuplicate || len(w.fetches) != 0 {
+		t.Errorf("replay: %d %q, %d provider calls", code, status, len(w.fetches))
+	}
+}
