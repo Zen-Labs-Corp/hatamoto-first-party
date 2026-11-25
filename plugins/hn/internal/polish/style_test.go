@@ -166,7 +166,7 @@ func TestStyleZeroSpecificity(t *testing.T) {
 func TestStyleUserScope(t *testing.T) {
 	src := styleSource(t)
 	if regexp.MustCompile(`[,(\s]\.hn-user\b`).MatchString(src) {
-		t.Error("a bare .hn-user selector also hits the author link in story-row.html")
+		t.Error("a bare .hn-user selector also hits the author link in story_row.html")
 	}
 	if !strings.Contains(src, "div.hn-user") {
 		t.Error("no div.hn-user rule")

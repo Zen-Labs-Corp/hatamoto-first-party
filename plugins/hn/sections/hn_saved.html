@@ -7,7 +7,7 @@
 {{else}}{{with $c.notice}}<p class="hn-notice" role="status">{{.}}</p>{{end}}
 <p class="hn-heading">{{$c.heading}}</p>
 {{if $c.stories_href}}<p class="hn-sub"><a href="{{$c.stories_href}}">stories</a> | <a href="{{$c.comments_href}}">comments</a></p>{{end}}
-<ol class="hn-stories">{{range $c.rows}}<li class="hn-story">{{template "plugin/hn/story-row" .}}</li>{{end}}</ol>
+<ol class="hn-stories">{{range $c.rows}}<li class="hn-story">{{template "plugin/hn/story_row" .}}</li>{{end}}</ol>
 {{range $c.comments}}<div class="hn-comment"><span class="hn-sub"><a href="{{.user_href}}">{{.by}}</a> {{.age}} | on: <a href="{{.item_href}}">{{.story_title}}</a></span><p>{{.excerpt}}</p></div>
 {{end}}{{if $c.empty}}<p class="hn-note">Nothing here yet.</p>{{end}}
 {{with $c.more}}<div class="hn-more"><a href="{{.}}" rel="next">More</a></div>{{end}}

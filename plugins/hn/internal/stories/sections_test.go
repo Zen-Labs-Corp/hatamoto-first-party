@@ -13,7 +13,7 @@ import (
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 )
 
-var sectionFiles = []string{"../../sections/hn_feed.html", "../../sections/hn_item.html", "../../sections/hn_submit.html", "../../partials/story-row.html"}
+var sectionFiles = []string{"../../sections/hn_feed.html", "../../sections/hn_item.html", "../../sections/hn_submit.html", "../../partials/story_row.html"}
 
 func TestSectionsAvoidBannedMarkup(t *testing.T) {
 	banned := []string{"<svg", "<script", "<iframe", "<object", "<embed", "<base", "<meta", "<link", "<math", "<template", "<noscript", "<dialog", "<title",
@@ -48,7 +48,7 @@ func TestSectionsAvoidBannedMarkup(t *testing.T) {
 
 func sectionTemplates(t *testing.T) *template.Template {
 	t.Helper()
-	tpl, err := template.New("").ParseFiles("../../partials/style.html", "../../partials/story-row.html",
+	tpl, err := template.New("").ParseFiles("../../partials/style.html", "../../partials/story_row.html",
 		"../../sections/hn_feed.html", "../../sections/hn_item.html", "../../sections/hn_submit.html")
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func sectionTemplates(t *testing.T) *template.Template {
 
 func TestSectionsDefineNames(t *testing.T) {
 	tpl := sectionTemplates(t)
-	want := map[string]bool{"section-hn_feed": true, "section-hn_item": true, "section-hn_submit": true, "plugin/hn/story-row": true, "plugin/hn/style": true, "": true}
+	want := map[string]bool{"section-hn_feed": true, "section-hn_item": true, "section-hn_submit": true, "plugin/hn/story_row": true, "plugin/hn/style": true, "": true}
 	for _, x := range tpl.Templates() {
 		if strings.HasSuffix(x.Name(), ".html") { // ParseFiles names each file's own (empty) body
 			continue
