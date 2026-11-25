@@ -62,6 +62,11 @@ func TestSeatMapIsSharedBriefly(t *testing.T) {
 	if resp = seatCall(t, sdk.HTTPRequest{Method: "GET", Pattern: "/seats/{event}", PathValues: map[string]string{"event": "e1"}}); resp.Status != 404 || resp.Headers["Cache-Control"] == seatMapMaxAge {
 		t.Errorf("no seated type: %d %v", resp.Status, resp.Headers)
 	}
+	h.avail = seatedAvail
+	h.clock = h.clock.Add(10 * 365 * 24 * time.Hour) // the event is over
+	if resp = seatCall(t, sdk.HTTPRequest{Method: "GET", Pattern: "/seats/{event}", PathValues: map[string]string{"event": "e1"}}); resp.Status != 404 {
+		t.Errorf("an event that is not open serves no map: %d", resp.Status)
+	}
 	if resp = seatCall(t, sdk.HTTPRequest{Method: "GET", Pattern: "/seats/{event}", PathValues: map[string]string{"event": "a b"}}); resp.Status != 404 {
 		t.Errorf("bad event id: %d", resp.Status)
 	}

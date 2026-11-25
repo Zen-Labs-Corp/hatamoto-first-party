@@ -40,6 +40,8 @@ ALTER TABLE attendees ADD COLUMN seat_id bigint REFERENCES seats (id),
 -- The double-sale guard: one live ticket per seat and event.
 CREATE UNIQUE INDEX attendees_seat_live_idx ON attendees (event_id, seat_id)
     WHERE seat_id IS NOT NULL AND status IN ('pending', 'active');
+-- Deleting a seat checks its tickets by seat alone.
+CREATE INDEX attendees_seat_idx ON attendees (seat_id) WHERE seat_id IS NOT NULL;
 
 -- Seats picked but not bought yet. No personal data. One row per seat and
 -- event: the double-hold guard. event_id is an entity id, no FK.

@@ -35,7 +35,15 @@ func serveSeatMap(eventID string) sdk.HTTPResponse {
 	if !idOK(eventID) {
 		return failReply(http.StatusNotFound, "not found")
 	}
-	m, err := seatAvailability(eventID, loadSettings().Currency)
+	set := loadSettings()
+	e, found, err := readEvent(eventID, set)
+	if err != nil {
+		return failReply(http.StatusServiceUnavailable, laterError)
+	}
+	if !found || !e.open(now()) {
+		return failReply(http.StatusNotFound, "not found")
+	}
+	m, err := seatAvailability(eventID, set.Currency)
 	if err != nil {
 		return failReply(http.StatusServiceUnavailable, laterError)
 	}
