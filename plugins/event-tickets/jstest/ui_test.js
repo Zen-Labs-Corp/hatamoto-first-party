@@ -374,7 +374,7 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
     assert.equal(ec.els["#em-quota"].textContent, "Sends up to 22 emails every 5 minutes (site quota 360 per hour).");
     const crow = ec.els["#cm-rows"].children;
     assert.equal(crow.length, 3);
-    assert.equal(crow[1].children[2].textContent, "Scheduled 2027-03-05 14:30 UTC");
+    assert.equal(crow[1].children[2].children[0], "Scheduled 2027-03-05 14:30 UTC");
     same(crow[0].children.slice(0, 7).map((c) => c.textContent || c.children[0]), ["Last tickets", "Summer Jazz, not bought", "Sending", "4 / 10", "2 (50%)", "1 (25%)", "1"]);
     assert.equal(crow[0].children[7].children[0].textContent, "Cancel");
     assert.equal(crow[2].children[7].children.length, 0, "a sent campaign has no cancel button");
