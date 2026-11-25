@@ -1,4 +1,4 @@
-// Command hn is a Hatamoto plugin. A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation on top of Hatamoto's core comments.
+// Command hn is a Hatamoto plugin. A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation, built on core comments.
 //
 // Each phase lives in internal/<phase> and registers its handlers into one
 // core.Registry; this file installs exactly one guest handler per export,

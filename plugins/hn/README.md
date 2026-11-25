@@ -1,8 +1,8 @@
 # hn
 
-A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation on top of Hatamoto's core comments.
+A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation, built on core comments.
 
-Status: 1.0.0, the first release: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in. Built against core v1.4.5 and SDK v0.27.0.
+Status: 1.0.1: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in. Built against core v1.4.5 and SDK v0.27.0.
 
 ## Layout
 
