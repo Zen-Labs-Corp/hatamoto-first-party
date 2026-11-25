@@ -53,6 +53,7 @@ function button(text, onClick, props = {}) {
 
 const MAX_PRICE_CENTS = 99999999;
 const MAX_BUNDLES = 10;
+const MAX_SPLITS = 10;
 const STATUSES = [["", "Any status"], ["paid", "Paid"], ["pending", "Waiting for payment"], ["confirmed", "Confirmed (free)"],
   ["refunded", "Refunded"], ["cancelled", "Cancelled"], ["expired", "Expired"]];
 const PROVIDERS = { stripe: "Stripe", paypal: "PayPal" };
@@ -132,6 +133,7 @@ async function openEditor(id) {
   state.editing = {
     id, name: data.event.name, types: data.types || [], fields: data.fields || [], defaultCapacity: data.default_capacity,
     bundles: (data.bundles || []).map(bundleRule),
+    splits: (data.splits || []).map(splitRule),
   };
   renderEditor();
 }
@@ -230,6 +232,58 @@ function bundleRow(rule, i) {
     button("Remove", () => { ed.bundles.splice(i, 1); renderEditor(); }));
 }
 
+// parsePercent reads "80", "12.5" or "12.25" as basis points (1..10000) with
+// string math only; anything else, or a value outside 0.01..100, throws.
+function parsePercent(s) {
+  const m = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(String(s).trim());
+  const bp = m ? Number(m[1]) * 100 + Number((m[2] || "").padEnd(2, "0")) : 0;
+  if (bp < 1 || bp > 10000) throw new Error("Percent must be between 0.01 and 100");
+  return bp;
+}
+
+// splitText is a rule's value as the field shows it: basis points as a
+// percent ("80", "12.5"), or minor units as an amount.
+function splitText(rule, exp = exponent()) {
+  if (rule.kind !== "percent") return centsText(rule.value, exp);
+  const frac = String(rule.value % 100).padStart(2, "0").replace(/0+$/, "");
+  return `${Math.floor(rule.value / 100)}${frac ? `.${frac}` : ""}`;
+}
+
+// splitRule is a rule as the editor holds it; text is what the value field shows.
+function splitRule(r) {
+  return { name: r.name || "", email: r.email || "", kind: r.kind || "percent", text: r.value ? splitText(r) : "" };
+}
+
+// splitsBody turns editor rows into the request: percent "12.5" is 1250 basis
+// points, a fixed "2.00" is minor units. It throws a message the owner can read.
+function splitsBody(rules, exp = exponent()) {
+  return {
+    rules: rules.map((r) => {
+      let value;
+      if (r.kind === "percent") value = parsePercent(r.text);
+      else {
+        value = parseMoney(r.text, exp);
+        if (!value) throw new Error("Enter the fixed amount per ticket as a number, for example 2.50.");
+      }
+      return { name: r.name.trim(), email: r.email.trim(), kind: r.kind, value };
+    }),
+  };
+}
+
+function splitRow(rule, i) {
+  const name = el("input", { type: "text", value: rule.name, maxLength: 80, placeholder: "Payee name" });
+  name.addEventListener("input", () => { rule.name = name.value; });
+  const email = el("input", { type: "text", value: rule.email, maxLength: 254, placeholder: "Payout email", inputMode: "email" });
+  email.addEventListener("input", () => { rule.email = email.value; });
+  const kind = el("select", {}, el("option", { value: "percent", textContent: "% of the total" }), el("option", { value: "fixed", textContent: "per ticket" }));
+  kind.value = rule.kind;
+  kind.addEventListener("change", () => { rule.kind = kind.value; });
+  const value = el("input", { type: "text", value: rule.text, maxLength: 12, size: 8, inputMode: "decimal" });
+  value.addEventListener("input", () => { rule.text = value.value; });
+  return el("div", { className: "row" }, el("label", {}, "Payee ", name), email, kind, value,
+    button("Remove", () => { state.editing.splits.splice(i, 1); renderEditor(); }));
+}
+
 // isOwner: coupons and bundles are changed by owners only (an editor would get a 403).
 function isOwner() { return Boolean(state.settings.can_refund); }
 
@@ -239,6 +293,8 @@ function renderEditor() {
   if (!ed) return;
   $("#ed-title").textContent = `Tickets for ${ed.name}`;
   $("#ed-bundle-box").hidden = !isOwner(); // the server answers 403 to an editor
+  $("#ed-split-box").hidden = !isOwner();
+  $("#ed-splits").replaceChildren(...ed.splits.map(splitRow));
   $("#ed-types").replaceChildren(...ed.types.map(typeRow));
   $("#ed-bundles").replaceChildren(...ed.bundles.map(bundleRow));
   $("#ed-fields").replaceChildren(...ed.fields.map(fieldRow));
@@ -261,6 +317,19 @@ $("#ed-save-bundles").addEventListener("click", () => run(async () => {
   if (req.error) throw new Error(req.error);
   const data = await api("POST", `/admin/events/${encodeURIComponent(ed.id)}/bundles`, req.body);
   ed.bundles = (data.bundles || []).map(bundleRule);
+  say("Saved.");
+  renderEditor();
+}));
+$("#ed-add-split").addEventListener("click", () => {
+  const ed = state.editing;
+  if (ed.splits.length >= MAX_SPLITS) { say(`At most ${MAX_SPLITS} payees.`, true); return; }
+  ed.splits.push(splitRule({ kind: "percent" }));
+  renderEditor();
+});
+$("#ed-save-splits").addEventListener("click", () => run(async () => {
+  const ed = state.editing;
+  const data = await api("POST", `/admin/events/${encodeURIComponent(ed.id)}/splits`, splitsBody(ed.splits));
+  ed.splits = (data.splits || []).map(splitRule);
   say("Saved.");
   renderEditor();
 }));
@@ -866,7 +935,7 @@ hatamoto.ready.then(async () => {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest,
+    csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest, splitsBody, parsePercent,
     feesText, submitRefund, openRefund, state, showScanResult, clockTime, scanClick, ckQueue,
   };
 }

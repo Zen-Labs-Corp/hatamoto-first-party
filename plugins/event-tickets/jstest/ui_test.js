@@ -33,7 +33,7 @@ const IDS = [
   "#ev-search", "#ev-go", "#ev-state", "#ev-table", "#ev-rows", "#ev-more", "#ed", "#ed-title", "#ed-types", "#ed-add",
   "#ed-fields", "#ed-add-field", "#ed-save-fields", "#ed-close", "#at-event", "#at-state", "#at-table", "#at-rows",
   "#wl-state", "#wl-table", "#wl-rows", "#at-more", "#at-csv", "#st-rows",
-  "#tab-orders", "#panel-orders", "#ed-bundle-box", "#cp-form", "#ed-bundles", "#ed-add-bundle", "#ed-save-bundles", "#or-status", "#or-event", "#or-search", "#or-go",
+  "#tab-orders", "#panel-orders", "#ed-bundle-box", "#cp-form", "#ed-bundles", "#ed-add-bundle", "#ed-save-bundles", "#ed-split-box", "#ed-splits", "#ed-add-split", "#ed-save-splits", "#or-status", "#or-event", "#or-search", "#or-go",
   "#or-state", "#or-table", "#or-rows", "#or-more", "#or-refund", "#or-refund-title", "#or-refund-amount", "#or-refund-cur",
   "#or-refund-tickets", "#or-refund-act", "#or-refund-close", "#cp-state", "#cp-table", "#cp-rows", "#cp-title", "#cp-code", "#cp-kind",
   "#cp-value", "#cp-max", "#cp-until", "#cp-event", "#cp-active", "#cp-save", "#cp-reset", "#or-fees", "#or-bundles",
@@ -207,6 +207,15 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   assert.equal(api.bundlesBody([{ ...rule, kind: "fixed", valueText: "3.00" }], 2).body.rules[0].value, 300);
   assert.ok(api.bundlesBody([{ ...rule, valueText: "150" }], 2).error);
   assert.ok(api.bundlesBody([{ ...rule, all_types: true, type_ids: [] }], 2).error);
+
+  // payout splits: percent as basis points, fixed as minor units, by string math
+  for (const [text, bp] of [["80", 8000], ["12.5", 1250], ["12.25", 1225], ["0.01", 1], ["100", 10000], [" 5 ", 500]]) assert.equal(api.parsePercent(text), bp, text);
+  for (const bad of ["100.01", "0", "0.00", "abc", "", "-5", "1.234", "101"]) assert.throws(() => api.parsePercent(bad), /Percent must be/, bad);
+  const split = { name: " Jazz Society ", email: " pay@example.org ", kind: "percent", text: "80" };
+  same(api.splitsBody([split], 2), { rules: [{ name: "Jazz Society", email: "pay@example.org", kind: "percent", value: 8000 }] });
+  assert.equal(api.splitsBody([{ ...split, kind: "fixed", text: "2.00" }], 2).rules[0].value, 200);
+  assert.equal(api.splitsBody([{ ...split, kind: "fixed", text: "500" }], 0).rules[0].value, 500);
+  assert.throws(() => api.splitsBody([{ ...split, kind: "fixed", text: "x" }], 2), /fixed amount/);
 
   // fees in words
   assert.equal(api.feesText({ currency: "USD", fee_fixed_cents: 100, fee_per: "ticket", fee_percent_bp: 0, fee_payer: "buyer" }), "1.00 USD per paid ticket, passed to the buyer");
