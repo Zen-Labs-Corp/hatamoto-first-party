@@ -127,7 +127,8 @@ func TestSaveCouponRefusesBadBodies(t *testing.T) {
 func TestCouponListAndDelete(t *testing.T) {
 	h := newCouponAdminHost(t)
 	h.list = `[{"id":5,"code":"SUMMER10","used":14,"max_uses":100}]`
-	if code, body := get(t, "/admin/coupons", "", editor, nil); code != 200 || len(body["coupons"].([]any)) != 1 {
+	h.bundles = `[{"id":1,"event_id":"e1","min_qty":4,"kind":"percent","value":15,"type_names":["GA"]}]`
+	if code, body := get(t, "/admin/coupons", "", editor, nil); code != 200 || len(body["coupons"].([]any)) != 1 || len(body["bundles"].([]any)) != 1 {
 		t.Fatalf("list: %d %v", code, body)
 	}
 	if code, body := post(t, "/admin/coupons/{id}/delete", "5", owner, `{}`); code != 200 || body["deleted"] != true {

@@ -57,7 +57,7 @@ func parseExpiry(s string) (*string, bool) {
 	return &out, true
 }
 
-// serveCoupons answers GET /admin/coupons.
+// serveCoupons answers GET /admin/coupons: the coupons and, read-only, every bundle rule.
 func serveCoupons(u *sdk.HTTPUser) sdk.HTTPResponse {
 	if u == nil {
 		return forbidden()
@@ -69,7 +69,17 @@ SELECT id, code, kind, value, coalesce(event_id, '') AS event_id, coalesce(type_
 	if err != nil {
 		return unavailable()
 	}
-	return jsonReply(http.StatusOK, map[string]any{"coupons": rows})
+	// Every event's bundle rules, read-only, for the Orders tab summary line.
+	var bundles []json.RawMessage
+	err = dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(b) ORDER BY b.event_id, b.position, b.id), '[]'::jsonb) FROM (
+SELECT r.id, r.event_id, r.min_qty, r.kind, r.value, r.all_types,
+  coalesce((SELECT jsonb_agg(t.name ORDER BY t.position, t.id) FROM ticket_types t
+    WHERE r.type_ids @> to_jsonb(t.id)), '[]'::jsonb) AS type_names
+  FROM bundle_rules r ORDER BY r.event_id, r.position, r.id LIMIT 100) b`, &bundles)
+	if err != nil {
+		return unavailable()
+	}
+	return jsonReply(http.StatusOK, map[string]any{"coupons": rows, "bundles": bundles})
 }
 
 // serveSaveCoupon answers POST /admin/coupons. A code that is taken is a 409.

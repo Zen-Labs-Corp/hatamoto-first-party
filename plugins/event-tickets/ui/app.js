@@ -530,6 +530,16 @@ function couponScope(c) {
   return c.type_id ? `${where}, one ticket type` : where;
 }
 
+// bundlesText is the bundle rules in words, one per rule, "none" without any.
+function bundlesText(rules) {
+  if (!rules.length) return "none";
+  return rules.map((b) => {
+    const what = b.all_types ? "tickets" : `${(b.type_names || []).join(" / ") || "selected"} tickets`;
+    const off = b.kind === "percent" ? `${b.value}%` : formatMoney(b.value, state.settings.currency);
+    return `${b.min_qty}+ ${what} -> ${off} off`;
+  }).join("; ");
+}
+
 function couponRow(c) {
   const uses = c.max_uses ? `${c.used}/${c.max_uses}` : String(c.used);
   return el("tr", {},
@@ -541,6 +551,7 @@ async function loadCoupons() {
   const data = await run(() => api("GET", "/admin/coupons"));
   if (!data) return;
   state.coupons = data.coupons || [];
+  $("#or-bundles").textContent = `Bundles: ${bundlesText(data.bundles || [])}. Change them in each event's editor.`;
   $("#cp-state").textContent = state.coupons.length ? "" : "No coupons yet.";
   $("#cp-table").hidden = !state.coupons.length;
   $("#cp-rows").replaceChildren(...state.coupons.map(couponRow));
@@ -664,7 +675,7 @@ hatamoto.ready.then(async () => {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, couponRequest,
+    csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest,
     feesText, submitRefund, openRefund, state,
   };
 }

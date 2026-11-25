@@ -35,7 +35,7 @@ const IDS = [
   "#tab-orders", "#panel-orders", "#ed-bundle-box", "#cp-form", "#ed-bundles", "#ed-add-bundle", "#ed-save-bundles", "#or-status", "#or-event", "#or-search", "#or-go",
   "#or-state", "#or-table", "#or-rows", "#or-more", "#or-refund", "#or-refund-title", "#or-refund-amount", "#or-refund-cur",
   "#or-refund-tickets", "#or-refund-act", "#or-refund-close", "#cp-state", "#cp-table", "#cp-rows", "#cp-title", "#cp-code", "#cp-kind",
-  "#cp-value", "#cp-max", "#cp-until", "#cp-event", "#cp-active", "#cp-save", "#cp-reset", "#or-fees",
+  "#cp-value", "#cp-max", "#cp-until", "#cp-event", "#cp-active", "#cp-save", "#cp-reset", "#or-fees", "#or-bundles",
 ];
 
 let clock = 1000000;
@@ -153,6 +153,8 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   assert.equal(api.feesText({ currency: "USD", fee_fixed_cents: 100, fee_per: "ticket", fee_percent_bp: 0, fee_payer: "buyer" }), "1.00 USD per paid ticket, passed to the buyer");
   assert.equal(api.feesText({ currency: "USD", fee_fixed_cents: 30, fee_per: "order", fee_percent_bp: 250, fee_payer: "organizer" }), "0.30 USD per order plus 2.5%, paid by you");
   assert.equal(api.feesText({}), "none");
+  assert.equal(api.bundlesText([{ min_qty: 4, kind: "percent", value: 15, all_types: false, type_names: ["GA"] }]), "4+ GA tickets -> 15% off");
+  assert.equal(api.bundlesText([]), "none");
 
   // the Orders tab: owners get Refund and Cancel, editors get neither; the page asks for nothing else
   const orders = { orders: [{ id: 1042, name: "Ana P.", email: "ana@example.com", status: "paid", provider: "stripe", total_cents: 11200,
