@@ -249,3 +249,13 @@ func TestReplySectionStates(t *testing.T) {
 		}
 	}
 }
+
+// A timed-out render.page hook leaves the block as the editor saved it: no state, no row.
+func TestReplySectionHookTimedOut(t *testing.T) {
+	b := sdk.Block{ID: "b", Type: "hn_reply", Fields: map[string]any{}}
+	out := renderBlock(t, parseSections(t), b)
+	out = out[strings.Index(out, "</style>")+len("</style>"):]
+	if strings.Contains(out, "hn-c") || strings.Contains(out, "hn-threads") || strings.Contains(out, "data-hm-cform") {
+		t.Errorf("rendered a comment row without data: %s", out)
+	}
+}
