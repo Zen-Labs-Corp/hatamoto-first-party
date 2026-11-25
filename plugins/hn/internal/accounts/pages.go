@@ -82,14 +82,14 @@ func fill(c map[string]any, u *core.User, viewer *core.User) {
 	c["found"], c["missing"], c["name"], c["karma"], c["own"] = true, false, u.Username, u.Karma, own
 	c["created"] = u.CreatedAt.UTC().Format("January 2, 2006")
 	c["about"] = aboutSegments(u.About)
-	if !own {
-		return
-	}
 	q := url.QueryEscape(u.Username)
-	c["about_raw"], c["showdead"], c["noprocrast"] = u.About, u.Showdead, u.Noprocrast
-	c["maxvisit"], c["minaway"] = u.Maxvisit, u.Minaway
-	c["next"] = userHref(u.Username)
 	c["submissions_href"] = "/newest?id=" + q
 	c["comments_href"] = "/threads?id=" + q
 	c["favorites_href"] = "/favorites?id=" + q
+	if !own {
+		return
+	}
+	c["about_raw"], c["showdead"], c["noprocrast"] = u.About, u.Showdead, u.Noprocrast
+	c["maxvisit"], c["minaway"] = u.Maxvisit, u.Minaway
+	c["next"] = userHref(u.Username)
 }
