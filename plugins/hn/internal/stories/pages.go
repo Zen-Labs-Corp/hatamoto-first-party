@@ -34,7 +34,7 @@ func feedPage(r *core.Registry, p *core.Page) error {
 		return nil
 	}
 	back := url.Values{}
-	for _, k := range []string{"p", "next", "day", "site", "id"} {
+	for _, k := range []string{"p", "next", "day", "site", "id", "view"} {
 		if s := p.Query(k); s != "" {
 			back.Set(k, s)
 		}

@@ -2,7 +2,13 @@
 
 A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation, built on core comments.
 
-Status: 1.1.0: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in, plus password accounts and the abuse fixes (voting-ring damping, IDN domain bans, port check, domain ban kills, network-banned votes, Origin check, Recent moderation view). Built against core v1.4.6 and SDK v0.29.0.
+## Upgrading to 1.2.0
+
+Update the plugin, then re-apply kit `hn` 1.0.2 to create the `/reply` page. The plugin cannot create a page and cannot tell whether it exists, so until the kit is applied again every reply link on `/threads`, `/newcomments` and the comment focus pages is a 404. Applying the kit adds only what is missing and keeps every existing page.
+
+`/best` is gone from the page paths and nothing redirects it: best stories are `/news?view=best`. A site that applied an older kit still has the CMS page `best`, which now renders an empty list; delete that page, or point it elsewhere (a stored redirect to `/news?view=best` in the admin). Links that name `/best`, such as the `lists` page text, need the same edit by hand.
+
+Status: 1.2.0: the reply page (`/reply?id=<comment>`), and best stories moved to `/news?view=best` to stay within the 16 page path limit. Before that, 1.1.0: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in, plus password accounts and the abuse fixes (voting-ring damping, IDN domain bans, port check, domain ban kills, network-banned votes, Origin check, Recent moderation view). Built against core v1.4.6 and SDK v0.29.0.
 
 ## Layout
 
@@ -29,11 +35,11 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 
 ## Pages
 
-`render.page` does not run on a 404, so every path below except `/` must exist as a CMS page holding the section named here. Kit page slugs: `news newest front newcomments best ask show jobs submit threads user from favorites login search`, plus a plain `guidelines` page. `/` is served when the owner makes the news page the homepage. Story pages come from the plugin-owned `hn-story` content type; the slug is the story number. `/item/<number>` is the canonical story URL the plugin links to. The `/item/{slug}` url_pattern is not carried by the plugin package (a schema file holds no settings, so core gives the type the default `/{slug}`): the hn kit sets it on the type, or the owner sets it in Settings > Content types. Without it stories route at `/<number>` and the plugin's `/item/` links do not resolve.
+`render.page` does not run on a 404, so every path below except `/` must exist as a CMS page holding the section named here. Kit page slugs: `news newest front newcomments ask show jobs submit threads user from favorites login search reply`, plus a plain `guidelines` page. `/` is served when the owner makes the news page the homepage. Story pages come from the plugin-owned `hn-story` content type; the slug is the story number. `/item/<number>` is the canonical story URL the plugin links to. The `/item/{slug}` url_pattern is not carried by the plugin package (a schema file holds no settings, so core gives the type the default `/{slug}`): the hn kit sets it on the type, or the owner sets it in Settings > Content types. Without it stories route at `/<number>` and the plugin's `/item/` links do not resolve.
 
 | Page path | Section the page holds | Phase | Query keys used |
 |---|---|---|---|
-| `/` `/news` `/newest` `/front` `/ask` `/show` `/jobs` `/best` `/from` | `hn_feed` (the feed is the path) | P2 | `p`, `next`, `day` (front), `site` (from), `id` (newest by author) |
+| `/` `/news` `/newest` `/front` `/ask` `/show` `/jobs` `/from` | `hn_feed` (the feed is the path; best stories are `/news?view=best`) | P2 | `p`, `next`, `view` (news: `best`), `day` (front), `site` (from), `id` (newest by author) |
 | `/submit` | `hn_submit` (edit mode with `?id=<story>`) | P2 | `id` |
 | `/item/<number>` | `hn_item`, injected by the filter | P2 | `id` (a comment id: focus view) |
 | `/threads` `/newcomments` | `hn_threads` | P3 | `id` (user), `p` |
@@ -41,11 +47,16 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 | `/login` | `hn_login` | P1 | none |
 | `/favorites` | `hn_saved` (favorites; `view=hidden` is the member's hidden stories) | P5 | `id`, `view`, `p` |
 | `/search` | `hn_search` | P5 | `q`, `p` |
+| `/reply` | `hn_reply` | P3 | `id` (a comment id), `m` |
 | every filtered page | `hn_userbar`, injected first | P1 | |
 
-Sections: `hn_feed hn_submit hn_item hn_threads hn_user hn_login hn_saved hn_search hn_userbar` (`hn_item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
+Sections: `hn_feed hn_submit hn_item hn_threads hn_reply hn_user hn_login hn_saved hn_search hn_userbar` (`hn_item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
 
 The noprocrast notice is rendered by `hn_saved` as well: a member with the flag on who is past their visit window sees the account bar and that notice instead of the page (no extra section to place).
+
+### Reply page
+
+`/reply?id=<comment id>` shows the parent comment and, for a member with a username, a reply form that posts to core's comment endpoint (`/-/comments/<story>`); core redirects to `/item/<number>#comment-<id>`. A fixable error such as an empty body comes back on the story page. A signed-out visitor sees the login forms, a visitor without a username a link to pick one. An unknown, dead or held comment, or one on a dead story, shows "No such item."; at depth 32 the parent is shown without a form. Reply links on the plugin's own comment rows (`/threads`, `/newcomments`, the focus view) open this page; the reply links on the story page belong to the theme and keep their current target until the theme points them here. Without `site.scripts` the reply is a one-line input; with it, a textarea.
 
 ## Feeds and API
 

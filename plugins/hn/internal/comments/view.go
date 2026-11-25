@@ -70,6 +70,14 @@ func focusHref(n int64, id string) string {
 	return itemHref(n) + "?id=" + id
 }
 
+// replyHref is the reply page of a comment; "" without a known story or on a dead comment.
+func replyHref(n int64, id string, dead bool) string {
+	if n == 0 || id == "" || dead {
+		return ""
+	}
+	return "/reply?id=" + id
+}
+
 // row builds the flat map every view prints. All keys are always present and
 // numbers are formatted, so templates never meet a missing key or a float.
 func row(r *core.Registry, in rowIn, vv voteView, next string) map[string]any {
@@ -99,8 +107,9 @@ func row(r *core.Registry, in rowIn, vv voteView, next string) map[string]any {
 		"author": in.Author, "author_href": "/user?id=" + url.QueryEscape(in.Author),
 		"ago":          ago(in.Created),
 		"context_href": context, "parent_href": focusHref(in.ItemNo, in.ParentID),
-		"item_href": itemHref(in.ItemNo), "title": in.Title, "reply_href": context,
-		"body": bodyBlocksIn(in.Body, vv.parts), "row_class": class, "depth": strconv.Itoa(in.Depth),
+		"item_href": itemHref(in.ItemNo), "title": in.Title, "reply_href": replyHref(in.ItemNo, in.ID, in.Dead),
+		"context_link": false, // only the reply page prints an explicit "context" link
+		"body":         bodyBlocksIn(in.Body, vv.parts), "row_class": class, "depth": strconv.Itoa(in.Depth),
 		"replies": []map[string]any{}, "actions": acts,
 		"vote": vote, "vote_cell": cell,
 		"can_up": canUp, "can_down": canUp && vv.downOK, "can_un": vote && voted,

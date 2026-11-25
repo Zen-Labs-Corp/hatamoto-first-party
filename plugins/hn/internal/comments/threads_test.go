@@ -162,8 +162,19 @@ func TestThreadsPageThreads(t *testing.T) {
 		st := f.subtrees[cid(1)]
 		st.Items[1].Status = "dead"
 		rows := rowsOf(threads(t, "", map[string]string{"id": "bob"}))
-		if r := repliesOf(rows[0])[0]; r["row_class"] != "hn-c hn-dead" || r["vote"] != false {
+		if r := repliesOf(rows[0])[0]; r["row_class"] != "hn-c hn-dead" || r["vote"] != false || r["reply_href"] != "" || r["context_href"] != "/item/7?id="+r["id"].(string) {
 			t.Errorf("reply: %+v", r)
+		}
+	})
+
+	t.Run("live rows reply on the reply page", func(t *testing.T) {
+		threadsFake(t, 1)
+		rows := rowsOf(threads(t, "", map[string]string{"id": "bob"}))
+		for _, r := range append([]map[string]any{rows[0]}, repliesOf(rows[0])...) {
+			id := r["id"].(string)
+			if r["reply_href"] != "/reply?id="+id || r["context_href"] != "/item/7?id="+id || r["context_link"] != false {
+				t.Errorf("row: %+v", r)
+			}
 		}
 	})
 

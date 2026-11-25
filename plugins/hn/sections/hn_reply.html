@@ -1,0 +1,15 @@
+{{define "section-hn_reply"}}{{template "plugin/hn/style" .}}{{$c := .Content}}<div class="hn-reply-page">
+{{with $c.notice}}<p class="hn-notice" role="status">{{.}}</p>
+{{end}}{{if eq $c.state "none"}}<p class="hn-note">{{$c.text}}</p>
+{{else if $c.row}}<div class="hn-threads">{{template "plugin/hn/comment_row" $c.row}}</div>
+{{if eq $c.state "form"}}<form class="hn-replyform" method="post" action="{{$c.action}}" data-hm-cform>
+<input type="hidden" name="hm_ct" value="__hmcf_tok__">
+<input type="hidden" name="parent" value="{{$c.parent}}">
+<label class="hn-sr" for="hn-reply-text">reply</label>
+<p><input id="hn-reply-text" type="text" name="__hmcf_body__" size="60" maxlength="5000" data-hn-reply required></p>
+<div class="hn-hp" aria-hidden="true"><label>Leave this empty<input type="text" name="__hmcf_hp__" tabindex="-1" autocomplete="off"></label></div>
+<p><button type="submit">reply</button></p>
+</form>
+{{else if eq $c.state "noname"}}<p>You have to <a href="{{$c.login_href}}">pick a username</a> to comment.</p>
+{{else if eq $c.state "login"}}<div class="hn-login">{{template "plugin/hn/login_forms" $c}}</div>
+{{end}}{{end}}</div>{{end}}

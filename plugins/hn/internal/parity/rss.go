@@ -37,6 +37,14 @@ type rssGUID struct {
 	Value       string `xml:",chardata"`
 }
 
+// feedLink is the page of a feed: best lives at /news?view=best, the rest at /<feed>.
+func feedLink(feed string) string {
+	if feed == "best" {
+		return "/news?view=best"
+	}
+	return "/" + feed
+}
+
 // handleRSS is GET /rss?feed=...: the first page of a feed as RSS 2.0. The
 // plugin does not know the site address, so links are root-relative.
 func handleRSS(q *core.Request) (sdk.HTTPResponse, error) {
@@ -52,7 +60,7 @@ func handleRSS(q *core.Request) (sdk.HTTPResponse, error) {
 		return core.JSONError(503, "unavailable"), nil
 	}
 	doc := rssDoc{Version: "2.0", Channel: rssChannel{
-		Title: "Hatamoto News: " + feed, Link: "/" + feed, Description: "Stories from the " + feed + " feed", Items: []rssItem{},
+		Title: "Hatamoto News: " + feed, Link: feedLink(feed), Description: "Stories from the " + feed + " feed", Items: []rssItem{},
 	}}
 	for _, s := range rows {
 		no := strconv.FormatInt(s.ItemNo, 10)

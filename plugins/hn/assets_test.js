@@ -282,6 +282,23 @@ async function main() {
   b = boot(el('main', '', {}, [td]), undefined);
   check('submit text: other inputs untouched', td.children[0].tagName === 'input');
 
+  // 14c. reply text: the one-line input becomes a textarea keeping the rotated name
+  var rin = el('input', '', { id: 'hn-reply-text', type: 'text', name: 'f_abc', 'data-hn-reply': '', maxlength: '5000', required: '' });
+  rin.value = 'draft reply';
+  var rp = el('p', '', {}, [rin]);
+  b = boot(el('main', '', {}, [el('form', '', {}, [rp])]), undefined);
+  var rta = rp.children[0];
+  check('reply text: input replaced by a textarea', rin.parentNode === null && rp.children.length === 1 && rta.tagName === 'textarea');
+  check('reply text: id, name, rows, cols, maxlength, value kept', rta.attrs.id === 'hn-reply-text' && rta.attrs.name === 'f_abc' && rta.attrs.rows === '6' && rta.attrs.cols === '60' && rta.attrs.maxlength === '5000' && rta.attrs.required === '' && rta.value === 'draft reply');
+  var sin = el('input', '', { id: 'hn-text', type: 'text', name: 'text' });
+  rin = el('input', '', { id: 'hn-reply-text', type: 'text', name: 'f_x', 'data-hn-reply': '' });
+  var both = el('main', '', {}, [el('p', '', {}, [sin]), el('p', '', {}, [rin])]);
+  b = boot(both, undefined);
+  check('reply text: both inputs on one page are swapped', both.children[0].children[0].tagName === 'textarea' && both.children[1].children[0].tagName === 'textarea' && both.children[1].children[0].attrs.required === undefined);
+  rp = el('p', '', {}, [el('input', '', { id: 'q', type: 'text', name: 'q' })]);
+  b = boot(el('main', '', {}, [rp]), undefined);
+  check('reply text: a page without it is untouched', rp.children[0].tagName === 'input');
+
   // 16-21. viewer state
   var EID = '10000000-0000-4000-8000-000000000001';
   function page(entity, withCells) {

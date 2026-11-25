@@ -42,7 +42,7 @@ func TestManifestIsValidForTheSDK(t *testing.T) {
 	if ok, err := m.Compatible(); !ok || err != nil {
 		t.Fatalf("Compatible() = %v, %v", ok, err)
 	}
-	if m.Name != "hn" || m.SDK != "^0.29" || m.Version != "1.1.0" {
+	if m.Name != "hn" || m.SDK != "^0.29" || m.Version != "1.2.0" {
 		t.Fatalf("name %q sdk %q version %q", m.Name, m.SDK, m.Version)
 	}
 }
@@ -96,7 +96,7 @@ func TestManifestEntityPagesAndQuery(t *testing.T) {
 	if want := []string{"url", "text", "kind"}; !slices.Equal(doc.EntityFields, want) {
 		t.Errorf("entity_fields %v", doc.EntityFields)
 	}
-	wantPaths := []string{"/", "/news", "/newest", "/front", "/newcomments", "/ask", "/show", "/jobs", "/best", "/submit", "/threads", "/user", "/from", "/favorites", "/login", "/search"}
+	wantPaths := []string{"/", "/news", "/newest", "/front", "/newcomments", "/ask", "/show", "/jobs", "/submit", "/threads", "/user", "/from", "/favorites", "/login", "/search", "/reply"}
 	if !slices.Equal(doc.PagePaths, wantPaths) || len(doc.PagePaths) != 16 {
 		t.Errorf("page_paths %v", doc.PagePaths)
 	}

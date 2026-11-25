@@ -7,9 +7,15 @@ details: [../../plugins/hn/README.md](../../plugins/hn/README.md).
 ## What it creates
 
 - Content type **Stories** (`hn-story`), addressed as `/item/<number>`.
-- 19 pages: News, Newest, Past, Best, Ask, Show, Jobs, From, Submit, Comments,
-  Threads, Login, User, Favorites, Search, Guidelines, FAQ, Lists and API. One page per
-  path the plugin serves, so the plugin fills each one; the last three are plain text.
+- 19 pages: News, Newest, Past, Ask, Show, Jobs, From, Submit, Comments,
+  Threads, Login, User, Favorites, Search, Add Comment, Guidelines, FAQ, Lists and API. One page per
+  path the plugin serves, so the plugin fills each one; the last three are plain text. Applying the kit again on an existing site
+  creates only the missing Add Comment (`reply`) page; update the plugin to 1.2.0 first,
+  and delete the old Best page by hand (best stories are at `/news?view=best`).
+
+## Updating an existing site
+
+Order matters: update the `hn` plugin to 1.2.0 first, then apply this kit (1.0.2) again to create the `/reply` page. Until the page exists, the reply links on `/threads`, `/newcomments` and comment pages are a 404. Applying the kit before the plugin update leaves `/reply` blank. The old `best` page and any `/best` link in the `lists` page text are kept as they are: delete the page or redirect it to `/news?view=best`, and edit the link by hand.
 - Header menu: new, past, comments, ask, show, jobs, submit.
 - Footer menu: Guidelines, FAQ, Lists, API. On a site whose footer location already holds
   a menu, the kit keeps it: add the items by hand.

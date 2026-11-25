@@ -302,6 +302,13 @@ func (f *fake) query(sql string, a []json.RawMessage) any {
 			}
 		}
 		return coretest.Rows(refs)
+	case sql == sqlReplyParent:
+		m := f.meta[argStr(a, 0)]
+		if m == nil || f.stories[m.Entity] == nil {
+			return noRows
+		}
+		s := f.stories[m.Entity]
+		return coretest.Rows(map[string]any{"entity_id": m.Entity, "live": m.Live, "item_no": s.ItemNo, "title": s.Title, "dead": s.Dead})
 	case sql == sqlMyVotes:
 		mine := map[string]int{}
 		for _, id := range argStrings(a, 1) {

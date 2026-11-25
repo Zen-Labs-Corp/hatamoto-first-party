@@ -33,6 +33,10 @@
 :where(.hn-threads .hn-dead .hn-text){color:var(--hn-dead)}:where(.hn-threads .hn-faint .hn-text){color:#5a5a5a}
 :where(.hn-threads){padding:4px}:where(.hn-threads .hn-c){margin-bottom:12px}:where(.hn-threads form){display:inline;margin:0}
 :where(.hn-threads .hn-c){margin-left:calc(var(--hn-d,0) * var(--hn-indent))}
+:where(.hn-reply-page .hn-note,.hn-replyform){font-family:var(--hn-font);font-size:var(--hn-size);color:var(--hn-text)}
+:where(.hn-replyform){display:block;margin:8px 0 0 4px}:where(.hn-replyform input[type=text]){font:10pt var(--hn-mono);border:1px solid #888;padding:1px 2px;max-width:100%}
+:where(.hn-reply-page .hn-hp){position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+:where(.hn-sr){position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
 :where(.hn-title,.hn-text,.hn-item-text){overflow-wrap:anywhere}
 @media (max-width:750px){:where(:root){--hn-indent:14px}:where(.hn-story){grid-template-columns:22px 14px 1fr}:where(.hn-form-tbl,.hn-form-tbl tbody,.hn-form-tbl tr,.hn-form-tbl td){display:block}:where(.hn-lbl){text-align:left}:where(.hn-form-tbl textarea,.hn-form-tbl input[type=text],div.hn-user input[type=text],div.hn-user textarea){width:100%;max-width:100%;box-sizing:border-box}:where(.hn-item-text){margin-left:0}:where(div.hn-more){padding-left:24px}}
 </style>{{end}}

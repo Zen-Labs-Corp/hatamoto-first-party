@@ -16,7 +16,7 @@ func Register(r *core.Registry) {
 	r.Route("POST /story/{id}/delete", func(q *core.Request) (sdk.HTTPResponse, error) { return handleDelete(r, q) })
 	r.Route("POST /admin/jobs", func(q *core.Request) (sdk.HTTPResponse, error) { return handleJob(r, q) })
 	// pages
-	for _, path := range []string{"/", "/news", "/newest", "/front", "/ask", "/show", "/jobs", "/best", "/from"} {
+	for _, path := range []string{"/", "/news", "/newest", "/front", "/ask", "/show", "/jobs", "/from"} {
 		r.Page(path, func(p *core.Page) error { return feedPage(r, p) })
 	}
 	r.Page("/submit", submitPage)
