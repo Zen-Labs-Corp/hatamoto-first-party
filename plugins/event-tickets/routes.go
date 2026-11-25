@@ -42,6 +42,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveSettings(r.User), nil
 		case "/admin/payouts":
 			return servePayouts(r.User, r.Query), nil
+		case "/admin/payouts.csv":
+			return servePayoutsCSV(r.User, r.Query), nil
 		case "/admin/orders":
 			return serveOrders(r.User, r.Query), nil
 		case "/admin/coupons":
@@ -92,6 +94,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveSaveBundles(r, r.PathValues["id"]), nil
 		case "/admin/events/{id}/splits":
 			return serveSaveSplits(r, r.PathValues["id"]), nil
+		case "/admin/payouts/mark":
+			return serveMarkPaid(r), nil
+		case "/admin/payouts/unmark":
+			return serveUnmarkPaid(r), nil
 		case "/admin/orders/{id}/refund":
 			return serveRefund(r, r.PathValues["id"]), nil
 		case "/admin/orders/{id}/cancel":
