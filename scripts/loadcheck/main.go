@@ -122,8 +122,8 @@ func wasmExports(path string) (map[string]bool, error) {
 // way the plugin host does (registerTemplates; template funcs are stubs, and a
 // func without a wasm export is skipped as the host skips it) and compiles them
 // into the default theme, which vets them. The script gate answers as on a fresh
-// install: no plugin has a site.scripts grant, and community plugins can never
-// get one, so only a first-party plugin that asks for it passes the gate.
+// install, except that a first-party plugin that asks for site.scripts is treated
+// as granted; a community plugin never passes the gate, as in core.
 func checkTemplates(man sdk.Manifest, a pluginhost.Assets, wasm string) error {
 	firstParty := slices.Contains(packages.FirstPartyPlugins, man.Name)
 	render.SetPluginScriptGate(func(plugin string) bool {
@@ -161,7 +161,9 @@ func checkTemplates(man sdk.Manifest, a pluginhost.Assets, wasm string) error {
 	why = append(why, render.PluginTemplatesRefused(man.Name)...)
 	why = append(why, render.PluginMarkupStopped(man.Name)...)
 	if len(why) > 0 {
-		return fmt.Errorf("core would refuse templates: %s", strings.Join(why, "; "))
+		// one refusal per item, joined by US (0x1f) so scripts/load-check.sh can split
+		// them even when a refusal holds "; "; it prints them joined by "; "
+		return fmt.Errorf("core would refuse templates: %s", strings.Join(why, "\x1f"))
 	}
 	return nil
 }

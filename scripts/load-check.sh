@@ -5,9 +5,10 @@
 # Usage: scripts/load-check.sh [plugins/<name> ...]   (default: every plugins/*/)
 # Env:   HATAMOTO_CORE_SRC  a core checkout, normally at the pin (skips the fetch); the helper is
 #        copied in for the run and removed after, and a HEAD other than the pin is said in the header
-# Env:   LOAD_CHECK_KNOWN  known-refusal list (default scripts/load-check-known.txt): `<plugin> <substring of the FAIL reason>`
-#        per line, `#` comments. A match prints KNOWN FAIL and is not counted; a listed plugin that fails for another
-#        reason still fails, and one that now passes fails too (remove it from the list).
+# Env:   LOAD_CHECK_KNOWN  known-refusal list (default scripts/load-check-known.txt): `<plugin> <substring of one refusal>`
+#        per line (several lines per plugin; a line without a reason is an error), `#` comments. A plugin prints KNOWN FAIL
+#        and is not counted only when EVERY refusal matches a listed substring; one that fails for any other reason still fails, and one that now passes fails too (remove it from the list).
+# Env:   LOAD_CHECK_HELPER_SRC  a Go file to run instead of scripts/loadcheck/main.go (tests only)
 # The core source is fetched once into ${XDG_CACHE_HOME:-~/.cache}/hatamoto-first-party/core-src-<sha>/.
 set -euo pipefail
 die() { echo "load-check: $*" >&2; exit 1; }
@@ -34,7 +35,7 @@ core=$(cat "$src/.load-check-core" 2>/dev/null || echo "${sha:0:12}")
 helper=$src/backend/cmd/fp-loadcheck
 trap 'rm -rf "$helper" ${tmp:+"$tmp"}' EXIT
 mkdir -p "$helper"
-cp "$root/scripts/loadcheck/main.go" "$src/backend/cmd/fp-loadcheck/main.go"
+cp "${LOAD_CHECK_HELPER_SRC:-$root/scripts/loadcheck/main.go}" "$src/backend/cmd/fp-loadcheck/main.go"
 dirs=("$@")
 [ ${#dirs[@]} -gt 0 ] || dirs=("$root"/plugins/*/)
 args=()
@@ -51,24 +52,50 @@ else
 fi
 cd "$src/backend"
 known=${LOAD_CHECK_KNOWN:-$root/scripts/load-check-known.txt}
+# every list line is `<plugin> <reason substring>`; a plugin name alone would excuse any refusal
+if [ -f "$known" ]; then
+  awk 'NF && $1 !~ /^#/ && NF < 2 {print "load-check: " FILENAME ":" NR ": \"" $1 "\" has no reason" > "/dev/stderr"; bad=1} END {exit bad}' "$known" || exit 1
+fi
 rc=0
 out=$(GOWORK=off GOFLAGS= go run ./cmd/fp-loadcheck "${args[@]}" 2>&1) || rc=$?
-bad=0
+bad=0 verdicts=0
+prefix='core would refuse templates: '
 while IFS= read -r line; do
   if [[ $line =~ ^\ \ ([^\ ]+)\ \.+\ (OK|FAIL)\ ?(.*)$ ]]; then
     name=${BASH_REMATCH[1]} verdict=${BASH_REMATCH[2]} reason=${BASH_REMATCH[3]}
-    want=$(awk -v n="$name" '$1 == n {sub(/^[^ ]+[ \t]+/, ""); print; exit}' "$known" 2>/dev/null || true)
-    if [ -n "$want" ]; then
+    verdicts=$((verdicts + 1))
+    wants=()
+    [ ! -f "$known" ] || mapfile -t wants < <(awk -v n="$name" 'NF >= 2 && $1 == n {sub(/^[^ \t]+[ \t]+/, ""); print}' "$known")
+    if [ ${#wants[@]} -gt 0 ]; then
       if [ "$verdict" = OK ]; then
         echo "${line%% OK*} OK (remove it from load-check-known.txt)"; bad=1; continue
-      elif [[ $reason == *"$want"* ]]; then
-        echo "${line%% FAIL*} KNOWN FAIL $reason"; continue
+      fi
+      # known only if EVERY refusal of the plugin matches a listed substring
+      all=1
+      IFS=$'\x1f' read -r -d '' -a items < <(printf '%s' "${reason#"$prefix"}") || true
+      for item in "${items[@]}"; do
+        hit=0
+        for w in "${wants[@]}"; do [[ $item == *"$w"* ]] && hit=1; done
+        [ $hit = 1 ] || all=0
+      done
+      if [ $all = 1 ] && [ ${#items[@]} -gt 0 ]; then
+        echo "${line%% FAIL*} KNOWN FAIL ${reason//$'\x1f'/; }"; continue
       fi
     fi
     [ "$verdict" = OK ] || bad=1
+    line=${line//$'\x1f'/; }
   fi
-  [[ $line =~ ^exit\ status\ [0-9]+$ ]] || echo "$line"
+  # `go run` exits 1 for any child failure and prints `exit status N`; the helper itself only exits 0 or 1
+  if [[ $line =~ ^exit\ status\ ([0-9]+)$ ]]; then
+    [ "${BASH_REMATCH[1]}" = 1 ] || { echo "load-check: helper exited ${BASH_REMATCH[1]}" >&2; bad=1; }
+  else
+    echo "$line"
+  fi
 done <<<"$out"
-# a helper failure that printed no FAIL line (build error, panic) must still fail
-if [ "$rc" != 0 ] && ! grep -q ' FAIL ' <<<"$out"; then bad=1; fi
+# every plugin needs a verdict line, and the helper may only exit 0 or 1; anything else
+# (build error, crash, kill) fails, even after some FAIL lines were printed
+if [ "$verdicts" != "${#args[@]}" ]; then
+  echo "load-check: $verdicts verdict(s) for ${#args[@]} plugin(s): the helper stopped early" >&2; bad=1
+fi
+if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then echo "load-check: helper exited $rc" >&2; bad=1; fi
 exit "$bad"
