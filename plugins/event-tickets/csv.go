@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func attendeesCSV(fields []field, rows []csvRow, maxBytes int) (string, int, err
 	}
 	for i, r := range rows {
 		rec := []string{
-			itoa(r.AttendeeID), itoa(r.OrderID), csvCell(r.TicketType), csvCell(r.Name), csvCell(r.Email),
+			strconv.FormatInt(r.AttendeeID, 10), strconv.FormatInt(r.OrderID, 10), csvCell(r.TicketType), csvCell(r.Name), csvCell(r.Email),
 			r.Status, r.BookedAt.UTC().Format(time.RFC3339), r.Code,
 		}
 		for _, f := range fields {
