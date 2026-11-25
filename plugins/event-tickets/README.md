@@ -1,8 +1,8 @@
 # event-tickets
 
-Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.
+Free and paid tickets (Stripe, PayPal), seating maps, RSVP, coupons, attendees and event emails for the event-calendar plugin.
 
-Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with coupons, bundle discounts, fees and refunds. Each event has ticket types with a capacity, a booking form on the event page, a confirmation email with one QR code per ticket, a waitlist for sold-out free types and an admin page with the attendee list. Door check-in works from a phone by scanning the ticket QR code. The plugin also mails attendees when an event changes, before it starts and after it, and sends segmented campaigns with open, click and buy counts. Seating is not part of it yet.
+Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with coupons, bundle discounts, fees and refunds. Each event has ticket types with a capacity, a booking form on the event page, a confirmation email with one QR code per ticket, a waitlist for sold-out free types and an admin page with the attendee list. Door check-in works from a phone by scanning the ticket QR code. The plugin also mails attendees when an event changes, before it starts and after it, and sends segmented campaigns with open, click and buy counts. Seating maps with grid sections and GA zones let buyers pick their seats, which are held for 10 minutes.
 
 ## Use
 
@@ -20,6 +20,9 @@ Tickets are free or paid. Paid tickets are taken with Stripe and PayPal, with co
 12. **Weak signal**: a scan that cannot reach the server is kept in an offline queue shown under the list and sent in order when the connection is back (the page retries every 15 seconds). A queued scan that turns out to be already checked in or refused is reported in the list like any other.
 13. **Payouts** (owner only): under **Tickets** on an event, **Payout splits** lists who is owed a share of its ticket money: a name, a payout email and either a percent (for example 80 or 12.5) or a fixed amount per ticket. The **Payouts** tab shows, for a calendar month, what each payee is owed, with gross, refunds, fees, share and the amount owed. After you have paid someone by hand, **Mark paid** records the date and a reference; **Undo** removes the record. For a spreadsheet, the tab shows the path `/api/v1/p/event-tickets/admin/payouts.csv?period=YYYY-MM`: copy it, put your site address in front and open it in the browser while you are signed in to the admin. It is a report only: the plugin sends no money.
 14. **Emails** (owner only): the **Emails** tab has the automatic mails and the campaigns. Ticket confirmation is always sent. **Event changed** mails the people with a ticket when the date, the place or the status (cancelled, postponed) of an event changes; **Reminder** mails them the chosen number of hours before it starts (24 by default); **Thank-you** mails them after it ended. Changed and reminder are on by default, thank-you is off. Each person gets one mail per event, however many tickets they hold. **New campaign** writes a mail (text, or a small set of HTML tags) to a segment: an event, a ticket type, checked in or not, bought before a date, RSVP only, or people who bought another event but not this one. **Count recipients** shows how many people that is. Send it now or at a time. The table shows sent, opens, clicks and buys (people who bought within 7 days of a click). Every mail has an unsubscribe link. Mails are paced to leave room for ticket confirmations: up to three quarters of the site's recipients-per-hour quota, spread over 5-minute runs, which is 22 mails every 5 minutes at the default 360 per hour, so a campaign to 300 people takes about an hour. Set the **Site address** setting first: links in the mails need it.
+
+15. **Seating** (paid tickets): open the **Seating** tab and add a map, for example *Main Hall*. **Add section** makes a grid: a name, rows (`A-J`, or `K,L,M`), seats per row and a price tier such as *Std*. **Add GA zone** makes a standing area with a capacity. **Block seat** switches the grid to blocking mode: click a seat to take it out of sale (a pillar, a camera position) and click it again to give it back; seats that are held or sold cannot be blocked. A section whose seats have been sold can only change its name and tier. Then open **Tickets** on an event and, on each ticket type, pick the section it sells under **Seats** (a section goes to one type per event, and all types of an event use one map); **Add types for map** adds one unsaved type per section of a map, named after its tier, for you to price and save. A seated type must have a price, and its number of tickets follows the seats of the section. In the page builder, place the **Seat picker** widget above the **Tickets** widget in the Tickets section of the event page.
+16. **Buying with seats**: the buyer sees the stage and the rows, taps free seats (at most 10) and each seat is held for them for **10 minutes**, counted from the first seat; adding seats does not extend it. A countdown shows the time left and **Continue to payment** takes them to the booking form, where the seats are already in the cart. Paying then follows the normal checkout, and the order gets its own 15-minute payment window. A buyer who does not pick gets the best available seats in the tier they chose with the ticket stepper: the same row side by side, front rows first, from the centre out. Tickets, emails, the check-in list, the attendee list, orders and the CSV show the seat next to the ticket type, for example *Std, Stalls A-12*; the CSV has a separate `seat` column.
 
 ## Settings
 
@@ -51,7 +54,7 @@ The **Settings** tab of the admin page shows the current values; change them in 
 - `mail.send`: sends the confirmation with one QR code per ticket, the waitlist mails and the event-changed, reminder, thank-you and campaign mails. It respects the site's recipients-per-hour quota: mail over the quota is queued and retried. The plugin reads the quota from the host (360 per hour when it is not reported) and sends bulk mail at up to three quarters of it, so a quarter stays free for confirmations.
 - `http.fetch`: talks to the payment providers you configure, and only to `api.stripe.com`, `api-m.paypal.com` and `api-m.sandbox.paypal.com`: it opens checkout sessions and PayPal orders, captures PayPal payments, checks that a PayPal webhook is genuine and makes refunds. A site that installed an earlier version has to grant it again.
 - `builder.data`: feeds the **Tickets** list on event pages (ticket types, with how many are left).
-- `builder.island`: runs the booking form on the event page; a widget cannot hold a form on its own.
+- `builder.island`: runs the booking form and the seat picker on the event page; a widget cannot hold a form on its own.
 - `ui.allow camera`: lets the admin page take a photo to read ticket QR codes. The owner grants it on the plugin's Permissions tab. The photo is decoded in the page and is never stored or sent.
 
 Payouts need only `db`, and move no money.
@@ -67,6 +70,7 @@ An event can carry a join link for online events. If the event's `join_link_publ
 All of it lives in the plugin's own database:
 
 - **Ticket types and fields** of each event, with how many tickets are taken.
+- **Seating maps** you draw (`seat_maps`, `map_sections`, `seats`) and **seat holds** (`seat_holds`): a random hold code, the seat and when the hold ends. A hold carries no name, email address or other personal data; expired holds are removed hourly. A ticket keeps the seat it was sold (`attendees.seat_label`, for example *Stalls A-12*) as text, so it stays readable if the map changes later.
 - **Orders**: the buyer's name, email address and answers, when the confirmation was sent, and for paid orders the amounts, currency, provider ids and status. Card data never reaches this plugin.
 - **Coupons and bundle rules** you define.
 - **Split rules**: for each event, the payee's name, payout email and share. Removed some months after the event ends, like orders (see below).
@@ -85,11 +89,20 @@ All of it lives in the plugin's own database:
 
 Orders are anonymised the number of months set in **Keep attendee details for** after the event ends: name, email and answers are cleared. The waitlist rows of that event are removed then, and queued mails that point at nothing are dropped. The ticket rows stay, since counts and codes are not personal. Split rules are deleted at the same time, and payout records the same number of months after their paid date, but never while a split rule for that payee still exists, so a paid month does not come back as owed. Checkouts that were started but never paid are deleted after 7 days. Everything is removed when you remove the plugin's data.
 
+## Routes
+
+- Public: `GET /seats/{event}` (the seat map of an event, shared for 5 seconds, no buyer data), `POST /seats/hold` (hold one seat) and `DELETE /seats/hold/{token}` (let seats go).
+- Admin (owner and editor): `GET /admin/maps`, `GET /admin/maps/{id}`, `POST /admin/maps`, `POST /admin/maps/{id}/delete`, `POST /admin/maps/{id}/sections`, `POST /admin/sections/{id}/delete` and `POST /admin/sections/{id}/seats`.
+
+The other routes are listed in the plugin manifest.
+
 ## Limits
 
 - The counts on a cached page can be up to 5 minutes old. They are checked again when someone books, so a page is never oversold.
 - There is one ticket pool per event: the dates of a recurring event share it.
 - Tickets are held for 15 minutes while a buyer pays. A Stripe session can stay open up to 30 minutes; a payment that arrives after the hold ended re-takes the tickets if they are still free, and is refunded otherwise.
+- Seats are held 10 minutes while the buyer chooses; after the buyer starts paying, the 15 minutes above apply. A buyer can hold at most 10 seats at once, and the seats held and unpaid in one grid section cannot pass half of its seats (at least 10). If another buyer takes a seat in the instant a checkout converts the hold, that second checkout is answered with a try-again-later message; nobody is sold the same seat twice.
+- A seating map has at most 20 sections, 60 rows of up to 100 seats and 5,000 seats; a site has at most 50 maps. A row label is 1 to 4 letters or digits. Seated tickets are sold only through paid checkout (a seated type needs a price), and picking seats needs JavaScript on the page like the rest of the booking form.
 - One currency per site. Taxes are not calculated.
 - At most 2 unpaid holds per email address at a time; a buyer over the limit is asked to try again later. A cart that would push a type over its hold share (below) is answered as sold out for that type. A hold that lapsed or was cancelled does not count towards the 200 orders per hour an event takes.
 - Holds are unauthenticated: anyone can start a checkout. At most max(10, half of a type's total capacity) seats of a type can sit in unpaid 15-minute holds at a time. That is a share of the capacity, not of the seats left: once half of a type is sold, the remaining seats can all be held, and a type of 20 seats or fewer can be held in full.
