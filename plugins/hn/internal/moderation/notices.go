@@ -62,6 +62,10 @@ const (
 	loginAddrPerHour   = 20
 	loginNetPerHour    = 60
 	loginUserPerHour   = 10
+	// Without client.key every request shares one site-wide bucket (siteKey).
+	signupSitePerHour = 20
+	loginSitePerHour  = 120
+	siteKey           = "*"
 	// One network may add at most this many counted votes to one story in 24 hours;
 	// later ones are stored uncounted (voting-ring check).
 	ringVotesPerNet = 2

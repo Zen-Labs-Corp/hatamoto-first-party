@@ -151,8 +151,10 @@ func gateVote(req *core.GateReq) error {
 // gateSignup runs for a visitor without a username: only the network and the address are known.
 func gateSignup(req *core.GateReq) error {
 	net, addr := netKey(req), addrKey(req)
+	netLimit := signupNetPerHour
 	if net == "" && addr == "" {
-		return nil
+		// No client.key grant: one site-wide bucket, so a flood still has a ceiling.
+		net, netLimit = siteKey, signupSitePerHour
 	}
 	var res struct {
 		Net   bool
@@ -166,7 +168,7 @@ func gateSignup(req *core.GateReq) error {
 	if res.Net {
 		return refusal{nNet}
 	}
-	if (net != "" && res.NetN >= signupNetPerHour) || (addr != "" && res.AddrN >= signupAddrPerHour) {
+	if (net != "" && res.NetN >= netLimit) || (addr != "" && res.AddrN >= signupAddrPerHour) {
 		return refusal{nSignupRate}
 	}
 	recordRates(now, "signup_net", net, "signup_addr", addr)
@@ -179,8 +181,11 @@ func gateSignup(req *core.GateReq) error {
 // refusal never depends on whether the username exists.
 func gateLogin(req *core.GateReq) error {
 	user, addr, net := req.Target, addrKey(req), netKey(req)
-	if user == "" && addr == "" && net == "" {
-		return nil
+	netLimit := loginNetPerHour
+	keyless := addr == "" && net == ""
+	if keyless {
+		// No client.key grant: one site-wide bucket, so a flood still has a ceiling.
+		net, netLimit = siteKey, loginSitePerHour
 	}
 	var res struct {
 		Net   bool
@@ -190,12 +195,15 @@ func gateLogin(req *core.GateReq) error {
 	}
 	now := nowArg()
 	if err := core.QueryJSON(sqlLoginCheck, &res, user, addr, net, now); err != nil {
+		if keyless {
+			return refusal{nLoginRate} // no per-client limit to fall back on: fail closed
+		}
 		return nil
 	}
 	if res.Net {
 		return refusal{nNet}
 	}
-	userOver, addrOver, netOver := res.UserN >= loginUserPerHour, res.AddrN >= loginAddrPerHour, res.NetN >= loginNetPerHour
+	userOver, addrOver, netOver := res.UserN >= loginUserPerHour, res.AddrN >= loginAddrPerHour, res.NetN >= netLimit
 	recordRates(now, "login_user", keyBelow(user, userOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
 	if (user != "" && userOver) || (addr != "" && addrOver) || (net != "" && netOver) {
 		return refusal{nLoginRate}

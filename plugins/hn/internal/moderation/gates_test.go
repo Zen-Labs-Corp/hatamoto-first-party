@@ -310,10 +310,18 @@ func TestGates(t *testing.T) {
 		if rows, _ := db.Execs[0].Args[1].([]any); len(rows) != 2 {
 			t.Fatalf("rate rows = %v, want signup_net and signup_addr", db.Execs[0].Args[1])
 		}
-		t.Run("no keys passes without a host call", func(t *testing.T) {
-			h := install(t, &fakeDB{})
-			if err := r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "", "", "")); err != nil || len(h.Calls) != 0 {
-				t.Fatalf("err = %v, calls = %v", err, h.Calls)
+		t.Run("no keys: one site-wide bucket", func(t *testing.T) {
+			keyless := func(db *fakeDB) error {
+				install(t, db)
+				return r.RunGates(core.GateSignup, gateReq(core.GateSignup, nil, "", "", ""))
+			}
+			wantRefusal(t, keyless(answer(false, signupSitePerHour, 0)), nSignupRate)
+			db := answer(false, signupSitePerHour-1, 0)
+			if err := keyless(db); err != nil || len(db.Execs) != 1 {
+				t.Fatalf("err = %v, execs = %+v", err, db.Execs)
+			}
+			if rows, _ := db.Execs[0].Args[1].([]any); len(rows) != 1 {
+				t.Fatalf("rate rows = %v", db.Execs[0].Args[1])
 			}
 		})
 	})
@@ -377,11 +385,19 @@ func TestGates(t *testing.T) {
 				t.Fatalf("err = %v", err)
 			}
 		})
-		t.Run("no keys passes without a host call", func(t *testing.T) {
-			h := install(t, &fakeDB{})
-			if err := r.RunGates(core.GateLogin, gateReq(core.GateLogin, nil, "", "", "")); err != nil || len(h.Calls) != 0 {
-				t.Fatalf("err = %v, calls = %v", err, h.Calls)
+		t.Run("no keys: one site-wide bucket", func(t *testing.T) {
+			keyless := func(db *fakeDB) error {
+				install(t, db)
+				return r.RunGates(core.GateLogin, gateReq(core.GateLogin, nil, "", "", ""))
 			}
+			wantRefusal(t, keyless(counts(false, 0, 0, loginSitePerHour)), nLoginRate)
+			if err := keyless(counts(false, 0, 0, loginSitePerHour-1)); err != nil {
+				t.Fatalf("err = %v", err)
+			}
+		})
+		t.Run("no keys: a db error fails closed", func(t *testing.T) {
+			install(t, &fakeDB{Query: func(string, []any) (any, error) { return nil, hostErr(sdk.ErrUnavailable) }})
+			wantRefusal(t, r.RunGates(core.GateLogin, gateReq(core.GateLogin, nil, "", "", "")), nLoginRate)
 		})
 	})
 
