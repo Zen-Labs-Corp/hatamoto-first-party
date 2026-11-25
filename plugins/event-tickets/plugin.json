@@ -46,7 +46,14 @@
     { "method": "POST", "path": "/stripe/webhook", "public": true },
     { "method": "POST", "path": "/paypal/webhook", "public": true },
     { "method": "GET", "path": "/return/{token}", "public": true },
-    { "method": "GET", "path": "/cancel/{token}", "public": true }
+    { "method": "GET", "path": "/cancel/{token}", "public": true },
+    { "method": "GET", "path": "/admin/orders", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/orders/{id}/refund", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/orders/{id}/cancel", "roles": ["owner"] },
+    { "method": "GET", "path": "/admin/coupons", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/coupons", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/coupons/{id}/delete", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/events/{id}/bundles", "roles": ["owner", "editor"] }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },

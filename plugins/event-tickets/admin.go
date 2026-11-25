@@ -175,8 +175,12 @@ func serveEventDetail(u *sdk.HTTPUser, id string) sdk.HTTPResponse {
 	if e.HasEnd {
 		ev["ends_at"] = e.End.UTC().Format("2006-01-02T15:04:05Z")
 	}
+	bundles, err := listBundles(id)
+	if err != nil {
+		return unavailable()
+	}
 	return jsonReply(http.StatusOK, map[string]any{
-		"event": ev, "types": types, "fields": fields, "default_capacity": s.DefaultCapacity,
+		"event": ev, "types": types, "fields": fields, "bundles": bundles, "default_capacity": s.DefaultCapacity,
 	})
 }
 

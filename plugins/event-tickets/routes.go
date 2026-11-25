@@ -29,6 +29,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveAttendeesCSV(r.User, r.PathValues["id"]), nil
 		case "/admin/settings":
 			return serveSettings(r.User), nil
+		case "/admin/orders":
+			return serveOrders(r.User, r.Query), nil
+		case "/admin/coupons":
+			return serveCoupons(r.User), nil
 		case "/token":
 			return serveToken(r.Query), nil
 		case "/waitlist/{token}/claim":
@@ -67,6 +71,16 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveCancel(r.User, r.PathValues["id"]), nil
 		case "/admin/events/{id}/fields":
 			return serveSaveFields(r, r.PathValues["id"]), nil
+		case "/admin/events/{id}/bundles":
+			return serveSaveBundles(r, r.PathValues["id"]), nil
+		case "/admin/orders/{id}/refund":
+			return serveRefund(r, r.PathValues["id"]), nil
+		case "/admin/orders/{id}/cancel":
+			return serveCancelOrder(r.User, r.PathValues["id"]), nil
+		case "/admin/coupons":
+			return serveSaveCoupon(r), nil
+		case "/admin/coupons/{id}/delete":
+			return serveDeleteCoupon(r.User, r.PathValues["id"]), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil

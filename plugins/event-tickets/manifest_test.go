@@ -122,7 +122,12 @@ func TestManifest(t *testing.T) {
 		{"GET", "/ticket/{token}", true}, {"GET", "/ticket/{token}/qr.png", true},
 		{"POST", "/quote", true}, {"POST", "/checkout", true}, {"POST", "/stripe/webhook", true},
 		{"POST", "/paypal/webhook", true}, {"GET", "/return/{token}", true}, {"GET", "/cancel/{token}", true},
+		{"GET", "/admin/orders", false}, {"POST", "/admin/orders/{id}/refund", false}, {"POST", "/admin/orders/{id}/cancel", false},
+		{"GET", "/admin/coupons", false}, {"POST", "/admin/coupons", false}, {"POST", "/admin/coupons/{id}/delete", false},
+		{"POST", "/admin/events/{id}/bundles", false},
 	}
+	// Refund and order cancel move money or tickets: the owner only (the handlers check again).
+	ownerOnly := map[string]bool{"/admin/orders/{id}/refund": true, "/admin/orders/{id}/cancel": true}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
 	}
@@ -131,7 +136,11 @@ func TestManifest(t *testing.T) {
 		if r.Method != w.method || r.Path != w.path || r.Public != w.public {
 			t.Errorf("route %d = %+v, want %+v", i, r, w)
 		}
-		if wantRoles := []string{"owner", "editor"}; !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {
+		wantRoles := []string{"owner", "editor"}
+		if ownerOnly[w.path] {
+			wantRoles = []string{"owner"}
+		}
+		if !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {
 			t.Errorf("route %s roles = %v", r.Path, r.Roles)
 		}
 	}
