@@ -32,10 +32,11 @@ The **Settings** tab of the admin page shows the current values; change them in 
 - `db`: keeps ticket types, fields, orders, attendees, the waitlist, the mail queue and the signing key in the plugin's own database.
 - `settings`: reads the settings above (defaults, sender name, retention).
 - `mail.send`: sends the confirmation with one QR code per ticket and the waitlist mails. It respects the site's recipients-per-hour quota: mail over the quota is queued and retried.
+- `http.fetch`: talks to the payment providers you configure, and only to `api.stripe.com`, `api-m.paypal.com` and `api-m.sandbox.paypal.com`: it opens checkout sessions and PayPal orders, captures PayPal payments, checks that a PayPal webhook is genuine and makes refunds. A site that installed an earlier version has to grant it again.
 - `builder.data`: feeds the **Tickets** list on event pages (ticket types, with how many are left).
 - `builder.island`: runs the booking form on the event page; a widget cannot hold a form on its own.
 
-Nothing else: no outgoing requests, no scripts added to your pages.
+Nothing else: no other outgoing requests, no scripts added to your pages.
 
 ## Join links
 
