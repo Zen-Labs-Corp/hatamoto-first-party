@@ -2,6 +2,7 @@ package stories
 
 import (
 	"errors"
+	"maps"
 	"net/url"
 	"strconv"
 	"strings"
@@ -57,8 +58,11 @@ func submitPage(p *core.Page) error {
 	c := map[string]any{"notice": core.NoticeText(p.Query("m"))}
 	v := p.Viewer()
 	switch {
+	case v == nil && p.Ctx.CommenterKey == "":
+		maps.Copy(c, core.LoginForms("/submit"))
+		c["state"] = "login"
 	case v == nil:
-		c["state"], c["login_href"] = "login", "/login?m=story-login"
+		c["state"], c["login_href"] = "noname", "/login"
 	case p.Query("id") == "":
 		c["state"], c["action"] = "new", "/p/hn/submit"
 	default:

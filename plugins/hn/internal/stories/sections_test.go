@@ -13,7 +13,7 @@ import (
 	"github.com/Zen-Labs-Corp/hatamoto-first-party/plugins/hn/internal/core"
 )
 
-var sectionFiles = []string{"../../sections/hn_feed.html", "../../sections/hn_item.html", "../../sections/hn_submit.html", "../../partials/story_row.html"}
+var sectionFiles = []string{"../../sections/hn_feed.html", "../../sections/hn_item.html", "../../sections/hn_submit.html", "../../partials/story_row.html", "../../partials/login_forms.html"}
 
 func TestSectionsAvoidBannedMarkup(t *testing.T) {
 	banned := []string{"<svg", "<script", "<iframe", "<object", "<embed", "<base", "<meta", "<link", "<math", "<template", "<noscript", "<dialog", "<title",
@@ -48,7 +48,7 @@ func TestSectionsAvoidBannedMarkup(t *testing.T) {
 
 func sectionTemplates(t *testing.T) *template.Template {
 	t.Helper()
-	tpl, err := template.New("").ParseFiles("../../partials/style.html", "../../partials/story_row.html",
+	tpl, err := template.New("").ParseFiles("../../partials/style.html", "../../partials/story_row.html", "../../partials/login_forms.html",
 		"../../sections/hn_feed.html", "../../sections/hn_item.html", "../../sections/hn_submit.html")
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func sectionTemplates(t *testing.T) *template.Template {
 
 func TestSectionsDefineNames(t *testing.T) {
 	tpl := sectionTemplates(t)
-	want := map[string]bool{"section-hn_feed": true, "section-hn_item": true, "section-hn_submit": true, "plugin/hn/story_row": true, "plugin/hn/style": true, "": true}
+	want := map[string]bool{"section-hn_feed": true, "section-hn_item": true, "section-hn_submit": true, "plugin/hn/story_row": true, "plugin/hn/login_forms": true, "plugin/hn/style": true, "": true}
 	for _, x := range tpl.Templates() {
 		if strings.HasSuffix(x.Name(), ".html") { // ParseFiles names each file's own (empty) body
 			continue
@@ -154,13 +154,22 @@ func TestSectionsRenderItem(t *testing.T) {
 }
 
 func TestSectionsRenderSubmit(t *testing.T) {
-	if h := run(t, "section-hn_submit", map[string]any{"state": "login", "login_href": "/login?m=story-login"}); !strings.Contains(h, `href="/login?m=story-login"`) || strings.Contains(h, "<form") {
-		t.Errorf("login: %s", h)
+	h := run(t, "section-hn_submit", map[string]any{"state": "login", "login_action": "/p/hn/login", "signup_action": "/p/hn/signup", "email_signin_href": "/-/comments/signin", "next": "/submit"})
+	for _, want := range []string{"You have to be logged in to submit.", `action="/p/hn/login"`, `action="/p/hn/signup"`, `name="next" value="/submit"`} {
+		if !strings.Contains(h, want) {
+			t.Errorf("login lacks %q: %s", want, h)
+		}
+	}
+	if n := strings.Count(h, `type="password"`); n != 2 || strings.Contains(h, `type="email"`) || strings.Contains(h, "<textarea") {
+		t.Errorf("login forms: %s", h)
+	}
+	if h := run(t, "section-hn_submit", map[string]any{"state": "noname", "login_href": "/login"}); !strings.Contains(h, `href="/login"`) || !strings.Contains(h, "pick a username") || strings.Contains(h, "<form") {
+		t.Errorf("noname: %s", h)
 	}
 	if h := run(t, "section-hn_submit", map[string]any{"state": "denied", "reason": "No <way>."}); !strings.Contains(h, "No &lt;way&gt;.") || strings.Contains(h, "<form") {
 		t.Errorf("denied: %s", h)
 	}
-	h := run(t, "section-hn_submit", map[string]any{"state": "new", "action": "/p/hn/submit"})
+	h = run(t, "section-hn_submit", map[string]any{"state": "new", "action": "/p/hn/submit"})
 	if !strings.Contains(h, `action="/p/hn/submit"`) || !strings.Contains(h, "Leave url blank") || strings.Contains(h, "keep_text") {
 		t.Errorf("new: %s", h)
 	}
