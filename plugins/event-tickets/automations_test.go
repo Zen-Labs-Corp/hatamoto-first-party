@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -28,6 +29,8 @@ func newAutoHost(t *testing.T) *autoHost {
 		sql, _ := a["sql"].(string)
 		ar, _ := a["args"].([]any)
 		switch {
+		case strings.Contains(sql, "FROM meta WHERE key LIKE"):
+			return jsonInto(`{"rows":[[{}]]}`, out)
 		case strings.Contains(sql, "FROM event_changes WHERE fanned_at IS NULL"):
 			h.picks = append(h.picks, call{fn, sql, ar})
 			return jsonInto(`{"rows":[[`+h.markers+`]]}`, out)
@@ -153,6 +156,7 @@ func TestComposeAutoCarriesTheUnsubscribeLink(t *testing.T) {
 	code := strings.Repeat("ab", 16)
 	link := regexp.MustCompile(`https://example\.org/p/event-tickets/u/([0-9a-f]{32}\.[0-9a-f]{32})`)
 	for _, kind := range []string{"changed", "reminder", "thanks"} {
+		fixedNow(t, map[string]time.Time{"changed": beforeGig, "reminder": beforeGig, "thanks": afterGig}[kind])
 		m, ok, err := composeAuto(sendRow{Kind: kind, RefID: 3, OrderID: 7, EventID: "e1", Code: code})
 		if err != nil || !ok {
 			t.Fatalf("%s: %v %v", kind, ok, err)
@@ -177,6 +181,7 @@ func TestComposeAutoCarriesTheUnsubscribeLink(t *testing.T) {
 		}
 	}
 
+	fixedNow(t, beforeGig)
 	m, _, _ := composeAuto(sendRow{Kind: "reminder", OrderID: 7, EventID: "e1", Code: code})
 	if n := strings.Count(m.Text, "/p/event-tickets/ticket/"); n != 2 || !strings.Contains(m.Subject, "Reminder: Gig") {
 		t.Errorf("reminder: %d ticket links, subject %q", n, m.Subject)
@@ -199,8 +204,47 @@ func TestComposeAutoCarriesTheUnsubscribeLink(t *testing.T) {
 	}
 }
 
+// the gig runs 2027-03-01 20:00-22:00 in Paris
+var (
+	beforeGig = time.Date(2027, 2, 28, 21, 0, 0, 0, time.UTC) // 22 hours before it starts
+	afterGig  = time.Date(2027, 3, 2, 9, 0, 0, 0, time.UTC)
+)
+
+func TestComposeAutoRechecksReminderAndThanks(t *testing.T) {
+	h := newAutoHost(t)
+	code := strings.Repeat("ab", 16)
+	cancelled := strings.Replace(gigEntity, `"attendance_mode"`, `"event_status":"cancelled","attendance_mode"`, 1)
+	postponed := strings.Replace(gigEntity, `"attendance_mode"`, `"event_status":"postponed","attendance_mode"`, 1)
+	moved := strings.Replace(gigEntity, "2027-03-01T20:00", "2027-04-01T20:00", 1)
+	moved = strings.Replace(moved, "2027-03-01T22:00", "2027-04-01T22:00", 1)
+	cases := []struct {
+		name, kind, entity string
+		at                 time.Time
+		want               bool
+	}{
+		{"reminder, going ahead", "reminder", gigEntity, beforeGig, true},
+		{"reminder, cancelled", "reminder", cancelled, beforeGig, false},
+		{"reminder, postponed", "reminder", postponed, beforeGig, false},
+		{"reminder, moved out of the window", "reminder", moved, beforeGig, false},
+		{"reminder, already started", "reminder", gigEntity, afterGig, false},
+		{"thanks, ended", "thanks", gigEntity, afterGig, true},
+		{"thanks, cancelled", "thanks", cancelled, afterGig, false},
+		{"thanks, moved later", "thanks", moved, afterGig, false},
+		{"changed mail of a cancelled event is still sent", "changed", cancelled, beforeGig, true},
+	}
+	for _, c := range cases {
+		fixedNow(t, c.at)
+		h.entity = c.entity
+		_, ok, err := composeAuto(sendRow{Kind: c.kind, RefID: 3, OrderID: 7, EventID: "e1", Code: code})
+		if err != nil || ok != c.want {
+			t.Errorf("%s: ok %v err %v, want %v", c.name, ok, err, c.want)
+		}
+	}
+}
+
 func TestComposeAutoSkips(t *testing.T) {
 	h := newAutoHost(t)
+	fixedNow(t, afterGig)
 	send := sendRow{Kind: "thanks", OrderID: 7, EventID: "e1", Code: strings.Repeat("ab", 16)}
 	h.settings = `{}`
 	h.entity = strings.Replace(gigEntity, "https://example.org/events/gig", "/events/gig", 1)

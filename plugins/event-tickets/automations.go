@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -162,6 +163,27 @@ func httpURL(s string) bool {
 	return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://")
 }
 
+// stillDue re-checks a queued reminder or thank-you against the event as it
+// is now, as the queue can take hours to drain: an event that was cancelled,
+// postponed or moved out of the window since the fan-out gets no such mail.
+// (An unpublished event has no name here, so composeAuto already skips it.)
+func stillDue(kind string, e event) (bool, error) {
+	if kind != "reminder" && kind != "thanks" {
+		return true, nil
+	}
+	if e.EventStatus == "cancelled" || e.EventStatus == "postponed" || e.Start.IsZero() {
+		return false, nil
+	}
+	if kind == "thanks" {
+		return !e.endsAt().After(now()), nil
+	}
+	a, err := loadAutomations()
+	if err != nil {
+		return false, err
+	}
+	return e.Start.After(now()) && !e.Start.After(now().Add(time.Duration(a.ReminderHours)*time.Hour)), nil
+}
+
 // composeAuto builds a changed, reminder or thank-you mail. ok is false when
 // there is nobody to write to or no absolute link to put in the mail.
 func composeAuto(s sendRow) (m outMail, ok bool, err error) {
@@ -181,6 +203,9 @@ func composeAuto(s sendRow) (m outMail, ok bool, err error) {
 	origin := originOf(e.URL, set.SiteURL)
 	if e.Name == "" || origin == "" {
 		return outMail{}, false, nil
+	}
+	if due, err := stillDue(s.Kind, e); err != nil || !due {
+		return outMail{}, false, err
 	}
 	title := eventTitle(e)
 	d := autoData{Greeting: greeting(o.Name), Signature: set.SenderName, Note: unsubscribeNote, Unsub: unsubscribeURL(origin, key, s.Code)}
