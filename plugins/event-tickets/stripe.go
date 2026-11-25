@@ -49,7 +49,7 @@ type stripeSession struct {
 // stripeCall runs one Stripe API request with the secret key. A form body is
 // sent form-encoded. The answer is decoded into out for a 2xx status; every
 // other status is an error without the answer's text.
-func stripeCall(s settings, method, path string, form url.Values, idemKey string, out any) error {
+func stripeCall(s settings, method, path string, form url.Values, idemKey string, dl deadline, out any) error {
 	if s.StripeKey == "" {
 		return errProviderRefused
 	}
@@ -62,7 +62,7 @@ func stripeCall(s settings, method, path string, form url.Values, idemKey string
 	if idemKey != "" {
 		headers["Idempotency-Key"] = idemKey
 	}
-	status, raw, err := fetchJSON(method, stripeAPI+path, headers, body, deadline{})
+	status, raw, err := fetchJSON(method, stripeAPI+path, headers, body, dl)
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func stripeCreateSession(s settings, o payIn) (id, pageURL string, err error) {
 		form.Set("customer_email", o.Email)
 	}
 	var res stripeSession
-	if err := stripeCall(s, "POST", "/v1/checkout/sessions", form, "et-"+strconv.FormatInt(o.OrderID, 10)+"-create", &res); err != nil {
+	if err := stripeCall(s, "POST", "/v1/checkout/sessions", form, "et-"+strconv.FormatInt(o.OrderID, 10)+"-create", deadline{}, &res); err != nil {
 		return "", "", err
 	}
 	if !idRe.MatchString(res.ID) || res.URL == "" {
@@ -113,16 +113,21 @@ func stripeGetSession(s settings, id string) (stripeSession, error) {
 	if !idRe.MatchString(id) {
 		return res, errProviderRefused
 	}
-	err := stripeCall(s, "GET", "/v1/checkout/sessions/"+id, nil, "", &res)
+	err := stripeCall(s, "GET", "/v1/checkout/sessions/"+id, nil, "", deadline{}, &res)
 	return res, err
 }
 
 // stripeExpireSession closes a session whose hold ended.
 func stripeExpireSession(s settings, id string) error {
+	return stripeExpireSessionBy(s, id, deadline{})
+}
+
+// stripeExpireSessionBy is stripeExpireSession within an overall deadline.
+func stripeExpireSessionBy(s settings, id string, dl deadline) error {
 	if !idRe.MatchString(id) {
 		return errProviderRefused
 	}
-	return stripeCall(s, "POST", "/v1/checkout/sessions/"+id+"/expire", url.Values{}, "", nil)
+	return stripeCall(s, "POST", "/v1/checkout/sessions/"+id+"/expire", url.Values{}, "", dl, nil)
 }
 
 // stripeRefund refunds amount of a payment. The idempotency key makes a retry
@@ -137,7 +142,7 @@ func stripeRefund(s settings, paymentIntent string, amount int64, idemKey string
 	var res struct {
 		ID string `json:"id"`
 	}
-	if err := stripeCall(s, "POST", "/v1/refunds", form, idemKey, &res); err != nil {
+	if err := stripeCall(s, "POST", "/v1/refunds", form, idemKey, deadline{}, &res); err != nil {
 		return "", err
 	}
 	if !idRe.MatchString(res.ID) {

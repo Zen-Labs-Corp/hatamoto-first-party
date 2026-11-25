@@ -35,6 +35,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveClaim(r.PathValues["token"], r.Query), nil
 		case "/waitlist/{token}/leave":
 			return serveLeave(r.PathValues["token"], r.Query), nil
+		case "/return/{token}":
+			return servePayReturn(r.PathValues["token"], r.Query), nil
+		case "/cancel/{token}":
+			return servePayCancel(r.PathValues["token"]), nil
 		case "/ticket/{token}":
 			return serveTicket(r.PathValues["token"]), nil
 		case "/ticket/{token}/qr.png":
@@ -49,6 +53,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveQuote(r), nil
 		case "/checkout":
 			return serveCheckout(r), nil
+		case "/stripe/webhook":
+			return serveStripeWebhook(r), nil
 		case "/admin/events/{id}/types":
 			return serveSaveType(r, r.PathValues["id"]), nil
 		case "/admin/types/{id}/delete":
