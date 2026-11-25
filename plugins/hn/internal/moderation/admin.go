@@ -248,8 +248,9 @@ func handleUnban(q *core.Request) sdk.HTTPResponse {
 
 // handlePasswordRemove removes a member's password login (one that was connected without the
 // member's consent, say) and signs its browsers out. The member keeps username, comments and
-// karma and signs in with the email link again. The login row goes first, so no new
-// session can start; when ending the existing ones fails the error is reported and the row stays gone.
+// karma and signs in with the email link again. Sessions end, then the login row goes, then
+// sessions end again (one may have started in between). A failure of the first end leaves the
+// row for a retry; of the second, the row is gone and the owner is told.
 func handlePasswordRemove(q *core.Request) sdk.HTTPResponse {
 	var in struct{}
 	if resp, good := decodeJSON(q, &in); !good {
@@ -269,13 +270,21 @@ func handlePasswordRemove(q *core.Request) sdk.HTTPResponse {
 		}
 		return failed()
 	}
+	revoke := func() error {
+		return core.Call(sdk.FnCommentsIdentityRevoke, sdk.CommentsIdentityArgs{Account: l.Account}, &sdk.CommentsIdentityRevoked{})
+	}
+	// End the sessions first: when that fails the row is still there and the owner can retry.
+	if err := revoke(); err != nil {
+		return failed()
+	}
 	if _, err := core.Exec(sqlLoginDelete, u.ID); err != nil {
 		return failed()
 	}
-	// The login row is gone, so no new session can start; now end the ones that exist.
-	if err := core.Call(sdk.FnCommentsIdentityRevoke, sdk.CommentsIdentityArgs{Account: l.Account}, &sdk.CommentsIdentityRevoked{}); err != nil {
-		writeLog("owner", "password-remove", "user:"+u.Username, "sessions not ended")
-		return failed()
+	// A session may have started between the first revoke and the delete; end it too. The row
+	// is gone now, so a retry is impossible: say so in the log.
+	if err := revoke(); err != nil {
+		writeLog("owner", "password-remove", "user:"+u.Username, "login removed, sessions not ended")
+		return core.JSONError(500, "the password was removed but its sessions could not be ended")
 	}
 	writeLog("owner", "password-remove", "user:"+u.Username, "")
 	return ok(nil)

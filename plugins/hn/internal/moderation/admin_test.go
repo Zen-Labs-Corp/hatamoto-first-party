@@ -435,7 +435,7 @@ func TestAdminPasswordRemove(t *testing.T) {
 		db := withLogin(true)
 		install(t, db)
 		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 200)
-		if len(db.Revoked) != 1 || db.Revoked[0] != "acc-bob" {
+		if len(db.Revoked) != 2 || db.Revoked[0] != "acc-bob" || db.Revoked[1] != "acc-bob" {
 			t.Fatalf("revoked %v", db.Revoked)
 		}
 		if d := execs(db, sqlLoginDelete); len(d) != 1 || d[0].Args[0] != float64(9) {
@@ -445,16 +445,40 @@ func TestAdminPasswordRemove(t *testing.T) {
 			t.Fatalf("log = %+v", logs)
 		}
 	})
-	t.Run("a failed revoke is reported but the login is gone", func(t *testing.T) {
+	t.Run("a failed first revoke keeps the login for a retry", func(t *testing.T) {
 		db := withLogin(true)
 		db.Revoke = func(string) error { return hostErr(sdk.ErrUnavailable) }
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
+		if d := execs(db, sqlLoginDelete); len(d) != 0 {
+			t.Fatalf("deletes = %+v", d)
+		}
+		db.Revoke = nil
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 200)
+		if d := execs(db, sqlLoginDelete); len(d) != 1 {
+			t.Fatalf("deletes after retry = %+v", d)
+		}
+	})
+	t.Run("a failed second revoke is reported, the login is gone and it is logged", func(t *testing.T) {
+		db := withLogin(true)
+		calls := 0
+		db.Revoke = func(string) error {
+			calls++
+			if calls == 2 {
+				return hostErr(sdk.ErrUnavailable)
+			}
+			return nil
+		}
 		install(t, db)
 		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
 		if d := execs(db, sqlLoginDelete); len(d) != 1 {
 			t.Fatalf("deletes = %+v", d)
 		}
+		if logs := execs(db, sqlLogInsert); len(logs) != 1 || !strings.Contains(logs[0].Args[3].(string), "sessions not ended") {
+			t.Fatalf("log = %+v", logs)
+		}
 	})
-	t.Run("a failed delete revokes nothing", func(t *testing.T) {
+	t.Run("a failed delete does not revoke again", func(t *testing.T) {
 		db := withLogin(true)
 		db.Exec = func(sql string, _ []any) (int64, error) {
 			if sql == sqlLoginDelete {
@@ -464,7 +488,7 @@ func TestAdminPasswordRemove(t *testing.T) {
 		}
 		install(t, db)
 		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
-		if len(db.Revoked) != 0 {
+		if len(db.Revoked) != 1 {
 			t.Fatalf("revoked %v", db.Revoked)
 		}
 	})
