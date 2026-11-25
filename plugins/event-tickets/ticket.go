@@ -79,7 +79,7 @@ type ticketRow struct {
 func lookupTicket(code string) (*ticketRow, error) {
 	var row *ticketRow
 	err := dbJSON(`SELECT coalesce((SELECT to_jsonb(x) FROM (
-SELECT a.status, a.event_id, o.name AS holder, t.name AS type_name, coalesce(e.name, '') AS event_name
+SELECT a.status, a.event_id, o.name AS holder, `+ticketNameSQL+` AS type_name, coalesce(e.name, '') AS event_name
 FROM attendees a
 JOIN orders o ON o.id = a.order_id
 JOIN ticket_types t ON t.id = a.type_id

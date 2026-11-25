@@ -77,3 +77,15 @@ func TestMigrationsPassCoreGuard(t *testing.T) {
 		}
 	}
 }
+
+// attendees.seat_id is a foreign key: without an index of its own, deleting a
+// seat or map scans every ticket.
+func TestSeatingIndexesAttendeesBySeat(t *testing.T) {
+	b, err := os.ReadFile("migrations/006_seating.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "CREATE INDEX attendees_seat_idx ON attendees (seat_id) WHERE seat_id IS NOT NULL;") {
+		t.Error("no index on attendees (seat_id)")
+	}
+}

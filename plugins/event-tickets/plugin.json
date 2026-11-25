@@ -1,6 +1,6 @@
 {
   "name": "event-tickets",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "sdk": "^0.22.2",
   "description": "Free and paid tickets (Stripe, PayPal), RSVP, coupons, attendees and event emails for the event-calendar plugin.",
   "permissions": ["settings", "db", "entities.read", "mail.send", "http.fetch", "builder.data", "builder.island"],
@@ -70,7 +70,17 @@
     { "method": "POST", "path": "/admin/campaigns/{id}/cancel", "roles": ["owner"] },
     { "method": "GET", "path": "/o/{token}", "public": true },
     { "method": "GET", "path": "/c/{token}", "public": true },
-    { "method": "GET", "path": "/u/{token}", "public": true }
+    { "method": "GET", "path": "/u/{token}", "public": true },
+    { "method": "GET", "path": "/admin/maps", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/admin/maps/{id}", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/maps", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/maps/{id}/delete", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/maps/{id}/sections", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/sections/{id}/delete", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/sections/{id}/seats", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/seats/{event}", "public": true },
+    { "method": "POST", "path": "/seats/hold", "public": true },
+    { "method": "DELETE", "path": "/seats/hold/{token}", "public": true }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },

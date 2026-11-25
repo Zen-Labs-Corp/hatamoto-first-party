@@ -23,9 +23,12 @@ type payHost struct {
 	counts   string
 	coupon   string // answer of lookupCoupon
 	bundles  string
-	hold     string // answer of holdCart
-	complete string // answer of completeFree
-	setRef   int64  // rows the provider_ref update changes
+	hold     string   // answer of holdCart
+	held     string   // answer of heldSeats
+	avail    string   // answer of seatAvailability
+	seatHold []string // answers of successive holdSeat statements; the last one repeats
+	complete string   // answer of completeFree
+	setRef   int64    // rows the provider_ref update changes
 	answers  map[string][2]string
 	key      []byte
 	clock    time.Time
@@ -63,6 +66,18 @@ func newPayHost(t *testing.T) *payHost {
 			h.calls = append(h.calls, call{fn, sql, ar})
 		}
 		switch {
+		case strings.Contains(sql, "INSERT INTO seat_holds"):
+			v := h.seatHold[0]
+			if len(h.seatHold) > 1 {
+				h.seatHold = h.seatHold[1:]
+			}
+			return cell(v)
+		case strings.Contains(sql, "FROM seat_holds h JOIN seats st"):
+			return cell(h.held)
+		case strings.Contains(sql, "jsonb_build_object('id', s.id"):
+			return cell(h.avail)
+		case strings.HasPrefix(sql, "DELETE FROM seat_holds"):
+			return jsonInto(`{"rows_affected":1}`, out)
 		case fn == sdk.FnSettingsGet:
 			return jsonInto(h.settings, out)
 		case fn == sdk.FnEntitiesGet:
@@ -553,5 +568,198 @@ func TestTokenListsTheReadyProviders(t *testing.T) {
 	h.settings = `{"currency":"KWD","stripe_secret_key":"` + testStripeKey + `","stripe_webhook_secret":"` + testStripeSecret + `"}`
 	if _, got := providers(); len(got) != 0 {
 		t.Errorf("a currency that cannot be charged: %v", got)
+	}
+}
+
+const seatedTypes = `[{"id":5,"event_id":"e1","name":"GA","capacity":10,"taken":4,"waitlist":false,"on_sale":true,"position":0,"price_cents":1000},
+{"id":9,"event_id":"e1","name":"Std","capacity":20,"taken":0,"waitlist":false,"on_sale":true,"position":1,"price_cents":1500,"section_id":3,"seated":true},
+{"id":10,"event_id":"e1","name":"Standing","capacity":80,"taken":0,"waitlist":false,"on_sale":true,"position":2,"price_cents":800,"section_id":4,"seated":false}]`
+
+const seatedAvail = `[{"id":3,"kind":"grid","name":"Stalls","tier":"Std","type_id":9,"price_cents":1500,"left":20,
+"rows":[{"l":"A","s":"xooo"},{"l":"B","s":"oooo"}]},
+{"id":4,"kind":"zone","name":"Standing","tier":"","type_id":10,"price_cents":800,"left":80}]`
+
+func seatedHost(t *testing.T) *payHost {
+	h := newPayHost(t)
+	h.types = seatedTypes
+	h.avail = seatedAvail
+	h.held = `[]`
+	h.seatHold = []string{`{"status":"held","seat_id":41,"label":"Stalls A-2","expires_in":600}`}
+	return h
+}
+
+// releases are the statements that give single seats back (holdCart deletes
+// hold rows inside its own statement).
+func (h *payHost) releases() []call {
+	var out []call
+	for _, c := range h.calls {
+		if strings.HasPrefix(c.sql, "DELETE FROM seat_holds") {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func holdToken(h *payHost, code string) string { return signCode(h.key, kindHold, code) }
+
+const holdCodeA = "0123456789abcdef0123456789abcdef"
+
+// Picked seats are the truth for a seated line: the hold token sets the
+// quantity, every ticket carries its seat and label, and the hold code travels
+// to holdCart as $16 so it can convert the hold rows.
+func TestCheckoutConvertsPickedSeats(t *testing.T) {
+	h := seatedHost(t)
+	h.held = `[{"seat_id":41,"type_id":9,"label":"Stalls A-2"},{"seat_id":42,"type_id":9,"label":"Stalls A-3"}]`
+	code, m := h.checkout(t, map[string]any{"items": items(9, 3), "hold": holdToken(h, holdCodeA)})
+	if code != 200 || m["redirect"] == nil {
+		t.Fatalf("%d %v", code, m)
+	}
+	holds := h.with("INSERT INTO orders")
+	if len(holds) != 1 || len(holds[0].args) != 16 || holds[0].args[15] != holdCodeA {
+		t.Fatalf("hold statements %+v", holds)
+	}
+	var codes []holdCode
+	_ = json.Unmarshal([]byte(holds[0].args[2].(string)), &codes)
+	if len(codes) != 2 || codes[0].Seat != 41 || codes[0].Label != "Stalls A-2" || codes[1].Seat != 42 || codes[1].Label != "Stalls A-3" {
+		t.Errorf("the picked seats are the quantity (3 asked, 2 held): %+v", codes)
+	}
+	if !same(holds[0].args[8], 3000) {
+		t.Errorf("subtotal %v", holds[0].args[8])
+	}
+	if len(h.with("INSERT INTO seat_holds")) != 0 {
+		t.Error("nothing is claimed when the seats are picked")
+	}
+}
+
+func TestCheckoutHoldAddsTheHeldTypeToTheCart(t *testing.T) {
+	h := seatedHost(t)
+	h.held = `[{"seat_id":41,"type_id":9,"label":"Stalls A-2"}]`
+	if code, m := h.checkout(t, map[string]any{"items": items(5, 1), "hold": holdToken(h, holdCodeA)}); code != 200 {
+		t.Fatalf("%d %v", code, m)
+	}
+	var codes []holdCode
+	_ = json.Unmarshal([]byte(h.with("INSERT INTO orders")[0].args[2].(string)), &codes)
+	if len(codes) != 2 || codes[0].Type != 5 || codes[0].Seat != 0 || codes[1].Type != 9 || codes[1].Seat != 41 {
+		t.Errorf("codes %+v", codes)
+	}
+}
+
+func TestCheckoutHoldRefusals(t *testing.T) {
+	h := seatedHost(t)
+	for name, tok := range map[string]string{"bad token": "nope", "other kind": signCode(h.key, kindTicket, holdCodeA), "no seats left": holdToken(h, holdCodeA)} {
+		code, m := h.checkout(t, map[string]any{"items": items(9, 2), "hold": tok})
+		if code != 409 || m["error"] != "hold" {
+			t.Errorf("%s: %d %v", name, code, m)
+		}
+	}
+	if len(h.with("INSERT INTO orders")) != 0 || len(h.fetches) != 0 {
+		t.Error("nothing is held or charged")
+	}
+	// a seat taken over between the read and the statement
+	h.held = `[{"seat_id":41,"type_id":9,"label":"Stalls A-2"}]`
+	h.hold = `{"order_id":null,"full":[],"changed":[],"coupon_gone":false,"hold_gone":true}`
+	if code, m := h.checkout(t, map[string]any{"items": items(9, 1), "hold": holdToken(h, holdCodeA)}); code != 409 || m["error"] != "hold" {
+		t.Errorf("hold_gone: %d %v", code, m)
+	}
+	if len(h.releases()) != 0 {
+		t.Error("the picked seats stay with their own hold")
+	}
+}
+
+// Without picked seats a seated line gets the best seats of its section:
+// contiguous in the front row, claimed one by one into a new hold code.
+func TestCheckoutBestAvailable(t *testing.T) {
+	h := seatedHost(t)
+	h.seatHold = []string{`{"status":"held","seat_id":41,"label":"Stalls A-2"}`, `{"status":"held","seat_id":42,"label":"Stalls A-3"}`}
+	code, m := h.checkout(t, map[string]any{"items": items(9, 2)})
+	if code != 200 || m["redirect"] == nil {
+		t.Fatalf("%d %v", code, m)
+	}
+	claims := h.with("INSERT INTO seat_holds")
+	if len(claims) != 2 {
+		t.Fatalf("%d claims", len(claims))
+	}
+	fresh, _ := claims[0].args[1].(string)
+	if len(fresh) != 32 || claims[1].args[1] != fresh {
+		t.Errorf("one new hold code for both: %v %v", claims[0].args[1], claims[1].args[1])
+	}
+	// row A is "xooo": seats 2 and 3 are the middle block (row index 0)
+	if !same(claims[0].args[2], 3) || !same(claims[0].args[3], 0) || !same(claims[0].args[4], 2) || !same(claims[1].args[4], 3) {
+		t.Errorf("claimed %v %v", claims[0].args, claims[1].args)
+	}
+	if claims[0].args[6] != 0 || claims[1].args[6] != 0 {
+		t.Errorf("best-available claims must pass no new-code ceiling: %v %v", claims[0].args[6], claims[1].args[6])
+	}
+	holds := h.with("INSERT INTO orders")
+	var codes []holdCode
+	_ = json.Unmarshal([]byte(holds[0].args[2].(string)), &codes)
+	if holds[0].args[15] != fresh || len(codes) != 2 || codes[0].Seat != 41 || codes[1].Label != "Stalls A-3" {
+		t.Errorf("%v %+v", holds[0].args[15], codes)
+	}
+	if len(h.releases()) != 0 {
+		t.Error("claims are kept on success")
+	}
+}
+
+func TestCheckoutBestAvailableRetriesOnceThenSellsOut(t *testing.T) {
+	h := seatedHost(t)
+	h.seatHold = []string{`{"status":"held","seat_id":41,"label":"Stalls A-2"}`, `{"status":"taken","seat_id":42,"label":"Stalls A-3"}`,
+		`{"status":"taken","seat_id":43,"label":"Stalls A-4"}`}
+	code, m := h.checkout(t, map[string]any{"items": items(9, 2)})
+	if code != 409 || m["error"] != "sold out" || jsonText(m["sold_out"]) != `[9]` {
+		t.Fatalf("%d %v", code, m)
+	}
+	if n := len(h.with("jsonb_build_object('id', s.id")); n != 2 {
+		t.Errorf("one read plus one re-read, got %d", n)
+	}
+	rel := h.releases()
+	if len(rel) != 1 || !same(rel[0].args[2], 41) {
+		t.Errorf("the seat this request claimed is given back: %+v", rel)
+	}
+	if len(h.with("INSERT INTO orders")) != 0 || len(h.fetches) != 0 {
+		t.Error("nothing is held or charged")
+	}
+}
+
+func TestCheckoutReleasesClaimsWhenTheCartIsNotHeld(t *testing.T) {
+	h := seatedHost(t)
+	h.hold = `{"order_id":null,"full":[9],"changed":[],"coupon_gone":false,"hold_gone":false}`
+	h.seatHold = []string{`{"status":"held","seat_id":41,"label":"Stalls A-2"}`, `{"status":"held","seat_id":42,"label":"Stalls A-3"}`}
+	if code, m := h.checkout(t, map[string]any{"items": items(9, 2)}); code != 409 || m["error"] != "sold out" {
+		t.Fatalf("%d %v", code, m)
+	}
+	if len(h.releases()) != 2 {
+		t.Error("both claims are given back")
+	}
+}
+
+func TestCheckoutZoneLineCarriesItsName(t *testing.T) {
+	h := seatedHost(t)
+	if code, m := h.checkout(t, map[string]any{"items": items(10, 2)}); code != 200 {
+		t.Fatalf("%d %v", code, m)
+	}
+	holds := h.with("INSERT INTO orders")
+	var codes []holdCode
+	_ = json.Unmarshal([]byte(holds[0].args[2].(string)), &codes)
+	if len(codes) != 2 || codes[0].Label != "Standing" || codes[0].Seat != 0 || holds[0].args[15] != "" {
+		t.Errorf("%v %+v", holds[0].args[15], codes)
+	}
+	if len(h.with("INSERT INTO seat_holds")) != 0 {
+		t.Error("a zone claims no seat")
+	}
+}
+
+func TestCheckoutUnseatedCartTouchesNoSeats(t *testing.T) {
+	h := newPayHost(t)
+	if code, m := h.checkout(t, nil); code != 200 {
+		t.Fatalf("%d %v", code, m)
+	}
+	for _, c := range h.calls {
+		if !strings.Contains(c.sql, "INSERT INTO orders") && (strings.Contains(c.sql, "seat_holds") || strings.Contains(c.sql, "map_sections s")) {
+			t.Errorf("seat statement for an unseated cart: %s", c.sql)
+		}
+	}
+	if got := h.with("INSERT INTO orders")[0].args[15]; got != "" {
+		t.Errorf("hold code %v", got)
 	}
 }

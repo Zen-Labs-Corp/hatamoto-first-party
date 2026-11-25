@@ -179,6 +179,8 @@ WHERE id IN (SELECT o.id FROM orders o LEFT JOIN events e ON e.entity_id = o.eve
   AND NOT EXISTS (SELECT 1 FROM split_rules r WHERE lower(trim(r.payee_email)) = p.payee_email) LIMIT $2)`,
 		`DELETE FROM split_rules WHERE id IN (SELECT r.id FROM split_rules r JOIN events e ON e.entity_id = r.event_id
   WHERE coalesce(e.ends_at, e.starts_at) < now() - make_interval(months => $1) LIMIT $2)`,
+		// seat holds that ran out are free already (reads ignore them); this only removes the dead rows
+		`DELETE FROM seat_holds WHERE id IN (SELECT id FROM seat_holds WHERE expires_at < now() AND $1::int > 0 LIMIT $2)`,
 		// send logs, change markers and campaigns go after 13 months; the unsubscribe list stays
 		`DELETE FROM email_sends WHERE id IN (SELECT id FROM email_sends WHERE created_at < now() - interval '13 months' AND $1::int > 0 LIMIT $2)`,
 		`DELETE FROM event_changes WHERE id IN (SELECT id FROM event_changes WHERE created_at < now() - interval '13 months' AND $1::int > 0 LIMIT $2)`,

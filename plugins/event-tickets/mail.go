@@ -136,6 +136,12 @@ func (d confirmData) text() string {
 	return b.String()
 }
 
+// ticketNameSQL is what every ticket list prints as a ticket's name: the type,
+// and for a seated ticket the seat after it ("Std, Stalls A-12"). It needs the
+// attendee as a and the ticket type as t. Waitlist rows have no seat and keep
+// the plain type name.
+const ticketNameSQL = "t.name || coalesce(', ' || a.seat_label, '')"
+
 // orderMail is an order as the confirmation reads it.
 type orderMail struct {
 	EventID    string `json:"event_id"`
@@ -165,13 +171,13 @@ func readOrderMail(orderID int64) (*orderMail, error) {
 	var o *orderMail
 	err := dbJSON(`SELECT coalesce((SELECT jsonb_build_object('event_id', o.event_id, 'name', o.name, 'email', o.email,
     'anonymised', o.anonymised_at IS NOT NULL,
-    'tickets', (SELECT coalesce(jsonb_agg(jsonb_build_object('code', a.code, 'type_name', t.name) ORDER BY a.id), '[]'::jsonb)
+    'tickets', (SELECT coalesce(jsonb_agg(jsonb_build_object('code', a.code, 'type_name', `+ticketNameSQL+`) ORDER BY a.id), '[]'::jsonb)
                 FROM attendees a JOIN ticket_types t ON t.id = a.type_id
                 WHERE a.order_id = o.id AND a.status = 'active'),
     'status', o.status, 'lines', o.lines, 'subtotal_cents', o.subtotal_cents, 'discount_cents', o.discount_cents,
     'fee_cents', o.fee_cents, 'total_cents', o.total_cents, 'refunded_cents', o.refunded_cents,
     'currency', coalesce(o.currency, ''), 'fee_absorbed', o.fee_absorbed,
-    'refunded_for', (SELECT coalesce(jsonb_agg(t.name ORDER BY a.id), '[]'::jsonb)
+    'refunded_for', (SELECT coalesce(jsonb_agg(`+ticketNameSQL+` ORDER BY a.id), '[]'::jsonb)
                 FROM attendees a JOIN ticket_types t ON t.id = a.type_id
                 WHERE a.order_id = o.id AND a.status = 'refunded'))
 FROM orders o WHERE o.id = $1), 'null'::jsonb)`, &o, orderID)

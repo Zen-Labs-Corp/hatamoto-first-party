@@ -163,3 +163,27 @@ func TestCancelPage(t *testing.T) {
 		}
 	}
 }
+
+// The paid page names each ticket with its seat, and its read asks for the label.
+func TestPaidPageNamesTheSeat(t *testing.T) {
+	w := newShop(t)
+	w.status, w.attend = "paid", "active"
+	inner := callHost
+	t.Cleanup(func() { callHost = inner })
+	var ticketSQL string
+	callHost = func(fn string, args, out any) error {
+		a, _ := args.(map[string]any)
+		if sql, _ := a["sql"].(string); strings.Contains(sql, "'type_name'") && strings.Contains(sql, "a.status = 'active'") && strings.Contains(sql, "a.order_id = $1") {
+			ticketSQL = sql
+			return jsonInto(`{"rows":[[[{"code":"`+shopCode+`","type_name":"Std, Stalls A-12"}]]]}`, out)
+		}
+		return inner(fn, args, out)
+	}
+	r := w.page(t, "/return/{token}", w.orderToken(), nil)
+	if r.Status != 200 || !strings.Contains(r.Body, "Open ticket: Std, Stalls A-12") {
+		t.Fatalf("%d: %s", r.Status, r.Body)
+	}
+	if !strings.Contains(ticketSQL, "t.name || coalesce(', ' || a.seat_label, '')") {
+		t.Errorf("the read does not ask for the seat label: %s", ticketSQL)
+	}
+}

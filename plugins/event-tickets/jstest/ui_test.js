@@ -9,6 +9,7 @@ const vm = require("node:vm");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "ui", "app.js"), "utf8");
 const checkinSrc = fs.readFileSync(path.join(__dirname, "..", "ui", "checkin.js"), "utf8");
+const seatingSrc = fs.readFileSync(path.join(__dirname, "..", "ui", "seating.js"), "utf8");
 
 class Node {
   constructor(tag) {
@@ -29,8 +30,9 @@ class Node {
 }
 
 const IDS = [
+  "#tab-seating", "#panel-seating", "#st-maps", "#st-new-name", "#st-add-map", "#st-ed", "#st-name", "#st-rename", "#st-sections", "#st-add-section", "#st-add-zone", "#st-block", "#st-form", "#st-grid",
   "#notice", "#tab-events", "#tab-attendees", "#tab-settings", "#panel-events", "#panel-attendees", "#panel-settings",
-  "#ev-search", "#ev-go", "#ev-state", "#ev-table", "#ev-rows", "#ev-more", "#ed", "#ed-title", "#ed-types", "#ed-add",
+  "#ev-search", "#ev-go", "#ev-state", "#ev-table", "#ev-rows", "#ev-more", "#ed", "#ed-title", "#ed-types", "#ed-map-row", "#ed-add",
   "#ed-fields", "#ed-add-field", "#ed-save-fields", "#ed-close", "#at-event", "#at-state", "#at-table", "#at-rows",
   "#wl-state", "#wl-table", "#wl-rows", "#at-more", "#at-csv", "#st-rows",
   "#tab-orders", "#panel-orders", "#ed-bundle-box", "#cp-form", "#ed-bundles", "#ed-add-bundle", "#ed-save-bundles", "#ed-split-box", "#ed-splits", "#ed-add-split", "#ed-save-splits",
@@ -55,12 +57,14 @@ async function load({ respond, timers = [], camera = { available: false } }) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   const routes = [];
+  const bodies = [];
   const document = { querySelector: (s) => els[s], createElement: (t) => new Node(t), execCommand: () => true };
   const hatamoto = {
     ready: Promise.resolve(),
     camera,
     route: async (method, p, body, query) => {
       routes.push({ method, p });
+      bodies.push(body);
       return respond(method, p);
     },
   };
@@ -73,10 +77,11 @@ async function load({ respond, timers = [], camera = { available: false } }) {
     Date: FakeDate, crypto: globalThis.crypto, Uint8Array, encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean, Array, Map, Promise,
   });
   vm.runInContext(checkinSrc, context);
+  vm.runInContext(seatingSrc, context);
   vm.runInContext(src, context);
   await new Promise((r) => setTimeout(r, 10));
   routes.length = 0;
-  return { els, routes, api: mod.exports };
+  return { els, routes, bodies, api: mod.exports };
 }
 
 // same compares values that were built inside the page's own context.
@@ -443,6 +448,67 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
     await sendBtn.handlers.click();
     same(posts, ["/admin/campaigns/count", "/admin/campaigns"]);
     assert.equal(fc.els["#cm-form"].hidden, true);
+  }
+
+  // the type row has a seats select (none + every section); a bound type shows the server's capacity
+  {
+    const maps = [{ id: 3, name: "Main Hall", sections: [
+      { id: 12, name: "Stalls", kind: "grid", tier: "Std" }, { id: 13, name: "Balcony", kind: "grid", tier: "VIP" }, { id: 14, name: "Standing", kind: "zone", tier: "" }] }];
+    const typesReply = { ok: true, types: [] };
+    const tc = await load({ respond: (m, p) => (p.endsWith("/types") ? reply(200, typesReply) : quiet(m, p)) });
+    const kidsOf = (n, tag, out = []) => { for (const c of n.children) if (c && typeof c === "object") { if (c.tag === tag) out.push(c); kidsOf(c, tag, out); } return out; };
+    tc.api.state.settings = { currency: "USD" };
+    tc.api.state.editing = { id: "e1", name: "Show", types: [], fields: [], bundles: [], splits: [], maps, mapPick: "", defaultCapacity: 50 };
+    same(tc.api.sectionOptions(maps).map((o) => o[1]), ["none", "Main Hall / Stalls (Std)", "Main Hall / Balcony (VIP)", "Main Hall / Standing"]);
+
+    // "Add types for map": one unsaved row per unbound section, a grid after its tier, a zone after itself
+    assert.equal(tc.api.addMapTypes("3"), 3);
+    same(tc.api.state.editing.types.map((t) => [t.id, t.name, t.section_id, t.price_cents, t.on_sale]), [[0, "Std", 12, 0, true], [0, "VIP", 13, 0, true], [0, "Standing", 14, 0, true]]);
+    assert.equal(tc.els["#ed-map-row"].hidden, false);
+    // a tier already used by another type falls back to the section name
+    tc.api.state.editing.types = [];
+    maps[0].sections.push({ id: 15, name: "Circle", kind: "grid", tier: "Std" }, { id: 16, name: "Pit", kind: "zone", tier: "Std" });
+    tc.api.addMapTypes("3");
+    same(tc.api.state.editing.types.map((t) => t.name), ["Std", "VIP", "Standing", "Circle", "Pit"]);
+    maps[0].sections.length = 3;
+    tc.api.state.editing.types = [];
+    tc.api.addMapTypes("3");
+    // a section that already has a type gets no second one
+    tc.api.state.editing.types = [{ id: 9, name: "Std", capacity: 200, taken: 0, waitlist: false, on_sale: true, position: 0, price_cents: 1000, section_id: 12 }];
+    assert.equal(tc.api.addMapTypes("3"), 2);
+    tc.api.state.editing.types = tc.api.state.editing.types.slice(0, 1);
+
+    // a bound type: select pre-set, capacity disabled, saving without a change sends no section
+    const bound = tc.api.typeRow(tc.api.state.editing.types[0]);
+    const [selBound] = kidsOf(bound, "select");
+    assert.equal(selBound.value, "12");
+    const [capBound] = kidsOf(bound, "input").filter((i) => i.type === "number");
+    assert.equal(capBound.disabled, true);
+    assert.equal(capBound.value, "200");
+    tc.bodies.length = 0;
+    await kidsOf(bound, "button").find((b) => b.textContent === "Save").handlers.click();
+    assert.ok(!("section_id" in tc.bodies[0]), "unchanged binding is not sent");
+
+    // a new row bound to a section sends section_id; choosing none on a bound type sends 0
+    const fresh = tc.api.typeRow({ id: 0, name: "VIP", capacity: 50, taken: 0, waitlist: false, on_sale: true, position: 1, price_cents: 0, section_id: 13 });
+    tc.bodies.length = 0;
+    await kidsOf(fresh, "button").find((b) => b.textContent === "Save").handlers.click();
+    assert.equal(tc.bodies[0].section_id, 13);
+    selBound.value = "";
+    selBound.handlers.change();
+    assert.equal(capBound.disabled, false);
+    tc.bodies.length = 0;
+    await kidsOf(bound, "button").find((b) => b.textContent === "Save").handlers.click();
+    assert.equal(tc.bodies[0].section_id, 0);
+
+    // a refusal is shown as the server worded it
+    typesReply.ok = false;
+    const refuse = await load({ respond: (m, p) => (p.endsWith("/types") ? reply(422, { error: "A seat section needs a price above zero" }) : quiet(m, p)) });
+    refuse.api.state.settings = { currency: "USD" };
+    refuse.api.state.editing = { id: "e1", name: "Show", types: [], fields: [], bundles: [], splits: [], maps, mapPick: "" };
+    const row2 = refuse.api.typeRow({ id: 0, name: "Std", capacity: 50, taken: 0, waitlist: false, on_sale: true, position: 0, price_cents: 0, section_id: 12 });
+    await kidsOf(row2, "button").find((b) => b.textContent === "Save").handlers.click();
+    assert.equal(refuse.els["#notice"].textContent, "A seat section needs a price above zero");
   }
 
   console.log("ok");

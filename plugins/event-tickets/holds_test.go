@@ -84,7 +84,7 @@ func threeTypeCart() holdIn {
 			Lines:    []cartLine{{Type: 5, Name: "GA", Qty: 2, Unit: 1000}, {Type: 6, Name: "VIP", Qty: 1, Unit: 5000}, {Type: 8, Name: "Kids", Qty: 1, Unit: 0}},
 			Subtotal: 7000, Discount: 700, Fee: 30, Total: 6330, CouponID: 4, Currency: "USD",
 		},
-		Codes: []holdCode{{5, "c1"}, {5, "c2"}, {6, "c3"}, {8, "c4"}}, Provider: "stripe", PayCode: "paycode",
+		Codes: []holdCode{{Type: 5, Code: "c1"}, {Type: 5, Code: "c2"}, {Type: 6, Code: "c3"}, {Type: 8, Code: "c4"}}, Provider: "stripe", PayCode: "paycode",
 	}
 }
 
@@ -119,7 +119,7 @@ func TestHoldCartIsOneStatement(t *testing.T) {
 		}
 	}
 	// money and ids travel as arguments, the coupon as its id
-	if got := jsonText(calls[0].args[7:]); got != `[4,7000,700,30,false,6330,"stripe","paycode"]` {
+	if got := jsonText(calls[0].args[7:]); got != `[4,7000,700,30,false,6330,"stripe","paycode",""]` {
 		t.Errorf("amount args %s", got)
 	}
 	if got := jsonText(calls[0].args[:2]); !strings.Contains(got, `"e1"`) || !strings.Contains(got, `\"unit\":5000`) {
@@ -147,13 +147,69 @@ func TestHoldCartCapsSeatsHeldPerType(t *testing.T) {
 	if strings.Count(sql, guard) != 2 {
 		t.Errorf("the share guard must be in the go check and in the full list: %d", strings.Count(sql, guard))
 	}
-	for _, want := range []string{"a.status = 'pending' AND o.status = 'pending' AND o.expires_at > now()", "NOT (lk.on_sale AND lk.taken + w.qty <= lk.capacity AND " + guard + ")"} {
+	for _, want := range []string{"a.status = 'pending' AND o.status = 'pending' AND o.expires_at > now()", "NOT (lk.on_sale AND lk.taken + w.qty <= lk.capacity AND (lk.seated OR " + guard + "))"} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("the hold statement lacks %q", want)
 		}
 	}
 	if strings.Contains(sql, "open_holds") {
 		t.Error("a flat per-event cap is back")
+	}
+}
+
+// Seated carts: the seat holds of the hold code are locked, must all be live,
+// the seats must have no live ticket, and the tickets carry seat and label while
+// the hold rows go, in the one statement. Grid types skip the held-share guard.
+func TestHoldCartConvertsSeatHolds(t *testing.T) {
+	h := newHoldHost(t)
+	in := holdIn{
+		EventID: "e1", Buyer: orderIn{Name: "Ana", Email: "ana@example.com"},
+		Q:        quote{Lines: []cartLine{{Type: 5, Name: "Std", Qty: 2, Unit: 1000}}, Subtotal: 2000, Total: 2000, Currency: "USD"},
+		Codes:    []holdCode{{Type: 5, Code: "c1", Seat: 41, Label: "Stalls A-1"}, {Type: 5, Code: "c2", Seat: 42, Label: "Stalls A-2"}},
+		Provider: "stripe", PayCode: "paycode", HoldCode: "hc",
+	}
+	if _, err := holdCart(in); err != nil {
+		t.Fatal(err)
+	}
+	calls := h.dbCalls()
+	if len(calls) != 1 {
+		t.Fatalf("%d statements, want one", len(calls))
+	}
+	sql := calls[0].sql
+	for _, want := range []string{
+		"h.code = $16 AND h.expires_at > now() AND h.seat_id IN (SELECT seat_id FROM sc) FOR UPDATE",
+		"ms.kind = 'grid') AS seated",
+		"(SELECT count(*) FROM sh) = (SELECT count(*) FROM sc)",
+		"b.seat_id IN (SELECT seat_id FROM sc)",
+		"(SELECT count(*) FROM sc WHERE sc.type_id = lk.id) = w.qty",
+		"nullif((x->>'seat')::bigint, 0), nullif(x->>'label', '')",
+		"DELETE FROM seat_holds WHERE event_id = $1 AND code = $16 AND seat_id IN (SELECT seat_id FROM sh)",
+		"AND EXISTS (SELECT 1 FROM o)",
+		"'hold_gone', ((SELECT count(*) FROM sc) > 0 AND (SELECT count(*) FROM sh) < (SELECT count(*) FROM sc))",
+		"(lk.seated OR lk.held + w.qty <= greatest(10, lk.capacity / 2))",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("the hold statement lacks %q", want)
+		}
+	}
+	if len(calls[0].args) != 16 || calls[0].args[15] != "hc" {
+		t.Errorf("$16 must be the hold code: %v", calls[0].args)
+	}
+	if got := jsonText(calls[0].args[2]); !strings.Contains(got, `\"seat\":41,\"label\":\"Stalls A-1\"`) {
+		t.Errorf("codes carry seat and label: %s", got)
+	}
+	if strings.Contains(sql, "releaseHold") || strings.Count(sql, "DELETE FROM seat_holds") != 1 {
+		t.Error("one delete of the hold rows only")
+	}
+}
+
+func TestHoldCartReportsAGoneHold(t *testing.T) {
+	h := newHoldHost(t)
+	h.hold = `{"order_id":null,"full":[],"changed":[],"coupon_gone":false,"hold_gone":true}`
+	res, err := holdCart(holdIn{EventID: "e1", Q: quote{Lines: []cartLine{{Type: 5, Qty: 1, Unit: 1000}}},
+		Codes: []holdCode{{Type: 5, Code: "c1", Seat: 41, Label: "Stalls A-1"}}, HoldCode: "hc"})
+	if err != nil || res.OrderID != nil || !res.HoldGone {
+		t.Fatalf("%+v %v", res, err)
 	}
 }
 
@@ -239,6 +295,12 @@ func TestRetakeHold(t *testing.T) {
 		"= (SELECT count(*) FROM want)", "UPDATE attendees SET status = 'pending'", "interval '15 minutes'"} {
 		if !strings.Contains(calls[0].sql, want) {
 			t.Errorf("the retake statement lacks %q", want)
+		}
+	}
+	for _, want := range []string{"b.order_id <> $1", "b.seat_id IN (SELECT seat_id FROM sd)",
+		"h.seat_id IN (SELECT seat_id FROM sd) AND h.expires_at > now()", "a.seat_id IS NOT NULL"} {
+		if !strings.Contains(calls[0].sql, want) {
+			t.Errorf("the retake statement must check seats: lacks %q", want)
 		}
 	}
 	h.retake = `false`

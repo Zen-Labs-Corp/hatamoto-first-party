@@ -23,6 +23,7 @@ type mailHost struct {
 	key      string
 	mails    []map[string]any
 	writes   []call
+	orderSQL string // the last order read
 }
 
 const twoTickets = `{"event_id":"e1","name":"Ana","email":"ana@example.com","anonymised":false,"tickets":[
@@ -55,6 +56,7 @@ func newMailHost(t *testing.T) *mailHost {
 		case strings.Contains(sql, "FROM meta"):
 			return jsonInto(`{"rows":[["`+h.key+`"]]}`, out)
 		case strings.Contains(sql, "FROM orders o WHERE"):
+			h.orderSQL = sql
 			return jsonInto(`{"rows":[[`+h.order+`]]}`, out)
 		case strings.Contains(sql, "FROM waitlist w JOIN"):
 			return jsonInto(`{"rows":[[`+h.waiting+`]]}`, out)
@@ -391,5 +393,27 @@ func TestDeliverRefundMail(t *testing.T) {
 	}
 	if h.wrote("UPDATE orders SET mailed_at") != 0 {
 		t.Error("a refund mail marks the order as confirmed-mailed")
+	}
+}
+
+// A seated ticket prints its seat after the type in the confirmation, and the
+// order read asks for the label of the confirmed and of the refunded tickets.
+func TestConfirmMailPrintsTheSeat(t *testing.T) {
+	h := newMailHost(t)
+	h.order = strings.ReplaceAll(twoTickets, `"type_name":"Standard"`, `"type_name":"Std, Stalls A-12"`)
+	m, ok, err := composeConfirm(7)
+	if err != nil || !ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	for name, body := range map[string]string{"text": m.Text, "html": m.HTML} {
+		if !strings.Contains(body, "Std, Stalls A-12") {
+			t.Errorf("%s lacks the seat label: %s", name, body)
+		}
+	}
+	if strings.Count(h.orderSQL, "t.name || coalesce(', ' || a.seat_label, '')") != 2 || !strings.Contains(h.orderSQL, "a.seat_label") {
+		t.Errorf("tickets and refunded_for must both print the seat: %s", h.orderSQL)
+	}
+	if strings.Contains(h.orderSQL, "'type_name', t.name)") || strings.Contains(h.orderSQL, "jsonb_agg(t.name ORDER") {
+		t.Error("a ticket list still prints the bare type name")
 	}
 }

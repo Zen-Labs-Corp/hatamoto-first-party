@@ -276,6 +276,22 @@ func TestMaintainRetentionBatches(t *testing.T) {
 	}
 }
 
+func TestMaintainDropsDeadSeatHolds(t *testing.T) {
+	h := newMaintainHost(t)
+	h.other = 500
+	maintain(maintainBudget)
+	c := h.first("DELETE FROM seat_holds")
+	if c == nil || !strings.Contains(c.sql, "expires_at < now()") || !strings.Contains(c.sql, "LIMIT $2") {
+		t.Fatalf("seat hold cleanup = %+v", c)
+	}
+	if n := h.count("DELETE FROM seat_holds"); n != retainBatches {
+		t.Errorf("%d batches, want %d", n, retainBatches)
+	}
+	if strings.Contains(c.sql, "attendees") || strings.Contains(c.sql, "orders") {
+		t.Error("the cleanup only touches seat_holds rows")
+	}
+}
+
 func TestMaintainOverBudgetSkipsLaterSteps(t *testing.T) {
 	h := newMaintainHost(t)
 	h.tick = 5 * time.Second // the second call already passes the 8 s budget

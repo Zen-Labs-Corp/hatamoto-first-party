@@ -30,6 +30,13 @@ type ticketType struct {
 	OnSale   bool   `json:"on_sale"`
 	Position int    `json:"position"`
 	Price    int64  `json:"price_cents"` // minor units of the currency setting
+
+	// SectionID binds the type to a seating map section, whose seats (grid) or
+	// capacity (zone) then set Capacity. Seated is true for a grid section.
+	// Unbind asks saveType to drop the binding of a type that has none sold.
+	SectionID *int64 `json:"section_id"`
+	Seated    bool   `json:"seated"`
+	Unbind    bool   `json:"-"`
 }
 
 // field is a question asked once per order.
@@ -46,6 +53,12 @@ var (
 	errTooManyTypes       = errors.New("too many ticket types")
 	errNotFound           = errors.New("not found")
 
+	// The texts of these are shown to the owner as they are.
+	errSeatedNeedsPrice = errors.New("A seat section needs a price above zero")
+	errOtherMap         = errors.New("An event uses one map; this section is on another map")
+	errSectionTaken     = errors.New("This ticket type has sold tickets; add a new type for another section")
+	errSectionUsed      = errors.New("Another ticket type of this event already uses this section")
+
 	fieldKeyRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 	nonKeyRe   = regexp.MustCompile(`[^a-z0-9]+`)
 )
@@ -57,7 +70,8 @@ var onSeatsFreed = promoteAll
 func listTypes(eventID string) ([]ticketType, error) {
 	out := []ticketType{}
 	err := dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.position, t.id), '[]'::jsonb) FROM (
-SELECT id, event_id, name, capacity, taken, waitlist, on_sale, position, price_cents FROM ticket_types WHERE event_id = $1) t`, &out, eventID)
+SELECT id, event_id, name, capacity, taken, waitlist, on_sale, position, price_cents, section_id,
+ coalesce(section_id IN (SELECT ms.id FROM map_sections ms WHERE ms.kind = 'grid'), false) AS seated FROM ticket_types WHERE event_id = $1) t`, &out, eventID)
 	return out, err
 }
 
@@ -84,9 +98,16 @@ func typeExists(id int64, eventID string) (bool, error) {
 // the capacity below the tickets already taken is refused; the check and the
 // write are one statement. The number of types per event is capped. A priced
 // type has no waitlist: seats of a priced type are only taken by paying.
+// A type bound to a section (t.SectionID) is saved by saveBound.
 func saveType(t ticketType) error {
 	if t.Price > 0 {
 		t.Waitlist = false
+	}
+	if t.SectionID != nil {
+		return saveBound(t)
+	}
+	if t.Unbind && t.ID != 0 {
+		return unbindType(t)
 	}
 	if t.ID == 0 {
 		n, err := dbExecN(`INSERT INTO ticket_types (event_id, name, capacity, waitlist, on_sale, position, price_cents)
@@ -102,7 +123,7 @@ WHERE (SELECT count(*) FROM ticket_types WHERE event_id = $1) < $7`,
 		return nil
 	}
 	n, err := dbExecN(`UPDATE ticket_types SET name = $3, capacity = $4, waitlist = $5, on_sale = $6, position = $7, price_cents = $8, touched_at = now()
-WHERE id = $1 AND event_id = $2 AND taken <= $4`,
+WHERE id = $1 AND event_id = $2 AND taken <= $4 AND section_id IS NULL`,
 		t.ID, t.EventID, t.Name, t.Capacity, t.Waitlist, t.OnSale, t.Position, t.Price)
 	if err != nil {
 		return err
@@ -119,6 +140,129 @@ WHERE id = $1 AND event_id = $2 AND taken <= $4`,
 	}
 	onSeatsFreed(t.ID)
 	return nil
+}
+
+// boundResult is what a statement that binds a type to a section answers: how
+// many rows it wrote and, per guard, whether it held, so a refusal can be named.
+type boundResult struct {
+	N       int  `json:"n"`
+	Section bool `json:"section"` // the section exists and has seats
+	Type    bool `json:"type"`    // the type exists (a change only)
+	Priced  bool `json:"priced"`  // the price is above zero
+	OneMap  bool `json:"one_map"` // the event's other bound types are on the same map
+	Free    bool `json:"free"`    // no other type of the event uses the section
+	Movable bool `json:"movable"` // the type keeps its section or has sold nothing
+	Roomy   bool `json:"roomy"`   // the section holds the tickets already taken
+	Room    bool `json:"room"`    // the event has room for one more type (an add only)
+}
+
+// refusal names the guard that stopped a bound save.
+func (r boundResult) refusal(add bool) error {
+	switch {
+	case !add && !r.Type, !r.Section:
+		return errNotFound
+	case !r.Priced:
+		return errSeatedNeedsPrice
+	case !r.OneMap:
+		return errOtherMap
+	case !r.Free:
+		return errSectionUsed
+	case !add && !r.Movable:
+		return errSectionTaken
+	case !add && !r.Roomy:
+		return errCapacityBelowTaken
+	}
+	return errTooManyTypes
+}
+
+// sectionCapacity is the capacity a section gives a type: its unblocked seats, or the zone capacity.
+const sectionCapacity = `SELECT s.id, s.map_id,
+    (CASE WHEN s.kind = 'grid' THEN (SELECT count(*) FROM seats st WHERE st.section_id = s.id AND NOT st.blocked) ELSE s.capacity END)::int AS cap
+    FROM map_sections s WHERE s.id = `
+
+// saveBound adds or changes a ticket type bound to a section. Its capacity
+// is the section's, whatever the form said, and it has no waitlist. One
+// statement checks every guard against the latest committed rows: a price
+// above zero (seats are only sold through checkout), one map per event, one
+// type per section, a section change only while nothing is sold, and tickets
+// taken within the section's capacity. The unique index on (event, section)
+// backs the checks.
+func saveBound(t ticketType) error {
+	var res boundResult
+	add := t.ID == 0
+	if add {
+		err := dbJSON(`WITH sec AS (`+sectionCapacity+`$6),
+ flags AS (SELECT EXISTS (SELECT 1 FROM sec) AND (SELECT cap FROM sec) >= 1 AS section, $5::bigint > 0 AS priced,
+    NOT EXISTS (SELECT 1 FROM ticket_types o JOIN map_sections os ON os.id = o.section_id
+        WHERE o.event_id = $1 AND os.map_id <> (SELECT map_id FROM sec)) AS one_map,
+    NOT EXISTS (SELECT 1 FROM ticket_types o WHERE o.event_id = $1 AND o.section_id = $6) AS free,
+    (SELECT count(*) FROM ticket_types WHERE event_id = $1) < $7 AS room),
+ i AS (INSERT INTO ticket_types (event_id, name, capacity, waitlist, on_sale, position, price_cents, section_id)
+    SELECT $1, $2, sec.cap, false, $3, $4, $5, sec.id FROM sec, flags
+    WHERE flags.section AND flags.priced AND flags.one_map AND flags.free AND flags.room RETURNING id)
+SELECT to_jsonb(flags) || jsonb_build_object('n', (SELECT count(*) FROM i)) FROM flags`,
+			&res, t.EventID, t.Name, t.OnSale, t.Position, t.Price, *t.SectionID, maxTypesPerEvent)
+		if err != nil {
+			return err
+		}
+		if res.N == 0 {
+			return res.refusal(true)
+		}
+		return nil
+	}
+	err := dbJSON(`WITH sec AS (`+sectionCapacity+`$7),
+ cur AS (SELECT c.id, c.section_id, c.taken FROM ticket_types c WHERE c.id = $1 AND c.event_id = $2 FOR UPDATE),
+ flags AS (SELECT EXISTS (SELECT 1 FROM cur) AS type, EXISTS (SELECT 1 FROM sec) AND (SELECT cap FROM sec) >= 1 AS section,
+    $6::bigint > 0 AS priced,
+    NOT EXISTS (SELECT 1 FROM ticket_types o JOIN map_sections os ON os.id = o.section_id
+        WHERE o.event_id = $2 AND o.id <> $1 AND os.map_id <> (SELECT map_id FROM sec)) AS one_map,
+    NOT EXISTS (SELECT 1 FROM ticket_types o WHERE o.event_id = $2 AND o.id <> $1 AND o.section_id = $7) AS free,
+    coalesce((SELECT c.section_id = $7 OR c.taken = 0 FROM cur c), false) AS movable,
+    coalesce((SELECT c.taken <= s.cap FROM cur c, sec s), false) AS roomy),
+ u AS (UPDATE ticket_types t SET name = $3, capacity = sec.cap, waitlist = false, on_sale = $4, position = $5, price_cents = $6,
+        section_id = sec.id, touched_at = now()
+    FROM sec, cur, flags WHERE t.id = cur.id AND flags.section AND flags.priced AND flags.one_map AND flags.free
+        AND flags.movable AND flags.roomy RETURNING t.id)
+SELECT to_jsonb(flags) || jsonb_build_object('n', (SELECT count(*) FROM u)) FROM flags`,
+		&res, t.ID, t.EventID, t.Name, t.OnSale, t.Position, t.Price, *t.SectionID)
+	if err != nil {
+		return err
+	}
+	if res.N == 0 {
+		return res.refusal(false)
+	}
+	onSeatsFreed(t.ID)
+	return nil
+}
+
+// unbindType saves a type and drops its section binding, which is only
+// allowed while nothing of it is sold (the seats of a ticket live in the section).
+func unbindType(t ticketType) error {
+	var res struct {
+		N     int  `json:"n"`
+		Found bool `json:"found"`
+		Sold  bool `json:"sold"` // bound and tickets taken
+	}
+	err := dbJSON(`WITH cur AS (SELECT c.id, c.section_id, c.taken FROM ticket_types c WHERE c.id = $1 AND c.event_id = $2 FOR UPDATE),
+ u AS (UPDATE ticket_types t SET name = $3, capacity = $4, waitlist = $5, on_sale = $6, position = $7, price_cents = $8,
+        section_id = NULL, touched_at = now()
+    FROM cur WHERE t.id = cur.id AND t.taken <= $4 AND (cur.section_id IS NULL OR cur.taken = 0) RETURNING t.id)
+SELECT jsonb_build_object('n', (SELECT count(*) FROM u), 'found', EXISTS (SELECT 1 FROM cur),
+    'sold', EXISTS (SELECT 1 FROM cur WHERE section_id IS NOT NULL AND taken > 0))`,
+		&res, t.ID, t.EventID, t.Name, t.Capacity, t.Waitlist, t.OnSale, t.Position, t.Price)
+	if err != nil {
+		return err
+	}
+	switch {
+	case res.N > 0:
+		onSeatsFreed(t.ID)
+		return nil
+	case !res.Found:
+		return errNotFound
+	case res.Sold:
+		return errSectionTaken
+	}
+	return errCapacityBelowTaken
 }
 
 // deleteType removes a ticket type nobody has used. One that has attendees or

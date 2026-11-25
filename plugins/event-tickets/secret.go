@@ -22,6 +22,7 @@ const (
 	kindOrder  = "order"
 	kindUnsub  = "unsub"
 	kindOpen   = "open"
+	kindHold   = "hold" // a buyer's picked seats, before checkout
 )
 
 // kindClick is the kind of the token of link n of a campaign mail.

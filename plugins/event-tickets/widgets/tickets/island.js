@@ -26,6 +26,7 @@ const COUPON_BAD = "This coupon code is not valid.";
 const CHANGED = "Prices changed. Please check the total and try again.";
 const NO_PAY = "Online payment is not available yet.";
 const PAYING = "Taking you to the payment page...";
+const HOLD_ENDED = "Your seat hold ended. Please pick your seats again.";
 
 // The only pages the browser is sent to for payment: https, no login part, no
 // port, one of the providers' checkout hosts. The server checks the same list.
@@ -82,6 +83,7 @@ function buildPayload(v) {
   if (v.provider) {
     out.provider = String(v.provider);
     out.coupon = String(v.coupon || "");
+    if (v.hold) out.hold = String(v.hold);
   }
   return out;
 }
@@ -120,6 +122,12 @@ function mount(box, env) {
   const prices = {}; // ticket type id -> price in minor units, as the server said
   let providers = []; // the payment providers the site has set up
   const counts = {}; // ticket type id -> count element of its stepper
+  const steppers = {}; // ticket type id -> its minus and plus buttons
+  // The seat picker (another widget) tells which seats the buyer holds. Their
+  // types are locked to the picked count while a hold is there.
+  const bus = { on: env.on, emit: env.emit };
+  let hold = "";
+  let seated = new Set();
   const inputs = {};
   let fields = [];
 
@@ -280,6 +288,10 @@ function mount(box, env) {
     env.delay(() => fetchQuote(mine), QUOTE_MS);
   }
 
+  function lockSteppers() {
+    for (const id of Object.keys(steppers)) for (const b of steppers[id]) b.disabled = !!hold && seated.has(id);
+  }
+
   function setQty(id, want) {
     qty[id] = clampQty(want, total() - (qty[id] || 0));
     if (counts[id]) counts[id].textContent = String(qty[id]);
@@ -310,6 +322,7 @@ function mount(box, env) {
         counts[id] = n;
         minus.addEventListener("click", () => setQty(id, (qty[id] || 0) - 1));
         plus.addEventListener("click", () => setQty(id, Math.min((qty[id] || 0) + 1, t.left)));
+        steppers[id] = [minus, plus];
         ctl.append(minus, n, plus);
       } else if (t.waitlist) {
         const join = make(doc, "button", "join", "Join waitlist");
@@ -320,6 +333,7 @@ function mount(box, env) {
       if (old) old.replaceWith(ctl);
       else row.append(ctl);
     }
+    lockSteppers();
   }
 
   function applyFields(list) {
@@ -410,7 +424,10 @@ function mount(box, env) {
   // ticket gets a link.
   function showTickets(body) {
     token = "";
+    hold = "";
     for (const id of Object.keys(qty)) setQty(id, 0);
+    lockSteppers();
+    bus.emit("event-tickets:refresh", {});
     const paths = Array.isArray(body.tickets) ? body.tickets.map(safePath).filter(Boolean) : [];
     paths.forEach((p, n) => {
       const li = make(doc, "li");
@@ -450,6 +467,7 @@ function mount(box, env) {
           token,
           trap: trap.value,
           coupon: couponInput.value,
+          hold,
           provider,
         })),
       });
@@ -470,7 +488,13 @@ function mount(box, env) {
         token = ""; // fresh seats and prices, and the totals again
         await getToken();
         scheduleQuote();
-        say(body && body.error === "coupon" ? COUPON_BAD : body && body.error === "changed" ? CHANGED : SOLD_OUT);
+        const lost = !!body && body.error === "hold";
+        if (lost) {
+          hold = "";
+          lockSteppers();
+          bus.emit("event-tickets:refresh", {});
+        }
+        say(lost ? HOLD_ENDED : body && body.error === "coupon" ? COUPON_BAD : body && body.error === "changed" ? CHANGED : SOLD_OUT);
       } else if (r.status === 404) {
         closeForm();
       } else {
@@ -534,6 +558,19 @@ function mount(box, env) {
   }
 
   send.addEventListener("click", () => submit(""));
+  bus.on("event-tickets:seats", (e) => {
+    const d = (e && e.detail) || {};
+    hold = typeof d.hold === "string" ? d.hold : "";
+    seated = new Set(Array.isArray(d.seated) ? d.seated.map(String) : []);
+    for (const id of seated) {
+      qty[id] = clampQty((d.counts || {})[id] || 0, total() - (qty[id] || 0));
+      if (counts[id]) counts[id].textContent = String(qty[id]);
+    }
+    lockSteppers();
+    scheduleQuote();
+  });
+  bus.on("event-tickets:pay", () => nameInput.focus());
+  bus.emit("event-tickets:hello", {});
   getToken();
   return { submit, checkout, setQty, nameInput, emailInput, inputs, trap, send, status, links, qty, rows };
 }
@@ -545,10 +582,12 @@ if (typeof document !== "undefined") {
     now: () => Date.now(),
     delay: (fn, ms) => setTimeout(fn, ms),
     go: (u) => location.assign(u),
+    emit: (name, detail) => document.dispatchEvent(new CustomEvent(name, { detail })),
+    on: (name, fn) => document.addEventListener(name, fn),
   };
   for (const box of document.querySelectorAll(".hm-event-tickets_tickets")) mount(box, env);
 }
 
 if (typeof module !== "undefined") module.exports = {
-    BOOKED, WAITLISTED, SOLD_OUT, CHECK, CLOSED, LATER, COUPON_BAD, CHANGED, NO_PAY, clampQty, buildPayload, messageFor, safePath, redirectOK, swapRoute, mount,
+    BOOKED, WAITLISTED, SOLD_OUT, CHECK, CLOSED, LATER, COUPON_BAD, CHANGED, NO_PAY, HOLD_ENDED, clampQty, buildPayload, messageFor, safePath, redirectOK, swapRoute, mount,
   };

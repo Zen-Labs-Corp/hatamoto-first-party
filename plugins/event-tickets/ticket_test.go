@@ -20,6 +20,7 @@ type ticketHost struct {
 	entity    string
 	entityErr error
 	lookups   []string
+	lookupSQL string
 }
 
 const holderRow = `{"status":"active","event_id":"e1","holder":"Ana <b>","type_name":"Standard","event_name":"Gig (stored)"}`
@@ -45,6 +46,7 @@ func newTicketHost(t *testing.T) *ticketHost {
 		case strings.Contains(sql, "FROM meta"):
 			return jsonInto(`{"rows":[["`+h.key+`"]]}`, out)
 		case strings.Contains(sql, "FROM attendees a"):
+			h.lookupSQL = sql
 			h.lookups = append(h.lookups, a["args"].([]any)[0].(string))
 			return jsonInto(`{"rows":[[`+h.ticket+`]]}`, out)
 		}
@@ -215,5 +217,18 @@ func TestTicketPageStatusWords(t *testing.T) {
 		if hasQR := strings.Contains(r.Body, "data:image"); hasQR != (status == "active") {
 			t.Errorf("%s: QR on the page = %v", status, hasQR)
 		}
+	}
+}
+
+// The ticket page shows the seat with the type, and the lookup reads the label.
+func TestTicketPageShowsTheSeat(t *testing.T) {
+	h := newTicketHost(t)
+	h.ticket = strings.Replace(holderRow, `"type_name":"Standard"`, `"type_name":"Std, Stalls A-12"`, 1)
+	r := getTicket(t, h.token(t, kindTicket))
+	if r.Status != 200 || !strings.Contains(r.Body, "Std, Stalls A-12") {
+		t.Fatalf("%d: %s", r.Status, r.Body)
+	}
+	if !strings.Contains(h.lookupSQL, "t.name || coalesce(', ' || a.seat_label, '') AS type_name") {
+		t.Errorf("lookup does not read the seat label: %s", h.lookupSQL)
 	}
 }

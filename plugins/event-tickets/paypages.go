@@ -143,7 +143,7 @@ func paidPage(key []byte, orderID int64, back []pageLink) sdk.HTTPResponse {
 		Code     string `json:"code"`
 		TypeName string `json:"type_name"`
 	}
-	err := dbJSON(`SELECT coalesce(jsonb_agg(jsonb_build_object('code', a.code, 'type_name', t.name) ORDER BY a.id), '[]'::jsonb)
+	err := dbJSON(`SELECT coalesce(jsonb_agg(jsonb_build_object('code', a.code, 'type_name', `+ticketNameSQL+`) ORDER BY a.id), '[]'::jsonb)
 FROM attendees a JOIN ticket_types t ON t.id = a.type_id WHERE a.order_id = $1 AND a.status = 'active'`, &tickets, orderID)
 	if err != nil {
 		return plain(http.StatusServiceUnavailable, "unavailable")

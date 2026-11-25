@@ -45,7 +45,7 @@ func serveAttendees(u *sdk.HTTPUser, eventID string, query map[string][]string) 
 	var attendees, waiting []json.RawMessage
 	err = dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id), '[]'::jsonb) FROM (
 SELECT a.id, a.order_id, CASE WHEN o.anonymised_at IS NULL THEN o.name ELSE '(removed)' END AS name, o.email,
-  t.name AS type_name, a.status, a.created_at, o.mailed_at, o.answers
+  `+ticketNameSQL+` AS type_name, a.status, a.created_at, o.mailed_at, o.answers
 FROM attendees a JOIN orders o ON o.id = a.order_id JOIN ticket_types t ON t.id = a.type_id
 WHERE a.event_id = $1 ORDER BY a.id LIMIT $2 OFFSET $3) x`, &attendees, eventID, attendeesPerPage+1, offset)
 	if err != nil {

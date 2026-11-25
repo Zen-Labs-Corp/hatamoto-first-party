@@ -105,7 +105,7 @@ FROM attendees WHERE event_id = $1 AND status = 'active'`, &counts, eventID)
 		}
 		err = dbJSON(`SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.name, x.id), '[]'::jsonb) FROM (
 SELECT a.id, CASE WHEN o.anonymised_at IS NULL THEN o.name ELSE '(removed)' END AS name,
-  t.name AS type_name, a.status, a.checked_in_at, a.checked_in_by
+  `+ticketNameSQL+` AS type_name, a.status, a.checked_in_at, a.checked_in_by
 FROM attendees a JOIN orders o ON o.id = a.order_id JOIN ticket_types t ON t.id = a.type_id
 WHERE a.event_id = $1 AND ((o.anonymised_at IS NULL AND strpos(lower(o.name), lower($2)) > 0)`+byCode+`)
 ORDER BY o.name, a.id LIMIT $3) x`, &matches, args...)
@@ -156,7 +156,7 @@ func serveCheckinScan(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 	err := dbJSON(`WITH u AS (UPDATE attendees a SET checked_in_at = now(), checked_in_by = $3, checked_in_nonce = $4 FROM orders o
 WHERE `+where+` AND a.event_id = $2 AND a.status = 'active' AND a.checked_in_at IS NULL
   AND o.id = a.order_id AND o.anonymised_at IS NULL
-RETURNING a.id, o.name, (SELECT t.name FROM ticket_types t WHERE t.id = a.type_id) AS type_name, a.checked_in_at, a.checked_in_by)
+RETURNING a.id, o.name, (SELECT t.name FROM ticket_types t WHERE t.id = a.type_id) || coalesce(', ' || a.seat_label, '') AS type_name, a.checked_in_at, a.checked_in_by)
 SELECT coalesce((SELECT to_jsonb(u) FROM u), 'null'::jsonb)`, &done, key, eventID, u.ID, nonce)
 	if err != nil {
 		return unavailable()
@@ -166,7 +166,7 @@ SELECT coalesce((SELECT to_jsonb(u) FROM u), 'null'::jsonb)`, &done, key, eventI
 	}
 	var s *ticketState
 	err = dbJSON(`SELECT coalesce((SELECT to_jsonb(x) FROM (
-SELECT a.id, CASE WHEN o.anonymised_at IS NULL THEN o.name ELSE '(removed)' END AS name, t.name AS type_name,
+SELECT a.id, CASE WHEN o.anonymised_at IS NULL THEN o.name ELSE '(removed)' END AS name, `+ticketNameSQL+` AS type_name,
   a.checked_in_at, a.checked_in_by, coalesce(a.checked_in_nonce, '') AS checked_in_nonce, a.event_id, a.status, o.anonymised_at IS NOT NULL AS anonymised
 FROM attendees a JOIN orders o ON o.id = a.order_id JOIN ticket_types t ON t.id = a.type_id
 WHERE `+where+`) x), 'null'::jsonb)`, &s, key)

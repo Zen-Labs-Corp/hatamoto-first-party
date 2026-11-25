@@ -35,6 +35,7 @@ type checkinHost struct {
 	matches  string
 	queries  []call
 	dbErr    error
+	stmts    []string // scan statements: the guarded update and the state read
 }
 
 func newCheckinHost(t *testing.T) *checkinHost {
@@ -63,6 +64,7 @@ func newCheckinHost(t *testing.T) *checkinHost {
 		switch {
 		case strings.HasPrefix(sql, "WITH u AS (UPDATE attendees a SET checked_in_at"):
 			h.updates++
+			h.stmts = append(h.stmts, sql)
 			if h.dbErr != nil {
 				return h.dbErr
 			}
@@ -75,6 +77,7 @@ func newCheckinHost(t *testing.T) *checkinHost {
 			return cell(view(r))
 		case strings.Contains(sql, "AS anonymised"):
 			h.selects++
+			h.stmts = append(h.stmts, sql)
 			if r := find(); r != nil {
 				return cell(view(r))
 			}
@@ -351,5 +354,26 @@ func TestCheckinState(t *testing.T) {
 	get(t, "/admin/events/{id}/checkin", "e1", editor, map[string][]string{"q": {strings.Repeat("a", 65)}})
 	if len(h.queries) != 1 {
 		t.Error("a query over 64 characters runs no search")
+	}
+}
+
+// Search, scan and the state of an already scanned ticket all name the seat.
+func TestCheckinSurfacesPrintTheSeat(t *testing.T) {
+	h := newCheckinHost(t)
+	tok := h.token(t, kindTicket, 0)
+	scan(t, "e1", scanBody(tok)) // ok: the update
+	scan(t, "e1", scanBody(tok)) // already: the update finds nothing, the state is read
+	get(t, "/admin/events/{id}/checkin", "e1", editor, map[string][]string{"q": {"an"}})
+	if len(h.stmts) != 3 || len(h.queries) < 2 { // update, update that finds it done, state read
+		t.Fatalf("%d scan statements, %d queries", len(h.stmts), len(h.queries))
+	}
+	seat := "t.name || coalesce(', ' || a.seat_label, '') AS type_name"
+	for _, sql := range []string{h.stmts[2], h.queries[len(h.queries)-1].sql} {
+		if !strings.Contains(sql, seat) {
+			t.Errorf("no seat label in: %s", sql)
+		}
+	}
+	if !strings.Contains(h.stmts[0], "(SELECT t.name FROM ticket_types t WHERE t.id = a.type_id) || coalesce(', ' || a.seat_label, '') AS type_name") {
+		t.Errorf("the scan does not return the seat: %s", h.stmts[0])
 	}
 }

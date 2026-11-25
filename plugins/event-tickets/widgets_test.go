@@ -77,7 +77,7 @@ func readWidget(t *testing.T, name, file string) string {
 func TestWidgetsValid(t *testing.T) {
 	dirs := widgetDirs(t)
 	slices.Sort(dirs)
-	if want := []string{"ticket-type", "tickets"}; !slices.Equal(dirs, want) {
+	if want := []string{"seat-picker", "ticket-type", "tickets"}; !slices.Equal(dirs, want) {
 		t.Fatalf("widgets = %v, want %v", dirs, want)
 	}
 	if len(dirs) > 16 {
