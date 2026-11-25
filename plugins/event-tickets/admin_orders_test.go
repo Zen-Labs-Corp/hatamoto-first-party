@@ -321,3 +321,24 @@ func TestRefundClaimIsReleasedWhenTheProviderFails(t *testing.T) {
 		t.Error("the claim stays after a failed refund")
 	}
 }
+
+// Cancelling a paid order moves no money: it must stay refundable, and only a
+// cancelled order that was paid (a never-paid one has nothing to give back).
+func TestRefundOfACancelledPaidOrder(t *testing.T) {
+	const cancelled = `{"status":"cancelled","provider":"stripe","pay_code":"paycode","payment_ref":"pi_1","total_cents":2030,"refunded_cents":0,"currency":"USD","paid":%t}`
+	for _, c := range []struct {
+		paid bool
+		code int
+	}{{true, 200}, {false, 409}} {
+		h := newOrderHost(t)
+		h.order = strings.Replace(cancelled, "%t", jsonText(c.paid), 1)
+		if code, _ := post(t, refundPattern, "42", owner, `{"amount_cents":2030}`); code != c.code || (c.code == 409) != (len(h.fetches) == 0) {
+			t.Errorf("paid %v: %d, %d provider calls", c.paid, code, len(h.fetches))
+		}
+		for _, prefix := range []string{"WITH o AS (UPDATE orders SET refund_claimed_at", "WITH o AS (UPDATE orders SET refunded_cents"} {
+			if st := h.stmt(prefix); c.paid && (st == nil || !strings.Contains(st.sql, "status = 'cancelled' AND paid_at IS NOT NULL")) {
+				t.Errorf("%s: statement lets a cancelled paid order through? %+v", prefix, st)
+			}
+		}
+	}
+}

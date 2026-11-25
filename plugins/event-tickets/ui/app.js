@@ -408,7 +408,7 @@ function orderTickets(o) {
 function orderStatus(o) {
   const names = { paid: "Paid", pending: "Waiting for payment", confirmed: "Confirmed", refunded: "Refunded", cancelled: "Cancelled", expired: "Expired" };
   let text = names[o.status] || o.status;
-  if (o.status === "paid" && o.refunded_cents > 0) text += ` (${formatMoney(o.refunded_cents, o.currency)} refunded)`;
+  if ((o.status === "paid" || o.status === "cancelled") && o.refunded_cents > 0) text += ` (${formatMoney(o.refunded_cents, o.currency)} refunded)`;
   if (o.problem === "amount_mismatch") text += ". The amount paid did not match: check it at the provider.";
   if (o.problem === "refund_failed") text += ". A refund failed: refund it at the provider.";
   return text;
@@ -417,7 +417,8 @@ function orderStatus(o) {
 function orderRow(o) {
   const owner = Boolean(state.settings.can_refund);
   const left = o.total_cents - o.refunded_cents;
-  const canRefund = owner && o.status === "paid" && PROVIDERS[o.provider] && left > 0;
+  // a cancelled order that was paid still holds money the owner can give back
+  const canRefund = owner && (o.status === "paid" || (o.status === "cancelled" && Boolean(o.paid_at))) && PROVIDERS[o.provider] && left > 0;
   const canCancel = owner && ["paid", "pending", "confirmed"].includes(o.status);
   const actions = el("td", { className: "actions" });
   if (canRefund) actions.append(button("Refund", () => openRefund(o)));

@@ -96,13 +96,14 @@ type refundable struct {
 	Total      int64  `json:"total_cents"`
 	Refunded   int64  `json:"refunded_cents"`
 	Currency   string `json:"currency"`
+	Paid       bool   `json:"paid"` // paid_at is set
 }
 
 func readRefundable(id int64) (*refundable, error) {
 	var o *refundable
 	err := dbJSON(`SELECT coalesce((SELECT jsonb_build_object('status', status, 'provider', coalesce(provider, ''),
     'pay_code', coalesce(pay_code, ''), 'payment_ref', coalesce(payment_ref, ''), 'total_cents', total_cents, 'refunded_cents', refunded_cents,
-    'currency', coalesce(currency, '')) FROM orders WHERE id = $1), 'null'::jsonb)`, &o, id)
+    'currency', coalesce(currency, ''), 'paid', paid_at IS NOT NULL) FROM orders WHERE id = $1), 'null'::jsonb)`, &o, id)
 	return o, err
 }
 
@@ -115,10 +116,16 @@ const refundClaimTTL = "2 minutes"
 func claimRefund(id, refunded int64) (bool, error) {
 	var ok bool
 	err := dbJSON(`WITH o AS (UPDATE orders SET refund_claimed_at = now()
-    WHERE id = $1 AND status = 'paid' AND refunded_cents = $2
+    WHERE id = $1 AND (status = 'paid' OR (status = 'cancelled' AND paid_at IS NOT NULL)) AND refunded_cents = $2
     AND (refund_claimed_at IS NULL OR refund_claimed_at < now() - interval '`+refundClaimTTL+`') RETURNING id)
 SELECT to_jsonb(EXISTS (SELECT 1 FROM o))`, &ok, id, refunded)
 	return ok, err
+}
+
+// refundableStatus: a paid order, or one cancelled after it was paid (the
+// cancel moves no money, so what is left must stay refundable).
+func refundableStatus(o *refundable) bool {
+	return o.Status == "paid" || (o.Status == "cancelled" && o.Paid)
 }
 
 // serveRefund answers POST /admin/orders/{id}/refund. The provider is asked
@@ -148,7 +155,7 @@ func serveRefund(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 	switch {
 	case o == nil:
 		return failReply(http.StatusNotFound, "not found")
-	case o.Status != "paid" || (o.Provider != "stripe" && o.Provider != "paypal") || o.PaymentRef == "":
+	case !refundableStatus(o) || (o.Provider != "stripe" && o.Provider != "paypal") || o.PaymentRef == "":
 		return failReply(http.StatusConflict, "this order cannot be refunded")
 	case b.Amount < 1 || b.Amount > o.Total-o.Refunded:
 		return failReply(http.StatusBadRequest, "amount must be between 1 and what is left to refund")
@@ -180,7 +187,7 @@ func serveRefund(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 	}
 	err = dbJSON(`WITH o AS (UPDATE orders SET refunded_cents = refunded_cents + $2,
     status = CASE WHEN refunded_cents + $2 = total_cents THEN 'refunded' ELSE status END, refund_claimed_at = NULL
-    WHERE id = $1 AND status = 'paid' AND refunded_cents = $3 AND refunded_cents + $2 <= total_cents
+    WHERE id = $1 AND (status = 'paid' OR (status = 'cancelled' AND paid_at IS NOT NULL)) AND refunded_cents = $3 AND refunded_cents + $2 <= total_cents
     RETURNING id, status, refunded_cents),
  a AS (UPDATE attendees SET status = 'refunded' WHERE order_id IN (SELECT id FROM o) AND status = 'active'
     AND ($4::boolean OR id IN (SELECT jsonb_array_elements_text($5::jsonb)::bigint)) RETURNING type_id),

@@ -181,6 +181,19 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
     assert.equal(rows[1].children[6].children.map((b) => b.textContent).join(), can ? "Cancel" : "", "a free order can only be cancelled");
   }
 
+  // cancelling a paid order keeps the money recoverable: Refund stays, until it is paid back or the order never was paid
+  const paidThenCancelled = { id: 1043, name: "Cy", email: "cy@example.com", status: "cancelled", provider: "stripe", total_cents: 11200, refunded_cents: 0,
+    currency: "USD", lines: [], tickets: [], paid_at: "2027-01-01T12:00:00Z" };
+  const allOrders = orders.orders;
+  for (const [o, want] of [[paidThenCancelled, ["Refund"]], [{ ...paidThenCancelled, refunded_cents: 11200 }, []], [{ ...paidThenCancelled, paid_at: null }, []]]) {
+    orders.orders = [o];
+    ctx = await orderApp(true);
+    ctx.els["#tab-orders"].handlers.click();
+    await new Promise((r) => setTimeout(r, 10));
+    same(ctx.els["#or-rows"].children[0].children[6].children.map((b) => b.textContent), want);
+  }
+  orders.orders = allOrders;
+
   // a refund is two clicks and sends the amount in minor units
   const posts = [];
   ctx = await load({
