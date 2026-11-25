@@ -94,7 +94,7 @@ func serveSeatHold(r sdk.HTTPRequest) sdk.HTTPResponse {
 	} else if code, err = newCode(); err != nil {
 		return failReply(http.StatusServiceUnavailable, laterError)
 	}
-	res, err := holdSeat(b.Event, code, b.Section, b.Row, b.Num)
+	res, err := holdSeat(b.Event, code, b.Section, b.Row, b.Num, maxOrdersPerHour)
 	if err != nil {
 		return failReply(http.StatusServiceUnavailable, laterError)
 	}

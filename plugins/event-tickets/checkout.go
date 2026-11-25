@@ -410,7 +410,7 @@ func seatCart(eventID, currency, code string, types []ticketType, lines []cartLi
 				break
 			}
 			for _, pk := range picks {
-				r, err := holdSeat(eventID, p.Code, sec.ID, pk[0], pk[1])
+				r, err := holdSeat(eventID, p.Code, sec.ID, pk[0], pk[1], 0) // no ceiling: bounded by the order ceilings
 				if err != nil {
 					return p, nil, err
 				}

@@ -9,7 +9,7 @@ import (
 func TestHoldSeatStatement(t *testing.T) {
 	h := newSeatHost(t)
 	h.cells = []string{`{"status":"held","seat_id":42,"label":"Stalls A-12","expires_in":599}`}
-	res, err := holdSeat("e1", "c0de", 9, 0, 12)
+	res, err := holdSeat("e1", "c0de", 9, 0, 12, maxOrdersPerHour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,15 +28,18 @@ func TestHoldSeatStatement(t *testing.T) {
 		"ON CONFLICT (event_id, seat_id) DO UPDATE",
 		"WHERE seat_holds.expires_at <= now()", // only an expired row is taken over
 		"t.on_sale", "NOT st.blocked", "ms.kind = 'grid'", "t.event_id = $1",
-		"a.status IN ('pending', 'active')",    // a sold seat is never held
-		"h.code = $2 AND h.expires_at > now()", // the code's live seats
-		"< $6",                                 // seats per code
-		"count(DISTINCT h.code)",               // codes started this hour
-		"created_at > now() - interval '1 hour'",
-		"< $7",                            // per-event ceiling on new codes
+		"a.status IN ('pending', 'active')",              // a sold seat is never held
+		"h.code = $2 AND h.expires_at > now()",           // the code's live seats
+		"< $6",                                           // seats per code
+		"count(DISTINCT h.code)",                         // codes with a live hold
+		"h.event_id = $1 AND h.expires_at > now()) < $7", // only live codes count
+		"$7 = 0 OR NOT EXISTS (SELECT 1 FROM seat_holds h WHERE h.event_id = $1 AND h.code = $2 AND h.expires_at > now())", // 0 = no ceiling; only a live code is exempt
 		"min(h.expires_at)",               // a later seat inherits the first seat's window
 		"NOT EXISTS (SELECT 1 FROM mine)", // holding it again changes nothing
 	)
+	if strings.Contains(sql, "created_at > now()") {
+		t.Error("expired holds must not count towards the ceiling")
+	}
 	if strings.Contains(sql, "greatest(") || strings.Contains(sql, "hs.section_id") {
 		t.Error("a section-wide cap turns partial hoarding into a lockout")
 	}
@@ -58,7 +61,7 @@ func TestHoldSeatStatuses(t *testing.T) {
 	for _, status := range []string{"taken", "full", "gone"} {
 		h := newSeatHost(t)
 		h.cells = []string{`{"status":"` + status + `","seat_id":0,"label":"","expires_in":0}`}
-		res, err := holdSeat("e1", "c0de", 9, 0, 1)
+		res, err := holdSeat("e1", "c0de", 9, 0, 1, maxOrdersPerHour)
 		if err != nil || res.Status != status {
 			t.Errorf("%s: %+v, %v", status, res, err)
 		}

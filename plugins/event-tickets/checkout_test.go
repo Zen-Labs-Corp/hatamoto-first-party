@@ -687,6 +687,9 @@ func TestCheckoutBestAvailable(t *testing.T) {
 	if !same(claims[0].args[2], 3) || !same(claims[0].args[3], 0) || !same(claims[0].args[4], 2) || !same(claims[1].args[4], 3) {
 		t.Errorf("claimed %v %v", claims[0].args, claims[1].args)
 	}
+	if claims[0].args[6] != 0 || claims[1].args[6] != 0 {
+		t.Errorf("best-available claims must pass no new-code ceiling: %v %v", claims[0].args[6], claims[1].args[6])
+	}
 	holds := h.with("INSERT INTO orders")
 	var codes []holdCode
 	_ = json.Unmarshal([]byte(holds[0].args[2].(string)), &codes)
