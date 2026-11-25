@@ -173,7 +173,7 @@ func TestConfirmMailEscapesAndSkips(t *testing.T) {
 
 func TestWaitlistMails(t *testing.T) {
 	h := newMailHost(t)
-	h.waiting = `{"event_id":"e1","name":"Bo","email":"bo@example.com","code":"0123456789abcdef0123456789abcdef","status":"waiting","type_name":"Standard","expires_at":""}`
+	h.waiting = `{"event_id":"e1","name":"Bo","email":"bo@example.com","code":"0123456789abcdef0123456789abcdef","status":"waiting","type_name":"Standard","expires_at":"","event_open":true}`
 	m, ok, err := composeWaitlist(kindWaitlistJoined, 3)
 	if err != nil || !ok || !strings.Contains(m.Text, "on the waitlist") || !strings.Contains(m.Text, "/leave") || strings.Contains(m.Text, "/claim") {
 		t.Fatalf("%v %v %+v", ok, err, m)
@@ -186,6 +186,12 @@ func TestWaitlistMails(t *testing.T) {
 	if !ok || !strings.Contains(m.Text, "/claim") || !strings.Contains(m.Text, "/leave") || !strings.Contains(m.Text, "2027-02-01 10:00 UTC") {
 		t.Errorf("offer mail: %+v", m)
 	}
+	closed := strings.Replace(h.waiting, `"event_open":true`, `"event_open":false`, 1)
+	h.waiting = closed
+	if _, ok, _ := composeWaitlist(kindWaitlistOffer, 3); ok {
+		t.Error("no offer mail for an event that is over or cancelled")
+	}
+	h.waiting = strings.Replace(closed, `"event_open":false`, `"event_open":true`, 1)
 	tok := regexp.MustCompile(`/waitlist/([0-9a-f]{32}\.[0-9a-f]{32})/claim`).FindStringSubmatch(m.Text)
 	if tok == nil {
 		t.Fatal("no signed claim link")

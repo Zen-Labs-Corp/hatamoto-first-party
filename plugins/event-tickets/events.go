@@ -192,14 +192,18 @@ func snapshotEvent(e event) error {
 	if !e.Start.IsZero() {
 		starts = e.Start.UTC().Format(time.RFC3339)
 	}
-	if e.HasEnd {
-		ends = e.End.UTC().Format(time.RFC3339)
+	status := e.Status
+	if !e.Start.IsZero() {
+		ends = e.endsAt().UTC().Format(time.RFC3339) // an all-day event lasts to the end of its day
+	}
+	if e.EventStatus == "cancelled" || e.EventStatus == "postponed" {
+		status = e.EventStatus // the snapshot is what the waitlist statements read
 	}
 	return dbExec(`INSERT INTO events (entity_id, schema_slug, name, starts_at, ends_at, status)
 VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6)
 ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, name = EXCLUDED.name,
     starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, status = EXCLUDED.status, seen_at = now()`,
-		e.ID, e.SchemaSlug, e.Name, starts, ends, e.Status)
+		e.ID, e.SchemaSlug, e.Name, starts, ends, status)
 }
 
 // hasTypes reports whether the event has any ticket type.

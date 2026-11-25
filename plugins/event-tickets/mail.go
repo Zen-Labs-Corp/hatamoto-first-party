@@ -225,13 +225,15 @@ type waitlistMail struct {
 	Status    string `json:"status"`
 	TypeName  string `json:"type_name"`
 	ExpiresAt string `json:"expires_at"`
+	EventOpen bool   `json:"event_open"`
 }
 
 func readWaitlistMail(id int64) (*waitlistMail, error) {
 	var w *waitlistMail
 	err := dbJSON(`SELECT coalesce((SELECT jsonb_build_object('event_id', w.event_id, 'name', w.name, 'email', w.email,
     'code', w.code, 'status', w.status, 'type_name', t.name,
-    'expires_at', coalesce(to_char(w.expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI'), ''))
+    'expires_at', coalesce(to_char(w.expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI'), ''),
+    'event_open', `+eventOpenSQL("w.event_id")+`)
 FROM waitlist w JOIN ticket_types t ON t.id = w.type_id WHERE w.id = $1), 'null'::jsonb)`, &w, id)
 	return w, err
 }
@@ -273,7 +275,7 @@ func composeWaitlist(kind string, waitID int64) (m outMail, ok bool, err error) 
 		return outMail{}, false, err
 	}
 	if (kind == kindWaitlistJoined && w.Status != "waiting" && w.Status != "offered") ||
-		(kind == kindWaitlistOffer && w.Status != "offered") {
+		(kind == kindWaitlistOffer && (w.Status != "offered" || !w.EventOpen)) {
 		return outMail{}, false, nil
 	}
 	key, err := hmacSecret()

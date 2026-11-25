@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 )
@@ -67,7 +68,7 @@ func newWaitHost(t *testing.T) *waitHost {
 			return cell(`[]`)
 		case strings.Contains(sql, "FROM orders o WHERE"):
 			return cell(twoTickets)
-		case strings.HasPrefix(sql, "INSERT INTO mail_queue"), strings.HasPrefix(sql, "UPDATE orders SET mailed_at"):
+		case strings.HasPrefix(sql, "INSERT INTO mail_queue"), strings.HasPrefix(sql, "UPDATE orders SET mailed_at"), strings.HasPrefix(sql, "INSERT INTO events"):
 			return nil
 		}
 		t.Errorf("unexpected host call %q %q", fn, sql)
@@ -329,4 +330,42 @@ func TestLeaveStatementDoesNotReadNewStatusForHeld(t *testing.T) {
 	if strings.Contains(sql, "status = 'offered' AS held") || !strings.Contains(sql, "offered_at IS NOT NULL AS held") {
 		t.Errorf("held must be derived from offered_at, got %s", sql)
 	}
+}
+
+// Offers, offer mail and claims need an open event in the snapshot.
+func TestWaitlistStatementsRequireAnOpenEvent(t *testing.T) {
+	h := newWaitHost(t)
+	h.promote = []string{`7`}
+	promoteNext(1)
+	if _, _, err := claimOffer("c", "t"); err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"SET status = 'offered'", "SET status = 'claimed'"} {
+		sql := ""
+		for _, c := range h.calls {
+			if strings.Contains(c.sql, marker) {
+				sql = c.sql
+			}
+		}
+		if !strings.Contains(sql, "ev.status = 'published'") || !strings.Contains(sql, "coalesce(ev.ends_at, ev.starts_at) > now()") {
+			t.Errorf("%s does not check the event is open: %s", marker, sql)
+		}
+	}
+}
+
+func TestSnapshotRecordsACancelledEvent(t *testing.T) {
+	h := newWaitHost(t)
+	e := event{ID: "e1", Status: "published", EventStatus: "cancelled", Start: time.Date(2027, 1, 1, 10, 0, 0, 0, time.UTC)}
+	if err := snapshotEvent(e); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range h.calls {
+		if strings.HasPrefix(c.sql, "INSERT INTO events") {
+			if c.args[5] != "cancelled" {
+				t.Errorf("status = %v, want cancelled", c.args[5])
+			}
+			return
+		}
+	}
+	t.Error("no snapshot written")
 }

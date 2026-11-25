@@ -16,6 +16,7 @@ type maintainHost struct {
 	settings string
 	expired  string // types the expiry statement frees, as a jsonb cell
 	expiries int    // expiry batches that still find something
+	closed   string // waitlist entries the closed-event statement ends
 	stale    string // event ids with an old snapshot
 	entities map[string]string
 	orders   []int64 // rows_affected of each orders batch in turn
@@ -28,7 +29,7 @@ type maintainHost struct {
 }
 
 func newMaintainHost(t *testing.T) *maintainHost {
-	h := &maintainHost{settings: `{}`, expired: `[]`, stale: `[]`, entities: map[string]string{},
+	h := &maintainHost{settings: `{}`, expired: `[]`, closed: `0`, stale: `[]`, entities: map[string]string{},
 		clock: time.Date(2027, 1, 1, 12, 0, 0, 0, time.UTC)}
 	now = func() time.Time { return h.clock }
 	origFreed := onSeatsFreed
@@ -62,6 +63,8 @@ func newMaintainHost(t *testing.T) *maintainHost {
 			}
 			h.expiries--
 			return cell(h.expired)
+		case strings.HasPrefix(sql, "WITH c AS (UPDATE waitlist SET status = 'expired'"):
+			return cell(h.closed)
 		case strings.Contains(sql, "SELECT DISTINCT event_id FROM ticket_types"):
 			return cell(h.stale)
 		case strings.HasPrefix(sql, "UPDATE orders SET name"):
@@ -89,6 +92,15 @@ func (h *maintainHost) count(prefix string) int {
 		}
 	}
 	return n
+}
+
+func (h *maintainHost) order(prefix string) int {
+	for i, c := range h.calls {
+		if strings.HasPrefix(c.sql, prefix) {
+			return i
+		}
+	}
+	return -1
 }
 
 func (h *maintainHost) first(prefix string) *call {
@@ -271,5 +283,26 @@ func TestMaintainCronSwallowsEveryError(t *testing.T) {
 	}
 	if h.count("UPDATE orders SET name") != 1 {
 		t.Errorf("a failing step does not stop the next one: %d", h.count("UPDATE orders SET name"))
+	}
+}
+
+func TestMaintainClosesWaitlistsOfClosedEventsWithoutMail(t *testing.T) {
+	h := newMaintainHost(t)
+	maintain(maintainBudget)
+	c := h.first("WITH c AS (UPDATE waitlist SET status = 'expired'")
+	if c == nil {
+		t.Fatal("no statement ends the waitlists of closed events")
+	}
+	for _, want := range []string{"status IN ('waiting', 'offered')", "ev.status = 'published'", "coalesce(ev.ends_at, ev.starts_at) > now()",
+		"offered_at IS NOT NULL AS held", "taken = taken - x.n"} {
+		if !strings.Contains(c.sql, want) {
+			t.Errorf("close statement lacks %q", want)
+		}
+	}
+	if h.count("INSERT INTO mail_queue") != 0 || len(h.freed) != 0 {
+		t.Error("closing a waitlist mails nobody and offers no seat")
+	}
+	if i, j := h.order("WITH c AS"), h.order("WITH e AS"); i < 0 || j < 0 || i > j {
+		t.Error("closed events are cleared before offers expire and promote")
 	}
 }

@@ -18,13 +18,22 @@ const (
 // never given twice. Claiming turns the offer into an order and leaves the
 // counter alone: the seat is already counted.
 
+// eventOpenSQL is a SQL condition: the snapshot of the event whose id is eventCol
+// is not known to be closed. Closed means not published (cancelled, postponed,
+// unpublished, deleted) or over. An event without a snapshot is not closed.
+func eventOpenSQL(eventCol string) string {
+	return `NOT EXISTS (SELECT 1 FROM events ev WHERE ev.entity_id = ` + eventCol + `
+    AND NOT coalesce(ev.status = 'published' AND coalesce(ev.ends_at, ev.starts_at) > now(), false))`
+}
+
 // promoteNext offers one freed seat of a type to the oldest waiting entry and
 // queues the offer mail. ok is false when nobody waits or no seat is free.
 func promoteNext(typeID int64) (waitID int64, ok bool) {
 	var id *int64
 	err := dbJSON(`WITH w AS (SELECT id FROM waitlist WHERE type_id = $1 AND status = 'waiting' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED),
  t AS (UPDATE ticket_types SET taken = taken + 1, touched_at = now()
-    WHERE id = $1 AND on_sale AND taken + 1 <= capacity AND EXISTS (SELECT 1 FROM w) RETURNING id),
+    WHERE id = $1 AND on_sale AND taken + 1 <= capacity AND EXISTS (SELECT 1 FROM w)
+    AND `+eventOpenSQL("ticket_types.event_id")+` RETURNING id),
  u AS (UPDATE waitlist SET status = 'offered', offered_at = now(), expires_at = now() + interval '`+offerWindow+`'
     WHERE id = (SELECT id FROM w) AND EXISTS (SELECT 1 FROM t) RETURNING id)
 SELECT coalesce((SELECT to_jsonb(id) FROM u), 'null'::jsonb)`, &id, typeID)
@@ -82,7 +91,7 @@ func lookupWait(code string) (*waitEntry, error) {
 	var w *waitEntry
 	err := dbJSON(`SELECT coalesce((SELECT jsonb_build_object('status', w.status, 'event_id', w.event_id,
     'event_name', coalesce(e.name, ''), 'type_name', t.name,
-    'expired', (w.expires_at IS NOT NULL AND w.expires_at <= now()),
+    'expired', ((w.expires_at IS NOT NULL AND w.expires_at <= now()) OR NOT (`+eventOpenSQL("w.event_id")+`)),
     'ticket_code', coalesce((SELECT a.code FROM orders o JOIN attendees a ON a.order_id = o.id
         WHERE o.waitlist_id = w.id ORDER BY a.id LIMIT 1), ''))
 FROM waitlist w JOIN ticket_types t ON t.id = w.type_id LEFT JOIN events e ON e.entity_id = w.event_id
@@ -96,7 +105,7 @@ func claimOffer(waitCode, ticketCode string) (orderID int64, ok bool, err error)
 	var res *struct {
 		OrderID int64 `json:"order_id"`
 	}
-	err = dbJSON(`WITH w AS (UPDATE waitlist SET status = 'claimed' WHERE code = $1 AND status = 'offered' AND expires_at > now()
+	err = dbJSON(`WITH w AS (UPDATE waitlist SET status = 'claimed' WHERE code = $1 AND status = 'offered' AND expires_at > now() AND `+eventOpenSQL("waitlist.event_id")+`
     RETURNING id, event_id, type_id, name, email),
  o AS (INSERT INTO orders (event_id, name, email, waitlist_id) SELECT event_id, name, email, id FROM w RETURNING id, event_id),
  a AS (INSERT INTO attendees (order_id, event_id, type_id, code) SELECT o.id, o.event_id, w.type_id, $2 FROM o, w RETURNING code)
