@@ -27,6 +27,12 @@ const (
 	noticeProfileSaved  core.Notice = "profile_saved"
 	noticePwBad         core.Notice = "pw_bad"
 	noticeBadLogin      core.Notice = "bad_login"
+	noticePwSaved       core.Notice = "pw_saved"
+	noticePwWrong       core.Notice = "pw_wrong"
+	noticePwConnected   core.Notice = "pw_connected"
+	noticePwHave        core.Notice = "pw_have"
+	noticePwNone        core.Notice = "pw_none"
+	noticeEmailBad      core.Notice = "email_bad"
 )
 
 // Register adds this phase's handlers to r. plugin.go calls it once, in phase order.
@@ -42,11 +48,19 @@ func Register(r *core.Registry) {
 	core.DefineNotice(noticeProfileSaved, "Profile updated.")
 	core.DefineNotice(noticePwBad, "Passwords are 8 to 72 characters.")
 	core.DefineNotice(noticeBadLogin, "Bad login.")
+	core.DefineNotice(noticePwSaved, "Password saved.")
+	core.DefineNotice(noticePwWrong, "That is not your current password.")
+	core.DefineNotice(noticePwConnected, "Password connected. You can now log in with your username and password.")
+	core.DefineNotice(noticePwHave, "This account already has a password.")
+	core.DefineNotice(noticePwNone, "Connect a password first.")
+	core.DefineNotice(noticeEmailBad, "That email address does not look right.")
 
 	r.Route("POST /username", claimHandler(r))
 	r.Route("POST /profile", profileHandler)
 	r.Route("POST /signup", sessionRoute(signupHandler(r)))
 	r.Route("POST /login", sessionRoute(loginHandler(r)))
+	r.Route("POST /password", sessionRoute(passwordHandler(r)))
+	r.Route("POST /password/connect", sessionRoute(connectHandler(r)))
 	r.Route("POST /logout", sessionRoute(logoutHandler))
 	r.Route("POST /logout/all", sessionRoute(logoutAllHandler))
 	r.Draft(draftName)

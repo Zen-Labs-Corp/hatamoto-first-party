@@ -20,6 +20,15 @@ func reattach(l *login) {
 	_, _ = core.Exec(sqlReattach, id.CommenterKey, l.UserID)
 }
 
+// gateNotice is the notice a refusing gate asks for, or fallback.
+func gateNotice(err error, fallback core.Notice) core.Notice {
+	var nr noticer
+	if errors.As(err, &nr) && core.NoticeText(string(nr.Notice())) != "" {
+		return nr.Notice()
+	}
+	return fallback
+}
+
 // loginHandler checks username + password. Unknown user, wrong password, a member without a
 // login and an invalid name all answer the same and run exactly one bcrypt compare.
 func loginHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, error) {
@@ -35,12 +44,7 @@ func loginHandler(r *core.Registry) func(*core.Request) (sdk.HTTPResponse, error
 			if req.WantsJSON() {
 				return core.JSONError(429, "too many login attempts"), nil
 			}
-			n := noticeTryAgain
-			var nr noticer
-			if errors.As(err, &nr) && core.NoticeText(string(nr.Notice())) != "" {
-				n = nr.Notice()
-			}
-			return core.Respond(req, core.WithNotice("/login", n), nil), nil
+			return core.Respond(req, core.WithNotice("/login", gateNotice(err, noticeTryAgain)), nil), nil
 		}
 		bad := func() (sdk.HTTPResponse, error) {
 			return core.Respond(req, core.WithNotice("/login", noticeBadLogin), map[string]string{"error": core.NoticeText(string(noticeBadLogin))}), nil
