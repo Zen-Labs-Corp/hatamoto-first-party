@@ -50,6 +50,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveCoupons(r.User), nil
 		case "/admin/emails":
 			return serveEmails(r.User), nil
+		case "/admin/maps":
+			return serveMaps(r.User), nil
+		case "/admin/maps/{id}":
+			return serveMap(r.User, r.PathValues["id"]), nil
 		case "/token":
 			return serveToken(r.Query), nil
 		case "/waitlist/{token}/claim":
@@ -122,6 +126,16 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveCreateCampaign(r), nil
 		case "/admin/campaigns/{id}/cancel":
 			return serveCancelCampaign(r.User, r.PathValues["id"]), nil
+		case "/admin/maps":
+			return serveSaveMap(r), nil
+		case "/admin/maps/{id}/delete":
+			return serveDeleteMap(r.User, r.PathValues["id"]), nil
+		case "/admin/maps/{id}/sections":
+			return serveSaveSection(r, r.PathValues["id"]), nil
+		case "/admin/sections/{id}/delete":
+			return serveDeleteSection(r.User, r.PathValues["id"]), nil
+		case "/admin/sections/{id}/seats":
+			return serveSetBlocked(r, r.PathValues["id"]), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil

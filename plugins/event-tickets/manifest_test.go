@@ -133,6 +133,9 @@ func TestManifest(t *testing.T) {
 		{"GET", "/admin/emails", false}, {"POST", "/admin/emails/automations", false},
 		{"POST", "/admin/campaigns/count", false}, {"POST", "/admin/campaigns", false}, {"POST", "/admin/campaigns/{id}/cancel", false},
 		{"GET", "/o/{token}", true}, {"GET", "/c/{token}", true}, {"GET", "/u/{token}", true},
+		{"GET", "/admin/maps", false}, {"GET", "/admin/maps/{id}", false}, {"POST", "/admin/maps", false},
+		{"POST", "/admin/maps/{id}/delete", false}, {"POST", "/admin/maps/{id}/sections", false},
+		{"POST", "/admin/sections/{id}/delete", false}, {"POST", "/admin/sections/{id}/seats", false},
 	}
 	// Refund, order cancel, coupon changes and bundle rules move or give away money: the owner only (the handlers check again).
 	ownerOnly := map[string]bool{"/admin/orders/{id}/refund": true, "/admin/orders/{id}/cancel": true,

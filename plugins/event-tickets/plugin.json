@@ -70,7 +70,14 @@
     { "method": "POST", "path": "/admin/campaigns/{id}/cancel", "roles": ["owner"] },
     { "method": "GET", "path": "/o/{token}", "public": true },
     { "method": "GET", "path": "/c/{token}", "public": true },
-    { "method": "GET", "path": "/u/{token}", "public": true }
+    { "method": "GET", "path": "/u/{token}", "public": true },
+    { "method": "GET", "path": "/admin/maps", "roles": ["owner", "editor"] },
+    { "method": "GET", "path": "/admin/maps/{id}", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/maps", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/maps/{id}/delete", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/maps/{id}/sections", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/sections/{id}/delete", "roles": ["owner", "editor"] },
+    { "method": "POST", "path": "/admin/sections/{id}/seats", "roles": ["owner", "editor"] }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },
