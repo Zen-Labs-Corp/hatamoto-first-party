@@ -1,1 +1,0 @@
-{{define "plugin/hn/comment-actions"}}{{range .Item.actions}} | {{if .post}}<form class="hn-act" method="post" action="{{.href}}"><input type="hidden" name="next" value="{{$.Item.next}}"><button class="{{.class}}" type="submit">{{.label}}</button></form>{{else}}<a class="{{.class}}" href="{{.href}}">{{.label}}</a>{{end}}{{end}}{{end}}

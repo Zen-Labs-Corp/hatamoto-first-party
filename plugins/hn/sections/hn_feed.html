@@ -1,7 +1,7 @@
 {{define "section-hn_feed"}}{{template "plugin/hn/style" .}}{{$c := .Content}}
 {{with $c.notice}}<p class="hn-notice" role="status">{{.}}</p>{{end}}
 {{with $c.heading}}<p class="hn-heading">{{.}}</p>{{end}}
-<ol class="hn-stories">{{range $c.rows}}<li class="hn-story">{{template "plugin/hn/story-row" .}}</li>{{end}}</ol>
+<ol class="hn-stories">{{range $c.rows}}<li class="hn-story">{{template "plugin/hn/story_row" .}}</li>{{end}}</ol>
 {{if $c.empty}}<p class="hn-note">No stories yet.</p>{{end}}
 {{with $c.more}}<div class="hn-more"><a href="{{.}}" rel="next">More</a></div>{{end}}
 {{end}}

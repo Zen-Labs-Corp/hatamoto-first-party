@@ -15,7 +15,7 @@ import (
 
 func parseSections(t *testing.T) *template.Template {
 	t.Helper()
-	return template.Must(template.ParseFiles("../../partials/style.html", "../../partials/comment-vote.html", "../../sections/hn_threads.html"))
+	return template.Must(template.ParseFiles("../../partials/style.html", "../../partials/comment_vote.html", "../../partials/comment_row.html", "../../sections/hn_threads.html"))
 }
 
 // renderBlock renders a block like the host: its content goes through JSON first.
@@ -232,7 +232,7 @@ var (
 // TestCommentVotePartialMarkupRules checks the template source against the
 // plugin markup rules the host enforces at load time.
 func TestCommentVotePartialMarkupRules(t *testing.T) {
-	for _, file := range []string{"../../partials/comment-vote.html", "../../sections/hn_threads.html"} {
+	for _, file := range []string{"../../partials/comment_vote.html", "../../partials/comment_row.html", "../../sections/hn_threads.html"} {
 		raw, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)

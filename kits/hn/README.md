@@ -26,19 +26,21 @@ details: [../../plugins/hn/README.md](../../plugins/hn/README.md).
 
 `grant: "all"` gives the plugin the permissions an owner needs no second thought
 for. Every permission the review screen marks "Handle with care" stays a separate
-tick, and the hn plugin declares four:
+tick. For hn there are three to tick:
 
-- `site.scripts`: for multi-line submit text and votes without a reload. Without it
-  the plugin falls back to a single-line submit text field and votes reload the page.
 - `entities.write.own`: the plugin creates and edits stories in its own content type.
 - `comments.moderate`: flags, vouches and moderator actions on comments.
 - `client.key`: a pseudonymous key per visitor, for rate limits and network bans.
+
+The plugin also declares `site.scripts`, for multi-line submit text and votes without
+a reload. Hatamoto does not grant it to a community package, so you have nothing to
+tick: the plugin falls back to a single-line submit text field and votes reload the page.
 
 ## Apply
 
 ```
 hatamoto kit apply hn --accept-comment-warnings \
-  --grant hn:site.scripts,hn:entities.write.own,hn:comments.moderate,hn:client.key
+  --grant hn:entities.write.own,hn:comments.moderate,hn:client.key
 ```
 
 Add `--activate-theme --homepage` on a site that is not fresh. `--dry-run` prints the

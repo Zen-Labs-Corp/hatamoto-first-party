@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-const partialFile = "../../partials/comment-actions.html"
+const partialFile = "../../partials/comment_actions.html"
 
 func partialTemplates(t *testing.T) *template.Template {
 	t.Helper()
@@ -52,19 +52,19 @@ func TestCommentActionsPartial(t *testing.T) {
 		if x.Name() == "" || strings.HasSuffix(x.Name(), ".html") { // the roots and the file's own (empty) body
 			continue
 		}
-		if x.Name() != "plugin/hn/comment-actions" {
+		if x.Name() != "plugin/hn/comment_actions" {
 			t.Errorf("unexpected template %q", x.Name())
 		}
 	}
-	if tpl.Lookup("plugin/hn/comment-actions") == nil {
-		t.Fatal("plugin/hn/comment-actions is not defined")
+	if tpl.Lookup("plugin/hn/comment_actions") == nil {
+		t.Fatal("plugin/hn/comment_actions is not defined")
 	}
 
 	render := func(actions []map[string]any) string {
 		var b bytes.Buffer
 		row := map[string]any{"actions": actions, "next": "/item/7"}
 		data := map[string]any{"Item": row}
-		if err := tpl.ExecuteTemplate(&b, "plugin/hn/comment-actions", data); err != nil {
+		if err := tpl.ExecuteTemplate(&b, "plugin/hn/comment_actions", data); err != nil {
 			t.Fatal(err)
 		}
 		return b.String()

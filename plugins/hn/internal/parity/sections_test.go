@@ -49,7 +49,7 @@ func TestFavoritesSectionAvoidsBannedMarkup(t *testing.T) {
 
 func sectionTemplates(t *testing.T) *template.Template {
 	t.Helper()
-	tpl, err := template.New("").ParseFiles("../../partials/style.html", "../../partials/story-row.html", "../../sections/hn_saved.html", "../../sections/hn_search.html")
+	tpl, err := template.New("").ParseFiles("../../partials/style.html", "../../partials/story_row.html", "../../sections/hn_saved.html", "../../sections/hn_search.html")
 	if err != nil {
 		t.Fatal(err)
 	}
