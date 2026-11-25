@@ -50,6 +50,8 @@ var (
 )
 
 // checkLink returns the cleaned URL when raw is an absolute http or https URL.
+// The scheme comes back in lower case: it is matched case-sensitively by the
+// campaign_links check and when a click is served.
 func checkLink(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || len(raw) > maxLinkLen || strings.ContainsFunc(raw, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
@@ -59,7 +61,7 @@ func checkLink(raw string) (string, bool) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		return "", false
 	}
-	return raw, true
+	return u.Scheme + raw[len(u.Scheme):], true
 }
 
 // parseBody reads an owner's text or html into a body. The error is a short

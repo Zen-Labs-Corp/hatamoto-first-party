@@ -208,3 +208,19 @@ func TestBodyHTMLWhitespaceAndLists(t *testing.T) {
 		t.Errorf("text %q", txt)
 	}
 }
+
+func TestCheckLinkLowercasesTheScheme(t *testing.T) {
+	for raw, want := range map[string]string{
+		"HTTPS://Example.com/Path?Q=A": "https://Example.com/Path?Q=A",
+		"Http://example.com/x":         "http://example.com/x",
+		"https://example.com/x":        "https://example.com/x",
+	} {
+		if got, ok := checkLink(raw); !ok || got != want {
+			t.Errorf("checkLink(%q) = %q %v, want %q", raw, got, ok, want)
+		}
+	}
+	b, msg := parseBody("html", `<a href="HTTPS://example.com/a">go</a>`)
+	if msg != "" || len(b.Links) != 1 || b.Links[0] != "https://example.com/a" {
+		t.Errorf("html link: %q %+v", msg, b)
+	}
+}
