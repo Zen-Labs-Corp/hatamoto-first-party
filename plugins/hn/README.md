@@ -2,7 +2,7 @@
 
 A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation, built on core comments.
 
-Status: 1.0.3: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in. Built against core v1.4.5 and SDK v0.27.0.
+Status: 1.1.0: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in, plus password accounts and the abuse fixes (voting-ring damping, IDN domain bans, port check, domain ban kills, network-banned votes, Origin check, Recent moderation view). Built against core v1.4.6 and SDK v0.29.0.
 
 ## Layout
 
@@ -58,7 +58,7 @@ Public routes of the parity phase, served at `/p/hn/...`.
 
 ## User bar and the theme header
 
-hn adds one block of type `hn_userbar` (id `hn_userbar`) first in the blocks of every page it filters. Its section renders one `<div class="hn-ub">`: a login link, or the name, karma and a logout button in an inline POST form.
+hn adds one block of type `hn_userbar` (id `hn_userbar`) first in the blocks of every page it filters. Its section renders one `<div class="hn-ub">`: a login link, or the name, karma and a logout button in an inline POST form (`.hn-out`).
 
 Theme contract:
 
@@ -93,6 +93,7 @@ Public routes are served at `/p/hn/...`; admin routes need the owner.
 | Route | Access | Phase |
 |---|---|---|
 | `POST /username`, `POST /profile` | public | P1 |
+| `POST /login`, `POST /signup`, `POST /logout`, `POST /logout/all`, `POST /password`, `POST /password/connect` | public, same-origin browser posts only | P1 |
 | `POST /submit`, `POST /story/{id}/edit`, `POST /story/{id}/delete`, `POST /vote/story/{id}` | public | P2 |
 | `POST /admin/jobs` | admin | P2 |
 | `POST /vote/comment/{id}` | public | P3 |
@@ -101,6 +102,23 @@ Public routes are served at `/p/hn/...`; admin routes need the owner.
 | `POST /favorite/{kind}/{id}`, `POST /unfavorite/{kind}/{id}`, `POST /hide/{id}`, `POST /unhide/{id}` | public | P5 |
 | `GET /rss`, `GET /api/feed/{name}`, `GET /api/item/{id}`, `GET /api/user/{name}` | public | P5 |
 | `GET /state/{entity_id}` | public | P6 |
+
+All six account routes accept only same-origin browser posts (`Sec-Fetch-Site: same-origin`): a sibling subdomain, a cross-site post or a request with no Fetch Metadata is refused with 403 before anything happens, because core signs a browser in only on same-origin requests.
+
+## Accounts and passwords
+
+A member is a username and a password, no email. The login page has two forms, Login and Create Account.
+
+- Email is optional, set on the own profile of a password member. It is never shown and used by nothing yet: password reset by email is not in this release, and "Forgot your password?" is not rendered.
+- Passwords are 8 to 72 bytes and stored only as bcrypt hashes (cost 11, about 180 ms per hash in wasm), in `user_logins` (see [SCHEMA.md](SCHEMA.md)), never in `users`. A hash made at a lower cost is replaced on the next login.
+- A failed login answers the same "Bad login." for an unknown user and a wrong password, and both run one bcrypt compare (an unknown user against a dummy hash of the same cost), so neither the answer nor the time tells them apart. Create Account says "That username is taken." for a taken name.
+- Limits, counted per hour and checked before any hash is computed: sign-up 3 per address and 5 per network; login 20 per address, 60 per network and 10 per username (attempts, right or wrong). The address and network limits need the `client.key` grant.
+- Logout is a POST (the `.hn-out` form in the user bar) that clears the core sign-in cookie. "Log out everywhere" on the own profile signs every browser of the account out.
+- A member who signed up with the email link connects a password with the separate "connect a password" form on their profile and keeps their username, comments and karma. This is the only action that joins a browser's existing sign-in to a password account; Create Account and Login never do. Changing a password needs the current one and signs the other browsers out.
+
+### Uninstalling and reinstalling
+
+Uninstalling hn signs every member out on every device (password members and email-link members who connected a password) and detaches them from hn; comments stay. Removing only the `comments.identity` grant signs nobody out; use Admin > Settings > Comments > Commenters to sign members out. After a reinstall that kept hn's data, members log in again: a password member gets a new core commenter and hn moves the username to it at that login. Comments written before the uninstall stay with the old commenter and no longer show under the username. Choosing "delete its data too" removes every hn account.
 
 ## Cron
 
@@ -114,7 +132,7 @@ Public routes are served at `/p/hn/...`; admin routes need the owner.
 
 ## Permissions
 
-Declared once in 0.1.0 and unchanged in 1.0.0: adding one later makes every install grant again.
+1.1.0 adds `comments.identity`: existing installs tick it on update. Adding a permission later makes every install grant again.
 
 | Permission | Used by | Why |
 |---|---|---|
@@ -124,13 +142,15 @@ Declared once in 0.1.0 and unchanged in 1.0.0: adding one later makes every inst
 | `entities.write.own` | P2 | creates, edits and deletes stories of the one content type `hn-story` |
 | `comments.read` | P1, P3, P4, P5 | comment events, a member's comments, the commenter key on pages and routes |
 | `comments.moderate` | P1, P3, P4 | marks comments dead or restores them, sets their order |
-| `client.key` | P1, P4 | pseudonymous address and network keys, for rate limits and network bans |
+| `client.key` | P1, P4 | pseudonymous address and network keys, for the login and sign-up rate limits and for network bans |
+| `comments.identity` | P1 | signs members in as core commenters for accounts the plugin manages (no email); needs `comments.read` and the content type, both declared |
 
-In plain words, the three that warn on install:
+In plain words, the four that warn on install:
 
 - Comments, moderate: marks comments on the plugin's own content type dead or restores them and sets their order, without review. It cannot post comments or touch other content types. Logged in the audit log.
 - Content, write (own type): creates, edits and deletes entries of one content type it declares and publishes them at once, without review. Rate limited and logged. It cannot touch any other content.
 - Visitor keys: a pseudonymous key for each visitor's address and network, not the address itself. The key is stable, so the plugin can recognise a returning visitor and block a network. It is personal data: your privacy notice should say so.
+- Comments, identity: signs visitors in as commenters the plugin vouches for (a username and password, no email) and signs them out again. It can only act on accounts the plugin created itself. Needs core v1.4.6 or newer.
 
 No `http.fetch`, `kv`, `mail.send`, `log` or `entities.read`: the lists read the plugin's own copy of each story.
 
