@@ -105,7 +105,7 @@ const THREE = { ...TOKEN, types: [{ id: 5, name: "Standard", left: 8, sold_out: 
 const threeRows = () => [row(5, "e1", "Standard"), row(8, "e1", "Student"), row(6, "e1", "VIP", { "data-sold-out": "1", "data-waitlist": "1" })];
 
 // env with a script of answers and a clock the test moves
-function setup({ attrs, rows, post = answer(200, { ok: true, tickets: ["/p/event-tickets/ticket/a.b"] }), token = answer(200, TOKEN), quote = answer(200, QUOTE) } = {}) {
+function setup({ attrs, rows, bus, post = answer(200, { ok: true, tickets: ["/p/event-tickets/ticket/a.b"] }), token = answer(200, TOKEN), quote = answer(200, QUOTE) } = {}) {
   const calls = [];
   const gone = []; // pages the browser was sent to
   let clock = 1_000_000;
@@ -122,6 +122,10 @@ function setup({ attrs, rows, post = answer(200, { ok: true, tickets: ["/p/event
     // a delay moves the clock instead of waiting
     delay: (fn, ms) => { clock += ms; fn(); },
   };
+  if (bus) {
+    env.on = (name, fn) => { bus.handlers[name] = fn; };
+    env.emit = (name, detail) => bus.sent.push({ name, detail });
+  }
   const b = box(attrs, rows);
   const form = s.mount(b, env);
   return { b, form, calls, gone, advance: (ms) => { clock += ms; }, now: () => clock };
@@ -547,6 +551,55 @@ function fillBuyer(form) {
     await tick();
     const lines = slow.b.all((n) => n.className === "line");
     assert.equal(lines.length, 4);
+  }
+
+  // seat picker: the seats event locks the seated type, the hold goes to the checkout only
+  {
+    const bus = { handlers: {}, sent: [] };
+    const { b, form, calls } = setup({ bus, rows: threeRows(), token: answer(200, PAID), post: answer(200, { ok: true, redirect: "https://checkout.stripe.com/c/x" }) });
+    await tick();
+    assert.deepEqual(bus.sent[0], { name: "event-tickets:hello", detail: {} });
+    buttons(b, "plus")[0].click(); // an unpicked count on the seated type (best available)
+    bus.handlers["event-tickets:seats"]({ detail: { hold: "H.1", counts: { 5: 2 }, seated: [5] } });
+    await tick();
+    assert.equal(form.qty[5], 2);
+    assert.equal(buttons(b, "plus")[0].disabled, true);
+    assert.equal(buttons(b, "minus")[0].disabled, true);
+    assert.equal(buttons(b, "plus")[1].disabled, false, "unseated types stay free");
+    assert.equal(b.all((n) => n.className === "count")[0].textContent, "2");
+    fillBuyer(form);
+    await buttons(b, "pay")[0].click();
+    const sent = JSON.parse(posts(calls).at(-1).opts.body);
+    assert.equal(sent.hold, "H.1");
+    assert.deepEqual(sent.items, [{ type: 5, qty: 2 }]);
+    // a released hold frees the stepper again and the count goes to zero
+    bus.handlers["event-tickets:seats"]({ detail: { hold: "", counts: {}, seated: [5] } });
+    assert.equal(form.qty[5], 0);
+    assert.equal(buttons(b, "plus")[0].disabled, false);
+    // the pay event focuses the name field
+    let focused = false;
+    form.nameInput.focus = () => { focused = true; };
+    bus.handlers["event-tickets:pay"]();
+    assert.ok(focused);
+  }
+
+  // the RSVP payload never carries a hold
+  assert.equal("hold" in s.buildPayload({ event: "e1", qty: { 5: 1 }, hold: "H.1" }), false);
+  assert.equal(s.buildPayload({ event: "e1", qty: { 5: 1 }, provider: "stripe", hold: "H.1" }).hold, "H.1");
+  assert.equal("hold" in s.buildPayload({ event: "e1", qty: { 5: 1 }, provider: "stripe", hold: "" }), false);
+
+  // a lapsed hold: 409 "hold" says so and asks the picker to start over
+  {
+    const bus = { handlers: {}, sent: [] };
+    const { b, form } = setup({ bus, token: answer(200, PAID), post: answer(409, { ok: false, error: "hold" }) });
+    await tick();
+    bus.handlers["event-tickets:seats"]({ detail: { hold: "H.1", counts: { 5: 1 }, seated: [5] } });
+    await tick();
+    fillBuyer(form);
+    await buttons(b, "pay")[0].click();
+    assert.equal(form.status.textContent, "Your seat hold ended. Please pick your seats again.");
+    assert.equal(bus.sent.at(-1).name, "event-tickets:refresh");
+    assert.equal(buttons(b, "plus")[0].disabled, false);
   }
 
   console.log("tickets island ok");
