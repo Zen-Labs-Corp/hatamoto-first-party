@@ -67,7 +67,10 @@
     { "method": "POST", "path": "/admin/emails/automations", "roles": ["owner"] },
     { "method": "POST", "path": "/admin/campaigns/count", "roles": ["owner"] },
     { "method": "POST", "path": "/admin/campaigns", "roles": ["owner"] },
-    { "method": "POST", "path": "/admin/campaigns/{id}/cancel", "roles": ["owner"] }
+    { "method": "POST", "path": "/admin/campaigns/{id}/cancel", "roles": ["owner"] },
+    { "method": "GET", "path": "/o/{token}", "public": true },
+    { "method": "GET", "path": "/c/{token}", "public": true },
+    { "method": "GET", "path": "/u/{token}", "public": true }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },

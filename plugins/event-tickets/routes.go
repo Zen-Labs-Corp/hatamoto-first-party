@@ -60,6 +60,12 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return servePayReturn(r.PathValues["token"], r.Query), nil
 		case "/cancel/{token}":
 			return servePayCancel(r.PathValues["token"]), nil
+		case "/o/{token}":
+			return serveOpen(r.PathValues["token"]), nil
+		case "/c/{token}":
+			return serveClick(r.PathValues["token"], r.Query), nil
+		case "/u/{token}":
+			return serveUnsub(r.PathValues["token"], r.Query), nil
 		case "/ticket/{token}":
 			return serveTicket(r.PathValues["token"]), nil
 		case "/ticket/{token}/qr.png":
