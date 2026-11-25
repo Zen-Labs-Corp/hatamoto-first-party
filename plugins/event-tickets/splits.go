@@ -67,6 +67,15 @@ SELECT id, payee_name AS name, payee_email AS email, kind, value, position FROM 
 // serveSaveSplits answers POST /admin/events/{id}/splits with the event's
 // whole rule list, and answers the saved rules. Owner only: the rules decide
 // who is paid and hold personal addresses.
+// saveSplitsSQL replaces an event's rules in one statement. The INSERT reads d,
+// so the DELETE runs first; otherwise it would run after the INSERT and hit the
+// unique (event_id, position) index on every re-save.
+const saveSplitsSQL = `WITH d AS (DELETE FROM split_rules WHERE event_id = $1 RETURNING 1)
+INSERT INTO split_rules (event_id, position, payee_name, payee_email, kind, value)
+SELECT $1, x.pos, x.name, x.email, x.kind, x.value
+FROM jsonb_to_recordset($2::jsonb) AS x(name text, email text, kind text, value bigint, pos int)
+WHERE (SELECT count(*) FROM d) >= 0`
+
 func serveSaveSplits(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 	if r.User == nil || r.User.Role != "owner" {
 		return forbidden()
@@ -101,10 +110,7 @@ func serveSaveSplits(r sdk.HTTPRequest, eventID string) sdk.HTTPResponse {
 		return failReply(http.StatusNotFound, "not found")
 	}
 	doc, _ := json.Marshal(rows)
-	err := dbExec(`WITH d AS (DELETE FROM split_rules WHERE event_id = $1)
-INSERT INTO split_rules (event_id, position, payee_name, payee_email, kind, value)
-SELECT $1, x.pos, x.name, x.email, x.kind, x.value
-FROM jsonb_to_recordset($2::jsonb) AS x(name text, email text, kind text, value bigint, pos int)`, eventID, string(doc))
+	err := dbExec(saveSplitsSQL, eventID, string(doc))
 	if err != nil {
 		return unavailable()
 	}

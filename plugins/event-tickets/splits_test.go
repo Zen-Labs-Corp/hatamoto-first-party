@@ -57,7 +57,7 @@ func TestSaveSplits(t *testing.T) {
 	if code != 200 || len(body["splits"].([]any)) != 1 {
 		t.Fatalf("%d %v", code, body)
 	}
-	st := h.stmt("WITH d AS (DELETE FROM split_rules WHERE event_id = $1)")
+	st := h.stmt("WITH d AS (DELETE FROM split_rules WHERE event_id = $1 RETURNING 1)")
 	if st == nil || st.args[0] != "e1" || !strings.Contains(st.args[1].(string), `"name":"Jazz Society"`) || !strings.Contains(st.args[1].(string), `"pos":1`) {
 		t.Fatalf("statement %+v", st)
 	}
@@ -171,5 +171,12 @@ func TestPayoutsMigrationIndexesAttendeesByOrder(t *testing.T) {
 	}
 	if !strings.Contains(string(mig), "CREATE INDEX attendees_order_idx ON attendees (order_id)") {
 		t.Error("attendees needs an index on order_id for the payouts report")
+	}
+}
+
+func TestSaveSplitsDeletesBeforeInsert(t *testing.T) {
+	if !strings.Contains(saveSplitsSQL, "DELETE FROM split_rules WHERE event_id = $1 RETURNING 1") ||
+		!strings.Contains(saveSplitsSQL, "(SELECT count(*) FROM d)") {
+		t.Error("the INSERT must read the DELETE CTE so the delete runs first")
 	}
 }
