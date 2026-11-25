@@ -2,6 +2,7 @@ package accounts
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -170,6 +171,20 @@ func installFake(t *testing.T) *fakeUsers {
 				} else {
 					l.Email = str(a[0])
 				}
+				return map[string]any{"rows_affected": 1}, nil
+			case strings.HasPrefix(sql, "UPDATE users SET commenter_key"):
+				var id int64
+				_ = json.Unmarshal(a[1], &id)
+				u, key := f.find(func(x *core.User) bool { return x.ID == id }), str(a[0])
+				if u == nil || u.CommenterKey == key {
+					return map[string]any{"rows_affected": 0}, nil
+				}
+				if f.byKey[key] != nil {
+					return nil, errors.New("unique violation")
+				}
+				delete(f.byKey, u.CommenterKey)
+				u.CommenterKey = key
+				f.byKey[key] = u
 				return map[string]any{"rows_affected": 1}, nil
 			case strings.HasPrefix(sql, "UPDATE users SET about"):
 				f.updates++
