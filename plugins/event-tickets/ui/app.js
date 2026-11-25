@@ -161,8 +161,13 @@ function addMapTypes(mapID) {
   if (!m) return 0;
   const bound = new Set(ed.types.map((t) => t.section_id).filter(Boolean));
   const fresh = m.sections.filter((s) => !bound.has(s.id));
+  // A zone is named after itself, a grid after its tier; a name already taken falls back to the section name.
+  const taken = new Set(ed.types.map((t) => t.name.toLowerCase()));
   for (const s of fresh) {
-    ed.types.push({ id: 0, name: s.tier || s.name, capacity: ed.defaultCapacity || 50, taken: 0, waitlist: false, on_sale: true, position: ed.types.length, price_cents: 0, section_id: s.id });
+    let name = s.kind === "zone" ? s.name : s.tier || s.name;
+    if (taken.has(name.toLowerCase())) name = s.name;
+    taken.add(name.toLowerCase());
+    ed.types.push({ id: 0, name, capacity: ed.defaultCapacity || 50, taken: 0, waitlist: false, on_sale: true, position: ed.types.length, price_cents: 0, section_id: s.id });
   }
   renderEditor();
   return fresh.length;

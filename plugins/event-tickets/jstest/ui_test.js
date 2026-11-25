@@ -461,10 +461,18 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
     tc.api.state.editing = { id: "e1", name: "Show", types: [], fields: [], bundles: [], splits: [], maps, mapPick: "", defaultCapacity: 50 };
     same(tc.api.sectionOptions(maps).map((o) => o[1]), ["none", "Main Hall / Stalls (Std)", "Main Hall / Balcony (VIP)", "Main Hall / Standing"]);
 
-    // "Add types for map": one unsaved row per unbound section, named after the tier or the section
+    // "Add types for map": one unsaved row per unbound section, a grid after its tier, a zone after itself
     assert.equal(tc.api.addMapTypes("3"), 3);
     same(tc.api.state.editing.types.map((t) => [t.id, t.name, t.section_id, t.price_cents, t.on_sale]), [[0, "Std", 12, 0, true], [0, "VIP", 13, 0, true], [0, "Standing", 14, 0, true]]);
     assert.equal(tc.els["#ed-map-row"].hidden, false);
+    // a tier already used by another type falls back to the section name
+    tc.api.state.editing.types = [];
+    maps[0].sections.push({ id: 15, name: "Circle", kind: "grid", tier: "Std" }, { id: 16, name: "Pit", kind: "zone", tier: "Std" });
+    tc.api.addMapTypes("3");
+    same(tc.api.state.editing.types.map((t) => t.name), ["Std", "VIP", "Standing", "Circle", "Pit"]);
+    maps[0].sections.length = 3;
+    tc.api.state.editing.types = [];
+    tc.api.addMapTypes("3");
     // a section that already has a type gets no second one
     tc.api.state.editing.types = [{ id: 9, name: "Std", capacity: 200, taken: 0, waitlist: false, on_sale: true, position: 0, price_cents: 1000, section_id: 12 }];
     assert.equal(tc.api.addMapTypes("3"), 2);

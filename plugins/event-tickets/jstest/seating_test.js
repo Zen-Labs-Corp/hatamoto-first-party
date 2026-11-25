@@ -132,10 +132,13 @@ const SEATS = [[[1, 0, "A", 1, false], [2, 0, "A", 2, true], [3, 1, "B", 1, fals
   per.value = "14"; per.handlers.input();
   tier.value = "VIP"; tier.handlers.input();
   calls.length = 0;
+  replies["GET /admin/maps/3"] = { map: { ...MAP, seats: 33, sections: [...MAP.sections, { ...MAP.sections[0], id: 14, name: "Balcony" }] }, seats: SEATS };
   const save = els["#st-form"].all((n) => n.tag === "button" && n.textContent === "Save section")[0];
   await save.click();
   assert.deepEqual(calls[0], { method: "POST", path: "/admin/maps/3/sections", body: { id: 0, kind: "grid", name: "Balcony", tier: "VIP", rows: "K-M", seats_per_row: 14, capacity: 0, position: 2 } });
   assert.equal(els["#st-form"].hidden, true);
+  // the list line is refreshed with the saved sections
+  assert.equal(els["#st-maps"].children[0].children[1].textContent, "33 seats, 3 sections");
 
   // a refusal shows the server's text
   await els["#st-add-zone"].click();
