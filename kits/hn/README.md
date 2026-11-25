@@ -46,6 +46,12 @@ hatamoto kit apply hn --accept-comment-warnings \
 Add `--activate-theme --homepage` on a site that is not fresh. `--dry-run` prints the
 steps and changes nothing.
 
+## First days
+
+Nobody can flag until members earn karma (`flag_karma` is 30 and members start at 1).
+Until then, kill spam from the **Recent** tab of the News moderation page. You can lower
+`flag_karma` in the plugin settings.
+
 ## Core features
 
 `requires` lists `comment.policy`, `comment.rank`, `plugin.entity-write` and

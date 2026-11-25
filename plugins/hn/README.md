@@ -58,13 +58,14 @@ Public routes of the parity phase, served at `/p/hn/...`.
 
 ## User bar and the theme header
 
-A plugin cannot print into the theme header, so `hn_userbar` is injected as the first section of `main`: a `<div class="hn-ub">` with the login link, or the name, karma and logout link. That is the no-script rendering and it must stay usable.
+hn adds one block of type `hn_userbar` (id `hn_userbar`) first in the blocks of every page it filters. Its section renders one `<div class="hn-ub">`: a login link, or the name, karma and a logout button in an inline POST form.
 
 Theme contract:
 
-- Optionally put an empty element with the class `hn-userbar` in the header (for example `<span class="hn-userbar"></span>`).
-- With `site.scripts` on, `assets/plugin.js` moves the first `.hn-ub` block into the first `.hn-userbar` element, once, when that element exists. Without the script, or without the slot, the block stays at the top of `main`; the theme should not hide it.
-- The bar can therefore be in either place: in `main` without the script, in the slot with it. A theme that styles `.hn-ub` (spacing, background, alignment, colours) should make that styling work in both positions, for example by scoping the rules to each position. The plugin's own rules are zero-specificity, use the `--hn-*` tokens and set no text colour on `.hn-ub`, so it inherits the colour of its container.
+- Recommended, server-side and without JavaScript: the theme renders the block in its header with `{{range .Blocks}}{{if eq .Type "hn_userbar"}}{{template "section" .}}{{end}}{{end}}` and skips that type wherever it loops over `.Blocks` for the main content. Use core's `section` template, never `{{template "section-hn_userbar" .}}` or a `plugin/hn/...` partial by name: those fail the page on a site without hn.
+- Without that, the bar stays at the top of `main`. That is the no-script rendering and it must stay usable; the theme should not hide it.
+- With `site.scripts` on, `assets/plugin.js` moves the first `.hn-ub` into the first `.hn-userbar` element (for example an empty `<span class="hn-userbar"></span>` in the header), once, and leaves it alone when it is already inside one, at any depth. Registry installs never run the script (Hatamoto does not grant `site.scripts` to a community package), so do not depend on it.
+- The bar can therefore be in either place. A theme that styles `.hn-ub` (spacing, background, alignment, colours) should make that styling work in both positions, for example by scoping the rules to each position. The plugin's own rules are zero-specificity, use the `--hn-*` tokens and set no text colour on `.hn-ub`, so it inherits the colour of its container.
 
 ## Theme-posted forms
 

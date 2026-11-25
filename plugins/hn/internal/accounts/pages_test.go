@@ -40,6 +40,7 @@ func TestPages(t *testing.T) {
 		for _, path := range []string{"/news", "/login", "/user", "/item/x"} {
 			for key, want := range map[string]string{"k1": "named", "k2": "noname", "": "out"} {
 				out := renderPage(t, sdk.PageContext{Path: path, CommenterKey: key, Blocks: []sdk.Block{kit}})
+				// theme header contract (README "User bar and the theme header")
 				if out.Blocks[0].Type != "hn_userbar" || out.Blocks[0].ID != "hn_userbar" {
 					t.Fatalf("%s/%s: first block %+v", path, want, out.Blocks[0])
 				}

@@ -262,6 +262,14 @@ async function main() {
   b = boot(root, mkFetch(function () { return ok({}); }));
   check('userbar: no bar, unchanged', slot.children.length === 0);
 
+  var sec = el('section', 'hm-section');
+  ub = el('div', 'hn-ub');
+  sec.appendChild(ub);
+  slot = el('div', 'hn-userbar', {}, [sec]);
+  root = el('main', '', {}, [el('header', '', {}, [slot])]);
+  b = boot(root, mkFetch(function () { return ok({}); }));
+  check('userbar: already in the header slot, not moved', ub.parentNode === sec && sec.parentNode === slot && slot.children.length === 1);
+
   // 14b. submit text: the one-line input becomes a textarea (this file loads only with site.scripts)
   var input = el('input', '', { id: 'hn-text', type: 'text', name: 'text', size: '50' });
   input.value = 'draft';

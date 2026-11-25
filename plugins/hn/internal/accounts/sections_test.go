@@ -164,6 +164,38 @@ var (
 	onAttr      = regexp.MustCompile(`(?i)\son[a-z]+\s*=`)
 )
 
+// TestUserbarHeaderContract pins what a theme can rely on when it renders the
+// bar in its header (README "User bar and the theme header").
+func TestUserbarHeaderContract(t *testing.T) {
+	f := installFake(t)
+	f.add("k1", "bob")
+	tpl := parseSections(t)
+	for key, state := range map[string]string{"k1": "named", "k2": "noname", "": "out"} {
+		var out string
+		for _, b := range renderPage(t, sdk.PageContext{Path: "/news", CommenterKey: key}).Blocks {
+			if b.Type == "hn_userbar" {
+				out = renderBlock(t, tpl, b)
+			}
+		}
+		if out == "" {
+			t.Fatalf("%s: no hn_userbar block", state)
+		}
+		if n := strings.Count(out, `class="hn-ub"`); n != 1 {
+			t.Errorf("%s: %d hn-ub elements, want 1", state, n)
+		}
+		body := out[strings.LastIndex(out, "</style>")+len("</style>"):]
+		if !strings.HasPrefix(strings.TrimSpace(body), `<div class="hn-ub">`) {
+			t.Errorf("%s: root is not <div class=\"hn-ub\">: %s", state, body)
+		}
+		if strings.Contains(body, " id=") {
+			t.Errorf("%s: the bar has an id attribute (a header copy would duplicate it): %s", state, body)
+		}
+		if state != "out" && (!strings.Contains(body, `action="/p/hn/logout"`) || !strings.Contains(body, `class="hn-out"`)) {
+			t.Errorf("%s: no logout form: %s", state, body)
+		}
+	}
+}
+
 func TestPagesSectionFiles(t *testing.T) {
 	tpl := parseSections(t)
 	for _, typ := range sectionTypes {
