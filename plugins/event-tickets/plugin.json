@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "sdk": "^0.22",
   "description": "Free tickets, RSVP, paid tickets, attendees, check-in, seating and event emails for the event-calendar plugin.",
-  "permissions": ["settings", "db", "entities.read", "mail.send", "builder.data", "builder.island"],
+  "permissions": ["settings", "db", "entities.read", "mail.send", "http.fetch", "builder.data", "builder.island"],
+  "allowed_hosts": ["api.stripe.com", "api-m.paypal.com", "api-m.sandbox.paypal.com"],
+  "request_headers": ["stripe-signature", "paypal-transmission-id", "paypal-transmission-time", "paypal-transmission-sig", "paypal-cert-url", "paypal-auth-algo"],
   "ui": { "title": "Event tickets", "entry": "index.html", "roles": ["owner", "editor"] },
   "builder_sources": [
     { "name": "tickets", "label": "Tickets of this event", "kind": "items" }
@@ -38,7 +40,13 @@
     { "method": "GET", "path": "/waitlist/{token}/claim", "public": true },
     { "method": "GET", "path": "/waitlist/{token}/leave", "public": true },
     { "method": "GET", "path": "/ticket/{token}", "public": true },
-    { "method": "GET", "path": "/ticket/{token}/qr.png", "public": true }
+    { "method": "GET", "path": "/ticket/{token}/qr.png", "public": true },
+    { "method": "POST", "path": "/quote", "public": true },
+    { "method": "POST", "path": "/checkout", "public": true },
+    { "method": "POST", "path": "/stripe/webhook", "public": true },
+    { "method": "POST", "path": "/paypal/webhook", "public": true },
+    { "method": "GET", "path": "/return/{token}", "public": true },
+    { "method": "GET", "path": "/cancel/{token}", "public": true }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },

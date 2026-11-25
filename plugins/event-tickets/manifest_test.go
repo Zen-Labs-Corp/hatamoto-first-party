@@ -16,6 +16,8 @@ type manifestFile struct {
 	Version        string   `json:"version"`
 	SDK            string   `json:"sdk"`
 	Permissions    []string `json:"permissions"`
+	AllowedHosts   []string `json:"allowed_hosts"`
+	RequestHeaders []string `json:"request_headers"`
 	BuilderSources []struct {
 		Name string `json:"name"`
 	} `json:"builder_sources"`
@@ -88,9 +90,16 @@ func TestManifest(t *testing.T) {
 		t.Errorf("sdk range %q, go.mod %q", m.SDK, got)
 	}
 
-	wantPerms := []string{"builder.data", "builder.island", "db", "entities.read", "mail.send", "settings"}
+	wantPerms := []string{"builder.data", "builder.island", "db", "entities.read", "http.fetch", "mail.send", "settings"}
 	if perms := slices.Sorted(slices.Values(m.Permissions)); !slices.Equal(perms, wantPerms) {
 		t.Errorf("permissions = %v, want %v", perms, wantPerms)
+	}
+	if wantHosts := []string{"api.stripe.com", "api-m.paypal.com", "api-m.sandbox.paypal.com"}; !slices.Equal(m.AllowedHosts, wantHosts) {
+		t.Errorf("allowed_hosts = %v, want %v", m.AllowedHosts, wantHosts)
+	}
+	wantHeaders := []string{"stripe-signature", "paypal-transmission-id", "paypal-transmission-time", "paypal-transmission-sig", "paypal-cert-url", "paypal-auth-algo"}
+	if !slices.Equal(m.RequestHeaders, wantHeaders) {
+		t.Errorf("request_headers = %v, want %v", m.RequestHeaders, wantHeaders)
 	}
 	if len(m.BuilderSources) != 1 || m.BuilderSources[0].Name != "tickets" {
 		t.Errorf("builder_sources = %+v", m.BuilderSources)
@@ -111,6 +120,8 @@ func TestManifest(t *testing.T) {
 		{"GET", "/token", true}, {"POST", "/rsvp", true},
 		{"GET", "/waitlist/{token}/claim", true}, {"GET", "/waitlist/{token}/leave", true},
 		{"GET", "/ticket/{token}", true}, {"GET", "/ticket/{token}/qr.png", true},
+		{"POST", "/quote", true}, {"POST", "/checkout", true}, {"POST", "/stripe/webhook", true},
+		{"POST", "/paypal/webhook", true}, {"GET", "/return/{token}", true}, {"GET", "/cancel/{token}", true},
 	}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)

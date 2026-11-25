@@ -45,6 +45,10 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		switch r.Pattern {
 		case "/rsvp":
 			return serveRSVP(r), nil
+		case "/quote":
+			return serveQuote(r), nil
+		case "/checkout":
+			return serveCheckout(r), nil
 		case "/admin/events/{id}/types":
 			return serveSaveType(r, r.PathValues["id"]), nil
 		case "/admin/types/{id}/delete":

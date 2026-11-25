@@ -19,6 +19,7 @@ const (
 
 	kindTicket = "ticket"
 	kindWait   = "wait"
+	kindOrder  = "order"
 )
 
 var tokenRe = regexp.MustCompile(`^[0-9a-f]{32}\.[0-9a-f]{32}$`)

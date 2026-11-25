@@ -108,88 +108,144 @@ func serveToken(query map[string][]string) sdk.HTTPResponse {
 	})
 }
 
-// serveRSVP takes one RSVP. Bots get the answer people get ("ok") and nothing
-// is stored; only a malformed or invalid post is told so.
-func serveRSVP(r sdk.HTTPRequest) sdk.HTTPResponse {
+// readPostJSON reads the JSON body of a public post: content type, size,
+// strict decode (no unknown key, no trailing data). A non-nil answer is the
+// reply to send. Both the RSVP and the checkout read their body through it.
+func readPostJSON(r sdk.HTTPRequest, limit int, v any) *sdk.HTTPResponse {
 	if mt, _, err := mime.ParseMediaType(r.Headers["content-type"]); err != nil || mt != "application/json" {
-		return failReply(http.StatusUnsupportedMediaType, fieldsError)
+		return replyPtr(failReply(http.StatusUnsupportedMediaType, fieldsError))
 	}
 	switch {
 	case r.BodyB64 != "":
-		return failReply(http.StatusBadRequest, fieldsError)
-	case len(r.Body) > maxRSVPBody:
-		return failReply(http.StatusRequestEntityTooLarge, fieldsError)
+		return replyPtr(failReply(http.StatusBadRequest, fieldsError))
+	case len(r.Body) > limit:
+		return replyPtr(failReply(http.StatusRequestEntityTooLarge, fieldsError))
 	}
-	var b rsvpBody
 	dec := json.NewDecoder(strings.NewReader(r.Body))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&b); err != nil || dec.Decode(&struct{}{}) != io.EOF {
-		return failReply(http.StatusBadRequest, fieldsError)
+	if err := dec.Decode(v); err != nil || dec.Decode(&struct{}{}) != io.EOF {
+		return replyPtr(failReply(http.StatusBadRequest, fieldsError))
 	}
-	if strings.TrimSpace(b.Website) != "" {
-		return rsvpOK(nil)
+	return nil
+}
+
+func replyPtr(r sdk.HTTPResponse) *sdk.HTTPResponse { return &r }
+
+// guardedPost is what a public post that passed the bot checks carries on with.
+type guardedPost struct {
+	Key         []byte
+	Name, Email string
+}
+
+// guardPost runs the checks every public post shares: the honeypot and the
+// time token (bots get the answer people get and nothing is stored), then the
+// buyer's name and address. A non-nil answer is the reply to send.
+func guardPost(website, token, rawName, rawEmail string) (guardedPost, *sdk.HTTPResponse) {
+	if strings.TrimSpace(website) != "" {
+		return guardedPost{}, replyPtr(rsvpOK(nil))
 	}
 	key, err := hmacSecret()
 	if err != nil {
-		return failReply(http.StatusServiceUnavailable, laterError)
+		return guardedPost{}, replyPtr(failReply(http.StatusServiceUnavailable, laterError))
 	}
-	if !tokenFresh(key, b.Token) {
-		return rsvpOK(nil)
+	if !tokenFresh(key, token) {
+		return guardedPost{}, replyPtr(rsvpOK(nil))
 	}
-	name := capRunes(plainText(b.Name, false), maxPersonName+1)
-	email := strings.TrimSpace(b.Email)
+	g := guardedPost{Key: key, Name: capRunes(plainText(rawName, false), maxPersonName+1), Email: strings.TrimSpace(rawEmail)}
+	if g.Name == "" || utf8.RuneCountInString(g.Name) > maxPersonName || len(g.Email) > maxEmailLen || !plainAddress(g.Email) {
+		return guardedPost{}, replyPtr(failReply(http.StatusUnprocessableEntity, fieldsError))
+	}
+	return g, nil
+}
+
+// cartEnv is the open event a cart is for, with its live numbers.
+type cartEnv struct {
+	S      settings
+	E      event
+	Types  []ticketType
+	Counts eventCounts
+}
+
+// loadCartEnv reads the event, its ticket types and the spam counts of the
+// buyer, and refuses a closed event and an event that is taking too many
+// orders. A non-nil answer is the reply to send.
+func loadCartEnv(eventID, email string) (cartEnv, *sdk.HTTPResponse) {
+	var env cartEnv
+	env.S = loadSettings()
+	e, found, err := readEvent(eventID, env.S)
+	if err != nil {
+		return env, replyPtr(failReply(http.StatusServiceUnavailable, laterError))
+	}
+	if !found || !e.open(now()) {
+		return env, replyPtr(jsonReply(http.StatusNotFound, map[string]any{"ok": false, "closed": true, "error": "closed"}))
+	}
+	env.E = e
+	if env.Types, err = listTypes(eventID); err != nil {
+		return env, replyPtr(failReply(http.StatusServiceUnavailable, laterError))
+	}
+	if env.Counts, err = countEvent(eventID, email); err != nil {
+		return env, replyPtr(failReply(http.StatusServiceUnavailable, laterError))
+	}
+	if env.Counts.Hour >= maxOrdersPerHour {
+		return env, replyPtr(failReply(http.StatusTooManyRequests, tooManyError))
+	}
+	return env, nil
+}
+
+// buyerAnswers checks the answers to the event's fields. A non-nil answer is
+// the reply to send.
+func buyerAnswers(eventID string, in map[string]string) (map[string]string, *sdk.HTTPResponse) {
+	fields, err := listFields(eventID)
+	if err != nil {
+		return nil, replyPtr(failReply(http.StatusServiceUnavailable, laterError))
+	}
+	answers, ok := cleanAnswers(fields, in)
+	if !ok {
+		return nil, replyPtr(failReply(http.StatusUnprocessableEntity, fieldsError))
+	}
+	return answers, nil
+}
+
+// serveRSVP takes one RSVP. Bots get the answer people get ("ok") and nothing
+// is stored; only a malformed or invalid post is told so.
+func serveRSVP(r sdk.HTTPRequest) sdk.HTTPResponse {
+	var b rsvpBody
+	if bad := readPostJSON(r, maxRSVPBody, &b); bad != nil {
+		return *bad
+	}
+	g, bad := guardPost(b.Website, b.Token, b.Name, b.Email)
+	if bad != nil {
+		return *bad
+	}
 	waitlisting := b.WaitlistType != 0
-	switch {
-	case !idOK(b.Event), name == "", utf8.RuneCountInString(name) > maxPersonName,
-		len(email) > maxEmailLen, !plainAddress(email),
-		waitlisting == (len(b.Items) > 0):
+	if !idOK(b.Event) || waitlisting == (len(b.Items) > 0) {
 		return failReply(http.StatusUnprocessableEntity, fieldsError)
 	}
 	items, ok := cleanItems(b.Items)
 	if !waitlisting && !ok {
 		return failReply(http.StatusUnprocessableEntity, fieldsError)
 	}
-
-	s := loadSettings()
-	e, found, err := readEvent(b.Event, s)
-	if err != nil {
-		return failReply(http.StatusServiceUnavailable, laterError)
-	}
-	if !found || !e.open(now()) {
-		return jsonReply(http.StatusNotFound, map[string]any{"ok": false, "closed": true, "error": "closed"})
-	}
-	types, err := listTypes(b.Event)
-	if err != nil {
-		return failReply(http.StatusServiceUnavailable, laterError)
-	}
-	counts, err := countEvent(b.Event, email)
-	if err != nil {
-		return failReply(http.StatusServiceUnavailable, laterError)
-	}
-	if counts.Hour >= maxOrdersPerHour {
-		return failReply(http.StatusTooManyRequests, tooManyError)
+	env, bad := loadCartEnv(b.Event, g.Email)
+	if bad != nil {
+		return *bad
 	}
 	if waitlisting {
-		return rsvpWaitlist(key, b, name, email, types, counts)
+		return rsvpWaitlist(g.Key, b, g.Name, g.Email, env.Types, env.Counts)
 	}
-	if counts.ByEmail >= maxOrdersPerEmail {
+	if env.Counts.ByEmail >= maxOrdersPerEmail {
 		return failReply(http.StatusTooManyRequests, tooManyError)
 	}
 	for _, it := range items {
 		// a priced ticket is only sold through /checkout
-		if !slices.ContainsFunc(types, func(t ticketType) bool { return t.ID == it.Type && t.OnSale && t.Price == 0 }) {
+		if !slices.ContainsFunc(env.Types, func(t ticketType) bool { return t.ID == it.Type && t.OnSale && t.Price == 0 }) {
 			return failReply(http.StatusUnprocessableEntity, fieldsError)
 		}
 	}
-	fields, err := listFields(b.Event)
-	if err != nil {
-		return failReply(http.StatusServiceUnavailable, laterError)
+	answers, bad := buyerAnswers(b.Event, b.Answers)
+	if bad != nil {
+		return *bad
 	}
-	answers, ok := cleanAnswers(fields, b.Answers)
-	if !ok {
-		return failReply(http.StatusUnprocessableEntity, fieldsError)
-	}
-	return rsvpReserve(key, b.Event, orderIn{Name: name, Email: email, Answers: answers}, items)
+	return rsvpReserve(g.Key, b.Event, orderIn{Name: g.Name, Email: g.Email, Answers: answers}, items)
 }
 
 // cleanItems checks the requested seats: every quantity at least one, types
