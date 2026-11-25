@@ -171,7 +171,7 @@ func serveRefund(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 	key := idemKey(o.PayCode, "refund-"+strconv.FormatInt(o.Refunded, 10)+"-"+strconv.FormatInt(b.Amount, 10))
 	switch o.Provider {
 	case "stripe":
-		_, err = stripeRefund(s, o.PaymentRef, b.Amount, key)
+		_, err = stripeRefund(s, o.PaymentRef, b.Amount, key, newDeadline(8*time.Second))
 	default:
 		_, err = paypalRefund(s, o.PaymentRef, b.Amount, o.Currency, key, newDeadline(8*time.Second))
 	}

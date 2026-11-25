@@ -165,7 +165,8 @@ SELECT jsonb_build_object('released', (SELECT count(*) FROM o),
 // use is counted again without a limit check: the buyer already paid the price.
 func retakeHold(orderID int64) (bool, error) {
 	var done bool
-	err := dbJSON(`WITH o AS (SELECT id, coupon_id FROM orders WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL FOR UPDATE),
+	err := dbJSON(`WITH o AS (SELECT id, coupon_id FROM orders WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL
+    AND (refund_claimed_at IS NULL OR refund_claimed_at < now() - interval '`+refundClaimTTL+`') FOR UPDATE),
  want AS (SELECT a.type_id, count(*)::int AS qty FROM attendees a
     WHERE a.order_id IN (SELECT id FROM o) AND a.status = 'expired' GROUP BY a.type_id),
  lk AS (SELECT t.id, t.taken, t.capacity FROM ticket_types t WHERE t.id IN (SELECT type_id FROM want) ORDER BY t.id FOR UPDATE),

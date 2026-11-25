@@ -95,13 +95,18 @@ func completePayment(orderID int64, provider, paymentRef string, amount int64, c
 // for the same order may be doing the same at this moment, so the refund is
 // claimed in the database first and only the claim's winner calls the provider.
 // A loser tries the payment again: the order may have been taken back, and
-// payOrder answers for it.
+// payOrder answers for it. When the order is still unpaid and unrefunded the
+// winner is at work (or died; its claim lapses), so the loser answers "try
+// again" and the provider sends the message once more.
 func lateAfterExpiry(orderID int64, provider, paymentRef string, amount int64, cur string) (string, error) {
 	back, err := retakeHold(orderID)
 	if err != nil {
 		return "", err
 	}
 	if !back {
+		if !time.Time(routeEnd).IsZero() && routeEnd.left() < int(minRefundLeft/time.Millisecond) {
+			return "", errNoTime // nothing is claimed; the provider sends it again
+		}
 		claimed, err := claimLateRefund(orderID, paymentRef)
 		if err != nil {
 			return "", err
@@ -115,29 +120,45 @@ func lateAfterExpiry(orderID int64, provider, paymentRef string, amount int64, c
 		return "", err
 	}
 	if !done {
+		st, err := readOrderState(orderID)
+		if err != nil {
+			return "", err
+		}
+		if st != nil && !st.Paid && (st.Status == "expired" || st.Status == "cancelled") {
+			return "", errRefundInProgress
+		}
 		return outcomeDuplicate, nil
 	}
 	sendNow(kindConfirm, orderID)
 	return outcomePaid, nil
 }
 
-// claimLateRefund moves an expired or cancelled, never paid order to refunded
-// before any money moves. Of concurrent requests exactly one gets true; the
-// seats are not held, so taken is not touched.
+// minRefundLeft is the route time a late refund needs: a token and the refund
+// call, plus the database writes after it.
+const minRefundLeft = 5 * time.Second
+
+// errRefundInProgress: another request holds the refund claim of this order.
+var errRefundInProgress = errors.New("refund in progress")
+
+// claimLateRefund reserves an expired or cancelled, never paid order for one
+// refund, with the expiring marker of admin claimRefund, before the provider
+// is asked. Of concurrent requests exactly one gets true. The order keeps its
+// status until the provider has refunded, so a killed guest leaves nothing
+// behind but a claim that lapses.
 func claimLateRefund(orderID int64, paymentRef string) (bool, error) {
 	var done bool
-	err := dbJSON(`WITH o AS (UPDATE orders SET status = 'refunded', refunded_cents = total_cents, payment_ref = $2, problem = NULL
-    WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL RETURNING id),
- a AS (UPDATE attendees SET status = 'refunded' WHERE order_id IN (SELECT id FROM o) AND status = 'expired' RETURNING id)
+	err := dbJSON(`WITH o AS (UPDATE orders SET refund_claimed_at = now(), payment_ref = $2
+    WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL
+    AND (refund_claimed_at IS NULL OR refund_claimed_at < now() - interval '`+refundClaimTTL+`') RETURNING id)
 SELECT to_jsonb(EXISTS (SELECT 1 FROM o))`, &done, orderID, paymentRef)
 	return done, err
 }
 
-// refundLate pays a claimed late payment back in full. The idempotency key is
-// the same on every try, so a retry after a failure reuses the refund. When the
-// provider refuses, the claim is undone (the order is expired again) and marked
-// refund_failed for the owner, and the error is returned so the provider sends
-// the message again.
+// refundLate pays a claimed late payment back in full, then records it. The
+// idempotency key is the same on every try, so a retry after a kill reuses the
+// provider's refund. When the provider refuses, the claim is released and the
+// order marked refund_failed for the owner, and the error is returned so the
+// provider sends the message again.
 func refundLate(orderID int64, provider, paymentRef string, amount int64, cur string) (string, error) {
 	s := loadSettings()
 	o, err := readPayPalOrder(orderID)
@@ -147,23 +168,34 @@ func refundLate(orderID int64, provider, paymentRef string, amount int64, cur st
 	} else {
 		err = errRefundFailed
 	}
+	dl := routeEnd
 	switch {
 	case err != nil:
 	case provider == "stripe":
-		_, err = stripeRefund(s, paymentRef, amount, key)
+		_, err = stripeRefund(s, paymentRef, amount, key, dl)
 	case provider == "paypal":
-		_, err = paypalRefund(s, paymentRef, amount, cur, key, newDeadline(5*time.Second))
+		_, err = paypalRefund(s, paymentRef, amount, cur, key, dl)
 	default:
 		err = errRefundFailed
 	}
 	if err != nil {
-		_ = dbExec(`WITH o AS (UPDATE orders SET status = 'expired', problem = 'refund_failed', refunded_cents = 0, payment_ref = $2
-    WHERE id = $1 AND status = 'refunded' AND paid_at IS NULL RETURNING id)
-UPDATE attendees SET status = 'expired' WHERE order_id IN (SELECT id FROM o) AND status = 'refunded'`, orderID, paymentRef)
+		_ = dbExec(`UPDATE orders SET refund_claimed_at = NULL, problem = 'refund_failed', payment_ref = $2
+    WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL`, orderID, paymentRef)
 		return "", errRefundFailed
+	}
+	if err := finishLateRefund(orderID); err != nil {
+		return "", err // the claim lapses and the retry reuses the provider's refund
 	}
 	sendNow(kindRefund, orderID)
 	return outcomeRefunded, nil
+}
+
+// finishLateRefund records a late refund the provider made: the order is
+// refunded in full and its seats-less tickets are marked refunded.
+func finishLateRefund(orderID int64) error {
+	return dbExec(`WITH o AS (UPDATE orders SET status = 'refunded', refunded_cents = total_cents, refund_claimed_at = NULL, problem = NULL
+    WHERE id = $1 AND status IN ('expired', 'cancelled') AND paid_at IS NULL RETURNING id)
+UPDATE attendees SET status = 'refunded' WHERE order_id IN (SELECT id FROM o) AND status = 'expired'`, orderID)
 }
 
 // completeFree marks a pending order whose total is zero (a coupon covered

@@ -206,7 +206,7 @@ func TestStripeGetExpireRefund(t *testing.T) {
 	if err := stripeExpireSession(s, "cs_test_1"); err != nil {
 		t.Fatal(err)
 	}
-	id, err := stripeRefund(s, "pi_1", 500, "et-42-refund-0-500")
+	id, err := stripeRefund(s, "pi_1", 500, "et-42-refund-0-500", deadline{})
 	if err != nil || id != "re_1" {
 		t.Fatalf("%q %v", id, err)
 	}
@@ -227,11 +227,11 @@ func TestStripeRefusesBadIDsBeforeTheNetwork(t *testing.T) {
 		if err := stripeExpireSession(s, id); !errors.Is(err, errProviderRefused) {
 			t.Errorf("expire %q: %v", id, err)
 		}
-		if _, err := stripeRefund(s, id, 100, "k"); !errors.Is(err, errProviderRefused) {
+		if _, err := stripeRefund(s, id, 100, "k", deadline{}); !errors.Is(err, errProviderRefused) {
 			t.Errorf("refund %q: %v", id, err)
 		}
 	}
-	if _, err := stripeRefund(s, "pi_1", 0, "k"); !errors.Is(err, errProviderRefused) {
+	if _, err := stripeRefund(s, "pi_1", 0, "k", deadline{}); !errors.Is(err, errProviderRefused) {
 		t.Errorf("refund of nothing: %v", err)
 	}
 	if _, err := stripeGetSession(settings{}, "cs_1"); !errors.Is(err, errProviderRefused) {

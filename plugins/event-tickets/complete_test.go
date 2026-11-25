@@ -34,8 +34,9 @@ type shop struct {
 	secret   string        // webhook secret
 	tick     time.Duration // the clock moves this much with every provider call (to a URL with tickOn)
 	tickOn   string
-	live     bool   // the hold has not lapsed
-	racing   func() // runs just before retakeHold reads the order: another request moves it
+	live     bool      // the hold has not lapsed
+	racing   func()    // runs just before retakeHold reads the order: another request moves it
+	claimed  time.Time // refund_claimed_at (zero: none)
 
 	mails    []map[string]any
 	queued   []string // kind of queued mails
@@ -60,6 +61,7 @@ func newShop(t *testing.T) *shop {
 	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"200", `{"id":"re_1"}`}
 	w.answers["POST https://api.stripe.com/v1/checkout/sessions/cs_test_1/expire"] = [2]string{"200", `{}`}
 	now = func() time.Time { return w.clock }
+	routeEnd = deadline{}
 	origHook := onHoldsExpired
 	t.Cleanup(func() { now = time.Now; onHoldsExpired = origHook })
 	callHost = func(fn string, args, out any) error {
@@ -142,30 +144,36 @@ func newShop(t *testing.T) *shop {
 			write()
 			w.problem = "amount_mismatch"
 			return nil
-		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET status = 'expired', problem = 'refund_failed'"):
+		case strings.HasPrefix(sql, "UPDATE orders SET refund_claimed_at = NULL, problem = 'refund_failed'"):
 			write()
-			if w.status == "refunded" && !w.paid {
-				w.status, w.refunded, w.attend, w.problem = "expired", 0, "expired", "refund_failed"
+			if (w.status == "expired" || w.status == "cancelled") && !w.paid {
+				w.claimed, w.problem, w.payRef = time.Time{}, "refund_failed", ar[1].(string)
 			}
 			return nil
+		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET refund_claimed_at = now(), payment_ref"):
+			write()
+			ok := (w.status == "expired" || w.status == "cancelled") && !w.paid && w.claimLapsed()
+			if ok {
+				w.claimed, w.payRef = w.clock, ar[1].(string)
+			}
+			return cell(jsonText(ok))
 		case strings.Contains(sql, "SET status = 'pending', expires_at"):
 			write()
 			if w.racing != nil {
 				w.racing()
 				w.racing = nil
 			}
-			ok := w.seats && (w.status == "expired" || w.status == "cancelled") && !w.paid
+			ok := w.seats && (w.status == "expired" || w.status == "cancelled") && !w.paid && w.claimLapsed()
 			if ok {
 				w.status, w.attend, w.live = "pending", "pending", true
 			}
 			return cell(jsonText(ok))
-		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET status = 'refunded'"):
+		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET status = 'refunded', refunded_cents = total_cents, refund_claimed_at"):
 			write()
-			ok := (w.status == "expired" || w.status == "cancelled") && !w.paid
-			if ok {
-				w.status, w.refunded, w.attend, w.problem = "refunded", w.total, "refunded", ""
+			if (w.status == "expired" || w.status == "cancelled") && !w.paid {
+				w.status, w.refunded, w.attend, w.problem, w.claimed = "refunded", w.total, "refunded", "", time.Time{}
 			}
-			return cell(jsonText(ok))
+			return nil
 		case strings.HasPrefix(sql, "WITH o AS (UPDATE orders SET status = $2"):
 			write()
 			ok := w.status == "pending"
@@ -203,6 +211,11 @@ func newShop(t *testing.T) *shop {
 		return nil
 	}
 	return w
+}
+
+// claimLapsed: no refund claim, or one older than the 2-minute TTL.
+func (w *shop) claimLapsed() bool {
+	return w.claimed.IsZero() || w.clock.Sub(w.claimed) > 2*time.Minute
 }
 
 // orderMail is the order as composeConfirm and composeRefund read it.
@@ -380,6 +393,9 @@ func TestCompletePaymentRefundFailureIsRetried(t *testing.T) {
 		t.Fatalf("order %q problem %q, %d mails", w.status, w.problem, len(w.mails))
 	}
 	// Stripe retries the webhook; the refund now works and uses the same key
+	if !w.claimed.IsZero() {
+		t.Fatal("the claim was not released")
+	}
 	w.answers["POST https://api.stripe.com/v1/refunds"] = [2]string{"200", `{"id":"re_1"}`}
 	if out, err = completePayment(shopOrder, "stripe", "pi_1", 2030, "USD"); err != nil || out != outcomeRefunded || w.status != "refunded" || w.problem != "" {
 		t.Fatalf("retry: %q %v, order %q problem %q", out, err, w.status, w.problem)
@@ -453,5 +469,40 @@ func TestLatePaymentRaceHasOneWinner(t *testing.T) {
 		if err != nil || out != c.out || w.status != c.status || len(w.mails) != c.mails || len(w.refundCalls()) != c.refunds {
 			t.Errorf("%s: %q %v, order %q, %d mails, %d refunds", c.name, out, err, w.status, len(w.mails), len(w.refundCalls()))
 		}
+	}
+}
+
+// The guest dies after the claim and before the provider answers: the order is
+// still expired, the claim blocks other requests for two minutes (503, no
+// second provider call), and then the retry refunds under the same key.
+func TestLateRefundSurvivesAKillBetweenClaimAndProvider(t *testing.T) {
+	w := newShop(t)
+	w.status, w.attend, w.seats = "expired", "expired", false
+	if ok, err := claimLateRefund(shopOrder, "pi_1"); !ok || err != nil { // the killed request
+		t.Fatalf("claim %v %v", ok, err)
+	}
+	if w.status != "expired" || w.refunded != 0 {
+		t.Fatalf("the claim moved the order: %q refunded %d", w.status, w.refunded)
+	}
+	if out, err := completePayment(shopOrder, "stripe", "pi_1", 2030, "USD"); err == nil || out != "" || len(w.refundCalls()) != 0 {
+		t.Fatalf("live claim: %q %v, %d refunds", out, err, len(w.refundCalls()))
+	}
+	w.clock = w.clock.Add(3 * time.Minute)
+	out, err := completePayment(shopOrder, "stripe", "pi_1", 2030, "USD")
+	if err != nil || out != outcomeRefunded || w.status != "refunded" || w.refunded != 2030 || len(w.refundCalls()) != 1 || len(w.mails) != 1 {
+		t.Fatalf("retry: %q %v, order %q, %d refunds", out, err, w.status, len(w.refundCalls()))
+	}
+}
+
+// With too little of the route left the late refund is not even claimed: 503
+// and no provider call.
+func TestLateRefundWithTooLittleTimeAnswersRetry(t *testing.T) {
+	w := newShop(t)
+	w.status, w.attend, w.seats = "expired", "expired", false
+	routeEnd = newDeadline(2 * time.Second)
+	t.Cleanup(func() { routeEnd = deadline{} })
+	out, err := completePayment(shopOrder, "stripe", "pi_1", 2030, "USD")
+	if err == nil || out != "" || len(w.fetches) != 0 || !w.claimed.IsZero() || w.status != "expired" {
+		t.Fatalf("%q %v, %d fetches, claimed %v, order %q", out, err, len(w.fetches), w.claimed, w.status)
 	}
 }

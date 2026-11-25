@@ -132,7 +132,7 @@ func stripeExpireSessionBy(s settings, id string, dl deadline) error {
 
 // stripeRefund refunds amount of a payment. The idempotency key makes a retry
 // reuse the refund the first call made.
-func stripeRefund(s settings, paymentIntent string, amount int64, idemKey string) (refundID string, err error) {
+func stripeRefund(s settings, paymentIntent string, amount int64, idemKey string, dl deadline) (refundID string, err error) {
 	if !idRe.MatchString(paymentIntent) || amount < 1 || amount > maxTotalCents {
 		return "", errProviderRefused
 	}
@@ -142,7 +142,7 @@ func stripeRefund(s settings, paymentIntent string, amount int64, idemKey string
 	var res struct {
 		ID string `json:"id"`
 	}
-	if err := stripeCall(s, "POST", "/v1/refunds", form, idemKey, deadline{}, &res); err != nil {
+	if err := stripeCall(s, "POST", "/v1/refunds", form, idemKey, dl, &res); err != nil {
 		return "", err
 	}
 	if !idRe.MatchString(res.ID) {

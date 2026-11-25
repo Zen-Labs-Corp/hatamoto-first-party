@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
@@ -12,9 +13,17 @@ import (
 
 func init() { guest.OnHTTP(serve) }
 
+// routeBudget is how much of core's 10 s route limit the plugin plans to use;
+// routeEnd is that point for the request being served (the zero value, as in
+// tests that skip serve, means no overall limit).
+const routeBudget = 9 * time.Second
+
+var routeEnd deadline
+
 // serve answers the routes. It never returns a Go error and never puts host
 // or database error text in a body.
 func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
+	routeEnd = newDeadline(routeBudget)
 	// Core mounts GET routes, which also match HEAD; it drops the body of a
 	// HEAD answer itself.
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
