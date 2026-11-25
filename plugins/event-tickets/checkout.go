@@ -14,8 +14,7 @@ import (
 const (
 	maxCheckoutBody = maxBodyBytes // 16 KiB
 	maxQuoteBody    = 4 << 10
-	maxPendingHolds = 2  // open (unpaid) holds per address and event
-	maxOpenHolds    = 20 // open (unpaid) holds per event, whoever holds them
+	maxPendingHolds = 2 // open (unpaid) holds per address and event
 	checkoutBudget  = 8 * time.Second
 	holdSweepBatch  = 50
 	titleRunes      = 100
@@ -157,7 +156,7 @@ func serveCheckout(r sdk.HTTPRequest) sdk.HTTPResponse {
 	if !ok || !hasPriced(lines) { // an all-free cart is an RSVP
 		return failReply(http.StatusUnprocessableEntity, fieldsError)
 	}
-	if env.Counts.PendingByEmail >= maxPendingHolds || env.Counts.OpenHolds >= maxOpenHolds {
+	if env.Counts.PendingByEmail >= maxPendingHolds {
 		return failReply(http.StatusTooManyRequests, tooManyError)
 	}
 	answers, bad := buyerAnswers(b.Event, b.Answers)

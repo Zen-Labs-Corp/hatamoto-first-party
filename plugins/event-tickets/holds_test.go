@@ -134,6 +134,28 @@ func TestHoldCartIsOneStatement(t *testing.T) {
 	}
 }
 
+// Unpaid holds may take at most max(10, half the capacity) seats of a type: the
+// same guard decides whether the cart goes through and which types are "full".
+func TestHoldCartCapsSeatsHeldPerType(t *testing.T) {
+	h := newHoldHost(t)
+	if _, err := holdCart(threeTypeCart()); err != nil {
+		t.Fatal(err)
+	}
+	sql := h.dbCalls()[0].sql
+	guard := "lk.held + w.qty <= greatest(10, lk.capacity / 2)"
+	if strings.Count(sql, guard) != 2 {
+		t.Errorf("the share guard must be in the go check and in the full list: %d", strings.Count(sql, guard))
+	}
+	for _, want := range []string{"a.status = 'pending' AND o.status = 'pending' AND o.expires_at > now()", "NOT (lk.on_sale AND lk.taken + w.qty <= lk.capacity AND " + guard + ")"} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("the hold statement lacks %q", want)
+		}
+	}
+	if strings.Contains(sql, "open_holds") {
+		t.Error("a flat per-event cap is back")
+	}
+}
+
 func TestHoldCartWithoutCouponAndRefused(t *testing.T) {
 	h := newHoldHost(t)
 	in := threeTypeCart()
@@ -282,7 +304,7 @@ func TestCountEventIgnoresLapsedHoldsInTheHourlyCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	sql := h.dbCalls()[0].sql
-	for _, want := range []string{"'open_holds'", "status = 'pending' AND expires_at > now()", "NOT (status IN ('expired', 'cancelled') AND paid_at IS NULL)"} {
+	for _, want := range []string{"NOT (status IN ('expired', 'cancelled') AND paid_at IS NULL)"} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("counts lack %q", want)
 		}

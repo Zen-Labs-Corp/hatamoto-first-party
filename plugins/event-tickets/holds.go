@@ -42,6 +42,13 @@ type holdResult struct {
 	CouponGone bool    `json:"coupon_gone"`
 }
 
+// heldShareOK limits the seats that unpaid, unexpired holds may take of one
+// ticket type to max(10, half of its capacity), so unauthenticated
+// checkouts can never freeze a whole type. Counted from a snapshot, so
+// requests racing each other may overshoot by a few seats; the capacity check
+// on taken stays exact.
+const heldShareOK = `lk.held + w.qty <= greatest(10, lk.capacity / 2)`
+
 // holdCart takes the seats of every line of a cart, counts the coupon use and
 // writes the pending order with its pending attendees, or does nothing, in one
 // statement. The ticket types are locked in id order, so two carts never wait
@@ -69,12 +76,15 @@ func holdCart(h holdIn) (holdResult, error) {
 	}
 	err = dbJSON(`WITH want AS (SELECT w."type" AS type_id, w.qty, w.unit
     FROM jsonb_to_recordset($2::jsonb) AS w("type" bigint, qty int, unit bigint)),
- lk AS (SELECT t.id, t.taken, t.capacity, t.on_sale, t.price_cents FROM ticket_types t
+ lk AS (SELECT t.id, t.taken, t.capacity, t.on_sale, t.price_cents,
+        (SELECT count(*)::int FROM attendees a JOIN orders o ON o.id = a.order_id
+            WHERE a.type_id = t.id AND a.status = 'pending' AND o.status = 'pending' AND o.expires_at > now()) AS held
+    FROM ticket_types t
     WHERE t.event_id = $1 AND t.id IN (SELECT type_id FROM want) ORDER BY t.id FOR UPDATE),
  cp AS (SELECT c.id FROM coupons c WHERE $8::bigint IS NOT NULL AND c.id = $8::bigint AND c.active
     AND (c.max_uses IS NULL OR c.used < c.max_uses) AND (c.expires_at IS NULL OR c.expires_at > now()) FOR UPDATE),
  ok AS (SELECT (SELECT count(*) FROM lk JOIN want w ON w.type_id = lk.id
-        WHERE lk.on_sale AND lk.taken + w.qty <= lk.capacity AND lk.price_cents = w.unit) = (SELECT count(*) FROM want)
+        WHERE lk.on_sale AND lk.taken + w.qty <= lk.capacity AND `+heldShareOK+` AND lk.price_cents = w.unit) = (SELECT count(*) FROM want)
     AND ($8::bigint IS NULL OR EXISTS (SELECT 1 FROM cp)) AS go),
  t AS (UPDATE ticket_types tt SET taken = tt.taken + w.qty, touched_at = now()
     FROM want w, ok WHERE ok.go AND tt.id = w.type_id AND tt.event_id = $1
@@ -91,7 +101,7 @@ func holdCart(h holdIn) (holdResult, error) {
 SELECT jsonb_build_object(
     'order_id', (SELECT id FROM o),
     'full', (SELECT coalesce(jsonb_agg(lk.id ORDER BY lk.id), '[]'::jsonb) FROM lk JOIN want w ON w.type_id = lk.id
-        WHERE NOT (lk.on_sale AND lk.taken + w.qty <= lk.capacity)),
+        WHERE NOT (lk.on_sale AND lk.taken + w.qty <= lk.capacity AND `+heldShareOK+`)),
     'changed', (SELECT coalesce(jsonb_agg(w.type_id ORDER BY w.type_id), '[]'::jsonb) FROM want w LEFT JOIN lk ON lk.id = w.type_id
         WHERE lk.id IS NULL OR lk.price_cents <> w.unit),
     'coupon_gone', ($8::bigint IS NOT NULL AND NOT EXISTS (SELECT 1 FROM cp)))`,

@@ -326,12 +326,13 @@ func TestCheckoutCaps(t *testing.T) {
 	if code, _ := h.checkout(t, nil); code != 429 {
 		t.Errorf("orders per hour: %d", code)
 	}
-	h.counts = `{"by_email":0,"hour":0,"waiting":0,"pending_by_email":0,"open_holds":20}`
-	if code, _ := h.checkout(t, nil); code != 429 {
-		t.Errorf("open holds of the event: %d", code)
-	}
 	if len(h.with("INSERT INTO orders")) != 0 {
 		t.Fatal("a capped post held seats")
+	}
+	// many open holds of the event do not refuse a buyer: the share cap is per type, in holdCart
+	h.counts = `{"by_email":0,"hour":0,"waiting":0,"pending_by_email":0,"open_holds":500}`
+	if code, _ := h.checkout(t, nil); code == 429 {
+		t.Error("a flat cap on open holds is back")
 	}
 }
 
