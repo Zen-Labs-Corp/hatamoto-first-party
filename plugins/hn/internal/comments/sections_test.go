@@ -64,11 +64,14 @@ func TestThreadsPageSections(t *testing.T) {
 			`<a href="/user?id=bob">bob</a>`,
 			`on: <a href="/item/7">Seven</a>`,
 			`<a href="/item/7?id=` + cid(1) + `">parent</a>`,
-			`id="c-` + cid(2) + `"`, `<p>text 2</p>`, `<a href="/item/7?id=` + cid(2) + `">reply</a>`,
+			`id="c-` + cid(2) + `"`, `<p>text 2</p>`, `<a href="/reply?id=` + cid(2) + `">reply</a>`,
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %s in %s", want, out)
 			}
+		}
+		if strings.Contains(out, ">context</a>") {
+			t.Errorf("context link outside the reply page: %s", out)
 		}
 		if n := strings.Count(out, ">parent</a>"); n != 1 {
 			t.Errorf("%d parent links, want 1 (only the reply has a parent)", n)
