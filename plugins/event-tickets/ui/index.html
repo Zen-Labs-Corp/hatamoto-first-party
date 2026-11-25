@@ -227,6 +227,38 @@
       <div class="row">
         <button id="cm-new" type="button">New campaign</button>
       </div>
+      <section id="cm-form" class="panel-box" hidden>
+        <h2>New campaign</h2>
+        <div class="row">
+          <label>Subject <input id="cm-subject" type="text" maxlength="200" size="50"></label>
+          <label>Format <select id="cm-format"></select></label>
+        </div>
+        <div class="row">
+          <label>Message <textarea id="cm-body" rows="10" cols="60" maxlength="8000"></textarea></label>
+        </div>
+        <p class="muted">Text: blank lines make paragraphs and web addresses become links. HTML: only paragraphs, line breaks, bold, italic, lists, headings and links are kept.</p>
+        <h3>Segment</h3>
+        <div class="row">
+          <label>Event <select id="cm-event"></select></label>
+          <label>Ticket type <select id="cm-type"></select></label>
+          <label>Checked in <select id="cm-checked"></select></label>
+          <label>Bought before <input id="cm-before" type="date"></label>
+        </div>
+        <div class="row">
+          <label><input id="cm-rsvp" type="checkbox"> RSVP only</label>
+          <label><input id="cm-notbought" type="checkbox"> Not bought (people who bought another event but not this one)</label>
+        </div>
+        <div class="row">
+          <button id="cm-count" type="button">Count recipients</button>
+          <span id="cm-count-out" class="muted"></span>
+        </div>
+        <div class="row">
+          <label>Send <select id="cm-when"></select></label>
+          <input id="cm-at" type="datetime-local">
+          <span id="cm-send"></span>
+          <button id="cm-cancel" type="button">Close</button>
+        </div>
+      </section>
       <p class="muted">Every mail has an unsubscribe link. Opens count only when the mail app loads images.</p>
     </section>
 

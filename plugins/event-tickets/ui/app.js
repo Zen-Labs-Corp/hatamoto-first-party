@@ -368,6 +368,9 @@ function fillEventPicker() {
   $("#ck-event").replaceChildren(...state.events.map((e) => el("option", { value: e.id, textContent: e.name })));
   if (keepCk) $("#ck-event").value = keepCk;
   $("#cp-event").replaceChildren(...events.map((o) => el("option", { value: o.value, textContent: o.textContent })));
+  const keepCm = $("#cm-event").value;
+  $("#cm-event").replaceChildren(...events.map((o) => el("option", { value: o.value, textContent: o.textContent })));
+  $("#cm-event").value = keepCm;
 }
 
 function openAttendees(id) {
@@ -1129,6 +1132,111 @@ async function saveAutomations() {
 
 $("#em-save").addEventListener("click", saveAutomations);
 
+// ---- New campaign
+
+// segmentRequest is the segment of the campaign routes from the form values,
+// or an error text. The server checks the same rules; this saves a round trip.
+function segmentRequest(f) {
+  if ((f.type_id || f.checked_in || f.not_bought) && !f.event_id) return { error: "Choose an event for this filter." };
+  if (f.not_bought && (f.type_id || f.checked_in || f.rsvp_only)) return { error: "Not bought cannot be combined with a ticket type, checked in or RSVP only." };
+  return {
+    body: {
+      event_id: f.event_id || "", type_id: f.type_id ? Number(f.type_id) : 0, checked_in: f.checked_in || "",
+      bought_before: f.bought_before || "", rsvp_only: Boolean(f.rsvp_only), not_bought: Boolean(f.not_bought),
+    },
+  };
+}
+
+// campaignRequest is the body of the campaign route, or an error text.
+function campaignRequest(f) {
+  if (!f.subject.trim()) return { error: "Write a subject." };
+  if (!f.body.trim()) return { error: "Write a message." };
+  const seg = segmentRequest(f);
+  if (seg.error) return seg;
+  let sendAt = "";
+  if (f.when === "at") {
+    const at = new Date(f.at);
+    if (!f.at || Number.isNaN(at.getTime()) || at.getTime() <= Date.now()) return { error: "Pick a time in the future." };
+    sendAt = at.toISOString();
+  }
+  return { body: { subject: f.subject.trim(), format: f.format, body: f.body, segment: seg.body, send_at: sendAt } };
+}
+
+function campaignForm() {
+  return {
+    subject: $("#cm-subject").value, format: $("#cm-format").value, body: $("#cm-body").value,
+    event_id: $("#cm-event").value, type_id: $("#cm-type").value, checked_in: $("#cm-checked").value,
+    bought_before: $("#cm-before").value, rsvp_only: $("#cm-rsvp").checked, not_bought: $("#cm-notbought").checked,
+    when: $("#cm-when").value, at: $("#cm-at").value,
+  };
+}
+
+// syncCampaignForm greys out what the chosen options rule out.
+function syncCampaignForm() {
+  const nb = $("#cm-notbought").checked;
+  $("#cm-type").disabled = nb;
+  $("#cm-checked").disabled = nb;
+  $("#cm-rsvp").disabled = nb;
+  $("#cm-at").hidden = $("#cm-when").value !== "at";
+}
+
+async function loadCampaignTypes() {
+  const id = $("#cm-event").value;
+  const none = el("option", { value: "", textContent: "Any type" });
+  $("#cm-type").replaceChildren(none);
+  if (!id) return;
+  const data = await run(() => api("GET", `/admin/events/${encodeURIComponent(id)}`));
+  if (!data || $("#cm-event").value !== id) return;
+  $("#cm-type").replaceChildren(none, ...(data.types || []).map((t) => el("option", { value: String(t.id), textContent: t.name })));
+}
+
+function openCampaignForm(show) {
+  $("#cm-form").hidden = !show;
+  $("#cm-count-out").textContent = "";
+  if (!show) return;
+  $("#cm-subject").value = "";
+  $("#cm-body").value = "";
+  $("#cm-before").value = "";
+  $("#cm-at").value = "";
+  $("#cm-rsvp").checked = false;
+  $("#cm-notbought").checked = false;
+  $("#cm-when").value = "now";
+  $("#cm-event").value = "";
+  loadCampaignTypes();
+  syncCampaignForm();
+}
+
+async function countCampaign() {
+  const seg = segmentRequest(campaignForm());
+  if (seg.error) { say(seg.error, true); return; }
+  const data = await run(() => api("POST", "/admin/campaigns/count", { segment: seg.body }));
+  if (!data) return;
+  say("");
+  $("#cm-count-out").textContent = `${data.count} ${data.count === 1 ? "recipient" : "recipients"} (unsubscribed people left out)`;
+}
+
+async function sendCampaign() {
+  const req = campaignRequest(campaignForm());
+  if (req.error) { say(req.error, true); return; }
+  const data = await run(() => api("POST", "/admin/campaigns", req.body));
+  if (!data) return;
+  say(req.body.send_at ? "Campaign scheduled." : "Campaign is sending.");
+  openCampaignForm(false);
+  openEmails();
+}
+
+$("#cm-format").replaceChildren(el("option", { value: "text", textContent: "Text" }), el("option", { value: "html", textContent: "HTML" }));
+$("#cm-checked").replaceChildren(el("option", { value: "", textContent: "Any" }), el("option", { value: "yes", textContent: "Checked in" }), el("option", { value: "no", textContent: "Not checked in" }));
+$("#cm-when").replaceChildren(el("option", { value: "now", textContent: "Now" }), el("option", { value: "at", textContent: "At" }));
+$("#cm-type").replaceChildren(el("option", { value: "", textContent: "Any type" }));
+$("#cm-new").addEventListener("click", () => openCampaignForm(true));
+$("#cm-cancel").addEventListener("click", () => openCampaignForm(false));
+$("#cm-event").addEventListener("change", loadCampaignTypes);
+$("#cm-notbought").addEventListener("change", syncCampaignForm);
+$("#cm-when").addEventListener("change", syncCampaignForm);
+$("#cm-count").addEventListener("click", countCampaign);
+$("#cm-send").append(confirmButton("Send", "Confirm send", "Click Confirm send to send this campaign to everyone in the segment. Count recipients first to see how many.", sendCampaign));
+
 // ---- Tabs
 
 const TABS = { events: () => loadEvents(false), attendees: () => loadAttendees(1), orders: openOrders, checkin: openCheckin, payouts: openPayouts, emails: openEmails, settings: loadSettings };
@@ -1158,7 +1266,7 @@ hatamoto.ready.then(async () => {
 if (typeof module !== "undefined") {
   module.exports = {
     csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest, splitsBody, parsePercent,
-    periodOptions, defaultPeriod, markRequest, shareText, automationsBody, percentText, segmentText,
+    periodOptions, defaultPeriod, markRequest, shareText, automationsBody, percentText, segmentText, campaignRequest, segmentRequest,
     feesText, submitRefund, openRefund, state, showScanResult, clockTime, scanClick, ckQueue,
   };
 }
