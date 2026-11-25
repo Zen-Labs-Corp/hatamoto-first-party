@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -14,14 +15,18 @@ const sourceTickets = "ext.event-tickets.tickets"
 
 func init() { guest.OnFilter(sdk.BuilderData, answerBuilder) }
 
+var errTicketsUnavailable = errors.New("ticket types unavailable")
+
 // answerBuilder answers the tickets source and leaves other requests alone.
 // It reads one table and never the event itself, so no event attribute (the
 // join link above all) can reach a cached page. Counts may be as old as the
-// page cache; the RSVP route re-checks capacity atomically. A failure yields
-// an empty list, never an error string.
+// page cache; the RSVP route re-checks capacity atomically. When the table
+// cannot be read the filter fails (without the database error): the host
+// renders the page with empty props and keeps it out of the page cache.
 func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 	var types []ticketType
 	loaded := false
+	failed := false
 	for _, q := range r.Requests {
 		if q.Source != sourceTickets {
 			continue
@@ -31,7 +36,9 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 			if !loaded {
 				loaded = true
 				all, err := listTypes(r.EntityID)
-				if err == nil {
+				if err != nil {
+					failed = true
+				} else {
 					for _, t := range all {
 						if t.OnSale {
 							types = append(types, t)
@@ -48,6 +55,9 @@ func answerBuilder(r sdk.BuilderDataRequest) (sdk.BuilderDataRequest, error) {
 			}
 		}
 		r.Results = append(r.Results, res)
+	}
+	if failed {
+		return r, errTicketsUnavailable
 	}
 	return r, nil
 }

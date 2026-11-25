@@ -135,13 +135,17 @@ func TestBuilderNeverCarriesOnlineURL(t *testing.T) {
 	}
 }
 
-func TestBuilderDBErrorIsEmpty(t *testing.T) {
+func TestBuilderDBErrorFailsTheFilterSoThePageIsNotCached(t *testing.T) {
 	builderHost(t, ``, errors.New("pq: boom secret"))
-	got, raw := runBuilder(t, ticketsQuery("e1"))
-	if len(got.Results) != 1 || len(got.Results[0].Items) != 0 || got.Results[0].Error != "" {
-		t.Errorf("results = %+v", got.Results)
+	out, err := answerBuilder(ticketsQuery("e1"))
+	if !errors.Is(err, errTicketsUnavailable) {
+		t.Fatalf("err = %v, want errTicketsUnavailable", err)
 	}
-	if strings.Contains(raw, "boom") {
-		t.Errorf("host error text leaked: %s", raw)
+	if strings.Contains(err.Error(), "boom") {
+		t.Errorf("host error text leaked: %v", err)
+	}
+	// still fail open: the render gets an empty result for its request
+	if len(out.Results) != 1 || len(out.Results[0].Items) != 0 || out.Results[0].Error != "" {
+		t.Errorf("results = %+v", out.Results)
 	}
 }
