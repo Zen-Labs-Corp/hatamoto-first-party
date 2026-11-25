@@ -133,19 +133,30 @@ In plain words, the three that warn on install:
 
 No `http.fetch`, `kv`, `mail.send`, `log` or `entities.read`: the lists read the plugin's own copy of each story.
 
-`request_headers` declares `sec-fetch-site` (not a permission): routes use it to refuse cross-site form posts.
+`request_headers` declares `sec-fetch-site` and the always-passed `Origin` header (not permissions): routes use them to refuse cross-site form posts.
 
 ## Settings
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `flag_karma` | 30 | karma needed to flag |
+| `flag_karma` | 30 | karma needed to flag (nobody has it on a new site: see Moderation and abuse controls) |
 | `downvote_karma` | 500 | karma needed to downvote a comment |
 | `vouch_karma` | 31 | karma needed to vouch for a dead item |
 | `edit_window_minutes` | 120 | how long an author may edit or delete a story |
 | `submit_per_hour` | 6 | stories one member may submit per hour |
 | `flags_to_dead` | 5 | flags after which an item is marked dead |
 | `page_size` | 30 | stories per page (1 to 100) |
+
+## Moderation and abuse controls
+
+- **Flags and karma on a new site.** New members start at karma 1 and flagging needs `flag_karma` (30), so nobody can flag at first. The owner kills spam from the **Recent** tab of the News moderation page (the newest 50 stories and 50 comments, live or dead, with kill, restore and ban). The default stays at 30; lower it in the plugin settings for the first weeks if you prefer.
+- **Queue.** Flagged items first, then every dead item with its cause (flags, owner, ban or domain), so anything killed can be restored from the page.
+- **Voting rings.** One network adds at most 2 counted up-votes to one story per 24 hours. Later ones are stored uncounted: the voter still sees "voted", but the vote adds no points, rank or karma, and each one is logged as `ring-vote` in the Log tab. Nothing is deleted. Needs the `client.key` permission (no network key, no check).
+- **Site bans.** A banned site includes its subdomains. A unicode spelling is stored and matched as punycode (new stories from an internationalised site show the punycode host). Banning kills the site's live stories (cause `domain`, members cannot vouch for them); removing the ban brings them back unless another ban still covers them.
+- **Network bans.** A banned network cannot submit or vote, and its comments are held.
+- **Story links.** Links must be http or https, with a port of 1 to 65535 if any.
+- **Cross-site posts.** Posts are refused by Fetch Metadata (`Sec-Fetch-Site`); a request that has an `Origin` but no `Sec-Fetch-Site` is refused too.
+- **Held comments.** The reasons shown are "blocked member", "blocked network" and "banned site".
 
 ## Data
 

@@ -57,7 +57,7 @@
   "settings_schema": {
     "type": "object",
     "properties": {
-      "flag_karma": { "type": "integer", "title": "Karma to flag", "description": "Minimum karma a member needs to flag a story or comment.", "default": 30, "minimum": 0 },
+      "flag_karma": { "type": "integer", "title": "Karma to flag", "description": "Minimum karma a member needs to flag a story or comment. New members start at 1, so on a new site nobody can flag until members earn karma; kill spam from the Recent tab of the News moderation page, or lower this for the first weeks.", "default": 30, "minimum": 0 },
       "downvote_karma": { "type": "integer", "title": "Karma to downvote", "description": "Minimum karma a member needs to downvote a comment.", "default": 500, "minimum": 0 },
       "vouch_karma": { "type": "integer", "title": "Karma to vouch", "description": "Minimum karma a member needs to vouch for a dead story or comment.", "default": 31, "minimum": 0 },
       "edit_window_minutes": { "type": "integer", "title": "Edit window (minutes)", "description": "How long an author may edit or delete a story after posting it.", "default": 120, "minimum": 0 },
