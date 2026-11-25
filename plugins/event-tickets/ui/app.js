@@ -1109,7 +1109,7 @@ function campaignRow(c) {
     act.append(confirmButton("Cancel", "Confirm cancel", "Click Confirm cancel to stop this campaign. Mails not yet sent are dropped.", () => cancelCampaign(c)));
   }
   return el("tr", {}, cell(c.subject), cell(segmentText(c.segment, state.events)), cell(statusText(c)),
-    num(`${c.sent} / ${c.total}`), num(`${c.opens} (${percentText(c.opens, c.sent)})`), num(`${c.clicks} (${percentText(c.clicks, c.sent)})`), num(String(c.buys)), act);
+    num(`${c.sent} / ${c.total}`), num(`${c.opens} (${percentText(c.opens, c.sent)})`), num(`${c.clicks} (${percentText(c.clicks, c.sent)})`), num(c.buys == null ? "n/a" : String(c.buys)), act);
 }
 
 async function cancelCampaign(c) {

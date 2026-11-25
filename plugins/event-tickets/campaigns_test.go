@@ -21,10 +21,13 @@ type campHost struct {
 	campaign string // subject/format/body of the sending campaign, "null" = none
 	stmts    []call // every campaign write, in order
 	stats    string
+	statsErr bool   // the campaign list fails
+	buys     string // buys per campaign id, a jsonb object
+	buysErr  bool   // the buys count fails (a statement timeout on a large site)
 }
 
 func newCampHost(t *testing.T) *campHost {
-	h := &campHost{mailHost: newMailHost(t), typeOK: true, due: `[]`, segment: `{"event_id":"e1"}`, stats: `[]`,
+	h := &campHost{mailHost: newMailHost(t), typeOK: true, due: `[]`, segment: `{"event_id":"e1"}`, stats: `[]`, buys: `{}`,
 		campaign: `{"subject":"News","format":"text","body":"Hello https://example.org/events/gig and https://other.example/x"}`}
 	h.settings = `{"site_url":"https://example.org"}`
 	inner := callHost
@@ -55,7 +58,15 @@ func newCampHost(t *testing.T) *campHost {
 			return nil
 		case strings.Contains(sql, "FROM campaigns WHERE id = $1 AND status = 'sending'"):
 			return jsonInto(`{"rows":[[`+h.campaign+`]]}`, out)
+		case strings.Contains(sql, "count(DISTINCT m.id)"):
+			if h.buysErr {
+				return errors.New("statement timeout")
+			}
+			return jsonInto(`{"rows":[[`+h.buys+`]]}`, out)
 		case strings.Contains(sql, "FROM (SELECT c.id, c.subject"):
+			if h.statsErr {
+				return errors.New("statement timeout")
+			}
 			return jsonInto(`{"rows":[[`+h.stats+`]]}`, out)
 		case strings.Contains(sql, "'email.%'"):
 			return jsonInto(`{"rows":[[{}]]}`, out)
@@ -284,12 +295,14 @@ func TestComposeCampaignSkips(t *testing.T) {
 
 func TestEmailsListsCampaigns(t *testing.T) {
 	h := newCampHost(t)
-	h.stats = `[{"id":9,"subject":"News","segment":{"event_id":"e1"},"status":"sending","total":10,"sent":4,"opens":2,"clicks":1,"buys":1}]`
+	h.stats = `[{"id":9,"subject":"News","segment":{"event_id":"e1"},"status":"sending","total":10,"sent":4,"opens":2,"clicks":1},
+{"id":8,"subject":"Old","segment":{},"status":"sent","total":3,"sent":3,"opens":0,"clicks":0}]`
+	h.buys = `{"9":1}`
 	r := serveEmails(&sdk.HTTPUser{Role: "owner"})
 	var got struct {
 		Campaigns []map[string]any `json:"campaigns"`
 	}
-	if err := json.Unmarshal([]byte(r.Body), &got); err != nil || len(got.Campaigns) != 1 {
+	if err := json.Unmarshal([]byte(r.Body), &got); err != nil || len(got.Campaigns) != 2 {
 		t.Fatalf("%s %v", r.Body, err)
 	}
 	for _, k := range []string{"subject", "segment", "status", "total", "sent", "opens", "clicks", "buys"} {
@@ -297,10 +310,41 @@ func TestEmailsListsCampaigns(t *testing.T) {
 			t.Errorf("campaign lacks %q", k)
 		}
 	}
+	if got.Campaigns[0]["buys"] != float64(1) || got.Campaigns[1]["buys"] != float64(0) {
+		t.Errorf("buys %v %v, want 1 and 0", got.Campaigns[0]["buys"], got.Campaigns[1]["buys"])
+	}
 	for _, want := range []string{"s.clicked_at IS NOT NULL", "o.created_at >= s.clicked_at", "s.clicked_at + interval '7 days'", "o.status IN ('confirmed', 'paid')",
-		"(c.event_id = '' OR o.event_id = c.event_id)", "count(DISTINCT o.id)", "LIMIT 50"} {
-		if !strings.Contains(campaignStatsSQL, want) {
-			t.Errorf("stats SQL lacks %q", want)
+		"(c.event_id = '' OR o.event_id = c.event_id)", "count(DISTINCT m.id)", "LIMIT 50", "CROSS JOIN LATERAL"} {
+		if !strings.Contains(campaignBuysSQL, want) {
+			t.Errorf("buys SQL lacks %q", want)
 		}
+	}
+	if strings.Contains(campaignStatsSQL, "orders") || !strings.Contains(campaignStatsSQL, "LIMIT 50") {
+		t.Error("the list statement must not touch orders")
+	}
+}
+
+func TestEmailsKeepsTheListWhenTheBuysCountFails(t *testing.T) {
+	h := newCampHost(t)
+	h.stats = `[{"id":9,"subject":"News","segment":{},"status":"sending","total":10,"sent":4,"opens":2,"clicks":1}]`
+	h.buysErr = true
+	r := serveEmails(&sdk.HTTPUser{Role: "owner"})
+	var got struct {
+		Campaigns []map[string]any `json:"campaigns"`
+	}
+	if err := json.Unmarshal([]byte(r.Body), &got); err != nil || r.Status != http.StatusOK || len(got.Campaigns) != 1 {
+		t.Fatalf("%d %s %v: the campaign must still be listed", r.Status, r.Body, err)
+	}
+	if v, ok := got.Campaigns[0]["buys"]; !ok || v != nil {
+		t.Errorf("buys %v %v, want null (unavailable)", v, ok)
+	}
+	if got.Campaigns[0]["status"] != "sending" {
+		t.Errorf("status %v", got.Campaigns[0]["status"])
+	}
+
+	// a failing list is an error, never an empty list that reads "No campaigns yet"
+	h.statsErr = true
+	if r := serveEmails(&sdk.HTTPUser{Role: "owner"}); r.Status != http.StatusServiceUnavailable {
+		t.Errorf("list failure: %d %s, want 503", r.Status, r.Body)
 	}
 }

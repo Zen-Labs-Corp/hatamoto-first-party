@@ -192,29 +192,54 @@ SELECT to_jsonb(EXISTS (SELECT 1 FROM c))`, &found, id)
 	return jsonReply(http.StatusOK, map[string]any{"ok": true})
 }
 
-// campaignStatsSQL lists the newest campaigns with their counts. A buy is an
-// order of the campaign's event (any event when the campaign has none) by a
-// person who clicked, within seven days of the click.
+// campaignStatsSQL lists the newest campaigns with their counts, from the
+// indexed email_sends rows only, so it stays cheap.
 const campaignStatsSQL = `SELECT coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'subject', x.subject, 'segment', x.segment,
-    'status', x.status, 'send_at', x.send_at, 'total', x.total, 'sent', x.sent, 'opens', x.opens, 'clicks', x.clicks, 'buys', x.buys)
+    'status', x.status, 'send_at', x.send_at, 'total', x.total, 'sent', x.sent, 'opens', x.opens, 'clicks', x.clicks)
   ORDER BY x.id DESC), '[]'::jsonb)
 FROM (SELECT c.id, c.subject, c.segment, c.status, c.send_at,
   (SELECT count(*) FROM email_sends s WHERE s.kind = 'campaign' AND s.ref_id = c.id) AS total,
   (SELECT count(*) FROM email_sends s WHERE s.kind = 'campaign' AND s.ref_id = c.id AND s.status = 'sent') AS sent,
   (SELECT count(*) FROM email_sends s WHERE s.kind = 'campaign' AND s.ref_id = c.id AND s.opened_at IS NOT NULL) AS opens,
-  (SELECT count(*) FROM email_sends s WHERE s.kind = 'campaign' AND s.ref_id = c.id AND s.clicked_at IS NOT NULL) AS clicks,
-  (SELECT count(DISTINCT o.id) FROM email_sends s
-    JOIN orders o ON encode(sha256(convert_to(lower(o.email), 'UTF8')), 'hex') = s.email_hash
-    WHERE s.kind = 'campaign' AND s.ref_id = c.id AND s.clicked_at IS NOT NULL AND o.status IN ('confirmed', 'paid')
-      AND o.created_at >= s.clicked_at AND o.created_at < s.clicked_at + interval '` + conversionWindow + `'
-      AND (c.event_id = '' OR o.event_id = c.event_id)) AS buys
+  (SELECT count(*) FROM email_sends s WHERE s.kind = 'campaign' AND s.ref_id = c.id AND s.clicked_at IS NOT NULL) AS clicks
   FROM campaigns c ORDER BY c.id DESC LIMIT 50) x`
 
-// readCampaigns is the list the Emails tab shows.
-func readCampaigns() (json.RawMessage, error) {
-	var list json.RawMessage
-	err := dbJSON(campaignStatsSQL, &list)
-	return list, err
+// campaignBuysSQL counts, per campaign of that list, the buys: orders of the
+// campaign's event (any event when it has none) by a person who clicked,
+// within seven days of the click. It goes click by click (LATERAL), so the
+// orders' status/date index limits the addresses hashed to the orders of that
+// week, not every order. It is a separate statement so a slow or failed count
+// never hides the campaigns.
+const campaignBuysSQL = `SELECT coalesce(jsonb_object_agg(b.id::text, b.n), '{}'::jsonb)
+FROM (SELECT c.id, count(DISTINCT m.id) AS n
+  FROM (SELECT id, event_id FROM campaigns ORDER BY id DESC LIMIT 50) c
+  JOIN email_sends s ON s.kind = 'campaign' AND s.ref_id = c.id AND s.clicked_at IS NOT NULL
+  CROSS JOIN LATERAL (SELECT o.id FROM orders o
+    WHERE o.status IN ('confirmed', 'paid')
+      AND o.created_at >= s.clicked_at AND o.created_at < s.clicked_at + interval '` + conversionWindow + `'
+      AND (c.event_id = '' OR o.event_id = c.event_id)
+      AND ` + hashSQL + ` = s.email_hash) m
+  GROUP BY c.id) b`
+
+// readCampaigns is the list the Emails tab shows. An error is only the list
+// failing; when just the buys cannot be counted the campaigns come back with
+// "buys": null, which the tab shows as unavailable.
+func readCampaigns() ([]map[string]any, error) {
+	var list []map[string]any
+	if err := dbJSON(campaignStatsSQL, &list); err != nil {
+		return nil, err
+	}
+	var buys map[string]int
+	buysErr := dbJSON(campaignBuysSQL, &buys)
+	for _, c := range list {
+		if buysErr != nil {
+			c["buys"] = nil
+			continue
+		}
+		id, _ := c["id"].(float64)
+		c["buys"] = buys[strconv.FormatInt(int64(id), 10)]
+	}
+	return list, nil
 }
 
 // campaignFanoutSQL flips a due campaign to sending and writes one send per

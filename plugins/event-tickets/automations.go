@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -281,7 +280,7 @@ func serveEmails(u *sdk.HTTPUser) sdk.HTTPResponse {
 	q := mailQuota()
 	campaigns, err := readCampaigns()
 	if err != nil {
-		campaigns = json.RawMessage(`[]`)
+		return unavailable() // an empty list would read as "no campaigns" and hide the Cancel buttons
 	}
 	return jsonReply(http.StatusOK, map[string]any{
 		"ok": true, "campaigns": campaigns,

@@ -284,6 +284,8 @@ func TestEmailsRoutes(t *testing.T) {
 			return jsonInto(`{"rows":[[{"email.thanks":"true"}]]}`, out)
 		case strings.Contains(sql, "FROM (SELECT c.id, c.subject"):
 			return jsonInto(`{"rows":[[[]]]}`, out)
+		case strings.Contains(sql, "count(DISTINCT m.id)"):
+			return jsonInto(`{"rows":[[{}]]}`, out)
 		}
 		return callHost0(fn, args, out)
 	}
