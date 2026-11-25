@@ -77,7 +77,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m := loadManifest(t)
-	if m.Name != "event-tickets" || m.Version != "0.4.0" {
+	if m.Name != "event-tickets" || m.Version != "0.5.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 
