@@ -46,7 +46,7 @@ fixture; mutate '.requires += ["comment.sigin"]'; expect_fail "unknown requires 
 fixture; mutate '.schemas[0].schema.properties.kind.enum=["story"]'; expect_fail "schema drift" 'FAIL  schema parity'
 fixture; mutate 'del(.schemas[0].schema.properties.kind)'; expect_fail "field set drift" 'FAIL  schema parity'
 fixture; mutate '(.pages[] | select(.slug == "news").blocks[0].type) = "hn-feed"'; expect_fail "hyphenated block type" 'FAIL  sections'
-fixture; mutate 'del(.pages[] | select(.slug == "best"))'; expect_fail "missing page" 'FAIL  page parity'
+fixture; mutate 'del(.pages[] | select(.slug == "reply"))'; expect_fail "missing page" 'FAIL  page parity'
 fixture; mutate '.pages += [{"slug":"extra","name":"Extra","schema":"page","blocks":[{"type":"hn_feed","props":{}}]}]'; expect_fail "extra plugin page" 'FAIL  page parity'
 fixture; mutate '.schemas[0].settings.comments.policy.max_depth = 33'; expect_fail "comment range" 'FAIL  comments'
 fixture; mutate '.schemas[0].settings.comments.policy.max_depth = 1.5'; expect_fail "fractional comment number" 'FAIL  comments'

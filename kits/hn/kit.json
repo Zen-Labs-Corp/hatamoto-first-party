@@ -1,6 +1,6 @@
 {
   "name": "hn",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kit": 1,
   "sdk": "^0.29",
   "title": "Hacker News style community",
@@ -15,7 +15,7 @@
   "plugins": [
     {
       "name": "hn",
-      "range": "^1.1",
+      "range": "^1.2",
       "grant": "all"
     }
   ],
@@ -231,6 +231,17 @@
       "blocks": [
         {
           "type": "hn_search",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "slug": "reply",
+      "name": "Add Comment",
+      "schema": "page",
+      "blocks": [
+        {
+          "type": "hn_reply",
           "props": {}
         }
       ]
