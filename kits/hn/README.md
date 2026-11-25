@@ -35,7 +35,7 @@ tick. For hn there are four to tick:
 
 - `entities.write.own`: the plugin creates and edits stories in its own content type.
 - `comments.moderate`: flags, vouches and moderator actions on comments.
-- `client.key`: a pseudonymous key per visitor, for the sign-up and login rate limits
+- `client.key`: a pseudonymous key per visitor, for the sign-up and login rate limits (without it, the limits are one site-wide bucket that one visitor can use up, so tick it)
   and for network bans.
 - `comments.identity`: lets the plugin sign members in with their username and password
   (core v1.4.6 or newer). It also needs `comments.read` and the plugin's content type,

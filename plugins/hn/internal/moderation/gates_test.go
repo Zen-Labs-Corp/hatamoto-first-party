@@ -539,3 +539,52 @@ func TestLoginAllNetworksCapIgnoresRefusedRequests(t *testing.T) {
 		t.Fatalf("another network is locked out: %v", err)
 	}
 }
+
+// Without client.key, real logins must not use up the site-wide caps: only a wrong password
+// (reported by the route) is recorded.
+func TestKeylessLoginCountsOnlyFailures(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db, rows := ratesDB()
+	install(t, db)
+	r := core.NewRegistry()
+	Register(r)
+	for i := 0; i < 3*loginSitePerHour; i++ {
+		req := gateReq(core.GateLogin, nil, "", "", "")
+		req.Target = "ann"
+		if err := r.RunGates(core.GateLogin, req); err != nil {
+			t.Fatalf("right password %d refused: %v", i, err)
+		}
+	}
+	if len(rows) != 0 {
+		t.Fatalf("successful logins recorded: %v", rows)
+	}
+	for i := 0; i < loginSitePerHour; i++ {
+		req := gateReq(core.GateLogin, nil, "", "", "")
+		req.Target = "bob" + string(rune('a'+i%26))
+		if err := r.RunGates(core.GateLogin, req); err != nil {
+			t.Fatalf("attempt %d refused: %v", i, err)
+		}
+		req.Failed()
+	}
+	req := gateReq(core.GateLogin, nil, "", "", "")
+	req.Target = "ann"
+	wantRefusal(t, r.RunGates(core.GateLogin, req), nLoginRate)
+}
+
+// A username claim carries a verified commenter key: it does not use the keyless sign-up bucket.
+func TestKeylessClaimSkipsSignupBucket(t *testing.T) {
+	pinNow(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	db := &fakeDB{Query: func(string, []any) (any, error) {
+		return jsonRow(map[string]any{"net_n": signupSitePerHour}), nil
+	}}
+	install(t, db)
+	r := core.NewRegistry()
+	Register(r)
+	anon := gateReq(core.GateSignup, nil, "", "", "")
+	wantRefusal(t, r.RunGates(core.GateSignup, anon), nSignupRate)
+	claim := gateReq(core.GateSignup, nil, "", "", "")
+	claim.Req = core.NewRequest(sdk.HTTPRequest{CommenterKey: "ck"})
+	if err := r.RunGates(core.GateSignup, claim); err != nil || len(db.Execs) != 0 {
+		t.Fatalf("claim: err = %v, execs = %+v", err, db.Execs)
+	}
+}

@@ -159,6 +159,11 @@ func gateSignup(req *core.GateReq) error {
 	net, addr := netKey(req), addrKey(req)
 	netLimit := signupNetPerHour
 	if net == "" && addr == "" {
+		if req.Req.CommenterKey != "" {
+			// A username claim: core verified the email session and rate-limits that sign-in,
+			// so it must not share the site-wide bucket with anonymous password sign-ups.
+			return nil
+		}
 		// No client.key grant: one site-wide bucket, so a flood still has a ceiling.
 		net, netLimit = siteKey, signupSitePerHour
 	}
@@ -221,13 +226,23 @@ func gateLogin(req *core.GateReq) error {
 	}
 	userOver, allOver := res.UserN >= loginUserPerHour, res.UserAllN >= loginUserAllPerHour
 	addrOver, netOver := res.AddrN >= loginAddrPerHour, res.NetN >= netLimit
+	// Without client.key only wrong passwords count against the site-wide buckets, so real
+	// logins cannot lock a busy site out.
 	refused := (user != "" && (userOver || allOver)) || (addr != "" && addrOver) || (net != "" && netOver)
-	recordRates(now, "login_user", keyBelow(userKey, userOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
+	if !keyless {
+		recordRates(now, "login_user", keyBelow(userKey, userOver), "login_addr", keyBelow(addr, addrOver), "login_net", keyBelow(net, netOver))
+	}
 	if refused {
 		// A refused request adds nothing to the all-networks cap: one address cannot fill it.
 		return refusal{nLoginRate}
 	}
-	req.Failed = func() { recordRates(now, "login_user_all", user) }
+	req.Failed = func() {
+		if keyless {
+			recordRates(now, "login_user", userKey, "login_user_all", user, "login_net", net)
+			return
+		}
+		recordRates(now, "login_user_all", user)
+	}
 	return nil
 }
 
