@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -186,6 +187,25 @@ func plausiblePayPalHeaders(h paypalHeaders) bool {
 	return age <= transmissionMaxAge && age >= -transmissionMaxSkew
 }
 
+// maxVerifiesPerMinute caps the outbound verify calls a minute of webhooks may
+// start. Anyone can post to the webhook with made-up headers, and every verify
+// spends the site's http.fetch budget; above the cap the webhook answers 503
+// without calling PayPal, and PayPal retries later.
+const maxVerifiesPerMinute = 30
+
+// verifyCapReached counts this verify in the current minute (one statement on
+// a meta row: a new minute starts the count again) and reports whether the cap
+// is passed.
+func verifyCapReached() (bool, error) {
+	var n int
+	minute := strconv.FormatInt(now().Unix()/60, 10)
+	err := dbJSON(`WITH u AS (INSERT INTO meta (key, value) VALUES ('paypal_verify_window', $1 || ':1')
+    ON CONFLICT (key) DO UPDATE SET value = CASE WHEN split_part(meta.value, ':', 1) = $1
+        THEN $1 || ':' || (split_part(meta.value, ':', 2)::int + 1) ELSE $1 || ':1' END RETURNING value)
+SELECT to_jsonb(split_part(value, ':', 2)::int) FROM u`, &n, minute)
+	return n > maxVerifiesPerMinute, err
+}
+
 // servePayPalWebhook handles POST /paypal/webhook. Nothing is decoded or
 // stored before PayPal's verify-webhook-signature answers SUCCESS for the body
 // as it came; junk, other event types and events handled before never reach it. Bad input is a 400, trouble on our side or at PayPal a 503
@@ -223,6 +243,9 @@ func servePayPalWebhook(r sdk.HTTPRequest) sdk.HTTPResponse {
 	}
 	if seen {
 		return webhookReply(http.StatusOK, outcomeDuplicate)
+	}
+	if over, err := verifyCapReached(); err != nil || over {
+		return webhookReply(http.StatusServiceUnavailable, "unavailable") // PayPal sends it again
 	}
 	dl := newDeadline(webhookBudget)
 	genuine, err := paypalVerifyWebhook(s, h, r.Body, dl)

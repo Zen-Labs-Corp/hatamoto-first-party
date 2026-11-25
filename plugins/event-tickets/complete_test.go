@@ -15,28 +15,30 @@ import (
 // the guarded statements behave as their SQL says (a transition happens only
 // from the right status), so replays, races and late payments can be played.
 type shop struct {
-	status   string // of the order
-	provider string
-	ref      string
-	payCode  string
-	total    int64
-	cur      string
-	paid     bool // paid_at is set
-	problem  string
-	payRef   string // payment_ref
-	refunded int64
-	attend   string // status of the attendees
-	seats    bool   // retakeHold finds free seats
-	events   map[string]string
-	answers  map[string][2]string
-	key      []byte
-	clock    time.Time
-	secret   string        // webhook secret
-	tick     time.Duration // the clock moves this much with every provider call (to a URL with tickOn)
-	tickOn   string
-	live     bool      // the hold has not lapsed
-	racing   func()    // runs just before retakeHold reads the order: another request moves it
-	claimed  time.Time // refund_claimed_at (zero: none)
+	status       string // of the order
+	provider     string
+	ref          string
+	payCode      string
+	total        int64
+	cur          string
+	paid         bool // paid_at is set
+	problem      string
+	payRef       string // payment_ref
+	refunded     int64
+	attend       string // status of the attendees
+	seats        bool   // retakeHold finds free seats
+	events       map[string]string
+	answers      map[string][2]string
+	key          []byte
+	clock        time.Time
+	secret       string        // webhook secret
+	tick         time.Duration // the clock moves this much with every provider call (to a URL with tickOn)
+	tickOn       string
+	live         bool   // the hold has not lapsed
+	racing       func() // runs just before retakeHold reads the order: another request moves it
+	verifyMinute string // minute of the verify counter
+	verifies     int
+	claimed      time.Time // refund_claimed_at (zero: none)
 
 	mails    []map[string]any
 	queued   []string // kind of queued mails
@@ -94,6 +96,12 @@ func newShop(t *testing.T) *shop {
 				ans = [2]string{"404", `{}`}
 			}
 			return jsonInto(`{"status":`+ans[0]+`,"body":`+jsonText(ans[1])+`}`, out)
+		case strings.Contains(sql, "paypal_verify_window"): // the per-minute verify counter
+			if w.verifyMinute != ar[0] {
+				w.verifyMinute, w.verifies = ar[0].(string), 0
+			}
+			w.verifies++
+			return cell(itoa(int64(w.verifies)))
 		case strings.HasPrefix(sql, "INSERT INTO meta"):
 			return nil
 		case strings.Contains(sql, "FROM meta WHERE key"):

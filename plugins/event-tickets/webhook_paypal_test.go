@@ -520,3 +520,26 @@ func TestPayPalWebhookJunkMakesNoProviderCall(t *testing.T) {
 		t.Errorf("replay: %d %q, %d provider calls", code, status, len(w.fetches))
 	}
 }
+
+// Beyond maxVerifiesPerMinute verifies in a minute the webhook answers 503
+// without calling PayPal; the next minute starts again.
+func TestPayPalWebhookVerifyIsCappedPerMinute(t *testing.T) {
+	w := newPayPalShop(t)
+	for i := range maxVerifiesPerMinute {
+		w.answers[ppVerify] = [2]string{"200", `{"verification_status":"FAILURE"}`}
+		if code, _ := w.hook(t, w.approvedBody("WH-"+itoa(int64(i)))); code != 400 {
+			t.Fatalf("verify %d: %d", i, code)
+		}
+	}
+	calls := len(w.fetched(ppVerify))
+	if calls != maxVerifiesPerMinute {
+		t.Fatalf("%d verify calls", calls)
+	}
+	if code, _ := w.hook(t, w.approvedBody("WH-over")); code != 503 || len(w.fetched(ppVerify)) != calls {
+		t.Fatalf("over the cap: %d, %d verify calls", code, len(w.fetched(ppVerify)))
+	}
+	w.clock = w.clock.Add(time.Minute)
+	if code, _ := w.hook(t, w.approvedBody("WH-next")); code != 400 || len(w.fetched(ppVerify)) != calls+1 {
+		t.Fatalf("next minute: %d, %d verify calls", code, len(w.fetched(ppVerify)))
+	}
+}
