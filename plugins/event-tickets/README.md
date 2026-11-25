@@ -78,7 +78,7 @@ All of it lives in the plugin's own database:
 - **Event dates**, copied from the event so the retention job knows when it ended.
 - **Signing key**: the key that signs the booking form's token is generated on first use and kept in the plugin database. It is never a setting and is never shown.
 
-Orders are anonymised the number of months set in **Keep attendee details for** after the event ends: name, email and answers are cleared. The waitlist rows of that event are removed then, and queued mails that point at nothing are dropped. The ticket rows stay, since counts and codes are not personal. Split rules are deleted at the same time, and payout records the same number of months after their paid date. Checkouts that were started but never paid are deleted after 7 days. Everything is removed when you remove the plugin's data.
+Orders are anonymised the number of months set in **Keep attendee details for** after the event ends: name, email and answers are cleared. The waitlist rows of that event are removed then, and queued mails that point at nothing are dropped. The ticket rows stay, since counts and codes are not personal. Split rules are deleted at the same time, and payout records the same number of months after their paid date, but never while a split rule for that payee still exists, so a paid month does not come back as owed. Checkouts that were started but never paid are deleted after 7 days. Everything is removed when you remove the plugin's data.
 
 ## Limits
 
