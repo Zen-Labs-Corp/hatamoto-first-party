@@ -107,7 +107,7 @@ func TestPages(t *testing.T) {
 		}
 		for _, key := range []string{"k2", ""} {
 			other := view(key, "bob", "")
-			if other["found"] != true || other["own"] != false {
+			if other["found"] != true || other["own"] != false || other["comments_href"] != "/threads?id=bob" || other["submissions_href"] != "/newest?id=bob" {
 				t.Fatalf("other: %v", other)
 			}
 			for _, k := range []string{"about_raw", "showdead", "noprocrast", "maxvisit", "minaway", "next"} {
