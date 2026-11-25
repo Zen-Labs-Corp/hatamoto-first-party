@@ -139,8 +139,33 @@ async function openEditor(id) {
     id, name: data.event.name, types: data.types || [], fields: data.fields || [], defaultCapacity: data.default_capacity,
     bundles: (data.bundles || []).map(bundleRule),
     splits: (data.splits || []).map(splitRule),
+    maps: data.maps || [], mapPick: "",
   };
   renderEditor();
+}
+
+// sectionOptions are the choices of a type row's seats select: no seats, or a
+// section of a map, "Main Hall / Stalls (Std)".
+function sectionOptions(maps) {
+  const out = [["", "none"]];
+  for (const m of maps || []) for (const s of m.sections) out.push([String(s.id), `${m.name} / ${s.name}${s.tier ? ` (${s.tier})` : ""}`]);
+  return out;
+}
+
+// addMapTypes appends one unsaved type per section of the map that no type of
+// the event is bound to yet; the owner prices and saves each. A type is named
+// after the tier of its section, or after the section.
+function addMapTypes(mapID) {
+  const ed = state.editing;
+  const m = (ed.maps || []).find((x) => String(x.id) === String(mapID));
+  if (!m) return 0;
+  const bound = new Set(ed.types.map((t) => t.section_id).filter(Boolean));
+  const fresh = m.sections.filter((s) => !bound.has(s.id));
+  for (const s of fresh) {
+    ed.types.push({ id: 0, name: s.tier || s.name, capacity: ed.defaultCapacity || 50, taken: 0, waitlist: false, on_sale: true, position: ed.types.length, price_cents: 0, section_id: s.id });
+  }
+  renderEditor();
+  return fresh.length;
 }
 
 function typeRow(t) {
@@ -149,12 +174,19 @@ function typeRow(t) {
   const price = el("input", { type: "text", inputMode: "decimal", value: t.price_cents ? centsText(t.price_cents) : "", placeholder: "Free", maxLength: 12, size: 8 });
   const wait = el("input", { type: "checkbox", checked: t.waitlist });
   const sale = el("input", { type: "checkbox", checked: t.on_sale });
+  const seats = el("select", {}, ...sectionOptions(state.editing.maps).map(([value, text]) => el("option", { value, textContent: text })));
+  const was = t.section_id ? String(t.section_id) : "";
+  seats.value = was;
+  // A seated type takes its capacity from the seats of its section.
+  cap.disabled = was !== "";
+  seats.addEventListener("change", () => { cap.disabled = seats.value !== ""; });
   const save = button("Save", () => run(async () => {
     const cents = price.value.trim() === "" ? 0 : parseMoney(price.value);
     if (cents === null) throw new Error("Enter the price as a number, for example 12.50, or leave it empty for free.");
     // A priced ticket has no waitlist: nobody can pay for a seat that frees up later.
     const body = { name: name.value, capacity: Number(cap.value), waitlist: wait.checked && cents === 0, on_sale: sale.checked, position: t.position, price_cents: cents };
     if (t.id) body.id = t.id;
+    if (!t.id ? seats.value !== "" : seats.value !== was) body.section_id = seats.value === "" ? 0 : Number(seats.value);
     const data = await api("POST", `/admin/events/${encodeURIComponent(state.editing.id)}/types`, body);
     state.editing.types = data.types;
     say("Saved.");
@@ -163,7 +195,8 @@ function typeRow(t) {
   }));
   const kids = [
     el("label", {}, "Name ", name), el("label", {}, "Tickets ", cap), el("label", {}, `Price (${state.settings.currency || ""}) `, price),
-    el("label", {}, wait, " Waitlist (free tickets only)"), el("label", {}, sale, " On sale"), save,
+    el("label", {}, wait, " Waitlist (free tickets only)"), el("label", {}, sale, " On sale"),
+    ...(state.editing.maps.length || was ? [el("label", {}, "Seats ", seats)] : []), save,
   ];
   if (t.id) {
     kids.push(el("span", { className: "muted", textContent: `${t.taken} taken` }));
@@ -301,8 +334,24 @@ function renderEditor() {
   $("#ed-split-box").hidden = !isOwner();
   $("#ed-splits").replaceChildren(...ed.splits.map(splitRow));
   $("#ed-types").replaceChildren(...ed.types.map(typeRow));
+  renderMapRow(ed);
   $("#ed-bundles").replaceChildren(...ed.bundles.map(bundleRow));
   $("#ed-fields").replaceChildren(...ed.fields.map(fieldRow));
+}
+
+// renderMapRow offers "Add types for map" when the site has a seating map.
+function renderMapRow(ed) {
+  const row = $("#ed-map-row");
+  row.hidden = !ed.maps.length;
+  if (!ed.maps.length) return;
+  const pick = el("select", {}, ...ed.maps.map((m) => el("option", { value: String(m.id), textContent: m.name })));
+  pick.value = ed.mapPick || String(ed.maps[0].id);
+  pick.addEventListener("change", () => { ed.mapPick = pick.value; });
+  row.replaceChildren(el("label", {}, "Seating map ", pick),
+    button("Add types for map", () => {
+      const n = addMapTypes(pick.value);
+      say(n ? "Price each new type and save it." : "Every section of this map already has a ticket type.");
+    }));
 }
 
 $("#ed-add").addEventListener("click", () => {
@@ -1274,6 +1323,6 @@ if (typeof module !== "undefined") {
   module.exports = {
     csvPath, resendAttendee, cancelAttendee, parseMoney, centsText, formatMoney, orderTickets, orderStatus, refundRequest, bundlesBody, bundlesText, couponRequest, splitsBody, parsePercent,
     periodOptions, defaultPeriod, markRequest, shareText, automationsBody, percentText, segmentText, campaignRequest, segmentRequest,
-    feesText, submitRefund, openRefund, state, showScanResult, clockTime, scanClick, ckQueue,
+    typeRow, addMapTypes, renderEditor, sectionOptions, feesText, submitRefund, openRefund, state, showScanResult, clockTime, scanClick, ckQueue,
   };
 }
