@@ -111,6 +111,35 @@ async function main() {
     assert.deepEqual(h.events.at(-1), { name: "event-tickets:seats", detail: { hold: "", counts: {}, seated: [5] } });
   }
 
+  // a map wider than its box shows the scroll hint and scrolls to the seat just held
+  {
+    const h = setup(async (url, opt) => {
+      if (url.startsWith("/p/event-tickets/token")) return answer(200, { token: "1.ab" });
+      if (url.endsWith("/seats/hold") && opt.method === "POST") return answer(200, { ok: true, hold: "H1", seat_id: 41, expires_in: 600 });
+      return answer(200, AVAIL);
+    });
+    const p = s.mount(h.box, h.env);
+    await flush();
+    const more = h.box.byClass("more")[0];
+    assert.equal(more.hidden, true, "fits: no hint");
+    p.map.scrollWidth = 672;
+    p.map.clientWidth = 356;
+    p.render();
+    assert.equal(more.hidden, false);
+    Node.prototype.offsetLeft = 500; // where the browser would place the seat
+    const click = seatButtons(p)[2].click();
+    await flush();
+    await h.advance(3100);
+    await click;
+    await flush();
+    delete Node.prototype.offsetLeft;
+    assert.equal(p.map.byClass("yours").length, 1);
+    assert.equal(p.map.scrollLeft, 500 - 356 / 2);
+    p.map.scrollWidth = 100;
+    p.render();
+    assert.equal(more.hidden, true);
+  }
+
   // no event on the page, or no seat map: nothing shown
   {
     const h = setup(async () => answer(404, {}));

@@ -57,6 +57,8 @@ function mount(box, env) {
   if (note) note.hidden = true;
   const heading = (box.getAttribute("data-heading") || "").trim();
   const map = make(doc, "div", "map");
+  const more = make(doc, "p", "more", "Scroll sideways for more seats");
+  more.hidden = true;
   const legend = make(doc, "p", "legend", "o free   x taken   * yours");
   const timer = make(doc, "span", "timer");
   const go = make(doc, "button", "", "Continue to payment");
@@ -66,7 +68,7 @@ function mount(box, env) {
   bar.append(timer, go);
   const status = make(doc, "p", "status");
   status.setAttribute("role", "status");
-  box.append(...(heading ? [make(doc, "h3", "", heading)] : []), make(doc, "p", "stage", "STAGE"), map, legend, bar, status);
+  box.append(...(heading ? [make(doc, "h3", "", heading)] : []), make(doc, "p", "stage", "STAGE"), map, more, legend, bar, status);
   box.hidden = true;
   const say = (text) => { status.textContent = text; };
   const keyOf = (s, r, n) => s + ":" + r + ":" + n;
@@ -110,8 +112,15 @@ function mount(box, env) {
       });
       return sec;
     }));
+    more.hidden = !(map.scrollWidth > map.clientWidth);
     go.disabled = !mine.size;
     if (!mine.size) timer.textContent = "";
+  }
+
+  // showOwn brings the first seat of the visitor into the visible part of the map.
+  function showOwn() {
+    const seat = map.querySelector(".yours");
+    if (seat && map.scrollWidth > map.clientWidth) map.scrollLeft = Math.max(0, seat.offsetLeft - map.clientWidth / 2);
   }
 
   async function load() {
@@ -189,6 +198,7 @@ function mount(box, env) {
         mine.set(keyOf(s.id, ri, n), { id: body.seat_id, section: s.id, row: ri, num: n, type: s.type_id });
         until = env.now() + (Number(body.expires_in) || 0) * 1000;
         render();
+        showOwn();
         announce();
         countdown();
       } else if (r.status === 200) {
@@ -242,6 +252,7 @@ function mount(box, env) {
     env.delay(poll, POLL_MS);
   }
 
+  if (doc.defaultView) doc.defaultView.addEventListener("resize", render);
   go.addEventListener("click", () => env.emit("event-tickets:pay", {}));
   env.on("event-tickets:hello", announce);
   env.on("event-tickets:refresh", () => { mine.clear(); until = 0; render(); announce(); load(); });
