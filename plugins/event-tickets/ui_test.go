@@ -25,7 +25,7 @@ func TestUIHasNoInlineCodeOrMarkupInjection(t *testing.T) {
 		" style=", `setAttribute("style"`, `setAttribute('style'`, ".style.", ".style[", "cssText",
 		"onclick=", "onload=", "onchange=", "<style", "<a ", "javascript:", "fetch(", "XMLHttpRequest",
 	}
-	for _, name := range []string{"index.html", "app.js", "app.css"} {
+	for _, name := range []string{"index.html", "app.js", "checkin.js", "app.css"} {
 		src := readUI(t, name)
 		for _, b := range banned {
 			if strings.Contains(src, b) {
