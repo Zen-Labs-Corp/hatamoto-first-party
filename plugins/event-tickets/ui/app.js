@@ -209,7 +209,7 @@ function attendeeRow(a) {
     cell(a.name), cell(a.email || ""), cell(a.type_name), cell(a.status), cell(day(a.created_at)),
     el("td", { className: "actions" },
       button("Resend", () => resendAttendee(a.id), { disabled: !active }),
-      button("Cancel", () => cancelAttendee(a.id), { disabled: !active })));
+      cancelButton(a.id, active)));
 }
 
 // resendAttendee mails the order's tickets again; the route refuses a resend
@@ -219,9 +219,27 @@ async function resendAttendee(id) {
   if (data) say(data.queued ? "The email is queued and will be sent shortly." : "The email was sent.");
 }
 
-// cancelAttendee frees the seat only after the editor confirms.
-async function cancelAttendee(id) {
-  if (!confirm("Cancel this ticket? The seat is freed and offered to the waitlist. The attendee is not emailed.")) return;
+// The page runs in a sandboxed iframe without allow-modals, where the browser
+// refuses modal dialogs, so cancelling is confirmed in the page: the first
+// click arms the button, a second click within a few seconds cancels.
+const CANCEL_LABEL = "Cancel";
+const CONFIRM_LABEL = "Confirm cancel";
+const CONFIRM_MS = 4000;
+
+function cancelButton(id, active) {
+  const b = button(CANCEL_LABEL, () => cancelAttendee(id, b), { disabled: !active });
+  return b;
+}
+
+// cancelAttendee frees the seat only on the second click of the button.
+async function cancelAttendee(id, btn) {
+  if (btn.textContent !== CONFIRM_LABEL) {
+    btn.textContent = CONFIRM_LABEL;
+    say("Click Confirm cancel to free the seat and offer it to the waitlist. The attendee is not emailed.");
+    setTimeout(() => { btn.textContent = CANCEL_LABEL; }, CONFIRM_MS);
+    return;
+  }
+  btn.textContent = CANCEL_LABEL;
   const data = await run(() => api("POST", `/admin/attendees/${encodeURIComponent(id)}/cancel`));
   if (!data) return;
   say(data.promoted ? "Cancelled. The seat was offered to the waitlist." : "Cancelled.");

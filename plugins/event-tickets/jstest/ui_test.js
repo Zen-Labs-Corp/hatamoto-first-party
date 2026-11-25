@@ -35,7 +35,7 @@ const IDS = [
 ];
 
 // load runs the page; respond(method, path) returns {status, body}.
-async function load({ respond, confirmAnswer = true }) {
+async function load({ respond, timers = [] }) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   const routes = [];
@@ -49,7 +49,7 @@ async function load({ respond, confirmAnswer = true }) {
   };
   const mod = { exports: {} };
   vm.runInNewContext(src, {
-    document, hatamoto, module: mod, confirm: () => confirmAnswer,
+    document, hatamoto, module: mod, setTimeout: (fn) => timers.push(fn),
     encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean,
   });
   await new Promise((r) => setTimeout(r, 10));
@@ -73,13 +73,23 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   assert.ok(ctx.els["#notice"].classes.has("error") && !ctx.els["#notice"].hidden);
   assert.deepEqual(ctx.routes[0], { method: "POST", p: "/admin/attendees/7/resend" });
 
-  // cancel calls the route only after the editor confirms
-  ctx = await load({ respond: quiet, confirmAnswer: false });
-  await ctx.api.cancelAttendee("7");
-  assert.equal(ctx.routes.filter((r) => r.p.endsWith("/cancel")).length, 0, "declined: no call");
-  ctx = await load({ respond: quiet, confirmAnswer: true });
-  await ctx.api.cancelAttendee("7");
+  // the sandboxed iframe has no modal dialogs: ui/app.js must not use them
+  assert.ok(!/\b(confirm|alert|prompt)\s*\(/.test(src), "no confirm/alert/prompt in ui/app.js");
+
+  // cancel is a two-step button: the first click only arms it, the second cancels
+  const timers = [];
+  ctx = await load({ respond: quiet, timers });
+  const btn = new Node("button");
+  btn.textContent = "Cancel";
+  await ctx.api.cancelAttendee("7", btn);
+  assert.equal(btn.textContent, "Confirm cancel");
+  assert.equal(ctx.routes.filter((r) => r.p.endsWith("/cancel")).length, 0, "first click: no call");
+  timers.forEach((fn) => fn());
+  assert.equal(btn.textContent, "Cancel", "the armed button goes back");
+  await ctx.api.cancelAttendee("7", btn);
+  await ctx.api.cancelAttendee("7", btn);
   assert.deepEqual(ctx.routes[0], { method: "POST", p: "/admin/attendees/7/cancel" });
+  assert.equal(btn.textContent, "Cancel");
 
   console.log("ok");
 })().catch((e) => { console.error(e); process.exit(1); });
