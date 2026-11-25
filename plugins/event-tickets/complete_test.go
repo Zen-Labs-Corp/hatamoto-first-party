@@ -352,7 +352,7 @@ func TestCompletePaymentWithNoSeatsLeftPaysBack(t *testing.T) {
 		t.Fatalf("%d refund calls", len(refunds))
 	}
 	form, _ := url.ParseQuery(refunds[0].body)
-	if refunds[0].headers["Idempotency-Key"] != "et-42-late-refund" || form.Get("payment_intent") != "pi_1" || form.Get("amount") != "2030" {
+	if refunds[0].headers["Idempotency-Key"] != "et-"+w.payCode+"-late-refund" || form.Get("payment_intent") != "pi_1" || form.Get("amount") != "2030" {
 		t.Errorf("refund %+v %v", refunds[0].headers, form)
 	}
 	if len(w.mails) != 1 || w.mails[0]["subject"] != "Your refund for Gig" || !strings.Contains(w.mails[0]["text"].(string), "20.30 USD") ||

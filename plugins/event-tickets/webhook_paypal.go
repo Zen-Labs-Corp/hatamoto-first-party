@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -108,7 +107,7 @@ func capturePayPal(s settings, orderID int64, dl deadline) (outcome string, err 
 			return "expired", nil
 		}
 	}
-	got, err := paypalCaptureOrder(s, o.Ref, "et-"+strconv.FormatInt(orderID, 10)+"-capture", dl)
+	got, err := paypalCaptureOrder(s, o.Ref, idemKey(o.PayCode, "capture"), dl)
 	if err != nil {
 		return "", err
 	}
@@ -129,6 +128,12 @@ func capturePayPal(s settings, orderID int64, dl deadline) (outcome string, err 
 	}
 	return completePayment(orderID, "paypal", got.CaptureID, minor, got.Currency)
 }
+
+// idemKey is the idempotency key (Stripe) or request id (PayPal) of one call
+// about an order. It is built from the order's random pay code, not its id: ids
+// repeat across sites that share a provider account and after a reinstall, and
+// a repeated key would hand back another order's answer.
+func idemKey(payCode, what string) string { return "et-" + payCode + "-" + what }
 
 // markPaymentRef records the payment id of a payment that is not settled yet
 // (a PayPal capture that is PENDING, a Stripe delayed method), so the order

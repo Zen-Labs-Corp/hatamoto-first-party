@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -141,12 +140,18 @@ SELECT to_jsonb(EXISTS (SELECT 1 FROM o))`, &done, orderID, paymentRef)
 // the message again.
 func refundLate(orderID int64, provider, paymentRef string, amount int64, cur string) (string, error) {
 	s := loadSettings()
-	key := "et-" + strconv.FormatInt(orderID, 10) + "-late-refund"
-	var err error
-	switch provider {
-	case "stripe":
+	o, err := readPayPalOrder(orderID)
+	var key string
+	if err == nil && o != nil && o.PayCode != "" {
+		key = idemKey(o.PayCode, "late-refund")
+	} else {
+		err = errRefundFailed
+	}
+	switch {
+	case err != nil:
+	case provider == "stripe":
 		_, err = stripeRefund(s, paymentRef, amount, key)
-	case "paypal":
+	case provider == "paypal":
 		_, err = paypalRefund(s, paymentRef, amount, cur, key, newDeadline(5*time.Second))
 	default:
 		err = errRefundFailed

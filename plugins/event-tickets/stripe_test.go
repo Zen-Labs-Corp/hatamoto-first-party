@@ -149,7 +149,7 @@ func TestStripeCreateSession(t *testing.T) {
 		t.Fatalf("%q %q %v", id, page, err)
 	}
 	c := h.only(t)
-	if c.headers["Authorization"] != "Bearer "+testStripeKey || c.headers["Idempotency-Key"] != "et-42-create" ||
+	if c.headers["Authorization"] != "Bearer "+testStripeKey || c.headers["Idempotency-Key"] != "et-paycode-create" ||
 		c.headers["Content-Type"] != "application/x-www-form-urlencoded" {
 		t.Fatalf("headers %v", c.headers)
 	}

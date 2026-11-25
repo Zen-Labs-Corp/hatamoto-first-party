@@ -240,7 +240,7 @@ func TestStripeWebhookLatePayment(t *testing.T) {
 		t.Fatalf("sold out: %d %q, order %q, %d refund calls, mails %v", code, status, w.status, len(w.refundCalls()), w.mails)
 	}
 	form, _ := url.ParseQuery(w.refundCalls()[0].body)
-	if form.Get("payment_intent") != "pi_1" || form.Get("amount") != "2030" || w.refundCalls()[0].headers["Idempotency-Key"] != "et-42-late-refund" {
+	if form.Get("payment_intent") != "pi_1" || form.Get("amount") != "2030" || w.refundCalls()[0].headers["Idempotency-Key"] != "et-"+w.payCode+"-late-refund" {
 		t.Errorf("refund %v %v", form, w.refundCalls()[0].headers)
 	}
 

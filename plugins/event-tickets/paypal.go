@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -132,7 +131,7 @@ func paypalCreateOrder(s settings, o payIn, dl deadline) (id, approveURL string,
 			Href string `json:"href"`
 		} `json:"links"`
 	}
-	if err := paypalCall(s, "POST", "/v2/checkout/orders", token, "et-"+strconv.FormatInt(o.OrderID, 10)+"-create", body, dl, &res); err != nil {
+	if err := paypalCall(s, "POST", "/v2/checkout/orders", token, idemKey(o.PayCode, "create"), body, dl, &res); err != nil {
 		return "", "", err
 	}
 	if !idRe.MatchString(res.ID) {

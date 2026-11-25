@@ -96,7 +96,7 @@ func TestPayPalCreateOrder(t *testing.T) {
 		t.Fatalf("%q %q %v", id, page, err)
 	}
 	c := h.calls[1]
-	if c.headers["Authorization"] != "Bearer "+testPayPalToken || c.headers["PayPal-Request-Id"] != "et-42-create" {
+	if c.headers["Authorization"] != "Bearer "+testPayPalToken || c.headers["PayPal-Request-Id"] != "et-paycode-create" {
 		t.Fatalf("headers %v", c.headers)
 	}
 	var body struct {

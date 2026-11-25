@@ -91,6 +91,7 @@ const maxRefundAttendees = 100
 type refundable struct {
 	Status     string `json:"status"`
 	Provider   string `json:"provider"`
+	PayCode    string `json:"pay_code"`
 	PaymentRef string `json:"payment_ref"`
 	Total      int64  `json:"total_cents"`
 	Refunded   int64  `json:"refunded_cents"`
@@ -100,7 +101,7 @@ type refundable struct {
 func readRefundable(id int64) (*refundable, error) {
 	var o *refundable
 	err := dbJSON(`SELECT coalesce((SELECT jsonb_build_object('status', status, 'provider', coalesce(provider, ''),
-    'payment_ref', coalesce(payment_ref, ''), 'total_cents', total_cents, 'refunded_cents', refunded_cents,
+    'pay_code', coalesce(pay_code, ''), 'payment_ref', coalesce(payment_ref, ''), 'total_cents', total_cents, 'refunded_cents', refunded_cents,
     'currency', coalesce(currency, '')) FROM orders WHERE id = $1), 'null'::jsonb)`, &o, id)
 	return o, err
 }
@@ -138,7 +139,7 @@ func serveRefund(r sdk.HTTPRequest, rawID string) sdk.HTTPResponse {
 		return failReply(http.StatusBadRequest, "amount must be between 1 and what is left to refund")
 	}
 	s := loadSettings()
-	key := "et-" + strconv.FormatInt(id, 10) + "-refund-" + strconv.FormatInt(o.Refunded, 10) + "-" + strconv.FormatInt(b.Amount, 10)
+	key := idemKey(o.PayCode, "refund-"+strconv.FormatInt(o.Refunded, 10)+"-"+strconv.FormatInt(b.Amount, 10))
 	switch o.Provider {
 	case "stripe":
 		_, err = stripeRefund(s, o.PaymentRef, b.Amount, key)

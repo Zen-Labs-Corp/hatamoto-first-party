@@ -97,7 +97,7 @@ func stripeCreateSession(s settings, o payIn) (id, pageURL string, err error) {
 		form.Set("customer_email", o.Email)
 	}
 	var res stripeSession
-	if err := stripeCall(s, "POST", "/v1/checkout/sessions", form, "et-"+strconv.FormatInt(o.OrderID, 10)+"-create", deadline{}, &res); err != nil {
+	if err := stripeCall(s, "POST", "/v1/checkout/sessions", form, idemKey(o.PayCode, "create"), deadline{}, &res); err != nil {
 		return "", "", err
 	}
 	if !idRe.MatchString(res.ID) || res.URL == "" {

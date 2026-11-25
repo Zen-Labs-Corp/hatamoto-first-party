@@ -26,7 +26,7 @@ type orderHost struct {
 func newOrderHost(t *testing.T) *orderHost {
 	t.Helper()
 	h := &orderHost{
-		order:    `{"status":"paid","provider":"stripe","payment_ref":"pi_1","total_cents":2030,"refunded_cents":0,"currency":"USD"}`,
+		order:    `{"status":"paid","provider":"stripe","pay_code":"paycode","payment_ref":"pi_1","total_cents":2030,"refunded_cents":0,"currency":"USD"}`,
 		list:     `[]`,
 		refunded: `{"status":"refunded","refunded_cents":2030}`,
 		cancel:   `true`, hold: `false`,
@@ -103,7 +103,7 @@ func TestRefundFullStripe(t *testing.T) {
 	}
 	f := h.fetches[0]
 	if f.url != "https://api.stripe.com/v1/refunds" || !strings.Contains(f.body, "payment_intent=pi_1") || !strings.Contains(f.body, "amount=2030") ||
-		f.headers["Idempotency-Key"] != "et-42-refund-0-2030" {
+		f.headers["Idempotency-Key"] != "et-paycode-refund-0-2030" {
 		t.Errorf("refund call %+v", f)
 	}
 	st := h.stmt("WITH o AS (UPDATE orders SET refunded_cents")
@@ -122,7 +122,7 @@ func TestRefundFullStripe(t *testing.T) {
 
 func TestRefundPartialPayPal(t *testing.T) {
 	h := newOrderHost(t)
-	h.order = `{"status":"paid","provider":"paypal","payment_ref":"CAP1","total_cents":2030,"refunded_cents":500,"currency":"USD"}`
+	h.order = `{"status":"paid","provider":"paypal","pay_code":"paycode","payment_ref":"CAP1","total_cents":2030,"refunded_cents":500,"currency":"USD"}`
 	h.refunded = `{"status":"paid","refunded_cents":1000}`
 	code, body := post(t, refundPattern, "42", owner, `{"amount_cents":500,"attendees":[9,10]}`)
 	if code != 200 || body["status"] != "paid" || body["refunded_cents"] != float64(1000) {
@@ -134,7 +134,7 @@ func TestRefundPartialPayPal(t *testing.T) {
 			refund = &h.fetches[i]
 		}
 	}
-	if refund == nil || !strings.Contains(refund.body, `"value":"5.00"`) || refund.headers["PayPal-Request-Id"] != "et-42-refund-500-500" {
+	if refund == nil || !strings.Contains(refund.body, `"value":"5.00"`) || refund.headers["PayPal-Request-Id"] != "et-paycode-refund-500-500" {
 		t.Fatalf("refund call %+v", refund)
 	}
 	st := h.stmt("WITH o AS (UPDATE orders SET refunded_cents")
@@ -158,10 +158,10 @@ func TestRefundRefusals(t *testing.T) {
 		{"unknown key", owner, "42", "", `{"amount_cents":100,"total":1}`, 400},
 		{"zero", owner, "42", "", `{"amount_cents":0}`, 400},
 		{"too much", owner, "42", "", `{"amount_cents":2031}`, 400},
-		{"more than left", owner, "42", `{"status":"paid","provider":"stripe","payment_ref":"pi_1","total_cents":2030,"refunded_cents":2000,"currency":"USD"}`, `{"amount_cents":31}`, 400},
-		{"free order", owner, "42", `{"status":"confirmed","provider":"","payment_ref":"","total_cents":0,"refunded_cents":0,"currency":""}`, `{"amount_cents":1}`, 409},
-		{"no provider", owner, "42", `{"status":"paid","provider":"none","payment_ref":"","total_cents":0,"refunded_cents":0,"currency":"USD"}`, `{"amount_cents":1}`, 409},
-		{"pending", owner, "42", `{"status":"pending","provider":"stripe","payment_ref":"","total_cents":2030,"refunded_cents":0,"currency":"USD"}`, `{"amount_cents":1}`, 409},
+		{"more than left", owner, "42", `{"status":"paid","provider":"stripe","pay_code":"paycode","payment_ref":"pi_1","total_cents":2030,"refunded_cents":2000,"currency":"USD"}`, `{"amount_cents":31}`, 400},
+		{"free order", owner, "42", `{"status":"confirmed","provider":"","pay_code":"paycode","payment_ref":"","total_cents":0,"refunded_cents":0,"currency":""}`, `{"amount_cents":1}`, 409},
+		{"no provider", owner, "42", `{"status":"paid","provider":"none","pay_code":"paycode","payment_ref":"","total_cents":0,"refunded_cents":0,"currency":"USD"}`, `{"amount_cents":1}`, 409},
+		{"pending", owner, "42", `{"status":"pending","provider":"stripe","pay_code":"paycode","payment_ref":"","total_cents":2030,"refunded_cents":0,"currency":"USD"}`, `{"amount_cents":1}`, 409},
 		{"gone", owner, "42", `null`, `{"amount_cents":1}`, 404},
 	}
 	for _, c := range cases {

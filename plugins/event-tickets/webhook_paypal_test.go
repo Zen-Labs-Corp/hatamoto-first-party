@@ -93,7 +93,7 @@ func TestPayPalWebhookCapturesAnApprovedOrder(t *testing.T) {
 		t.Fatalf("verify call %+v", verify)
 	}
 	capture := w.fetched(ppCapture)
-	if len(capture) != 1 || capture[0].headers["PayPal-Request-Id"] != "et-42-capture" || capture[0].headers["Authorization"] != "Bearer "+testPayPalToken {
+	if len(capture) != 1 || capture[0].headers["PayPal-Request-Id"] != "et-"+w.payCode+"-capture" || capture[0].headers["Authorization"] != "Bearer "+testPayPalToken {
 		t.Fatalf("capture call %+v", capture)
 	}
 	if len(w.mails) != 1 || len(w.queued) != 0 {
@@ -345,7 +345,7 @@ func TestPayPalLateCaptureIsPaidBack(t *testing.T) {
 		t.Fatalf("%d %q, order %q", code, status, w.status)
 	}
 	refund := w.fetched(ppRefund)
-	if len(refund) != 1 || refund[0].headers["PayPal-Request-Id"] != "et-42-late-refund" || refund[0].body != `{"amount":{"currency_code":"USD","value":"20.30"}}` {
+	if len(refund) != 1 || refund[0].headers["PayPal-Request-Id"] != "et-"+w.payCode+"-late-refund" || refund[0].body != `{"amount":{"currency_code":"USD","value":"20.30"}}` {
 		t.Fatalf("refund %+v", refund)
 	}
 }
