@@ -11,6 +11,7 @@ func Register(r *core.Registry) {
 	r.Subscribe(core.StoryDeleted, onStoryDeleted)
 	r.Page("/newcomments", newcommentsPage(r))
 	r.Page("/threads", threadsPage(r))
+	r.Page("/reply", replyPage(r))
 	r.PagePrefix("/item/", focusPage(r))
 	r.Route("POST /vote/comment/{id}", voteHandler(r))
 }
