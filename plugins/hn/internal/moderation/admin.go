@@ -248,8 +248,8 @@ func handleUnban(q *core.Request) sdk.HTTPResponse {
 
 // handlePasswordRemove removes a member's password login (one that was connected without the
 // member's consent, say) and signs its browsers out. The member keeps username, comments and
-// karma and signs in with the email link again. Sessions are revoked first: when that fails
-// the login stays, so "removed" never leaves a working session behind.
+// karma and signs in with the email link again. The login row goes first, so no new
+// session can start; when ending the existing ones fails the error is reported and the row stays gone.
 func handlePasswordRemove(q *core.Request) sdk.HTTPResponse {
 	var in struct{}
 	if resp, good := decodeJSON(q, &in); !good {
@@ -269,10 +269,12 @@ func handlePasswordRemove(q *core.Request) sdk.HTTPResponse {
 		}
 		return failed()
 	}
-	if err := core.Call(sdk.FnCommentsIdentityRevoke, sdk.CommentsIdentityArgs{Account: l.Account}, &sdk.CommentsIdentityRevoked{}); err != nil {
+	if _, err := core.Exec(sqlLoginDelete, u.ID); err != nil {
 		return failed()
 	}
-	if _, err := core.Exec(sqlLoginDelete, u.ID); err != nil {
+	// The login row is gone, so no new session can start; now end the ones that exist.
+	if err := core.Call(sdk.FnCommentsIdentityRevoke, sdk.CommentsIdentityArgs{Account: l.Account}, &sdk.CommentsIdentityRevoked{}); err != nil {
+		writeLog("owner", "password-remove", "user:"+u.Username, "sessions not ended")
 		return failed()
 	}
 	writeLog("owner", "password-remove", "user:"+u.Username, "")

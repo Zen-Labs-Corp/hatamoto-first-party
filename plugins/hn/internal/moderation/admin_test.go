@@ -445,13 +445,27 @@ func TestAdminPasswordRemove(t *testing.T) {
 			t.Fatalf("log = %+v", logs)
 		}
 	})
-	t.Run("a failed revoke keeps the login", func(t *testing.T) {
+	t.Run("a failed revoke is reported but the login is gone", func(t *testing.T) {
 		db := withLogin(true)
 		db.Revoke = func(string) error { return hostErr(sdk.ErrUnavailable) }
 		install(t, db)
 		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
-		if len(db.Execs) != 0 {
-			t.Fatalf("execs = %+v", db.Execs)
+		if d := execs(db, sqlLoginDelete); len(d) != 1 {
+			t.Fatalf("deletes = %+v", d)
+		}
+	})
+	t.Run("a failed delete revokes nothing", func(t *testing.T) {
+		db := withLogin(true)
+		db.Exec = func(sql string, _ []any) (int64, error) {
+			if sql == sqlLoginDelete {
+				return 0, hostErr(sdk.ErrUnavailable)
+			}
+			return 1, nil
+		}
+		install(t, db)
+		wantStatus(t, asOwner(t, "POST", route, bob, `{}`), 500)
+		if len(db.Revoked) != 0 {
+			t.Fatalf("revoked %v", db.Revoked)
 		}
 	})
 	t.Run("no password, unknown member", func(t *testing.T) {
