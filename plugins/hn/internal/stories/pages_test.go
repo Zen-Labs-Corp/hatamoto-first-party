@@ -63,6 +63,17 @@ func TestFeedsPageReplacesBlock(t *testing.T) {
 	}
 }
 
+func TestFeedsPageBestKeepsView(t *testing.T) {
+	pinNow(t, feedNow)
+	install(t, pageDB(3, nil))
+	r := newRegistry(t, nil)
+	out := render(t, r, "/news", "k1", map[string]string{"view": "best", "p": "2"}, sdk.Block{ID: "b7", Type: "hn_feed"})
+	rows, _ := out.Blocks[len(out.Blocks)-1].Content["rows"].([]map[string]any)
+	if len(rows) == 0 || !strings.Contains(rows[0]["next"].(string), "view=best") {
+		t.Errorf("rows %v", rows)
+	}
+}
+
 func TestFeedsPageAppendsAndRoot(t *testing.T) {
 	pinNow(t, feedNow)
 	install(t, pageDB(1, nil))

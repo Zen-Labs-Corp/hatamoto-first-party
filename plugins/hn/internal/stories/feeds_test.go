@@ -38,7 +38,8 @@ func TestFeedsBuild(t *testing.T) {
 		{"/ask", nil, []string{"s.kind = 'ask'"}, scoreOrder, nil},
 		{"/show", nil, []string{"s.kind = 'show'"}, scoreOrder, nil},
 		{"/jobs", nil, []string{"s.kind = 'job'"}, dateOrder, nil},
-		{"/best", nil, []string{"s.created_at > $5::timestamptz - interval '7 days'"}, pointOrder, []any{"2026-11-25T12:00:00Z"}},
+		{"/news", []string{"view", "best"}, []string{"s.created_at > $5::timestamptz - interval '7 days'"}, pointOrder, []any{"2026-11-25T12:00:00Z"}},
+		{"/", []string{"view", "best"}, []string{"NOT s.dead AND s.kind <> 'job'"}, scoreOrder, nil},
 		{"/from", []string{"site", "www.Example.com"}, []string{"s.domain = $5"}, dateOrder, []any{"example.com"}},
 	}
 	for _, c := range cases {
@@ -70,6 +71,9 @@ func TestFeedsBuild(t *testing.T) {
 		if !strings.Contains(q.SQL, "NOT EXISTS (SELECT 1 FROM hidden h WHERE h.story_id = s.entity_id AND h.user_id = $1)") {
 			t.Errorf("%s: hidden stories are not filtered", c.path)
 		}
+	}
+	if _, ok := buildFeed(feedReq{Path: "/best", Q: qf(), PageSize: 30}); ok {
+		t.Error("/best is a feed path")
 	}
 	if _, ok := buildFeed(feedReq{Path: "/nope", Q: qf(), PageSize: 30}); ok {
 		t.Error("/nope is a feed")
@@ -111,6 +115,9 @@ func TestFeedsPaging(t *testing.T) {
 	rows, more, first, _, err := loadFeed(feedReq{Path: "/news", Q: qf("p", "2"), PageSize: 30})
 	if err != nil || len(rows) != 30 || more != "/news?p=3" || first != 31 || gotArgs[3] != float64(30) {
 		t.Fatalf("p=2: %d rows more %q first %d args %v err %v", len(rows), more, first, gotArgs, err)
+	}
+	if _, more, _, _, _ = loadFeed(feedReq{Path: "/news", Q: qf("view", "best", "p", "2"), PageSize: 30}); more != "/news?view=best&p=3" {
+		t.Errorf("best more %q", more)
 	}
 	_, more, _, _, _ = loadFeed(feedReq{Path: "/newest", Q: qf(), PageSize: 30})
 	if more != "/newest?next=871" {

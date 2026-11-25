@@ -60,11 +60,15 @@ func TestRSSFeeds(t *testing.T) {
 		if resp.Status != 200 || resp.Headers["Content-Type"] != "application/rss+xml; charset=utf-8" || resp.Headers["Cache-Control"] != "public, max-age=60" {
 			t.Fatalf("%s: %d %v", name, resp.Status, resp.Headers)
 		}
+		wantLink := "/" + name
+		if name == "best" {
+			wantLink = "/news?view=best"
+		}
 		var doc rssDoc
 		if err := xml.Unmarshal([]byte(resp.Body), &doc); err != nil {
 			t.Fatalf("%s: %v\n%s", name, err, resp.Body)
 		}
-		if doc.Version != "2.0" || len(doc.Channel.Items) != 30 || doc.Channel.Title != "Hatamoto News: "+name || doc.Channel.Link != "/"+name {
+		if doc.Version != "2.0" || len(doc.Channel.Items) != 30 || doc.Channel.Title != "Hatamoto News: "+name || doc.Channel.Link != wantLink {
 			t.Errorf("%s: %q %d items, channel %+v", name, doc.Version, len(doc.Channel.Items), doc.Channel)
 		}
 		if !strings.HasPrefix(resp.Body, `<?xml version="1.0" encoding="UTF-8"?>`+"\n<rss") {

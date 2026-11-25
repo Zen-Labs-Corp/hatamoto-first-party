@@ -96,8 +96,8 @@ func TestManifestEntityPagesAndQuery(t *testing.T) {
 	if want := []string{"url", "text", "kind"}; !slices.Equal(doc.EntityFields, want) {
 		t.Errorf("entity_fields %v", doc.EntityFields)
 	}
-	wantPaths := []string{"/", "/news", "/newest", "/front", "/newcomments", "/ask", "/show", "/jobs", "/best", "/submit", "/threads", "/user", "/from", "/favorites", "/login", "/search"}
-	if !slices.Equal(doc.PagePaths, wantPaths) || len(doc.PagePaths) != 16 {
+	wantPaths := []string{"/", "/news", "/newest", "/front", "/newcomments", "/ask", "/show", "/jobs", "/submit", "/threads", "/user", "/from", "/favorites", "/login", "/search"}
+	if !slices.Equal(doc.PagePaths, wantPaths) || len(doc.PagePaths) != 15 {
 		t.Errorf("page_paths %v", doc.PagePaths)
 	}
 	seen := map[string]bool{}

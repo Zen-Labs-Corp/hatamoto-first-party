@@ -115,17 +115,6 @@
       ]
     },
     {
-      "slug": "best",
-      "name": "Best",
-      "schema": "page",
-      "blocks": [
-        {
-          "type": "hn_feed",
-          "props": {}
-        }
-      ]
-    },
-    {
       "slug": "ask",
       "name": "Ask",
       "schema": "page",
@@ -283,7 +272,7 @@
           "type": "content",
           "props": {
             "headline": "Lists",
-            "body": "<ul><li><a href=\"/front\">front</a>: Past front pages, day by day</li><li><a href=\"/best\">best</a>: The best stories</li><li><a href=\"/newest\">newest</a>: The newest stories</li><li><a href=\"/newcomments\">newcomments</a>: The newest comments</li><li><a href=\"/ask\">ask</a>: Ask posts</li><li><a href=\"/show\">show</a>: Show posts</li><li><a href=\"/jobs\">jobs</a>: Jobs</li><li><a href=\"/search\">search</a>: Search stories and comments</li></ul>"
+            "body": "<ul><li><a href=\"/front\">front</a>: Past front pages, day by day</li><li><a href=\"/news?view=best\">best</a>: The best stories</li><li><a href=\"/newest\">newest</a>: The newest stories</li><li><a href=\"/newcomments\">newcomments</a>: The newest comments</li><li><a href=\"/ask\">ask</a>: Ask posts</li><li><a href=\"/show\">show</a>: Show posts</li><li><a href=\"/jobs\">jobs</a>: Jobs</li><li><a href=\"/search\">search</a>: Search stories and comments</li></ul>"
           }
         }
       ]

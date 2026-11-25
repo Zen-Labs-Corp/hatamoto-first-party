@@ -29,11 +29,11 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 
 ## Pages
 
-`render.page` does not run on a 404, so every path below except `/` must exist as a CMS page holding the section named here. Kit page slugs: `news newest front newcomments best ask show jobs submit threads user from favorites login search`, plus a plain `guidelines` page. `/` is served when the owner makes the news page the homepage. Story pages come from the plugin-owned `hn-story` content type; the slug is the story number. `/item/<number>` is the canonical story URL the plugin links to. The `/item/{slug}` url_pattern is not carried by the plugin package (a schema file holds no settings, so core gives the type the default `/{slug}`): the hn kit sets it on the type, or the owner sets it in Settings > Content types. Without it stories route at `/<number>` and the plugin's `/item/` links do not resolve.
+`render.page` does not run on a 404, so every path below except `/` must exist as a CMS page holding the section named here. Kit page slugs: `news newest front newcomments ask show jobs submit threads user from favorites login search`, plus a plain `guidelines` page. `/` is served when the owner makes the news page the homepage. Story pages come from the plugin-owned `hn-story` content type; the slug is the story number. `/item/<number>` is the canonical story URL the plugin links to. The `/item/{slug}` url_pattern is not carried by the plugin package (a schema file holds no settings, so core gives the type the default `/{slug}`): the hn kit sets it on the type, or the owner sets it in Settings > Content types. Without it stories route at `/<number>` and the plugin's `/item/` links do not resolve.
 
 | Page path | Section the page holds | Phase | Query keys used |
 |---|---|---|---|
-| `/` `/news` `/newest` `/front` `/ask` `/show` `/jobs` `/best` `/from` | `hn_feed` (the feed is the path) | P2 | `p`, `next`, `day` (front), `site` (from), `id` (newest by author) |
+| `/` `/news` `/newest` `/front` `/ask` `/show` `/jobs` `/from` | `hn_feed` (the feed is the path; best stories are `/news?view=best`) | P2 | `p`, `next`, `view` (news: `best`), `day` (front), `site` (from), `id` (newest by author) |
 | `/submit` | `hn_submit` (edit mode with `?id=<story>`) | P2 | `id` |
 | `/item/<number>` | `hn_item`, injected by the filter | P2 | `id` (a comment id: focus view) |
 | `/threads` `/newcomments` | `hn_threads` | P3 | `id` (user), `p` |
@@ -43,7 +43,7 @@ Rules: no phase imports another phase (a test checks it), shared code goes in `i
 | `/search` | `hn_search` | P5 | `q`, `p` |
 | every filtered page | `hn_userbar`, injected first | P1 | |
 
-Sections: `hn_feed hn_submit hn_item hn_threads hn_user hn_login hn_saved hn_search hn_userbar` (`hn_item` and `hn_userbar` are injected, not placed). Declared page paths: 16 (the limit), prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
+Sections: `hn_feed hn_submit hn_item hn_threads hn_user hn_login hn_saved hn_search hn_userbar` (`hn_item` and `hn_userbar` are injected, not placed). Declared page paths: 15, prefix `/item/`. Query keys (9): `p id day site kind next view q m` (`m` is the notice code of a redirect, read by every filtered page).
 
 The noprocrast notice is rendered by `hn_saved` as well: a member with the flag on who is past their visit window sees the account bar and that notice instead of the page (no extra section to place).
 

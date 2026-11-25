@@ -83,7 +83,11 @@ func buildFeed(f feedReq) (q feedQuery, ok bool) {
 	more := pageHref("/news?")
 	q.FirstRank = (page-1)*f.PageSize + 1
 
-	switch f.Path {
+	feed := f.Path
+	if feed == "/news" && f.Q("view") == "best" {
+		feed = "best" // not a path: /best is no page path any more (16-path cap)
+	}
+	switch feed {
 	case "/", "/news":
 		where = "NOT s.dead AND s.kind <> 'job'"
 		args[1] = false
@@ -120,8 +124,8 @@ func buildFeed(f feedReq) (q feedQuery, ok bool) {
 		where, more = "s.kind = 'show'", pageHref("/show?")
 	case "/jobs":
 		where, order, more = "s.kind = 'job'", dateOrder, pageHref("/jobs?")
-	case "/best":
-		where, order, more = "s.kind <> 'job' AND s.created_at > "+arg(nowArg())+"::timestamptz - interval '7 days'", pointOrder, pageHref("/best?")
+	case "best":
+		where, order, more = "s.kind <> 'job' AND s.created_at > "+arg(nowArg())+"::timestamptz - interval '7 days'", pointOrder, pageHref("/news?view=best&")
 	case "/from":
 		site := siteOf(strings.TrimPrefix(strings.ToLower(strings.TrimSpace(f.Q("site"))), "www."))
 		if site == "" {
