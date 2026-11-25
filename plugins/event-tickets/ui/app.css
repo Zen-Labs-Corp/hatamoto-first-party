@@ -28,3 +28,7 @@ th.num, td.num { text-align: right; white-space: nowrap; }
 .ck-already { color: var(--color-warning, #8a5a00); font-weight: 600; }
 .ck-refused { color: var(--color-danger, #b3261e); font-weight: 600; }
 button.primary { padding: 8px 16px; font-weight: 600; }
+.st-row { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin: 0 0 2px; }
+.st-label { min-width: 32px; font-weight: 600; }
+.st-seat { min-width: 28px; padding: 2px 4px; }
+.st-seat.st-blocked { opacity: 0.45; text-decoration: line-through; }

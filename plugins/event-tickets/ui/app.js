@@ -1,4 +1,4 @@
-// Event tickets admin page: Events, Attendees, Orders, Check-in, Payouts, Emails and Settings. It runs in a
+// Event tickets admin page: Events, Seating, Attendees, Orders, Check-in, Payouts, Emails and Settings. It runs in a
 // sandboxed iframe and reaches the plugin only through the hatamoto bridge.
 // Text is set with textContent or value, never as markup. The frame cannot
 // download, so the CSV address is shown in a field that selects on click.
@@ -1244,7 +1244,9 @@ $("#cm-send").append(confirmButton("Send", "Confirm send", "Click Confirm send t
 
 // ---- Tabs
 
-const TABS = { events: () => loadEvents(false), attendees: () => loadAttendees(1), orders: openOrders, checkin: openCheckin, payouts: openPayouts, emails: openEmails, settings: loadSettings };
+seating.init({ el, api, say, confirmButton });
+
+const TABS = { events: () => loadEvents(false), seating: () => seating.open(), attendees: () => loadAttendees(1), orders: openOrders, checkin: openCheckin, payouts: openPayouts, emails: openEmails, settings: loadSettings };
 const loaded = new Set();
 
 function showTab(name) {
@@ -1253,7 +1255,7 @@ function showTab(name) {
     $(`#tab-${tab}`).classList.toggle("active", tab === name);
   }
   say("");
-  if (name === "attendees" || name === "orders" || name === "checkin" || name === "payouts" || name === "emails" || !loaded.has(name)) {
+  if (name === "seating" || name === "attendees" || name === "orders" || name === "checkin" || name === "payouts" || name === "emails" || !loaded.has(name)) {
     loaded.add(name);
     TABS[name]();
   }

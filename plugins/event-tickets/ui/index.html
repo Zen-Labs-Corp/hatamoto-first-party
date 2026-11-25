@@ -10,6 +10,7 @@
     <h1>Event tickets</h1>
     <nav class="tabs">
       <button id="tab-events" type="button" class="tab">Events</button>
+      <button id="tab-seating" type="button" class="tab">Seating</button>
       <button id="tab-attendees" type="button" class="tab">Attendees</button>
       <button id="tab-orders" type="button" class="tab">Orders</button>
       <button id="tab-checkin" type="button" class="tab">Check-in</button>
@@ -63,6 +64,30 @@
           <button id="ed-save-fields" type="button">Save fields</button>
         </div>
         <button id="ed-close" type="button">Close</button>
+      </section>
+    </section>
+
+    <section id="panel-seating" hidden>
+      <p class="muted">Seating maps: grid sections with rows of seats, and GA zones with a capacity. Bind a ticket type to a section in the event editor.</p>
+      <div id="st-maps"></div>
+      <div class="row">
+        <label>New map <input id="st-new-name" type="text" maxlength="80"></label>
+        <button id="st-add-map" type="button">Add map</button>
+      </div>
+
+      <section id="st-ed" class="panel-box" hidden>
+        <div class="row">
+          <label>Map <input id="st-name" type="text" maxlength="80"></label>
+          <button id="st-rename" type="button">Rename</button>
+        </div>
+        <div id="st-sections"></div>
+        <div class="row">
+          <button id="st-add-section" type="button">Add section</button>
+          <button id="st-add-zone" type="button">Add GA zone</button>
+          <button id="st-block" type="button">Block seat</button>
+        </div>
+        <div id="st-form" class="panel-box" hidden></div>
+        <div id="st-grid"></div>
       </section>
     </section>
 
@@ -273,6 +298,7 @@
   <script src="/plugin-ui/_sdk/bridge.js"></script>
   <script src="jsqr.js"></script>
   <script src="checkin.js"></script>
+  <script src="seating.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

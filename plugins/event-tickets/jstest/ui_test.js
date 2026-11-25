@@ -9,6 +9,7 @@ const vm = require("node:vm");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "ui", "app.js"), "utf8");
 const checkinSrc = fs.readFileSync(path.join(__dirname, "..", "ui", "checkin.js"), "utf8");
+const seatingSrc = fs.readFileSync(path.join(__dirname, "..", "ui", "seating.js"), "utf8");
 
 class Node {
   constructor(tag) {
@@ -29,6 +30,7 @@ class Node {
 }
 
 const IDS = [
+  "#tab-seating", "#panel-seating", "#st-maps", "#st-new-name", "#st-add-map", "#st-ed", "#st-name", "#st-rename", "#st-sections", "#st-add-section", "#st-add-zone", "#st-block", "#st-form", "#st-grid",
   "#notice", "#tab-events", "#tab-attendees", "#tab-settings", "#panel-events", "#panel-attendees", "#panel-settings",
   "#ev-search", "#ev-go", "#ev-state", "#ev-table", "#ev-rows", "#ev-more", "#ed", "#ed-title", "#ed-types", "#ed-add",
   "#ed-fields", "#ed-add-field", "#ed-save-fields", "#ed-close", "#at-event", "#at-state", "#at-table", "#at-rows",
@@ -73,6 +75,7 @@ async function load({ respond, timers = [], camera = { available: false } }) {
     Date: FakeDate, crypto: globalThis.crypto, Uint8Array, encodeURIComponent, Object, Number, String, Set, JSON, Error, Boolean, Array, Map, Promise,
   });
   vm.runInContext(checkinSrc, context);
+  vm.runInContext(seatingSrc, context);
   vm.runInContext(src, context);
   await new Promise((r) => setTimeout(r, 10));
   routes.length = 0;
