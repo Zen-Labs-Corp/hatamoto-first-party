@@ -17,7 +17,8 @@
       "entity.published": 5000,
       "entity.deleted": 5000,
       "builder.data": 450,
-      "on_cron_mail": 10000
+      "on_cron_mail": 10000,
+      "on_cron_maintain": 10000
     }
   },
   "routes": [
@@ -39,7 +40,8 @@
     { "method": "GET", "path": "/ticket/{token}/qr.png", "public": true }
   ],
   "cron": [
-    { "name": "mail", "every": "5m" }
+    { "name": "mail", "every": "5m" },
+    { "name": "maintain", "every": "1h" }
   ],
   "settings_schema": {
     "type": "object",
