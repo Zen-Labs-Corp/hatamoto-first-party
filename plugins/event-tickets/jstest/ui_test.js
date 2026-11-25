@@ -33,7 +33,9 @@ const IDS = [
   "#ev-search", "#ev-go", "#ev-state", "#ev-table", "#ev-rows", "#ev-more", "#ed", "#ed-title", "#ed-types", "#ed-add",
   "#ed-fields", "#ed-add-field", "#ed-save-fields", "#ed-close", "#at-event", "#at-state", "#at-table", "#at-rows",
   "#wl-state", "#wl-table", "#wl-rows", "#at-more", "#at-csv", "#st-rows",
-  "#tab-orders", "#panel-orders", "#ed-bundle-box", "#cp-form", "#ed-bundles", "#ed-add-bundle", "#ed-save-bundles", "#ed-split-box", "#ed-splits", "#ed-add-split", "#ed-save-splits", "#or-status", "#or-event", "#or-search", "#or-go",
+  "#tab-orders", "#panel-orders", "#ed-bundle-box", "#cp-form", "#ed-bundles", "#ed-add-bundle", "#ed-save-bundles", "#ed-split-box", "#ed-splits", "#ed-add-split", "#ed-save-splits",
+  "#tab-payouts", "#panel-payouts", "#po-period", "#po-state", "#po-held", "#po-table", "#po-rows", "#po-csv", "#po-mark", "#po-mark-title",
+  "#po-mark-date", "#po-mark-ref", "#po-mark-act", "#po-mark-close", "#or-status", "#or-event", "#or-search", "#or-go",
   "#or-state", "#or-table", "#or-rows", "#or-more", "#or-refund", "#or-refund-title", "#or-refund-amount", "#or-refund-cur",
   "#or-refund-tickets", "#or-refund-act", "#or-refund-close", "#cp-state", "#cp-table", "#cp-rows", "#cp-title", "#cp-code", "#cp-kind",
   "#cp-value", "#cp-max", "#cp-until", "#cp-event", "#cp-active", "#cp-save", "#cp-reset", "#or-fees", "#or-bundles",
@@ -208,6 +210,20 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   assert.ok(api.bundlesBody([{ ...rule, valueText: "150" }], 2).error);
   assert.ok(api.bundlesBody([{ ...rule, all_types: true, type_ids: [] }], 2).error);
 
+  // payouts: UTC months, newest first; the default is the month that just ended
+  const months = api.periodOptions(Date.UTC(2026, 0, 15));
+  assert.equal(months.length, 24);
+  same(months.slice(0, 2), [{ value: "2026-01", label: "January 2026" }, { value: "2025-12", label: "December 2025" }]);
+  assert.equal(api.defaultPeriod(Date.UTC(2026, 6, 1, 0, 0, 0)), "2026-06");
+  assert.equal(api.defaultPeriod(Date.UTC(2026, 0, 31, 23, 59, 59)), "2025-12");
+  assert.equal(api.shareText({ kind: "percent", value: 8000 }, 2), "80%");
+  assert.equal(api.shareText({ kind: "percent", value: 1250 }, 2), "12.5%");
+  assert.equal(api.shareText({ kind: "fixed", value: 200 }, 2), "2.00 / ticket");
+  assert.equal(api.shareText({ kind: "mixed" }, 2), "mixed");
+  api.state.payouts = { period: "2026-06" };
+  same(api.markRequest({ email: "a@example.org", currency: "USD", owed: 319680 }, "2026-07-02", " TR-88 "),
+    { period: "2026-06", email: "a@example.org", currency: "USD", paid_on: "2026-07-02", reference: "TR-88", owed_cents: 319680 });
+
   // payout splits: percent as basis points, fixed as minor units, by string math
   for (const [text, bp] of [["80", 8000], ["12.5", 1250], ["12.25", 1225], ["0.01", 1], ["100", 10000], [" 5 ", 500]]) assert.equal(api.parsePercent(text), bp, text);
   for (const bad of ["100.01", "0", "0.00", "abc", "", "-5", "1.234", "101"]) assert.throws(() => api.parsePercent(bad), /Percent must be/, bad);
@@ -288,6 +304,42 @@ const quiet = (method, p) => reply(200, p.endsWith("/settings") ? {} : { events:
   clock += 1000;
   await go.handlers.click();
   same(posts, ["/admin/orders/1042/refund"]);
+
+  // the Payouts tab lists payees, marks one paid in two clicks and sends the amount on screen
+  const payees = [
+    { name: "Jazz Society", email: "pay@example.org", currency: "USD", events: 3, gross: 420000, refunds: 12000, fees: 8400, share: { kind: "percent", value: 8000 }, owed: 319680, paid: null },
+    { name: "Co-host Ana", email: "ana@example.org", currency: "USD", events: 1, gross: 145000, refunds: 0, fees: 2900, share: { kind: "percent", value: 1000 }, owed: 14210,
+      paid: { paid_on: "2026-07-02", reference: "TR-88", paid_cents: 14210, changed: false } },
+  ];
+  const marks = [];
+  ctx = await load({
+    respond: (m, p) => {
+      if (p === "/admin/payouts") return reply(200, { ok: true, period: "1969-12", payees, held_back: 2, exponents: { USD: 2 } });
+      if (p === "/admin/settings") return reply(200, { currency: "USD", currency_exponent: 2, can_refund: true });
+      if (m === "POST") { marks.push(p); return reply(200, { ok: true }); }
+      return quiet(m, p);
+    },
+  });
+  assert.equal(ctx.els["#tab-payouts"].hidden, false);
+  ctx.els["#tab-payouts"].handlers.click();
+  await new Promise((r) => setTimeout(r, 10));
+  const prow = ctx.els["#po-rows"].children;
+  assert.equal(prow.length, 2);
+  same(prow[0].children.map((c) => c.textContent || c.children[0]).slice(0, 7), ["Jazz Society", "3", "4200.00 USD", "120.00 USD", "84.00 USD", "80%", "3196.80 USD"]);
+  assert.equal(prow[1].children[7].children[0], "Paid 2 Jul #TR-88 ");
+  assert.equal(prow[1].children[7].children[1].textContent, "Undo");
+  assert.equal(ctx.els["#po-held"].hidden, false);
+  assert.equal(ctx.els["#po-csv"].value, "/api/v1/p/event-tickets/admin/payouts.csv?period=1969-12");
+  prow[0].children[7].children[0].handlers.click();
+  assert.equal(ctx.els["#po-mark"].hidden, false);
+  assert.match(ctx.els["#po-mark-title"].textContent, /Jazz Society.*3196\.80 USD/);
+  const markGo = ctx.els["#po-mark-act"].children[0];
+  await markGo.handlers.click();
+  assert.equal(marks.length, 0, "first click: no call");
+  clock += 1000;
+  await markGo.handlers.click();
+  same(marks, ["/admin/payouts/mark"]);
+  assert.equal(ctx.els["#po-mark"].hidden, true);
 
   console.log("ok");
 })().catch((e) => { console.error(e); process.exit(1); });
