@@ -226,7 +226,7 @@ func TestManifest(t *testing.T) {
 }
 
 func TestShippedFiles(t *testing.T) {
-	for _, f := range []string{"migrations/001_init.sql", "migrations/002_paid.sql", "migrations/003_checkin.sql", "migrations/004_payouts.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
+	for _, f := range []string{"migrations/001_init.sql", "migrations/002_paid.sql", "migrations/003_checkin.sql", "migrations/004_payouts.sql", "migrations/005_emails.sql", "widgets/tickets/widget.html", "widgets/ticket-type/widget.html", "ui/index.html"} {
 		exists(t, f)
 	}
 }
