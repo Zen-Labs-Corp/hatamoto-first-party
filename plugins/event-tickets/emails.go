@@ -40,13 +40,14 @@ func defaultAutomations() automations {
 	return automations{Changed: true, Reminder: true, ReminderHours: 24}
 }
 
-// loadAutomations reads the switches; a missing or unreadable value means its
-// default, so a database error never turns a mail on or off by accident.
-func loadAutomations() automations {
+// loadAutomations reads the switches; a missing value means its default. A
+// failed read is an error: the caller must not guess, as the defaults could
+// turn on a mail the owner switched off.
+func loadAutomations() (automations, error) {
 	a := defaultAutomations()
 	var m map[string]string
 	if err := dbJSON(`SELECT coalesce(jsonb_object_agg(key, value), '{}'::jsonb) FROM meta WHERE key LIKE 'email.%'`, &m); err != nil {
-		return a
+		return a, err
 	}
 	flag := func(key string, def bool) bool {
 		switch m[key] {
@@ -61,7 +62,7 @@ func loadAutomations() automations {
 	if h, err := strconv.Atoi(m[metaReminderHours]); err == nil {
 		a.ReminderHours = min(max(h, 1), 168)
 	}
-	return a
+	return a, nil
 }
 
 // mailQuota is how many recipients per hour the owner allows this plugin;
@@ -93,7 +94,10 @@ var (
 func runEmails(budget time.Duration) {
 	deadline := now().Add(budget)
 	over := func() bool { return !now().Before(deadline) }
-	a := loadAutomations()
+	a, err := loadAutomations()
+	if err != nil {
+		return // fail closed: without the switches nothing is fanned out or sent
+	}
 	for _, f := range fanouts {
 		if over() {
 			return

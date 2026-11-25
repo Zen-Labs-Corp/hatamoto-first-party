@@ -13,6 +13,7 @@ import (
 // answer, the send queue with its lease, the unsubscribe list and mail.send.
 type emailsHost struct {
 	meta     string // jsonb object of the email.* flags
+	metaErr  bool   // the meta read fails
 	perms    string // permissions answer, "" = host error
 	queue    []sendRow
 	leased   map[int64]bool
@@ -61,6 +62,9 @@ func newEmailsHost(t *testing.T, n int) *emailsHost {
 		case strings.HasPrefix(sql, "UPDATE campaigns c SET status = 'sent'"):
 			return nil // finishCampaigns
 		case strings.Contains(sql, "FROM meta WHERE key LIKE"):
+			if h.metaErr {
+				return errors.New("statement timeout")
+			}
 			return jsonInto(`{"rows":[[`+h.meta+`]]}`, out)
 		case strings.Contains(sql, "FOR UPDATE SKIP LOCKED"):
 			for _, q := range h.queue {
@@ -213,19 +217,26 @@ func TestDrainSkipsWhenNothingToSay(t *testing.T) {
 
 func TestLoadAutomations(t *testing.T) {
 	h := newEmailsHost(t, 0)
-	if a := loadAutomations(); a != (automations{true, true, false, 24}) {
+	load := func() automations {
+		a, err := loadAutomations()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	if a := load(); a != (automations{true, true, false, 24}) {
 		t.Errorf("defaults %+v", a)
 	}
 	h.meta = `{"email.changed":"false","email.thanks":"true","email.reminder_hours":"48"}`
-	if a := loadAutomations(); a != (automations{false, true, true, 48}) {
+	if a := load(); a != (automations{false, true, true, 48}) {
 		t.Errorf("stored %+v", a)
 	}
 	h.meta = `{"email.reminder_hours":"9999","email.changed":"maybe"}`
-	if a := loadAutomations(); a.ReminderHours != 168 || !a.Changed {
+	if a := load(); a.ReminderHours != 168 || !a.Changed {
 		t.Errorf("clamped %+v", a)
 	}
 	h.meta = `{"email.reminder_hours":"x"}`
-	if a := loadAutomations(); a.ReminderHours != 24 {
+	if a := load(); a.ReminderHours != 24 {
 		t.Errorf("bad hours %+v", a)
 	}
 }
@@ -241,5 +252,19 @@ func TestRunEmailsFansOutBeforeSending(t *testing.T) {
 	runEmails(emailsBudget)
 	if strings.Join(order, ",") != "fanout,send" || len(h.mails) != 1 {
 		t.Errorf("order %v", order)
+	}
+}
+
+func TestRunEmailsFailsClosedWhenTheSwitchesCannotBeRead(t *testing.T) {
+	h := newEmailsHost(t, 2)
+	h.metaErr = true
+	fanned := false
+	fanouts = []func(automations, func() bool){func(automations, func() bool) { fanned = true }}
+	runEmails(emailsBudget)
+	if fanned || len(h.mails) != 0 || len(h.status) != 0 {
+		t.Errorf("fanned %v, mails %d, status %v: a failed switch read must do nothing", fanned, len(h.mails), h.status)
+	}
+	if _, err := loadAutomations(); err == nil {
+		t.Error("loadAutomations must report the read error")
 	}
 }

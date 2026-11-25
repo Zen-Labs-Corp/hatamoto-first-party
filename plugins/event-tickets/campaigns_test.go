@@ -57,7 +57,9 @@ func newCampHost(t *testing.T) *campHost {
 			return jsonInto(`{"rows":[[`+h.campaign+`]]}`, out)
 		case strings.Contains(sql, "FROM (SELECT c.id, c.subject"):
 			return jsonInto(`{"rows":[[`+h.stats+`]]}`, out)
-		case strings.Contains(sql, "FROM event_changes") || strings.Contains(sql, "'email.%'"):
+		case strings.Contains(sql, "'email.%'"):
+			return jsonInto(`{"rows":[[{}]]}`, out)
+		case strings.Contains(sql, "FROM event_changes"):
 			return jsonInto(`{"rows":[[[]]]}`, out)
 		}
 		return inner(fn, args, out)

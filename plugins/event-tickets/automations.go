@@ -234,7 +234,10 @@ func serveEmails(u *sdk.HTTPUser) sdk.HTTPResponse {
 	if u == nil || u.Role != "owner" {
 		return forbidden()
 	}
-	a := loadAutomations()
+	a, err := loadAutomations()
+	if err != nil {
+		return unavailable()
+	}
 	q := mailQuota()
 	campaigns, err := readCampaigns()
 	if err != nil {
