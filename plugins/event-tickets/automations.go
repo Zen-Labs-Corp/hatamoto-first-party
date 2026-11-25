@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -235,8 +236,12 @@ func serveEmails(u *sdk.HTTPUser) sdk.HTTPResponse {
 	}
 	a := loadAutomations()
 	q := mailQuota()
+	campaigns, err := readCampaigns()
+	if err != nil {
+		campaigns = json.RawMessage(`[]`)
+	}
 	return jsonReply(http.StatusOK, map[string]any{
-		"ok": true,
+		"ok": true, "campaigns": campaigns,
 		"automations": map[string]any{
 			"changed": a.Changed, "reminder": a.Reminder, "reminder_hours": a.ReminderHours, "thanks": a.Thanks,
 		},

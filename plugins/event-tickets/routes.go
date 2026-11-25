@@ -110,6 +110,12 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveDeleteCoupon(r.User, r.PathValues["id"]), nil
 		case "/admin/emails/automations":
 			return serveSaveAutomations(r), nil
+		case "/admin/campaigns/count":
+			return serveCampaignCount(r), nil
+		case "/admin/campaigns":
+			return serveCreateCampaign(r), nil
+		case "/admin/campaigns/{id}/cancel":
+			return serveCancelCampaign(r.User, r.PathValues["id"]), nil
 		}
 	}
 	return plain(http.StatusNotFound, "not found"), nil

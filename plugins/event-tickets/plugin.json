@@ -64,7 +64,10 @@
     { "method": "POST", "path": "/admin/payouts/mark", "roles": ["owner"] },
     { "method": "POST", "path": "/admin/payouts/unmark", "roles": ["owner"] },
     { "method": "GET", "path": "/admin/emails", "roles": ["owner"] },
-    { "method": "POST", "path": "/admin/emails/automations", "roles": ["owner"] }
+    { "method": "POST", "path": "/admin/emails/automations", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/campaigns/count", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/campaigns", "roles": ["owner"] },
+    { "method": "POST", "path": "/admin/campaigns/{id}/cancel", "roles": ["owner"] }
   ],
   "cron": [
     { "name": "mail", "every": "5m" },
