@@ -70,7 +70,8 @@ func rsvpOK(extra map[string]any) sdk.HTTPResponse {
 }
 
 // serveToken issues the time-trap token with what the form needs: the types
-// on sale, with live counts, and the custom fields of the event.
+// on sale, with live counts and prices, the custom fields of the event, and
+// the payment providers that are set up (names only, never a key).
 func serveToken(query map[string][]string) sdk.HTTPResponse {
 	eventID := queryValue(query["event"])
 	if !idOK(eventID) {
@@ -80,7 +81,8 @@ func serveToken(query map[string][]string) sdk.HTTPResponse {
 	if err != nil {
 		return failReply(http.StatusServiceUnavailable, laterError)
 	}
-	currency := loadSettings().Currency
+	cfg := loadSettings()
+	currency := cfg.Currency
 	out := []tokenType{}
 	for _, t := range types {
 		if t.OnSale {
@@ -102,9 +104,11 @@ func serveToken(query map[string][]string) sdk.HTTPResponse {
 	}
 	issued := strconv.FormatInt(now().UnixMilli(), 10)
 	return jsonReply(http.StatusOK, map[string]any{
-		"token":  issued + "." + tokenMAC(key, issued),
-		"types":  out,
-		"fields": fields,
+		"token":     issued + "." + tokenMAC(key, issued),
+		"types":     out,
+		"fields":    fields,
+		"currency":  currency,
+		"providers": cfg.providers(),
 	})
 }
 

@@ -11,3 +11,9 @@
 .hm-event-tickets_tickets .field select{padding:.4rem .5rem;font:inherit}
 .hm-event-tickets_tickets .links{margin:var(--hm-space-2,.5rem) 0 0;padding:0;list-style:none}
 .hm-event-tickets_tickets[hidden]{display:none}
+.hm-event-tickets_tickets .totals{margin:0 0 var(--hm-space-2,.5rem)}
+.hm-event-tickets_tickets .totals .line{display:flex;justify-content:space-between;gap:1rem;margin:0}
+.hm-event-tickets_tickets .totals .line:last-child{font-weight:600}
+.hm-event-tickets_tickets .coupon-note{margin:0 0 var(--hm-space-2,.5rem);color:var(--hm-color-danger,#b3261e)}
+.hm-event-tickets_tickets .pay-buttons{display:flex;flex-wrap:wrap;gap:.5rem}
+.hm-event-tickets_tickets .pay-box[hidden]{display:none}

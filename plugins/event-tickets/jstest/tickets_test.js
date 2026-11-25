@@ -82,20 +82,40 @@ const TOKEN = {
     { key: "terms", label: "I agree", kind: "checkbox", required: true },
   ],
 };
+// a paid event: one free type and one priced type, both providers set up
+const PAID = {
+  ...TOKEN,
+  currency: "USD",
+  providers: ["stripe", "paypal"],
+  types: [
+    { id: 5, name: "Standard", left: 8, sold_out: false, waitlist: false, price_cents: 1000, price: "10.00 USD" },
+    { id: 8, name: "Student", left: 8, sold_out: false, waitlist: false, price_cents: 0, price: "Free" },
+    TOKEN.types[1],
+  ],
+  fields: [],
+};
+const QUOTE = {
+  ok: true,
+  coupon_ok: true,
+  quote: { subtotal_cents: 2000, discount_cents: 200, fee_cents: 30, fee_absorbed: false, total_cents: 1830 },
+  display: { subtotal: "20.00 USD", discount: "2.00 USD", fee: "0.30 USD", total: "18.30 USD" },
+};
 const THREE = { ...TOKEN, types: [{ id: 5, name: "Standard", left: 8, sold_out: false, waitlist: false }, { id: 8, name: "Student", left: 8, sold_out: false, waitlist: false }, TOKEN.types[1]] };
 
 const threeRows = () => [row(5, "e1", "Standard"), row(8, "e1", "Student"), row(6, "e1", "VIP", { "data-sold-out": "1", "data-waitlist": "1" })];
 
 // env with a script of answers and a clock the test moves
-function setup({ attrs, rows, post = answer(200, { ok: true, tickets: ["/p/event-tickets/ticket/a.b"] }), token = answer(200, TOKEN) } = {}) {
+function setup({ attrs, rows, post = answer(200, { ok: true, tickets: ["/p/event-tickets/ticket/a.b"] }), token = answer(200, TOKEN), quote = answer(200, QUOTE) } = {}) {
   const calls = [];
+  const gone = []; // pages the browser was sent to
   let clock = 1_000_000;
   const env = {
     doc,
     now: () => clock,
+    go: (u) => gone.push(u),
     fetch: async (url, opts) => {
       calls.push({ url, opts });
-      const r = url.startsWith("/p/event-tickets/token") ? token : post;
+      const r = url.startsWith("/p/event-tickets/token") ? token : url === "/p/event-tickets/quote" ? quote : post;
       if (r instanceof Error) throw r;
       return r;
     },
@@ -104,7 +124,7 @@ function setup({ attrs, rows, post = answer(200, { ok: true, tickets: ["/p/event
   };
   const b = box(attrs, rows);
   const form = s.mount(b, env);
-  return { b, form, calls, advance: (ms) => { clock += ms; }, now: () => clock };
+  return { b, form, calls, gone, advance: (ms) => { clock += ms; }, now: () => clock };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -114,7 +134,7 @@ const buttons = (b, cls) => b.all((n) => n.tag === "button" && n.className === c
 function fillBuyer(form) {
   form.nameInput.value = " Ada ";
   form.emailInput.value = "ada@example.org";
-  form.inputs.terms.checked = true;
+  if (form.inputs.terms) form.inputs.terms.checked = true;
 }
 
 (async () => {
@@ -336,6 +356,197 @@ function fillBuyer(form) {
     await form.submit("");
     assert.equal(calls.filter((c) => c.url.startsWith("/p/event-tickets/token")).length, 2);
     assert.equal(posts(calls).length, 1);
+  }
+
+  // the redirect allowlist: https, a provider checkout host, no login part, no port
+  const SL = "/".repeat(2);
+  for (const ok of ["https:" + SL + "checkout.stripe.com/c/pay/cs_test_1", "https:" + SL + "www.paypal.com/checkoutnow?token=A1", "https:" + SL + "www.sandbox.paypal.com/checkoutnow?token=A1"]) {
+    assert.equal(s.redirectOK(ok), true, ok);
+  }
+  for (const bad of [
+    "http:" + SL + "checkout.stripe.com/c/pay/x", "https:" + SL + "evil.test/c/pay/x", "https:" + SL + "checkout.stripe.com.evil.test/x",
+    "https:" + SL + "checkout.stripe.com@evil.test/x", "https:" + SL + "user:pw@checkout.stripe.com/x", "https:" + SL + "evil.test\\@checkout.stripe.com/x",
+    "https:" + SL + "checkout.stripe.com:8443/x", "https:" + SL + "paypal.com/x", "https:" + SL + "api.stripe.com/v1/x", "javascript:alert(1)",
+    "data:text/html,x", SL + "checkout.stripe.com/x", "/p/event-tickets/ticket/a.b", "checkout.stripe.com", "", null, undefined, 42, {}, ["https:" + SL + "checkout.stripe.com/x"],
+    "https:" + SL + "checkout.stripe.com./x", "https:" + SL + "CHECKOUT.STRIPE.COM.evil.test/x", " https:" + SL + "checkout.stripe.com/x",
+  ]) {
+    assert.equal(s.redirectOK(bad), false, String(bad));
+  }
+  assert.equal(s.swapRoute("/p/event-tickets/rsvp", "quote"), "/p/event-tickets/quote");
+  assert.equal(s.swapRoute("/p/event-tickets/other", "quote"), "");
+
+  // the payload of a payment adds the provider and the coupon and nothing about a price
+  {
+    const body = s.buildPayload({ event: "e1", qty: { 5: 2 }, name: "A", email: "a@b.c", token: "t", provider: "stripe", coupon: "SAVE10" });
+    assert.deepEqual(Object.keys(body).sort(), ["answers", "coupon", "email", "event", "items", "name", "provider", "token", "website"]);
+    assert.ok(!("provider" in s.buildPayload({ event: "e1", qty: { 5: 1 } })), "the free payload is unchanged");
+  }
+
+  // a free event never shows a payment part
+  {
+    const { b, form } = setup();
+    await tick();
+    buttons(b, "plus")[0].click();
+    assert.equal(b.all((n) => n.className === "pay-box").length, 0);
+    assert.equal(form.send.hidden, false);
+  }
+
+  // a paid cart: totals come from the server, two pay buttons, Reserve is hidden
+  {
+    const { b, form, calls, gone } = setup({ rows: threeRows(), token: answer(200, PAID), post: answer(200, { ok: true, redirect: "https:" + SL + "checkout.stripe.com/c/pay/cs_test_1" }) });
+    await tick();
+    const plus = buttons(b, "plus");
+    plus[1].click(); // the free type: no payment part yet
+    assert.equal(b.all((n) => n.className === "pay-box").length, 0);
+    plus[0].click(); // the priced type
+    await tick();
+    const box = b.all((n) => n.className === "pay-box")[0];
+    assert.ok(box && !box.hidden);
+    assert.equal(form.send.hidden, true);
+    const quoteCalls = calls.filter((c) => c.url === "/p/event-tickets/quote");
+    assert.ok(quoteCalls.length >= 1);
+    assert.deepEqual(JSON.parse(quoteCalls[quoteCalls.length - 1].opts.body), { event: "e1", items: [{ type: 5, qty: 1 }, { type: 8, qty: 1 }], coupon: "" });
+    const lines = b.all((n) => n.className === "line").map((n) => n.children.map((k) => k.textContent).join(": "));
+    assert.deepEqual(lines, ["Subtotal: 20.00 USD", "Discount: -2.00 USD", "Fee: 0.30 USD", "Total: 18.30 USD"]);
+    assert.deepEqual(buttons(b, "pay").map((n) => n.textContent), ["Pay with Stripe", "Pay with PayPal"]);
+    assert.equal(b.all((n) => n.tag === "label").map((n) => n.textContent).includes("Coupon"), true);
+
+    // a coupon is sent to the quote and to the checkout; an unknown one is said so
+    const coupon = b.all((n) => n.tag === "input" && n.name === "coupon")[0];
+    coupon.value = "nope";
+    coupon.handlers.input();
+    await tick();
+    const last = () => calls.filter((c) => c.url === "/p/event-tickets/quote").pop();
+    assert.equal(JSON.parse(last().opts.body).coupon, "nope");
+    assert.equal(b.querySelector(".coupon-note").textContent, "");
+    const badCoupon = answer(200, { ...QUOTE, coupon_ok: false });
+    const again = setup({ rows: threeRows(), token: answer(200, PAID), quote: badCoupon });
+    await tick();
+    buttons(again.b, "plus")[0].click();
+    again.b.all((n) => n.name === "coupon")[0].value = "nope";
+    again.b.all((n) => n.name === "coupon")[0].handlers.input();
+    await tick();
+    assert.equal(again.b.querySelector(".coupon-note").textContent, s.COUPON_BAD);
+
+    // paying: the checkout post, then the provider's page
+    fillBuyer(form);
+    await buttons(b, "pay")[0].click();
+    const sent = posts(calls).filter((c) => c.url === "/p/event-tickets/checkout");
+    assert.equal(sent.length, 1);
+    const body = JSON.parse(sent[0].opts.body);
+    assert.equal(body.provider, "stripe");
+    assert.equal(body.coupon, "nope");
+    assert.deepEqual(body.items, [{ type: 5, qty: 1 }, { type: 8, qty: 1 }]);
+    assert.ok(!/price|amount|total|unit/.test(Object.keys(body).join()), "no price key is ever sent");
+    assert.deepEqual(gone, ["https:" + SL + "checkout.stripe.com/c/pay/cs_test_1"]);
+    assert.equal(form.status.textContent, "Taking you to the payment page...");
+    assert.equal(posts(calls).filter((c) => c.url === "/p/event-tickets/rsvp").length, 0, "a paid cart never goes to the RSVP route");
+  }
+
+  // the PayPal button posts provider paypal
+  {
+    const { b, form, calls, gone } = setup({ token: answer(200, PAID), post: answer(200, { ok: true, redirect: "https:" + SL + "www.paypal.com/checkoutnow?token=A1" }) });
+    await tick();
+    buttons(b, "plus")[0].click();
+    await tick();
+    fillBuyer(form);
+    await buttons(b, "pay")[1].click();
+    assert.equal(JSON.parse(posts(calls).pop().opts.body).provider, "paypal");
+    assert.equal(gone.length, 1);
+  }
+
+  // a page that is not a provider's is never opened
+  for (const evil of ["https:" + SL + "evil.test/pay", "http:" + SL + "checkout.stripe.com/x", "javascript:alert(1)", "/p/event-tickets/ticket/a.b", 7]) {
+    const { b, form, gone } = setup({ token: answer(200, PAID), post: answer(200, { ok: true, redirect: evil }) });
+    await tick();
+    buttons(b, "plus")[0].click();
+    await tick();
+    fillBuyer(form);
+    await buttons(b, "pay")[0].click();
+    assert.deepEqual(gone, [], String(evil));
+    if (typeof evil === "string") assert.equal(form.status.textContent, "Try again later.", String(evil));
+    assert.equal(buttons(b, "pay")[0].disabled, false, "the buttons work again");
+  }
+
+  // a missing buyer stops the payment before any post
+  {
+    const { b, form, calls } = setup({ token: answer(200, PAID) });
+    await tick();
+    buttons(b, "plus")[0].click();
+    await tick();
+    await buttons(b, "pay")[0].click();
+    assert.equal(form.status.textContent, "Please check the highlighted fields.");
+    assert.equal(posts(calls).filter((c) => c.url !== "/p/event-tickets/quote").length, 0);
+  }
+
+  // answers of the checkout: a price that changed, a coupon that went, sold out, closed, too many
+  for (const [status, body, text] of [
+    [409, { ok: false, error: "changed", changed: [5] }, s.CHANGED],
+    [409, { ok: false, error: "coupon" }, s.COUPON_BAD],
+    [409, { ok: false, error: "sold out", sold_out: [5] }, "Sold out"],
+    [422, { ok: false }, "Please check the highlighted fields."],
+    [429, { ok: false }, "Try again later."],
+    [503, null, "Try again later."],
+  ]) {
+    const { b, form, calls, gone } = setup({ token: answer(200, PAID), post: answer(status, body) });
+    await tick();
+    buttons(b, "plus")[0].click();
+    await tick();
+    fillBuyer(form);
+    await buttons(b, "pay")[0].click();
+    assert.equal(form.status.textContent, text, String(status));
+    assert.deepEqual(gone, []);
+    if (status === 409) assert.equal(calls.filter((c) => c.url.startsWith("/p/event-tickets/token")).length, 2, "fresh prices are fetched");
+  }
+  {
+    const { b, form } = setup({ token: answer(200, PAID), post: answer(404, null) });
+    await tick();
+    buttons(b, "plus")[0].click();
+    await tick();
+    fillBuyer(form);
+    await buttons(b, "pay")[0].click();
+    assert.equal(b.children[0].textContent, "Booking is closed.");
+  }
+
+  // a coupon that covers everything: the checkout answers tickets, not a page
+  {
+    const { b, form, gone } = setup({ token: answer(200, PAID), post: answer(200, { ok: true, tickets: ["/p/event-tickets/ticket/a.b", "//evil.test/t"] }) });
+    await tick();
+    buttons(b, "plus")[0].click();
+    await tick();
+    fillBuyer(form);
+    await buttons(b, "pay")[0].click();
+    assert.equal(form.status.textContent, "Booked. Check your email.");
+    assert.deepEqual(form.links.all((n) => n.tag === "a").map((n) => n.getAttribute("href")), ["/p/event-tickets/ticket/a.b"]);
+    assert.deepEqual(gone, []);
+    assert.equal(form.send.hidden, false, "back to the plain form");
+  }
+
+  // no provider set up: a note instead of buttons
+  {
+    const { b } = setup({ token: answer(200, { ...PAID, providers: [] }) });
+    await tick();
+    buttons(b, "plus")[0].click();
+    await tick();
+    assert.equal(buttons(b, "pay").length, 0);
+    assert.equal(b.all((n) => n.textContent === s.NO_PAY).length, 1);
+    // a provider name the island does not know gets no button
+    const odd = setup({ token: answer(200, { ...PAID, providers: ["stripe", "evilpay"] }) });
+    await tick();
+    buttons(odd.b, "plus")[0].click();
+    await tick();
+    assert.deepEqual(buttons(odd.b, "pay").map((n) => n.textContent), ["Pay with Stripe"]);
+  }
+
+  // two quick clicks leave one set of totals (an older quote answer is dropped)
+  {
+    const slow = setup({ token: answer(200, PAID) });
+    await tick();
+    buttons(slow.b, "plus")[0].click();
+    buttons(slow.b, "plus")[0].click();
+    await tick();
+    const lines = slow.b.all((n) => n.className === "line");
+    assert.equal(lines.length, 4);
   }
 
   console.log("tickets island ok");

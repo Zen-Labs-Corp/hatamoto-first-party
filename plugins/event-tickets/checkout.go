@@ -54,6 +54,22 @@ func cartLines(types []ticketType, items []rsvpItem) ([]cartLine, bool) {
 	return lines, true
 }
 
+// providers lists the payment providers that are set up and usable, for the
+// island's pay buttons. A currency that cannot be charged lists none.
+func (s settings) providers() []string {
+	out := []string{}
+	if !paymentsCurrencyOK(s.Currency) {
+		return out
+	}
+	if s.stripeReady() {
+		out = append(out, "stripe")
+	}
+	if s.paypalReady() {
+		out = append(out, "paypal")
+	}
+	return out
+}
+
 func (s settings) feeRule() feeRule {
 	return feeRule{Fixed: s.FeeFixed, BP: s.FeeBP, PerTicket: s.FeePerTicket, Absorbed: s.FeeAbsorbed}
 }
@@ -102,7 +118,12 @@ func serveQuote(r sdk.HTTPRequest) sdk.HTTPResponse {
 	if err != nil {
 		return failReply(http.StatusUnprocessableEntity, fieldsError)
 	}
-	return rsvpOK(map[string]any{"quote": q, "coupon_ok": c != nil})
+	// The texts are what the island shows: it never formats or adds up a price.
+	display := map[string]string{
+		"subtotal": formatMoney(q.Subtotal, q.Currency), "discount": formatMoney(q.Discount, q.Currency),
+		"fee": formatMoney(q.Fee, q.Currency), "total": formatMoney(q.Total, q.Currency),
+	}
+	return rsvpOK(map[string]any{"quote": q, "coupon_ok": c != nil, "display": display})
 }
 
 // serveCheckout holds the seats of a paid cart and sends the buyer to the

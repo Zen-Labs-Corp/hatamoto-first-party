@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -479,6 +480,11 @@ func TestQuote(t *testing.T) {
 	if len(h.with("INSERT")) != 0 || len(h.fetches) != 0 {
 		t.Error("a quote wrote or called a provider")
 	}
+	// the island shows these texts and adds up nothing itself
+	d, _ := m["display"].(map[string]any)
+	if d["subtotal"] != "20.00 USD" || d["discount"] != "3.00 USD" || d["fee"] != "0.30 USD" || d["total"] != "17.30 USD" {
+		t.Errorf("display %v", d)
+	}
 
 	h.coupon = `null`
 	code, m = postQuote(t, h, map[string]any{"coupon": "NOPE"})
@@ -507,5 +513,40 @@ func TestQuoteRefusesBadPosts(t *testing.T) {
 		if code, _ := postQuote(t, h, fields); code != 422 {
 			t.Errorf("%s: %d", name, code)
 		}
+	}
+}
+
+func TestTokenListsTheReadyProviders(t *testing.T) {
+	h := newPayHost(t)
+	providers := func() (string, []string) {
+		r := publicGet(t, "/token", nil, map[string][]string{"event": {"e1"}})
+		var b struct {
+			Currency  string
+			Providers []string
+		}
+		if err := json.Unmarshal([]byte(r.Body), &b); err != nil || r.Status != 200 {
+			t.Fatalf("%d %s", r.Status, r.Body)
+		}
+		for _, secret := range []string{testStripeKey, testStripeSecret, testPayPalSecret} {
+			if strings.Contains(r.Body, secret) {
+				t.Errorf("the token answer holds a secret: %s", r.Body)
+			}
+		}
+		return b.Currency, b.Providers
+	}
+	if cur, got := providers(); cur != "USD" || !slices.Equal(got, []string{"stripe", "paypal"}) {
+		t.Errorf("both set up: %q %v", cur, got)
+	}
+	h.settings = `{"stripe_secret_key":"` + testStripeKey + `","stripe_webhook_secret":"` + testStripeSecret + `"}`
+	if _, got := providers(); !slices.Equal(got, []string{"stripe"}) {
+		t.Errorf("only Stripe: %v", got)
+	}
+	h.settings = `{}`
+	if _, got := providers(); got == nil || len(got) != 0 {
+		t.Errorf("none set up must be an empty list: %v", got)
+	}
+	h.settings = `{"currency":"KWD","stripe_secret_key":"` + testStripeKey + `","stripe_webhook_secret":"` + testStripeSecret + `"}`
+	if _, got := providers(); len(got) != 0 {
+		t.Errorf("a currency that cannot be charged: %v", got)
 	}
 }
