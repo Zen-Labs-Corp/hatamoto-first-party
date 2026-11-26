@@ -40,6 +40,9 @@ type settings struct {
 	WeekStartsOn   string // monday or sunday
 	ShowMap        bool
 	GeocodeContact string
+	// PublicFilterFields are the field keys the public events route may filter
+	// on and return; none unless the owner lists them.
+	PublicFilterFields string // comma list
 	// SubmissionsEnabled opens the public submission routes; off by default.
 	SubmissionsEnabled bool
 }
@@ -57,6 +60,11 @@ func (s settings) slugs() []string {
 }
 
 // accepts reports whether entities of the given content type are events.
+// exposes reports whether the owner opted the field key into the public events route.
+func (s settings) exposes(key string) bool {
+	return s.PublicFilterFields != "" && slices.Contains(strings.Split(s.PublicFilterFields, ","), key)
+}
+
 func (s settings) accepts(slug string) bool { return slices.Contains(s.slugs(), slug) }
 
 // loadSettings never fails: an unreadable or invalid setting yields its default.
@@ -70,6 +78,7 @@ func loadSettings() settings {
 		ShowMap    bool   `json:"show_map"`
 		Contact    string `json:"geocode_contact"`
 		Submit     bool   `json:"submissions_enabled"`
+		Public     string `json:"public_filter_fields"`
 	}
 	if err := callHost(sdk.FnSettingsGet, struct{}{}, &raw); err != nil {
 		return s
@@ -81,6 +90,9 @@ func loadSettings() settings {
 		s.TimeZone = tz
 	}
 	s.ShowMap = raw.ShowMap
+	if _, ok := requestedFields(map[string][]string{"fields": {raw.Public}}); ok {
+		s.PublicFilterFields = raw.Public
+	}
 	s.SubmissionsEnabled = raw.Submit
 	s.GeocodeContact = capBytes(strings.TrimSpace(raw.Contact), maxContactBytes)
 	switch raw.DateFormat {

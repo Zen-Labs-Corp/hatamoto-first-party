@@ -378,6 +378,14 @@
         "description": "Email or web address added to the lookup User-Agent, as the Nominatim usage policy asks.",
         "default": ""
       },
+      "public_filter_fields": {
+        "type": "string",
+        "title": "Public filter fields",
+        "description": "Up to four field keys (lower case, comma separated, such as audience,age_group) that the public events route may filter on and return. Leave empty to keep your own fields private.",
+        "maxLength": 163,
+        "default": "",
+        "pattern": "^([a-z][a-z0-9_]{0,39}(,[a-z][a-z0-9_]{0,39}){0,3})?$"
+      },
       "submissions_enabled": {
         "type": "boolean",
         "title": "Accept public event submissions",

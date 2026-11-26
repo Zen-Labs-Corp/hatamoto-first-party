@@ -68,7 +68,18 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 	s := loadSettings()
 	loc := s.location()
 	at := now()
-	wanted, _ := requestedFields(query)
+	// only fields the owner opted into are filtered on or returned
+	var wanted []string
+	for _, k := range requestedKeys(query) {
+		if s.exposes(k) {
+			wanted = append(wanted, k)
+		}
+	}
+	for _, ff := range f.Fields {
+		if !s.exposes(ff.Key) {
+			return plain(http.StatusBadRequest, "bad request")
+		}
+	}
 	q, ok := rangeFromQuery(query, f, at, loc)
 	if !ok {
 		return plain(http.StatusBadRequest, "bad request")
@@ -92,6 +103,11 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 		"Content-Type":  "application/json; charset=utf-8",
 		"Cache-Control": "public, max-age=60",
 	}}
+}
+
+func requestedKeys(q map[string][]string) []string {
+	keys, _ := requestedFields(q)
+	return keys
 }
 
 // The published re-check of the public route is kept short, since a visitor can
