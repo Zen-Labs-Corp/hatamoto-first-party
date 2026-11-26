@@ -45,6 +45,7 @@
   function commentUn(f, cell) {
     var u = f.cloneNode(true), e = u.elements, b = u.querySelector('button'), i;
     for (i = 0; i < e.length; i++) if (e[i].name === 'how') e[i].value = 'un';
+    u.className = 'hn-un';
     if (b) button(b);
     return cell.appendChild(u);
   }
