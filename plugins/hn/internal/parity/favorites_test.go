@@ -72,7 +72,7 @@ func TestFavoritesPagePlacesBlock(t *testing.T) {
 	if c["state"] != "list" || c["heading"] != "bob's favorites" || len(rows) != 3 || c["empty"] != false || c["more"] != "" {
 		t.Fatalf("content %v", c)
 	}
-	if rows[0]["rank"] != "31." || rows[0]["next"] != "/favorites?id=bob&p=2" {
+	if rows[0]["rank"] != "31." || rows[0]["next"] != "/favorites?id=bob&p=2#"+rows[0]["no"].(string) {
 		t.Errorf("row %v", rows[0])
 	}
 	if c["notice"] != "Something went wrong, please try again." {
@@ -138,7 +138,7 @@ func TestFavoritesPageComments(t *testing.T) {
 	out := render(t, r, "/favorites", "", map[string]string{"id": "bob", "kind": "comment"}, sdk.Block{ID: "b7", Type: "hn_saved"})
 	c := out.Blocks[0].Content
 	cs, _ := c["comments"].([]map[string]any)
-	if c["kind"] != "comment" || c["heading"] != "bob's favorite comments" || len(cs) != 2 || cs[0]["item_href"] != "/item/42#"+commentUUID || cs[0]["excerpt"] != "hello" {
+	if c["kind"] != "comment" || c["heading"] != "bob's favorite comments" || len(cs) != 2 || cs[0]["item_href"] != "/item/42#comment-"+commentUUID || cs[0]["excerpt"] != "hello" {
 		t.Fatalf("content %v", c)
 	}
 	qs := listQueries(db)

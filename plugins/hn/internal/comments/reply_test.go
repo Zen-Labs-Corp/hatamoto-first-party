@@ -71,7 +71,7 @@ func TestReplyPageForm(t *testing.T) {
 	row := c["row"].(map[string]any)
 	for k, want := range map[string]any{
 		"item_href": "/item/7", "title": "Seven", "context_link": true, "reply_href": "",
-		"parent_href": "/item/7?id=" + cid(2), "context_href": "/item/7?id=" + cid(3), "vote": true, "next": "/reply?id=" + cid(3),
+		"parent_href": "/item/7?id=" + cid(2), "context_href": "/item/7?id=" + cid(3), "vote": true, "next": "/reply?id=" + cid(3) + "#comment-" + cid(3),
 		"author": "bob", "id": cid(3),
 	} {
 		if row[k] != want {
@@ -175,7 +175,7 @@ func TestReplyPageLowercasesID(t *testing.T) {
 	f.meta[id] = m
 	f.subtrees[id] = sdk.CommentSubtree{Items: []sdk.CommentItem{item(id, "", "bob", "k2", 8)}}
 	c := reply(t, "k1", strings.ToUpper(id))
-	if c["state"] != "form" || c["parent"] != id || c["row"].(map[string]any)["next"] != "/reply?id="+id {
+	if c["state"] != "form" || c["parent"] != id || c["row"].(map[string]any)["next"] != "/reply?id="+id+"#comment-"+id {
 		t.Errorf("content: %+v", c)
 	}
 }
@@ -228,7 +228,7 @@ func TestReplySectionFlagButton(t *testing.T) {
 func TestReplySectionStates(t *testing.T) {
 	f := replyFake(t)
 	out := replyHTML(t, newRegistry(nil), "k9", cid(3))
-	if !strings.Contains(out, `pick a username</a>`) || strings.Contains(out, "data-hm-cform") || !strings.Contains(out, `id="c-`+cid(3)+`"`) {
+	if !strings.Contains(out, `pick a username</a>`) || strings.Contains(out, "data-hm-cform") || !strings.Contains(out, `id="comment-`+cid(3)+`"`) {
 		t.Errorf("noname: %s", out)
 	}
 	out = replyHTML(t, newRegistry(nil), "", cid(3))
@@ -244,7 +244,7 @@ func TestReplySectionStates(t *testing.T) {
 	f.subtrees[cid(3)] = st
 	for _, key := range []string{"k1", ""} {
 		out = replyHTML(t, newRegistry(nil), key, cid(3))
-		if !strings.Contains(out, `id="c-`+cid(3)+`"`) || strings.Contains(out, "data-hm-cform") || strings.Contains(out, "hn-login") || strings.Contains(out, "pick a username") {
+		if !strings.Contains(out, `id="comment-`+cid(3)+`"`) || strings.Contains(out, "data-hm-cform") || strings.Contains(out, "hn-login") || strings.Contains(out, "pick a username") {
 			t.Errorf("deep (%q): %s", key, out)
 		}
 	}

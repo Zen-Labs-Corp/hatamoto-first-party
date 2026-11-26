@@ -66,7 +66,7 @@ func TestThreadsPageThreads(t *testing.T) {
 			if r["item_href"] != "/item/7" || r["title"] != "Seven" || kids[0]["item_href"] != "/item/7" {
 				t.Errorf("story links: %+v", r)
 			}
-			if r["next"] != "/threads?id=bob" {
+			if r["next"] != "/threads?id=bob#comment-"+r["id"].(string) {
 				t.Errorf("next: %v", r["next"])
 			}
 		}
@@ -90,7 +90,7 @@ func TestThreadsPageThreads(t *testing.T) {
 		if len(f.byAuthorCalls) != 2 || len(f.subtreeCalls) > 15 {
 			t.Errorf("p4 calls: %v, %d subtree", f.byAuthorCalls, len(f.subtreeCalls))
 		}
-		if c["more_href"] != "/threads?id=bob&p=5" || rows[0]["next"] != "/threads?id=bob&p=4" {
+		if c["more_href"] != "/threads?id=bob&p=5" || rows[0]["next"] != "/threads?id=bob&p=4#comment-"+rows[0]["id"].(string) {
 			t.Errorf("p4 hrefs: %q %q", c["more_href"], rows[0]["next"])
 		}
 		c = threads(t, "", map[string]string{"id": "bob", "p": "5"})

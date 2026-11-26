@@ -16,8 +16,8 @@ func TestSafePath(t *testing.T) {
 	for p, want := range map[string]bool{
 		"/x": true, "/": true, "/a?b=c": true,
 		"//x": false, `/\x`: false, "http://x": false, "x": false, "": false,
-		"/a\nb": false,
-		"/a b":  false, "/\t/evil.example": false, "/a\x7fb": false, "/%zz": false, "/a%0d": true, "/" + strings.Repeat("a", 2048): false,
+		"/a\nb": false, "/item?id=x#comment-1": true,
+		"/a b": false, "/\t/evil.example": false, "/a\x7fb": false, "/%zz": false, "/a%0d": true, "/" + strings.Repeat("a", 2048): false,
 	} {
 		if got := core.SafePath(p); got != want {
 			t.Errorf("SafePath(%q) = %v", p, got)
@@ -31,12 +31,13 @@ func TestSafeNext(t *testing.T) {
 		body string
 		want string
 	}{
-		"form next":              {nil, "next=%2Fnews%3Fp%3D2", "/news?p=2"},
-		"bad next, no referer":   {nil, "next=http%3A%2F%2Fx", "/"},
-		"referer same-origin":    {map[string]string{"sec-fetch-site": "same-origin", "referer": "https://example.com/item/4?id=2"}, "", "/item/4?id=2"},
-		"referer cross-site":     {map[string]string{"sec-fetch-site": "cross-site", "referer": "https://example.com/item/4"}, "", "/"},
-		"referer without header": {map[string]string{"referer": "https://example.com/item/4"}, "", "/"},
-		"form next wins":         {map[string]string{"sec-fetch-site": "same-origin", "referer": "https://example.com/a"}, "next=%2Fb", "/b"},
+		"form next":                {nil, "next=%2Fnews%3Fp%3D2", "/news?p=2"},
+		"form next keeps fragment": {nil, "next=%2Fnews%3Fp%3D2%2342", "/news?p=2#42"},
+		"bad next, no referer":     {nil, "next=http%3A%2F%2Fx", "/"},
+		"referer same-origin":      {map[string]string{"sec-fetch-site": "same-origin", "referer": "https://example.com/item/4?id=2"}, "", "/item/4?id=2"},
+		"referer cross-site":       {map[string]string{"sec-fetch-site": "cross-site", "referer": "https://example.com/item/4"}, "", "/"},
+		"referer without header":   {map[string]string{"referer": "https://example.com/item/4"}, "", "/"},
+		"form next wins":           {map[string]string{"sec-fetch-site": "same-origin", "referer": "https://example.com/a"}, "next=%2Fb", "/b"},
 	} {
 		if got := core.SafeNext(req(tc.h, tc.body)); got != tc.want {
 			t.Errorf("%s: SafeNext = %q, want %q", name, got, tc.want)
@@ -102,6 +103,9 @@ func TestWithNoticeAndDefineNotice(t *testing.T) {
 	}
 	if got := core.WithNotice("/a#top", "x"); got != "/a?m=x#top" {
 		t.Errorf("fragment: got %q", got)
+	}
+	if got := core.WithNotice("/news#42", "x"); got != "/news?m=x#42" {
+		t.Errorf("row fragment: got %q", got)
 	}
 	if got := core.WithNotice("/a", ""); got != "/a" {
 		t.Errorf("got %q", got)

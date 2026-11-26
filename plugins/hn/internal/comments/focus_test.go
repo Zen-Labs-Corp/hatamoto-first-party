@@ -91,7 +91,7 @@ func TestThreadsPageFocus(t *testing.T) {
 				t.Errorf("row %d: depth %v id %v", i, rows[i]["depth"], rows[i]["id"])
 			}
 		}
-		if r := rows[2]; r["context_href"] != "/item/7?id="+cid(3) || r["reply_href"] != "/reply?id="+cid(3) || r["parent_href"] != "/item/7?id="+cid(2) || r["item_href"] != "" || r["next"] != "/item/7?id="+cid(3) {
+		if r := rows[2]; r["context_href"] != "/item/7?id="+cid(3) || r["reply_href"] != "/reply?id="+cid(3) || r["parent_href"] != "/item/7?id="+cid(2) || r["item_href"] != "" || r["next"] != "/item/7?id="+cid(3)+"#comment-"+cid(3) {
 			t.Errorf("comment row: %+v", r)
 		}
 	})

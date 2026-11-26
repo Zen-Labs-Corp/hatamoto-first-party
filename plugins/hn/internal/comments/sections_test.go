@@ -64,7 +64,7 @@ func TestThreadsPageSections(t *testing.T) {
 			`<a href="/user?id=bob">bob</a>`,
 			`on: <a href="/item/7">Seven</a>`,
 			`<a href="/item/7?id=` + cid(1) + `">parent</a>`,
-			`id="c-` + cid(2) + `"`, `<p>text 2</p>`, `<a href="/reply?id=` + cid(2) + `">reply</a>`,
+			`id="comment-` + cid(2) + `"`, `<p>text 2</p>`, `<a href="/reply?id=` + cid(2) + `">reply</a>`,
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %s in %s", want, out)
@@ -76,7 +76,7 @@ func TestThreadsPageSections(t *testing.T) {
 		if n := strings.Count(out, ">parent</a>"); n != 1 {
 			t.Errorf("%d parent links, want 1 (only the reply has a parent)", n)
 		}
-		if strings.Index(out, cid(2)) > strings.Index(out, `id="c-`+cid(1)) {
+		if strings.Index(out, cid(2)) > strings.Index(out, `id="comment-`+cid(1)) {
 			t.Error("newest comment must come first")
 		}
 	})
@@ -84,8 +84,8 @@ func TestThreadsPageSections(t *testing.T) {
 	t.Run("threads nest replies after their comment", func(t *testing.T) {
 		threadsFake(t, 2)
 		out := threadsHTML(t, page(t, "/threads", "", map[string]string{"id": "bob"}))
-		parent, reply := strings.Index(out, `id="c-`+cid(2)+`"`), strings.Index(out, `id="c-`+cid(1021)+`"`)
-		next := strings.Index(out, `id="c-`+cid(1)+`"`)
+		parent, reply := strings.Index(out, `id="comment-`+cid(2)+`"`), strings.Index(out, `id="comment-`+cid(1021)+`"`)
+		next := strings.Index(out, `id="comment-`+cid(1)+`"`)
 		if !(parent >= 0 && parent < reply && reply < next) {
 			t.Errorf("order: comment %d, reply %d, next comment %d", parent, reply, next)
 		}
@@ -161,7 +161,7 @@ func TestCommentVotePartial(t *testing.T) {
 		out := threadsHTML(t, page(t, "/newcomments", "k1", nil))
 		for _, want := range []string{
 			`<span class="hn-vote" data-hn-comment="` + cid(1) + `">`,
-			`<input type="hidden" name="how" value="up">`, `<input type="hidden" name="next" value="/newcomments">`,
+			`<input type="hidden" name="how" value="up">`, `<input type="hidden" name="next" value="/newcomments#comment-` + cid(1) + `">`,
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %s in %s", want, out)
@@ -211,7 +211,7 @@ func TestCommentVotePartial(t *testing.T) {
 	t.Run("next is escaped", func(t *testing.T) {
 		threadsFake(t, 20)
 		out := threadsHTML(t, page(t, "/threads", "k1", map[string]string{"id": "bob", "p": "2"}))
-		if !strings.Contains(out, `name="next" value="/threads?id=bob&amp;p=2"`) {
+		if !strings.Contains(out, `name="next" value="/threads?id=bob&amp;p=2#comment-`) {
 			t.Errorf("next: %s", out)
 		}
 	})
