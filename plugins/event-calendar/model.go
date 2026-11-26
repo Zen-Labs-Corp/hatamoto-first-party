@@ -52,6 +52,7 @@ type Event struct {
 
 	Repeat    Repeat
 	BaseStart time.Time // start of the series' first date; zero until read from the index
+	OccDay    string    // generated day of this date (YYYY-MM-DD); "" when unknown
 }
 
 // Repeat is the recurrence rule of an event. The zero value (Kind "none") is

@@ -130,24 +130,25 @@ ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug =
  updated_at = now()`
 
 // One statement writes every date of the event from a jsonb array of
-// {"s": start, "e": end}. The delete skips the rows the insert writes, so the
+// {"s": start, "e": end, "d": generated day}. The delete skips the rows the insert writes, so the
 // two halves never touch one key; dates no longer in the array are removed.
 const upsertOccurrencesSQL = `WITH d AS (DELETE FROM occurrences WHERE event_id = $1 AND starts_at NOT IN
  (SELECT (x->>'s')::timestamptz FROM jsonb_array_elements($2::jsonb) x))
-INSERT INTO occurrences (event_id, starts_at, ends_at)
-SELECT $1, (x->>'s')::timestamptz, (x->>'e')::timestamptz FROM jsonb_array_elements($2::jsonb) x
+INSERT INTO occurrences (event_id, starts_at, ends_at, day)
+SELECT $1, (x->>'s')::timestamptz, (x->>'e')::timestamptz, COALESCE(x->>'d', '') FROM jsonb_array_elements($2::jsonb) x
 WHERE EXISTS (SELECT 1 FROM events WHERE entity_id = $1)
-ON CONFLICT (event_id, starts_at) DO UPDATE SET ends_at = EXCLUDED.ends_at`
+ON CONFLICT (event_id, starts_at) DO UPDATE SET ends_at = EXCLUDED.ends_at, day = EXCLUDED.day`
 
 // occurrencesJSON is the array upsertOccurrencesSQL reads.
 func occurrencesJSON(occs []occ) string {
 	type row struct {
 		S string `json:"s"`
 		E string `json:"e"`
+		D string `json:"d"`
 	}
 	rows := make([]row, 0, len(occs))
 	for _, o := range occs {
-		rows = append(rows, row{utcText(o.Start), utcText(o.End)})
+		rows = append(rows, row{utcText(o.Start), utcText(o.End), o.Day})
 	}
 	return jsonText(rows)
 }
@@ -327,7 +328,7 @@ const queryEventsHead = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
 SELECT e.entity_id AS id, e.schema_slug, e.slug, e.locale, e.name, o.starts_at, o.ends_at, e.all_day, e.time_zone,
  e.event_status, e.attendance_mode, e.venue_id, e.venue_name, e.venue_city, e.category_ids, e.series_id, e.price,
  e.price_amount, e.featured, e.image, e.source_kind, e.source_uid, e.source_url, e.url, e.updated_at,
- e.starts_at AS base_starts_at,
+  e.starts_at AS base_starts_at, o.day AS occ_day,
  row_number() OVER (ORDER BY `
 const queryEventsFrom = `) AS n
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id
@@ -397,6 +398,7 @@ func eventFromIndex(m map[string]any, loc *time.Location) (Event, bool) {
 	if t, ok := parseTime(attrString(m, "base_starts_at"), time.UTC); ok {
 		e.BaseStart = t
 	}
+	e.OccDay = attrString(m, "occ_day")
 	e.Start, e.End, e.HasEnd = indexTimes(start, end, e.AllDay, e.TimeZone, loc)
 	return e, true
 }
@@ -433,6 +435,7 @@ func (r apiRow) event(loc *time.Location) Event {
 	if !r.BaseStartsAt.IsZero() {
 		e.BaseStart = r.BaseStartsAt.UTC()
 	}
+	e.OccDay = r.OccDay
 	return e
 }
 
@@ -475,6 +478,7 @@ type apiRow struct {
 	Featured      bool           `json:"featured"`
 	Image         string         `json:"image"`
 	BaseStartsAt  time.Time      `json:"base_starts_at"`
+	OccDay        string         `json:"occ_day"`
 	Tags          []string       `json:"tags"`
 	Extra         map[string]any `json:"extra"`
 }
@@ -491,7 +495,7 @@ const queryRangeSQL = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
 SELECT e.entity_id AS id, e.schema_slug, e.name, e.slug, e.url, o.starts_at, o.ends_at, e.all_day, e.time_zone, e.event_status,
  e.venue_name, e.venue_slug, e.venue_city, e.venue_address,
  COALESCE(e.venue_lat, g.latitude) AS lat, COALESCE(e.venue_lon, g.longitude) AS lon,
- e.category_names, e.price, e.price_amount, e.featured, e.image, e.starts_at AS base_starts_at,
+ e.category_names, e.price, e.price_amount, e.featured, e.image, e.starts_at AS base_starts_at, o.day AS occ_day,
  e.tags, e.extra,
  row_number() OVER (ORDER BY CASE WHEN $11::boolean THEN -extract(epoch FROM o.starts_at) ELSE extract(epoch FROM o.starts_at) END,
   e.name, e.entity_id) AS n

@@ -142,6 +142,7 @@ func nextDates(e Event, s settings, at time.Time) []Event {
 		d := e
 		d.Start, d.End, d.HasEnd = indexTimes(o.Start.UTC(), o.End.UTC(), e.AllDay, e.TimeZone, loc)
 		d.BaseStart = e.Start
+		d.OccDay = o.Day
 		out = append(out, d)
 	}
 	return out

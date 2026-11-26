@@ -160,3 +160,24 @@ func TestWriteCalendarOccurrenceUIDs(t *testing.T) {
 		t.Errorf("zone date: %s", body)
 	}
 }
+
+func TestOccurrenceUIDsUseTheGeneratedDay(t *testing.T) {
+	base := time.Date(2027, 2, 14, 19, 0, 0, 0, time.UTC)
+	at := func(day int, hour int) time.Time { return time.Date(2027, 2, day, hour, 0, 0, 0, time.UTC) }
+	evs := []Event{
+		{ID: "abc", Name: "A", Start: base, BaseStart: base, OccDay: "2027-02-14"},
+		// the 21st moved to the 28th at 18:00, the 28th is generated at 19:00
+		{ID: "abc", Name: "A", Start: at(28, 18), BaseStart: base, OccDay: "2027-02-21"},
+		{ID: "abc", Name: "A", Start: at(28, 19), BaseStart: base, OccDay: "2027-02-28"},
+		// the first date moved: still the bare id
+		{ID: "mv", Name: "M", Start: at(15, 9), BaseStart: base, OccDay: "2027-02-14"},
+		// no generated day yet: the start day decides
+		{ID: "old", Name: "O", Start: at(21, 19), BaseStart: base},
+	}
+	body := unfold(writeCalendar(evs, base, time.UTC))
+	for uid, n := range map[string]int{"abc@": 1, "abc-20270221@": 1, "abc-20270228@": 1, "mv@": 1, "old-20270221@": 1} {
+		if got := strings.Count(body, "UID:"+uid); got != n {
+			t.Errorf("UID %s: %d, want %d\n%s", uid, got, n, body)
+		}
+	}
+}
