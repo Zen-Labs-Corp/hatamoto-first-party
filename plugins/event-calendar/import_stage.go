@@ -89,6 +89,13 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 	venues := namesToIDs("calendar-venue")
 	cats := namesToIDs("calendar-category")
 	cutoff := now().Add(-pastGrace)
+	// a source renamed since the import keeps its events under the old name
+	renamed := map[string]bool{}
+	for uid, e := range existing {
+		var kind string
+		_ = json.Unmarshal(e.Attrs["source_kind"], &kind)
+		renamed[uidTail(kind, uid)] = true
+	}
 
 	upserts := 0
 	for ; cur.I < len(records); cur.I++ {
@@ -105,6 +112,9 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 			ev.Title = "Untitled event"
 		}
 		old, found := existing[rec.Key]
+		if !found && sched {
+			found = renamed[uidTail(rec.Kind, rec.Key)]
+		}
 		switch {
 		case found && sched:
 			sum["not_updated"]++
@@ -161,6 +171,15 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		}
 	}
 	return finishImport(sum, createCap, sched)
+}
+
+// uidTail is the kind and the hash of the feed's UID that end an import key,
+// whatever the source was called.
+func uidTail(kind, key string) string {
+	if len(key) > 16 {
+		key = key[len(key)-16:]
+	}
+	return kind + "/" + key
 }
 
 // endOf is when an event ends: its end, else its start (a whole day for an

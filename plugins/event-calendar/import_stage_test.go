@@ -500,3 +500,18 @@ func TestScheduledProgressWarnsAboutDeletedEvents(t *testing.T) {
 		t.Errorf("progress %q", h.progress)
 	}
 }
+
+func TestScheduledRunDoesNotDuplicateEventsOfARenamedSource(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
+	start := time.Date(2027, 6, 20, 10, 0, 0, 0, time.UTC)
+	before := record("google", "City council", "uid-1", importEvent{Title: "Meeting", Start: start})
+	after := record("google", "City council events", "uid-1", importEvent{Title: "Meeting", Start: start})
+	other := record("google", "City council events", "uid-2", importEvent{Title: "Other", Start: start})
+	h := &runHost{name: runScheduledImport, runID: "rr", created: true, lists: map[string][]string{"calendar-event": {existingJSON(before, "meeting", "")}}}
+	h.install(t)
+	buffered(t, h, after, other)
+	h.step(t)
+	if h.failed != "" || len(h.upserts) != 1 || h.upserts[0].SourceKey != other.Key {
+		t.Fatalf("failed %q, upserts %+v", h.failed, h.upserts)
+	}
+}
