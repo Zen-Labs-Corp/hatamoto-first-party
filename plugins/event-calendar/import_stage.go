@@ -15,9 +15,12 @@ import (
 
 const (
 	maxRefPages      = 5
-	maxExistingPages = 25
-	bufferPage       = 100
-	smallPageSize    = 50
+	maxExistingPages = 25 // pages of existing events a manual run reads
+	// a scheduled run reads more: an imported event it misses fails the run
+	// by name, so a longer listing means fewer failures
+	maxScheduledExistingPages = 100
+	bufferPage                = 100
+	smallPageSize             = 50
 )
 
 // scheduledSchema is the one type the standing approval lets a scheduled run create.
@@ -86,13 +89,15 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		return records[i].Key < records[j].Key
 	})
 
-	existing, cut, err := loadImported(cfg)
+	// an imported event the listing does not reach is staged as new; in a
+	// scheduled run core reports its key as mapped and the run fails by name
+	pages := maxExistingPages
+	if sched {
+		pages = maxScheduledExistingPages
+	}
+	existing, err := loadImported(cfg, pages)
 	if err != nil {
 		return failRun("The existing events could not be read. Nothing was staged.")
-	}
-	if cut && sched {
-		// an event the listing did not reach would be staged as new, and core refuses a create for a key it already maps
-		return failRun("The site has more imported events than a scheduled run can check. Nothing was staged. Use Run now.")
 	}
 	venues := namesToIDs("calendar-venue")
 	cats := namesToIDs("calendar-category")
@@ -368,14 +373,14 @@ type importedEvent struct {
 }
 
 // loadImported lists the published events whose source_kind is an import kind,
-// by source_uid. cut is true when the listing stopped before its last page. A
+// by source_uid, reading at most maxPages pages of each type. A
 // run cannot list drafts or deleted events (core: "a run reads published
 // entities only"), so a key that is mapped but not published is not seen.
-func loadImported(s settings) (out map[string]importedEvent, cut bool, err error) {
+func loadImported(s settings, maxPages int) (out map[string]importedEvent, err error) {
 	out = map[string]importedEvent{}
 	for si, schema := range s.slugs() {
 		cursor, limit := "", listPageSize
-		for page := 0; page < maxExistingPages; page++ {
+		for page := 0; page < maxPages; page++ {
 			args := map[string]any{"schema_slug": schema, "status": "published", "limit": limit}
 			if cursor != "" {
 				args["cursor"] = cursor
@@ -395,7 +400,7 @@ func loadImported(s settings) (out map[string]importedEvent, cut bool, err error
 				if isNotFound(err) || si > 0 {
 					break // the type does not exist, or the older type cannot be read: it has no imports
 				}
-				return nil, false, err
+				return nil, err
 			}
 			for _, raw := range res.Items {
 				var attrs map[string]json.RawMessage
@@ -413,10 +418,9 @@ func loadImported(s settings) (out map[string]importedEvent, cut bool, err error
 				break
 			}
 			cursor = res.NextCursor
-			cut = cut || page == maxExistingPages-1
 		}
 	}
-	return out, cut, nil
+	return out, nil
 }
 
 // namesToIDs maps the lower-case names of the published entities of one type

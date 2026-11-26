@@ -469,24 +469,34 @@ func TestScheduledCreateIsPublishedAndSafe(t *testing.T) {
 	}
 }
 
-func TestScheduledRunStagesNothingWhenItCannotCheckEveryEvent(t *testing.T) {
+func TestScheduledRunStillStagesWhenTheListingIsLong(t *testing.T) {
 	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
 	start := time.Date(2027, 6, 20, 10, 0, 0, 0, time.UTC)
 	fresh := record("google", "Town", "fresh", importEvent{Title: "Fresh", Start: start})
+	listed := func(h *runHost) int {
+		n := 0
+		for _, c := range h.calls {
+			if c == "entities.list" {
+				n++
+			}
+		}
+		return n
+	}
 	h := &runHost{name: runScheduledImport, runID: "rc", created: true, endless: true}
 	h.install(t)
 	buffered(t, h, fresh)
 	h.step(t)
-	if len(h.upserts) != 0 || !strings.Contains(h.failed, "more imported events") {
+	// a scheduled run does not refuse a long listing; it reads further than a manual run
+	if h.failed != "" || len(h.upserts) != 1 {
 		t.Errorf("failed %q, upserts %+v", h.failed, h.upserts)
 	}
-	// a manual run is reviewed, so it still stages
+	sched := listed(h)
 	h = &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "rm", created: true, endless: true}
 	h.install(t)
 	buffered(t, h, fresh)
 	h.step(t)
-	if len(h.upserts) != 1 {
-		t.Errorf("manual run staged %d", len(h.upserts))
+	if len(h.upserts) != 1 || listed(h) >= sched || sched < maxScheduledExistingPages {
+		t.Errorf("manual run staged %d, listed %d pages against %d", len(h.upserts), listed(h), sched)
 	}
 }
 
