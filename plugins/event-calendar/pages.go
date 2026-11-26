@@ -23,6 +23,11 @@ const (
 	// maxPageDates is how many upcoming dates a page lists.
 	maxPageDates = 100
 
+	// maxSeriesEvents and pageFillBudget bound the reads a series page makes
+	// to describe the rule of each of its events.
+	maxSeriesEvents = 10
+	pageFillBudget  = time.Second
+
 	// pagePreview is how many dates a page list shows before "More".
 	pagePreview = 10
 )
@@ -269,6 +274,13 @@ func writeDates(b *strings.Builder, p pageRows, kind string, s settings, at time
 		writeDatesList(b, items)
 		return
 	}
+	writeSeriesDates(b, p, s, at, when)
+}
+
+// writeSeriesDates lists each event of a series with its rule: how many dates
+// are ahead, how many changed, and every date with skipped and changed ones
+// marked. An event that cannot be read in time is listed from the index.
+func writeSeriesDates(b *strings.Builder, p pageRows, s settings, at time.Time, when func(apiRow) string) {
 	var order []string
 	byEvent := map[string][]apiRow{}
 	for _, r := range p.rows {
@@ -277,13 +289,51 @@ func writeDates(b *strings.Builder, p pageRows, kind string, s settings, at time
 		}
 		byEvent[r.ID] = append(byEvent[r.ID], r)
 	}
-	for _, id := range order {
+	deadline := clock().Add(pageFillBudget)
+	for i, id := range order {
 		rows := byEvent[id]
 		b.WriteString("<h3>" + link(rows[0].URL, rows[0].Name) + "</h3>\n")
+		if i < maxSeriesEvents && clock().Before(deadline) && writeRule(b, id, s, at) {
+			continue
+		}
 		var items []string
 		for _, r := range rows {
 			items = append(items, "<li>"+esc(when(r))+"</li>\n")
 		}
 		writeDatesList(b, items)
 	}
+}
+
+// writeRule writes the rule summary and the dates of one event, read from the
+// event itself. It writes nothing and reports false when the event cannot be
+// read.
+func writeRule(b *strings.Builder, id string, s settings, at time.Time) bool {
+	var raw entityDTO
+	if callHost(sdk.FnEntitiesGet, map[string]any{"id": id}, &raw) != nil || raw.Status != "published" || !s.accepts(raw.SchemaSlug) {
+		return false
+	}
+	e, ok := eventFromEntity(raw, s)
+	if !ok {
+		return false
+	}
+	loc := eventLocation(e, s)
+	_, to := windowFor(at)
+	var items []string
+	dates, changed := 0, 0
+	for _, o := range expandAll(e, loc, at, to, maxPageDates) {
+		text := esc(formatWhen(o.Start, o.End, e.HasEnd, e.AllDay, s.DateFormat, loc, at))
+		switch o.State {
+		case stateSkipped:
+			items = append(items, `<li class="skipped">`+text+" (skipped)</li>\n")
+			continue
+		case stateChanged:
+			changed++
+			text += ` <span class="badge">changed</span>`
+		}
+		dates++
+		items = append(items, "<li>"+text+"</li>\n")
+	}
+	b.WriteString(`<p class="summary">` + esc(ruleText(e, loc)) + ", " + strconv.Itoa(dates) + " dates, " + strconv.Itoa(changed) + " changed</p>\n")
+	writeDatesList(b, items)
+	return true
 }

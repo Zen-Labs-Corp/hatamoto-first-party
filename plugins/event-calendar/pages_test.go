@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"hatamoto.dev/sdk"
 	"hatamoto.dev/sdk/guest"
@@ -216,5 +217,43 @@ func TestVenueUpcomingMore(t *testing.T) {
 	h.install(t)
 	if body := callPage(t, "/venue/{slug}", "mill").Body; strings.Contains(body, "<details>") {
 		t.Errorf("3 rows must not have More:\n%s", body)
+	}
+}
+
+const pgWeekly = `{"id":"f1","schema_slug":"calendar-event","slug":"a","name":"Gig <1>","status":"published","attributes":{
+"start_at":"2026-06-04T18:00","end_at":"2026-06-04T19:00","repeat":"weekly","repeat_weekdays":["th"],"repeat_count":4,
+"repeat_skip_dates":["2026-06-11"],"repeat_overrides":["2026-06-18|2026-06-19T19:00"]}}`
+
+func TestSeriesPageSummary(t *testing.T) {
+	h := &fakeHost{entities: []string{pgSeries, pgWeekly}, dbRows: pgRows}
+	h.install(t)
+	body := callPage(t, "/series/{slug}", "jazz").Body
+	for _, want := range []string{"Weekly, Thu", "3 dates, 1 changed", `<li class="skipped">`, ">changed</span>"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in\n%s", want, body)
+		}
+	}
+	if strings.Count(body, `class="skipped"`) != 1 || strings.Count(body, ">changed</span>") != 1 {
+		t.Errorf("skipped/changed marks:\n%s", body)
+	}
+	if strings.Count(body, "<h3>") != 2 {
+		t.Errorf("want one heading per event:\n%s", body)
+	}
+}
+
+func TestSeriesPageBudgetFallsBackToTheIndex(t *testing.T) {
+	h := &fakeHost{entities: []string{pgSeries, pgWeekly}, dbRows: pgRows}
+	h.install(t)
+	at := time.Now()
+	clock = func() time.Time { at = at.Add(pageFillBudget); return at } // every look burns the budget
+	t.Cleanup(func() { clock = time.Now })
+	body := callPage(t, "/series/{slug}", "jazz").Body
+	for _, call := range h.getCalls {
+		if call["id"] != nil {
+			t.Errorf("event read past the budget: %v", call)
+		}
+	}
+	if strings.Contains(body, "dates,") || strings.Count(body, "<li>") != 3 {
+		t.Errorf("want the index list:\n%s", body)
 	}
 }
