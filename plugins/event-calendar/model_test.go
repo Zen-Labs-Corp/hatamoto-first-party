@@ -533,3 +533,42 @@ func TestEventFromEntityTagsAndExtra(t *testing.T) {
 		t.Errorf("tags %v extra %v ok %v", e.Tags, e.Extra, ok)
 	}
 }
+
+func TestAttrBoolDefault(t *testing.T) {
+	cases := []struct {
+		name string
+		v    any
+		def  bool
+		want bool
+	}{
+		{"missing true", nil, true, true},
+		{"missing false", nil, false, false},
+		{"true", true, false, true},
+		{"false", false, true, false},
+		{"string false", "false", true, false},
+		{"string true", " TRUE ", false, true},
+		{"number", 1, true, true},
+		{"junk string", "maybe", false, false},
+	}
+	for _, c := range cases {
+		m := map[string]any{}
+		if c.v != nil {
+			m["k"] = c.v
+		}
+		if got := attrBoolDefault(m, "k", c.def); got != c.want {
+			t.Errorf("%s: got %v want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestEventFromEntityJoinAndEmbedFields(t *testing.T) {
+	s := defaultSettings()
+	e, ok := eventFromEntity(entity("a", "Talk", "published", `{"start_at":"2026-02-14T19:00"}`), s)
+	if !ok || !e.JoinPublic || e.EmbedURL != "" {
+		t.Fatalf("defaults: ok=%v public=%v embed=%q", ok, e.JoinPublic, e.EmbedURL)
+	}
+	e, _ = eventFromEntity(entity("b", "Talk", "published", `{"start_at":"2026-02-14T19:00","join_link_public":false,"embed_url":"https://zoom.us/j/1"}`), s)
+	if e.JoinPublic || e.EmbedURL != "https://zoom.us/j/1" {
+		t.Fatalf("set: public=%v embed=%q", e.JoinPublic, e.EmbedURL)
+	}
+}

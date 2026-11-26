@@ -70,6 +70,18 @@
       "description": "Link to join the event online.",
       "format": "uri"
     },
+    "join_link_public": {
+      "type": "boolean",
+      "title": "Join link public",
+      "description": "Off: the online link is only sent to ticket holders.",
+      "default": true
+    },
+    "embed_url": {
+      "type": "string",
+      "title": "Video or Zoom link",
+      "description": "YouTube or Vimeo video to embed, or a Zoom link shown as a button.",
+      "format": "uri"
+    },
     "venue": {
       "type": "array",
       "title": "Venue",
@@ -330,6 +342,8 @@
     "event_status",
     "attendance_mode",
     "online_url",
+    "join_link_public",
+    "embed_url",
     "venue",
     "venue_name",
     "venue_address",

@@ -38,6 +38,8 @@ type Event struct {
 	SchemaSlug, TimeZone             string
 	EventStatus, AttendanceMode      string
 	OnlineURL, Website               string
+	EmbedURL                         string
+	JoinPublic                       bool // false for index rows (never read there); entity reads default to true
 	VenueID, SeriesID, VenueCity     string
 	OrganizerIDs, CategoryIDs        []string
 	Price, Currency                  string
@@ -121,6 +123,22 @@ func attrBool(m map[string]any, key string) bool {
 		return strings.EqualFold(strings.TrimSpace(v), "true")
 	}
 	return false
+}
+
+// attrBoolDefault reads a boolean attribute; def when it is missing or not a boolean.
+func attrBoolDefault(m map[string]any, key string, def bool) bool {
+	switch v := m[key].(type) {
+	case bool:
+		return v
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "true":
+			return true
+		case "false":
+			return false
+		}
+	}
+	return def
 }
 
 // attrIDs reads an array of strings (a reference field holds entity ids):
@@ -224,6 +242,8 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 		EventStatus:    attrString(attrs, "event_status"),
 		AttendanceMode: attrString(attrs, "attendance_mode"),
 		OnlineURL:      attrString(attrs, "online_url"),
+		EmbedURL:       attrString(attrs, "embed_url"),
+		JoinPublic:     attrBoolDefault(attrs, "join_link_public", true),
 		Website:        attrString(attrs, "website"),
 		OrganizerIDs:   attrIDs(attrs, "organizers"),
 		CategoryIDs:    attrIDs(attrs, "category"),
@@ -490,6 +510,7 @@ const (
 var shippedEventKeys = []string{
 	"page_sections", "start_at", "end_at", "all_day",
 	"time_zone", "event_status", "attendance_mode", "online_url",
+	"join_link_public", "embed_url",
 	"venue", "venue_name", "venue_address", "venue_city",
 	"organizers", "category", "series", "ticket_url",
 	"website", "price", "price_amount", "currency",
