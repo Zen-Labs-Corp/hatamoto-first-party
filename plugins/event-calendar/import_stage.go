@@ -97,9 +97,10 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		renamed[uidTail(kind, uid)] = true
 	}
 
-	upserts := 0
+	upserts, first := 0, cur.I
 	for ; cur.I < len(records); cur.I++ {
-		if upserts >= stepUpserts || clock().Sub(started) >= stepBudget {
+		// a step handles one record at least, or a slow preload would leave it no progress at all
+		if upserts >= stepUpserts || cur.I > first && clock().Sub(started) >= stepBudget {
 			cp, _ := json.Marshal(cur)
 			if len(cp) > maxImportCursor || guest.RunCheckpoint(callHost, string(cp)) != nil {
 				return failRun("The run could not save its place. Try again.")

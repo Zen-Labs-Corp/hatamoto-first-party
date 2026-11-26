@@ -515,3 +515,18 @@ func TestScheduledRunDoesNotDuplicateEventsOfARenamedSource(t *testing.T) {
 		t.Fatalf("failed %q, upserts %+v", h.failed, h.upserts)
 	}
 }
+
+func TestTransformStepProgressesWhenThePreloadUsesTheBudget(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
+	at := time.Now()
+	clock = func() time.Time { at = at.Add(stepBudget); return at } // every look at the clock burns the budget
+	t.Cleanup(func() { clock = time.Now })
+	start := time.Date(2027, 6, 20, 10, 0, 0, 0, time.UTC)
+	h := &runHost{name: runScheduledImport, runID: "rb", created: true}
+	h.install(t)
+	buffered(t, h, record("google", "Town", "a", importEvent{Title: "A", Start: start}), record("google", "Town", "b", importEvent{Title: "B", Start: start}))
+	h.step(t)
+	if h.failed != "" || len(h.upserts) != 2 || h.finished == nil {
+		t.Errorf("failed %q, %d upserts, finished %v", h.failed, len(h.upserts), h.finished)
+	}
+}
