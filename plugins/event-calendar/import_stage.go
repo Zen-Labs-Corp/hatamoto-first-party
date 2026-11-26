@@ -69,7 +69,7 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		return failRun("The run buffer could not be read. Try again.")
 	}
 	if len(records) == 0 || cur.I >= len(records) {
-		return finishImport(sum, createCap)
+		return finishImport(sum, createCap, sched)
 	}
 	sort.SliceStable(records, func(i, j int) bool {
 		if !records[i].Ev.Start.Equal(records[j].Ev.Start) {
@@ -78,9 +78,13 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		return records[i].Key < records[j].Key
 	})
 
-	existing, err := loadImported(cfg)
+	existing, cut, err := loadImported(cfg)
 	if err != nil {
 		return failRun("The existing events could not be read. Nothing was staged.")
+	}
+	if cut && sched {
+		// an event the listing did not reach would be staged as new, and core refuses a create for a key it already maps
+		return failRun("The site has more imported events than a scheduled run can check. Nothing was staged. Use Run now.")
 	}
 	venues := namesToIDs("calendar-venue")
 	cats := namesToIDs("calendar-category")
@@ -156,7 +160,7 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 			sum["with_links"]++
 		}
 	}
-	return finishImport(sum, createCap)
+	return finishImport(sum, createCap, sched)
 }
 
 // endOf is when an event ends: its end, else its start (a whole day for an
@@ -330,9 +334,11 @@ type importedEvent struct {
 }
 
 // loadImported lists the published events whose source_kind is an import kind,
-// by source_uid.
-func loadImported(s settings) (map[string]importedEvent, error) {
-	out := map[string]importedEvent{}
+// by source_uid. cut is true when the listing stopped before its last page. A
+// run cannot list drafts or deleted events (core: "a run reads published
+// entities only"), so a key that is mapped but not published is not seen.
+func loadImported(s settings) (out map[string]importedEvent, cut bool, err error) {
+	out = map[string]importedEvent{}
 	for si, schema := range s.slugs() {
 		cursor, limit := "", listPageSize
 		for page := 0; page < maxExistingPages; page++ {
@@ -355,7 +361,7 @@ func loadImported(s settings) (map[string]importedEvent, error) {
 				if isNotFound(err) || si > 0 {
 					break // the type does not exist, or the older type cannot be read: it has no imports
 				}
-				return nil, err
+				return nil, false, err
 			}
 			for _, raw := range res.Items {
 				var attrs map[string]json.RawMessage
@@ -373,9 +379,10 @@ func loadImported(s settings) (map[string]importedEvent, error) {
 				break
 			}
 			cursor = res.NextCursor
+			cut = cut || page == maxExistingPages-1
 		}
 	}
-	return out, nil
+	return out, cut, nil
 }
 
 // namesToIDs maps the lower-case names of the published entities of one type
@@ -412,7 +419,7 @@ func namesToIDs(schema string) map[string]string {
 
 // finishImport ends the run. Core shows a run's progress message but not its
 // summary, so the counts the owner needs are also put in the message.
-func finishImport(sum map[string]int, createCap int) (sdk.RunStepResult, error) {
+func finishImport(sum map[string]int, createCap int, sched bool) (sdk.RunStepResult, error) {
 	done := sum["created"] + sum["updated"]
 	skipped := sum["unchanged"] + sum["not_updated"] + sum["past"] + sum["next_run"] + sum["failed"] + sum["skipped_over_cap"] + sum["unsafe"]
 	msg := fmt.Sprintf("Imported %d events, %d skipped", done, skipped)
@@ -424,6 +431,9 @@ func finishImport(sum map[string]int, createCap int) (sdk.RunStepResult, error) 
 	}
 	if n := sum["dropped_recurrence"]; n > 0 {
 		msg += fmt.Sprintf("; %d repeating rules left out", n)
+	}
+	if sched {
+		msg += "; an imported event that was deleted or unpublished and is still in a feed holds back publishing until it leaves the feed"
 	}
 	_ = guest.RunProgress(callHost, done+skipped, done+skipped, msg)
 	return sdk.RunStepResult{}, guest.RunFinish(callHost, sum)

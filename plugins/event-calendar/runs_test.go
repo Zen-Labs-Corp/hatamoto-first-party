@@ -39,6 +39,7 @@ type runHost struct {
 	fetched  []string
 	headers  []map[string]string // request headers of each fetch
 	lists    map[string][]string // entities.list answers by content type
+	endless  bool                // entities.list always has a next page
 }
 
 // fakePage is the answer of a fake http.fetch.
@@ -98,14 +99,18 @@ func (h *runHost) install(t *testing.T) {
 		case "entities.list":
 			// the whole list comes on the first page, whatever the cursor
 			schema := args.(map[string]any)["schema_slug"].(string)
-			if args.(map[string]any)["cursor"] != nil {
+			if args.(map[string]any)["cursor"] != nil && !h.endless {
 				return json.Unmarshal([]byte(`{"items":[]}`), out)
 			}
 			items := h.lists[schema]
 			if items == nil {
 				items = []string{}
 			}
-			return json.Unmarshal([]byte(`{"items":[`+strings.Join(items, ",")+`]}`), out)
+			next := ""
+			if h.endless {
+				next = `,"next_cursor":"more"`
+			}
+			return json.Unmarshal([]byte(`{"items":[`+strings.Join(items, ",")+`]`+next+`}`), out)
 		case "buffer.put":
 			a := args.(sdk.BufferPutArgs)
 			v, err := base64.StdEncoding.DecodeString(a.ValueB64)

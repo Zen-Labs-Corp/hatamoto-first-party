@@ -468,3 +468,35 @@ func TestScheduledCreateIsPublishedAndSafe(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduledRunStagesNothingWhenItCannotCheckEveryEvent(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
+	start := time.Date(2027, 6, 20, 10, 0, 0, 0, time.UTC)
+	fresh := record("google", "Town", "fresh", importEvent{Title: "Fresh", Start: start})
+	h := &runHost{name: runScheduledImport, runID: "rc", created: true, endless: true}
+	h.install(t)
+	buffered(t, h, fresh)
+	h.step(t)
+	if len(h.upserts) != 0 || !strings.Contains(h.failed, "more imported events") {
+		t.Errorf("failed %q, upserts %+v", h.failed, h.upserts)
+	}
+	// a manual run is reviewed, so it still stages
+	h = &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "rm", created: true, endless: true}
+	h.install(t)
+	buffered(t, h, fresh)
+	h.step(t)
+	if len(h.upserts) != 1 {
+		t.Errorf("manual run staged %d", len(h.upserts))
+	}
+}
+
+func TestScheduledProgressWarnsAboutDeletedEvents(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
+	h := &runHost{name: runScheduledImport, runID: "rw", created: true}
+	h.install(t)
+	buffered(t, h, record("google", "Town", "a", importEvent{Title: "A", Start: time.Date(2027, 6, 20, 10, 0, 0, 0, time.UTC)}))
+	h.step(t)
+	if !strings.Contains(h.progress, "deleted or unpublished") {
+		t.Errorf("progress %q", h.progress)
+	}
+}
