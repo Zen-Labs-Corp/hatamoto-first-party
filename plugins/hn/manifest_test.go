@@ -42,7 +42,7 @@ func TestManifestIsValidForTheSDK(t *testing.T) {
 	if ok, err := m.Compatible(); !ok || err != nil {
 		t.Fatalf("Compatible() = %v, %v", ok, err)
 	}
-	if m.Name != "hn" || m.SDK != "^0.29" || m.Version != "1.2.0" {
+	if m.Name != "hn" || m.SDK != "^0.29" || m.Version != "1.3.0" {
 		t.Fatalf("name %q sdk %q version %q", m.Name, m.SDK, m.Version)
 	}
 }

@@ -2,13 +2,23 @@
 
 A Hacker News style community: stories, votes, karma, ranked threads, flags and moderation, built on core comments.
 
-## Upgrading to 1.2.0
+## Upgrading to 1.3.0
+
+Update the plugin. There is no new permission and no kit re-apply: kit `hn` 1.0.2 is still fine.
+
+- New setting `pinned_items`: comma-separated item numbers shown first on `/news` page 1, in that order, without a rank.
+- A vote or unvote without JavaScript comes back to the same row (`#<item no>` for stories, `#comment-<id>` for comments). Comment-row anchors changed from `c-<id>` to `comment-<id>`, so an old link to `#c-<id>` no longer scrolls.
+- With `site.scripts`, a vote no longer reloads the page or changes the shown points: the arrow hides and "unvote" appears in place.
+- URLs in story text and in profiles are links (`rel="nofollow ugc noopener"`).
+- The submit, reply and about boxes stay one-line inputs without `site.scripts`, because the host refuses `<textarea>` in plugin templates without that grant. With the grant, `plugin.js` turns them into multi-line boxes.
+
+### From 1.1.x
 
 Update the plugin, then re-apply kit `hn` 1.0.2 to create the `/reply` page. The plugin cannot create a page and cannot tell whether it exists, so until the kit is applied again every reply link on `/threads`, `/newcomments` and the comment focus pages is a 404. Applying the kit adds only what is missing and keeps every existing page.
 
 `/best` is gone from the page paths and nothing redirects it: best stories are `/news?view=best`. A site that applied an older kit still has the CMS page `best`, which now renders an empty list; delete that page, or point it elsewhere (a stored redirect to `/news?view=best` in the admin). Links that name `/best`, such as the `lists` page text, need the same edit by hand.
 
-Status: 1.2.0: the reply page (`/reply?id=<comment>`), and best stories moved to `/news?view=best` to stay within the 16 page path limit. Before that, 1.1.0: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in, plus password accounts and the abuse fixes (voting-ring damping, IDN domain bans, port check, domain ban kills, network-banned votes, Origin check, Recent moderation view). Built against core v1.4.6 and SDK v0.29.0.
+Status: 1.3.0: vote anchors and in-place unvote, pinned stories (`pinned_items`), linked URLs in story text and profiles. Before that, 1.2.0: the reply page (`/reply?id=<comment>`), and best stories moved to `/news?view=best` to stay within the 16 page path limit. Before that, 1.1.0: every phase (accounts, stories, ranked comments, moderation, parity pages, polish) is in, plus password accounts and the abuse fixes (voting-ring damping, IDN domain bans, port check, domain ban kills, network-banned votes, Origin check, Recent moderation view). Built against core v1.4.6 and SDK v0.29.0.
 
 ## Layout
 
@@ -149,7 +159,7 @@ Uninstalling hn signs every member out on every device (password members and ema
 |---|---|---|
 | `db` | all | votes, karma, ranks, lists, flags and the search mirror, in the plugin's own database area |
 | `settings` | all | the thresholds below |
-| `site.scripts` | P6 | `assets/plugin.js`: votes without a reload, a multi-line submit text box (without the grant the host refuses `<textarea>` in a section, so the text is a one-line input); optional: everything works without it, and nothing in these docs asks you to grant it (Hatamoto never grants it to a community package) |
+| `site.scripts` | P6 | `assets/plugin.js`: votes without a reload (the arrow hides and "unvote" appears in place), multi-line submit, reply and about boxes (without the grant the host refuses `<textarea>` in a section, so each is a one-line input); optional: everything works without it, and nothing in these docs asks you to grant it (Hatamoto never grants it to a community package) |
 | `entities.write.own` | P2 | creates, edits and deletes stories of the one content type `hn-story` |
 | `comments.read` | P1, P3, P4, P5 | comment events, a member's comments, the commenter key on pages and routes |
 | `comments.moderate` | P1, P3, P4 | marks comments dead or restores them, sets their order |
@@ -178,6 +188,7 @@ No `http.fetch`, `kv`, `mail.send`, `log` or `entities.read`: the lists read the
 | `submit_per_hour` | 6 | stories one member may submit per hour |
 | `flags_to_dead` | 5 | flags after which an item is marked dead |
 | `page_size` | 30 | stories per page (1 to 100) |
+| `pinned_items` | (empty) | comma-separated item numbers shown first on /news page 1, in order, without a rank; dead, job and hidden stories are skipped; at most 10 |
 
 ## Moderation and abuse controls
 
