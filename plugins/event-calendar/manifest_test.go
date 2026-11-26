@@ -16,6 +16,7 @@ import (
 type manifestFile struct {
 	Name           string   `json:"name"`
 	Version        string   `json:"version"`
+	Description    string   `json:"description"`
 	SDK            string   `json:"sdk"`
 	Permissions    []string `json:"permissions"`
 	AllowedHosts   []string `json:"allowed_hosts"`
@@ -102,8 +103,12 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m, _ := loadManifest(t)
-	if m.Name != "event-calendar" || m.Version != "0.5.0" {
+	if m.Name != "event-calendar" || m.Version != "0.6.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
+	}
+	// the description is shown in the plugin list: short, and without characters the host's text checks refuse
+	if n := len(m.Description); n == 0 || n > 200 || strings.ContainsAny(m.Description, "\"\\|&") {
+		t.Errorf("description %q: %d bytes, or a quote, backslash, pipe or ampersand", m.Description, n)
 	}
 	if icsProdID != "-//Hatamoto//event-calendar "+m.Version+"//EN" {
 		t.Errorf("PRODID %q does not follow version %s", icsProdID, m.Version)
