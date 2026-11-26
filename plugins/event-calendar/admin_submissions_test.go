@@ -303,6 +303,17 @@ func TestAdminImports(t *testing.T) {
 	}
 }
 
+func TestAdminImportsNeverShowTheEventbriteToken(t *testing.T) {
+	h := &adminHost{settings: `{"eventbrite_token":"SECRET-TOKEN-123","import_sources":[{"name":"Tickets","kind":"eventbrite","organization_id":"123","schedule":"daily"}]}`}
+	h.install(t)
+	for _, u := range []*sdk.HTTPUser{owner, editor} {
+		r := callRoute(t, "GET", "/admin/imports", u, nil, nil)
+		if r.Status != 200 || strings.Contains(r.Body, "SECRET-TOKEN-123") || !strings.Contains(r.Body, `"Tickets"`) {
+			t.Errorf("%s: %d %s", u.Role, r.Status, r.Body)
+		}
+	}
+}
+
 func TestAdminImportsNoDatabase(t *testing.T) {
 	h := &adminHost{settings: importSettings, dbErr: errors.New("no db")}
 	h.install(t)

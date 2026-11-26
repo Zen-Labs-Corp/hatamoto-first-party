@@ -37,6 +37,7 @@ type runHost struct {
 	buffer   map[string][]byte
 	cursor   string // the last run.checkpoint
 	fetched  []string
+	headers  []map[string]string // request headers of each fetch
 	lists    map[string][]string // entities.list answers by content type
 }
 
@@ -83,6 +84,8 @@ func (h *runHost) install(t *testing.T) {
 		case "http.fetch":
 			u := args.(map[string]any)["url"].(string)
 			h.fetched = append(h.fetched, u)
+			hdr, _ := args.(map[string]any)["headers"].(map[string]string)
+			h.headers = append(h.headers, hdr)
 			page, ok := h.pages[u]
 			if !ok {
 				return &sdk.HostError{Code: sdk.ErrBlocked}

@@ -197,10 +197,14 @@ func importFetchStep(s sdk.RunStep, info sdk.RunInfo) (sdk.RunStepResult, error)
 	}
 	if cur.Src < len(sources) {
 		src := sources[cur.Src]
-		if err := readSource(&cur, src, loadSettings(), scheduled(info)); err != nil {
+		done, err := readSource(&cur, src, loadSettings(), scheduled(info))
+		if err != nil {
 			return failRun("The run buffer could not be written. Try again.")
 		}
-		cur.Src++
+		if done {
+			cur.Src++
+			cur.Cont, cur.Page = "", 0
+		}
 	}
 	stat, _ := json.Marshal(map[string]int{"over": cur.Over})
 	if err := guest.BufferPut(callHost, bufStat, stat); err != nil {
@@ -220,15 +224,23 @@ func importFetchStep(s sdk.RunStep, info sdk.RunInfo) (sdk.RunStepResult, error)
 	return sdk.RunStepResult{}, guest.RunFinish(callHost, map[string]any{"phase": "fetch", "events": cur.N})
 }
 
-// readSource fetches and parses one source and buffers its events. It returns
-// an error only when the run buffer fails; a bad source is counted in cur.
+// readSource fetches and parses one source and buffers its events, and says
+// whether the source is done: an Eventbrite organization is read one page a
+// step, its place kept in cur. It returns an error only when the run buffer
+// fails; a bad source is counted in cur.
 // A scheduled run reads only listed hosts: it never gets the "*" grant.
-func readSource(cur *importCursor, src importSource, s settings, scheduled bool) error {
+func readSource(cur *importCursor, src importSource, s settings, scheduled bool) (bool, error) {
 	var events []importEvent
 	var why string
+	more := false
 	switch {
 	case src.Kind == "eventbrite" && src.OrganizationID != "":
-		why = "Eventbrite sources need the next step of this update." // replaced by the API reader
+		var next string
+		events, next, why = fetchEventbritePage(src.OrganizationID, cur.Cont, eventbriteToken())
+		cur.Page++
+		if next != "" && cur.Page < maxEventbritePages {
+			cur.Cont, more = next, true
+		}
 	case src.URL == "":
 		why = "the source has no usable address"
 	case scheduled && !hostListed(src.URL):
@@ -241,7 +253,7 @@ func readSource(cur *importCursor, src importSource, s settings, scheduled bool)
 	if why != "" {
 		cur.Failed++
 		note, _ := json.Marshal(map[string]string{"source": src.Name, "reason": why})
-		return guest.BufferPut(callHost, fmt.Sprintf("%s%02d", bufError, cur.Src), note)
+		return true, guest.BufferPut(callHost, fmt.Sprintf("%s%02d", bufError, cur.Src), note)
 	}
 	// The same UID twice in one source is read once. Another source with the
 	// same key overwrites the buffered record: the buffer key is the event key.
@@ -258,11 +270,11 @@ func readSource(cur *importCursor, src importSource, s settings, scheduled bool)
 		}
 		rec, _ := json.Marshal(importRecord{Source: src.Name, Kind: src.Kind, Category: src.Category, Key: key, Ev: ev})
 		if err := guest.BufferPut(callHost, bufEvent+key, rec); err != nil {
-			return err
+			return false, err
 		}
 		cur.N++
 	}
-	return nil
+	return !more, nil
 }
 
 // fetchEvents reads one address. The reason is a short text without the
