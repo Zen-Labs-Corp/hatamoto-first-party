@@ -1,7 +1,7 @@
 {
   "name": "event-calendar",
   "version": "0.5.0",
-  "sdk": "^0.22",
+  "sdk": "^0.28.1",
   "description": "Events with dates, venue and ticket link: upcoming and past lists for the page builder, an iCal feed and Event structured data.",
   "permissions": [
     "entities.read",

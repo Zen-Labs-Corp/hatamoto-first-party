@@ -113,7 +113,7 @@ func TestManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := regexp.MustCompile(`hatamoto\.dev/sdk v(\d+\.\d+\.\d+)`).FindSubmatch(mod)
-	if m.SDK != "^0.22" || got == nil || !strings.HasPrefix(string(got[1]), "0.22.") {
+	if m.SDK != "^0.28.1" || got == nil || string(got[1]) != "0.28.1" {
 		t.Errorf("sdk range %q, go.mod %q", m.SDK, got)
 	}
 
