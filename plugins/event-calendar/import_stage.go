@@ -20,6 +20,9 @@ const (
 	smallPageSize    = 50
 )
 
+// scheduledSchema is the one type the standing approval lets a scheduled run create.
+const scheduledSchema = "calendar-event"
+
 const (
 	scheduledCreateCap = 100 // standing_approval.create.max_per_hour; cron every 12h, so 200 a day
 	manualCreateCap    = 200
@@ -45,6 +48,11 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 	started := clock()
 	cfg := loadSettings()
 	schema := cfg.slugs()[0]
+	if sched && schema != scheduledSchema {
+		// the standing approval covers calendar-event creates only; any other type would park the changeset
+		_ = guest.RunProgress(callHost, 0, 0, "Nothing was staged: scheduled imports create calendar-event events only, and the event content type setting names "+schema+". Use Run now, or clear the setting.")
+		return sdk.RunStepResult{}, guest.RunFinish(callHost, map[string]int{"created": 0})
+	}
 
 	var cur stageCursor
 	if s.Cursor != "" && json.Unmarshal([]byte(s.Cursor), &cur) != nil {

@@ -530,3 +530,14 @@ func TestTransformStepProgressesWhenThePreloadUsesTheBudget(t *testing.T) {
 		t.Errorf("failed %q, %d upserts, finished %v", h.failed, len(h.upserts), h.finished)
 	}
 }
+
+func TestScheduledRunStagesNothingForACustomSchema(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
+	h := &runHost{name: runScheduledImport, runID: "rx", created: true, settings: `{"schema_slug":"event"}`}
+	h.install(t)
+	buffered(t, h, record("google", "Town", "a", importEvent{Title: "A", Start: time.Date(2027, 6, 20, 10, 0, 0, 0, time.UTC)}))
+	h.step(t)
+	if len(h.upserts) != 0 || h.failed != "" || h.finished == nil || !strings.Contains(h.progress, "calendar-event") {
+		t.Errorf("failed %q, upserts %d, finished %v, progress %q", h.failed, len(h.upserts), h.finished, h.progress)
+	}
+}
