@@ -56,6 +56,11 @@
       "maxLength": 2048,
       "x-hm-bind": "text"
     },
+    "online_note": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
     "series": {
       "type": "string",
       "maxLength": 2048,

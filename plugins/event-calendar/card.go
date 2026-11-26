@@ -8,6 +8,14 @@ import (
 	"hatamoto.dev/sdk"
 )
 
+// joinNote is what the card says instead of a join link kept for ticket holders.
+const joinNote = "Join link: sent to ticket holders"
+
+// hasJoinLink reports whether the event has an online link to join it.
+func hasJoinLink(e Event) bool {
+	return e.AttendanceMode != "offline" && isAbsoluteURL(e.OnlineURL)
+}
+
 // answerEventCard answers the "this event" source: one item for the page's own
 // event, with everything the details card shows. An empty answer (no entity
 // page, another content type, an unpublished or broken event) is not an error.
@@ -60,8 +68,12 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 		venuePage = pagePath(pageVenue, venue.Slug)
 	}
 	set("price", priceText(ev))
-	if ev.AttendanceMode != "offline" && isAbsoluteURL(ev.OnlineURL) {
-		set("online_url", ev.OnlineURL)
+	if hasJoinLink(ev) {
+		if ev.JoinPublic {
+			set("online_url", ev.OnlineURL)
+		} else {
+			set("online_note", joinNote)
+		}
 	}
 	set("ticket_url", ev.TicketURL)
 

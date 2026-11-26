@@ -153,8 +153,12 @@ func locationOf(e Event) any {
 		}
 		places = append(places, place)
 	}
-	if e.AttendanceMode != "offline" && isAbsoluteURL(e.OnlineURL) {
-		places = append(places, map[string]any{"@type": "VirtualLocation", "url": e.OnlineURL})
+	if hasJoinLink(e) {
+		vl := map[string]any{"@type": "VirtualLocation"}
+		if e.JoinPublic {
+			vl["url"] = e.OnlineURL
+		}
+		places = append(places, vl)
 	}
 	switch len(places) {
 	case 0:

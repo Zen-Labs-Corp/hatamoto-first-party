@@ -251,3 +251,23 @@ func TestEnrichOrganizerEmailNeedsShowContact(t *testing.T) {
 		}
 	}
 }
+
+func TestEnrichJoinLinkPrivate(t *testing.T) {
+	for name, c := range map[string]struct {
+		attr    string
+		wantURL bool
+	}{"missing": {"", true}, "public": {`"join_link_public":true,`, true}, "private": {`"join_link_public":false,`, false}} {
+		ev := `{"id":"x","schema_slug":"calendar-event","slug":"x","name":"X","status":"published",
+ "attributes":{` + c.attr + `"start_at":"2027-02-14T19:00:00Z","attendance_mode":"online","online_url":"https://example.org/join"}}`
+		(&fakeHost{entities: []string{ev}}).install(t)
+		d := baseDoc()
+		d.Entity = sdk.EntityRef{ID: "x", SchemaSlug: "calendar-event"}
+		want := map[string]any{"@type": "VirtualLocation"}
+		if c.wantURL {
+			want["url"] = "https://example.org/join"
+		}
+		if got := enrich(t, d).Doc["location"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: location = %v, want %v", name, got, want)
+		}
+	}
+}

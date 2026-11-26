@@ -224,3 +224,27 @@ func TestEventCardOrganizerEmailNeedsShowContact(t *testing.T) {
 		}
 	}
 }
+
+func TestEventCardJoinLinkPrivate(t *testing.T) {
+	for name, c := range map[string]struct {
+		attr, url, note string
+	}{
+		"missing": {"", "https://example.org/join", ""},
+		"public":  {`"join_link_public":true,`, "https://example.org/join", ""},
+		"private": {`"join_link_public":false,`, "", joinNote},
+	} {
+		doc := strings.Replace(cardEvent, `"attributes":{`, `"attributes":{`+c.attr, 1)
+		cardHost(t, `{}`, append([]string{doc}, cardRefs...)...)
+		a := runCard(t, "c1").Items[0].Attrs
+		if a["online_url"] != c.url || a["online_note"] != c.note {
+			t.Errorf("%s: online_url=%q online_note=%q", name, a["online_url"], a["online_note"])
+		}
+	}
+	// No join link, no note.
+	doc := strings.Replace(cardEvent, `"online_url":"https://example.org/join"`, `"online_url":""`, 1)
+	doc = strings.Replace(doc, `"attributes":{`, `"attributes":{"join_link_public":false,`, 1)
+	cardHost(t, `{}`, append([]string{doc}, cardRefs...)...)
+	if v, ok := runCard(t, "c1").Items[0].Attrs["online_note"]; ok {
+		t.Errorf("online_note = %q without a join link", v)
+	}
+}

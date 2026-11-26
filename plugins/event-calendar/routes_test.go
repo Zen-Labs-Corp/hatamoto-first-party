@@ -375,3 +375,20 @@ func TestEventICSListsTheNextTwelveDates(t *testing.T) {
 		}
 	}
 }
+
+func TestICSNeverCarriesTheJoinLink(t *testing.T) {
+	for name, public := range map[string]string{"missing": "", "private": `"join_link_public":false,`, "public": `"join_link_public":true,`} {
+		ev := `{"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","status":"published","url":"https://example.com/e/future","attributes":{` + public +
+			`"start_at":"2026-07-01T19:00","end_at":"2026-07-01T21:00","attendance_mode":"online","online_url":"https://meet.example/secret","embed_url":"https://zoom.us/j/1"},"updated_at":"2026-05-01T00:00:00Z"}`
+		(&fakeHost{entities: []string{ev}, dbRows: idxRows}).install(t)
+		for _, c := range []struct{ pattern, file string }{{"/events.ics", ""}, {"/event/{file}", "future.ics"}} {
+			r := call(t, "GET", c.pattern, c.file)
+			if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") {
+				t.Fatalf("%s %s: response = %+v", name, c.pattern, r)
+			}
+			if strings.Contains(r.Body, "meet.example") || strings.Contains(r.Body, "zoom.us") {
+				t.Errorf("%s %s: join link in the calendar:\n%s", name, c.pattern, r.Body)
+			}
+		}
+	}
+}
