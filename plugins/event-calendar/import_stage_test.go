@@ -436,3 +436,35 @@ func TestTransformSteps(t *testing.T) {
 		t.Errorf("checkpoint of %d bytes", len(h.cursor))
 	}
 }
+
+func TestScheduledCreateIsPublishedAndSafe(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 1, 12, 0, 0, 0, time.UTC))
+	start := time.Date(2027, 6, 12, 18, 0, 0, 0, time.UTC)
+	rec := record("google", "Town", "x", importEvent{Title: "Jam www.example.org", Start: start, Description: "Info https://example.org/a\nDoors: 7pm", TicketURL: "https://Tickets.example.com/a", Website: "http://insecure.example.com"})
+
+	for _, name := range []string{runScheduledImport, runEditDates} {
+		h := &runHost{name: name, runID: "rc", created: true}
+		if name == runEditDates {
+			h.params = map[string]any{"action": "import_url"}
+		}
+		h.install(t)
+		buffered(t, h, rec)
+		h.step(t)
+		if h.failed != "" || len(h.upserts) != 1 {
+			t.Fatalf("%s: failed %q, upserts %d", name, h.failed, len(h.upserts))
+		}
+		up := h.upserts[0]
+		a := attrsOf(t, up)
+		if name == runScheduledImport {
+			if up.Status != "published" || up.Slug != "jam-2027-06-12-"+rec.Key[len(rec.Key)-6:] || up.Name != "Jam" ||
+				attrText(t, a, "description") != "Info\nDoors: 7pm" || attrText(t, a, "ticket_url") != "https://tickets.example.com/a" || a["website"] != nil {
+				t.Errorf("scheduled create: %+v %s", up, up.Attributes)
+			}
+			continue
+		}
+		if up.Status != "" || up.Slug != "" || up.Name != "Jam www.example.org" ||
+			attrText(t, a, "description") != "Info https://example.org/a\nDoors: 7pm" || attrText(t, a, "website") != "http://insecure.example.com" {
+			t.Errorf("manual create: %+v %s", up, up.Attributes)
+		}
+	}
+}

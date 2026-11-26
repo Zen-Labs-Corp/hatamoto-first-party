@@ -131,6 +131,12 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 			}
 			want = attrs
 		}
+		if sched {
+			// created without review: text and links that cannot park the changeset
+			want, up.Name = safeCreate(want, ev.Title)
+			up.Slug = scheduledSlug(up.Name, ev.Start.In(loc), rec.Key)
+			up.Status = "published"
+		}
 		up.Attributes, _ = json.Marshal(want)
 		upserts++
 		if _, err := guest.EntityUpsert(callHost, up); err != nil {
