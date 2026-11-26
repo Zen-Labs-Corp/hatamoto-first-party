@@ -61,6 +61,16 @@
       "maxLength": 2048,
       "x-hm-bind": "text"
     },
+    "embed_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
+    "zoom_url": {
+      "type": "string",
+      "maxLength": 2048,
+      "x-hm-bind": "text"
+    },
     "series": {
       "type": "string",
       "maxLength": 2048,

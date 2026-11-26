@@ -110,8 +110,39 @@ function draw(el) {
   el.appendChild(credit);
 }
 
-if (typeof document !== "undefined") {
-  for (const el of document.querySelectorAll("[data-map][data-tiles]")) draw(el);
+// embedSrc returns the address when it is one the card source emits for a video
+// (YouTube without cookies or Vimeo, by id), null for anything else.
+function embedSrc(s) {
+  if (typeof s !== "string") return null;
+  const ok = /^https:\/\/(www\.youtube-nocookie\.com\/embed\/[A-Za-z0-9_-]{11}|player\.vimeo\.com\/video\/[0-9]{1,12})$/;
+  return ok.test(s) ? s : null;
 }
 
-if (typeof module !== "undefined") module.exports = { tileXY, parsePin, gridTiles, validHost, pinBackground, tileUrl };
+// playVideo swaps the play button of a video box for the player; false (and the
+// button keeps working as a link) when the address is not an allowed one.
+function playVideo(box, doc) {
+  const src = embedSrc(box.getAttribute("data-embed"));
+  if (!src) return false;
+  const frame = doc.createElement("iframe");
+  frame.title = "Video";
+  frame.allow = "autoplay; picture-in-picture; fullscreen";
+  frame.allowFullscreen = true;
+  frame.referrerPolicy = "strict-origin-when-cross-origin";
+  frame.src = src + "?autoplay=1";
+  while (box.firstChild) box.removeChild(box.firstChild);
+  box.appendChild(frame);
+  return true;
+}
+
+if (typeof document !== "undefined") {
+  for (const el of document.querySelectorAll("[data-map][data-tiles]")) draw(el);
+  for (const play of document.querySelectorAll(".hm-event-calendar_event-card .video .play")) {
+    play.addEventListener("click", (ev) => {
+      if (playVideo(play.parentNode, document)) ev.preventDefault();
+    });
+  }
+}
+
+if (typeof module !== "undefined") {
+  module.exports = { tileXY, parsePin, gridTiles, validHost, pinBackground, tileUrl, embedSrc, playVideo };
+}

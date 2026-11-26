@@ -248,3 +248,29 @@ func TestEventCardJoinLinkPrivate(t *testing.T) {
 		t.Errorf("online_note = %q without a join link", v)
 	}
 }
+
+func TestEventCardEmbed(t *testing.T) {
+	const yt = "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"
+	for name, c := range map[string]struct {
+		attr                    string
+		embed, zoom, onlineNote string
+	}{
+		"youtube":       {`"embed_url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ",`, yt, "", ""},
+		"zoom public":   {`"embed_url":"https://us02web.zoom.us/j/1",`, "", "https://us02web.zoom.us/j/1", ""},
+		"zoom private":  {`"join_link_public":false,"embed_url":"https://us02web.zoom.us/j/1",`, "", "", joinNote},
+		"other host":    {`"embed_url":"https://example.org/video",`, "", "", ""},
+		"lookalike":     {`"embed_url":"https://evilzoom.us/j/1",`, "", "", ""},
+		"none":          {"", "", "", ""},
+		"private video": {`"join_link_public":false,"embed_url":"` + yt + `",`, yt, "", joinNote},
+	} {
+		doc := strings.Replace(cardEvent, `"attributes":{`, `"attributes":{`+c.attr, 1)
+		cardHost(t, `{}`, append([]string{doc}, cardRefs...)...)
+		a := runCard(t, "c1").Items[0].Attrs
+		if a["embed_url"] != c.embed || a["zoom_url"] != c.zoom || a["online_note"] != c.onlineNote {
+			t.Errorf("%s: embed_url=%q zoom_url=%q online_note=%q", name, a["embed_url"], a["zoom_url"], a["online_note"])
+		}
+		if len(a) > sdk.MaxBuilderDataAttrs {
+			t.Errorf("%s: %d attrs", name, len(a))
+		}
+	}
+}

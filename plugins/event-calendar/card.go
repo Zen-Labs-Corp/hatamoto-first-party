@@ -75,6 +75,13 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 			set("online_note", joinNote)
 		}
 	}
+	if video, zoom := embedFor(ev.EmbedURL); video != "" {
+		set("embed_url", video)
+	} else if zoom != "" && ev.JoinPublic {
+		set("zoom_url", zoom)
+	} else if zoom != "" && !ev.JoinPublic && attrs["online_note"] == "" {
+		set("online_note", joinNote)
+	}
 	set("ticket_url", ev.TicketURL)
 
 	item := sdk.BuilderDataItem{
