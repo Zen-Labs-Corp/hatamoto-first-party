@@ -59,12 +59,12 @@ func (s settings) slugs() []string {
 	return []string{defaultNewSlug, legacySchemaSlug}
 }
 
-// accepts reports whether entities of the given content type are events.
 // exposes reports whether the owner opted the field key into the public events route.
 func (s settings) exposes(key string) bool {
 	return s.PublicFilterFields != "" && slices.Contains(strings.Split(s.PublicFilterFields, ","), key)
 }
 
+// accepts reports whether entities of the given content type are events.
 func (s settings) accepts(slug string) bool { return slices.Contains(s.slugs(), slug) }
 
 // loadSettings never fails: an unreadable or invalid setting yields its default.
