@@ -58,6 +58,8 @@ type indexRow struct {
 	SourceKind, SourceUID, SourceURL         string
 	Repeating                                bool
 	OrganizerIDs                             []string
+	Tags                                     []string
+	Extra                                    map[string]any
 }
 
 // rowFromEvent is the index row of an event. loc is the zone an all-day event
@@ -82,6 +84,7 @@ func rowFromEvent(e Event, v *Venue, cats categoryRefs, loc *time.Location) inde
 		Featured: e.Featured, Image: e.Image,
 		SourceKind: e.SourceKind, SourceUID: e.SourceUID, SourceURL: e.SourceURL,
 		Repeating: e.Repeat.Kind != "" && e.Repeat.Kind != "none", OrganizerIDs: nonNil(e.OrganizerIDs),
+		Tags: nonNil(e.Tags), Extra: e.Extra,
 	}
 }
 
@@ -90,6 +93,13 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+func nonNilMap(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
 }
 
 func jsonText(v any) string {
@@ -102,10 +112,10 @@ func utcText(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 const upsertEventSQL = `INSERT INTO events (entity_id, schema_slug, slug, locale, name, starts_at, ends_at, all_day, time_zone,
  event_status, attendance_mode, venue_id, venue_name, venue_city, category_ids, category_names, series_id,
  price, price_amount, featured, image, source_kind, source_uid, source_url,
- url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs, repeating, organizer_ids)
+ url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs, repeating, organizer_ids, tags, extra)
 SELECT $1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8::boolean, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
  $18, $19::double precision, $20::boolean, $21, $22, $23, $24,
- $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb, $32::boolean, $33::jsonb
+ $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb, $32::boolean, $33::jsonb, $34::jsonb, $35::jsonb
 WHERE $25::timestamptz IS NULL OR NOT EXISTS (SELECT 1 FROM deleted_events WHERE entity_id = $1 AND deleted_at >= $25::timestamptz)
 ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug = EXCLUDED.slug, locale = EXCLUDED.locale,
  name = EXCLUDED.name, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, all_day = EXCLUDED.all_day,
@@ -116,7 +126,8 @@ ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug =
  source_kind = EXCLUDED.source_kind, source_uid = EXCLUDED.source_uid, source_url = EXCLUDED.source_url,
  url = EXCLUDED.url, venue_slug = EXCLUDED.venue_slug, venue_address = EXCLUDED.venue_address,
  venue_lat = EXCLUDED.venue_lat, venue_lon = EXCLUDED.venue_lon, category_slugs = EXCLUDED.category_slugs,
- repeating = EXCLUDED.repeating, organizer_ids = EXCLUDED.organizer_ids, updated_at = now()`
+ repeating = EXCLUDED.repeating, organizer_ids = EXCLUDED.organizer_ids, tags = EXCLUDED.tags, extra = EXCLUDED.extra,
+ updated_at = now()`
 
 // One statement writes every date of the event from a jsonb array of
 // {"s": start, "e": end}. The delete skips the rows the insert writes, so the
@@ -154,7 +165,8 @@ func upsertEvent(r indexRow, occs []occ, notDeletedSince *time.Time) error {
 		utcText(r.StartsAt), utcText(r.EndsAt), r.AllDay, r.TimeZone, r.EventStatus, r.AttendanceMode,
 		r.VenueID, r.VenueName, r.VenueCity, jsonText(r.CategoryIDs), jsonText(r.CategoryNames), r.SeriesID,
 		r.Price, amount, r.Featured, r.Image, r.SourceKind, r.SourceUID, r.SourceURL, guard,
-		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs), r.Repeating, jsonText(r.OrganizerIDs)); err != nil {
+		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs), r.Repeating, jsonText(r.OrganizerIDs),
+		jsonText(nonNil(r.Tags)), jsonText(nonNilMap(r.Extra))); err != nil {
 		return err
 	}
 	return dbExec(upsertOccurrencesSQL, r.EntityID, occurrencesJSON(occs))

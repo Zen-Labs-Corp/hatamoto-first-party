@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -467,4 +470,66 @@ func mustAtoi(t *testing.T, s string) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+func TestShippedEventKeysMatchSchema(t *testing.T) {
+	raw, err := os.ReadFile("schemas/calendar-event.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for k := range schema.Properties {
+		want = append(want, k)
+	}
+	got := append([]string(nil), shippedEventKeys...)
+	sort.Strings(want)
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("shippedEventKeys = %v, schema properties = %v", got, want)
+	}
+}
+
+func TestCustomFields(t *testing.T) {
+	attrs := map[string]any{
+		"start_at": "2026-07-01", "tags": []any{"x"}, // shipped keys
+		"audience":   "Adults",
+		"age_groups": []any{"Kids", "Teens"},
+		"long":       strings.Repeat("a", 201),
+		"object":     map[string]any{"a": "b"},
+		"mixed":      []any{"a", 3},
+		"empty":      "  ",
+		"Upper":      "no",
+		"1digit":     "no",
+	}
+	got := customFields(attrs)
+	want := map[string]any{"audience": "Adults", "age_groups": []string{"Kids", "Teens"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("customFields = %v, want %v", got, want)
+	}
+	many := map[string]any{}
+	for i := 0; i < 30; i++ {
+		many[fmt.Sprintf("k%02d", i)] = "v"
+	}
+	got = customFields(many)
+	if len(got) != 16 || got["k00"] == nil || got["k15"] == nil || got["k16"] != nil {
+		t.Errorf("cap: %d keys, %v", len(got), got)
+	}
+	if customFields(map[string]any{"start_at": "x"}) != nil {
+		t.Error("no custom fields should be nil")
+	}
+}
+
+func TestEventFromEntityTagsAndExtra(t *testing.T) {
+	raw := entityDTO{ID: "e", Status: "published", Attributes: json.RawMessage(
+		`{"start_at":"2026-07-01T10:00:00Z","tags":[" Jazz ","",` + strconv.Quote(strings.Repeat("t", 201)) + `],"audience":"Adults"}`)}
+	e, ok := eventFromEntity(raw, settings{TimeZone: "UTC"})
+	if !ok || !reflect.DeepEqual(e.Tags, []string{"Jazz"}) || e.Extra["audience"] != "Adults" {
+		t.Errorf("tags %v extra %v ok %v", e.Tags, e.Extra, ok)
+	}
 }

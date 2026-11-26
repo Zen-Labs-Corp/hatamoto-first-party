@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,6 +44,9 @@ type Event struct {
 	PriceAmount                      *float64
 	Featured                         bool
 	SourceKind, SourceUID, SourceURL string
+
+	Tags  []string       // attribute "tags"
+	Extra map[string]any // site-added attributes: strings or string lists
 
 	Repeat    Repeat
 	BaseStart time.Time // start of the series' first date; zero until read from the index
@@ -253,6 +257,8 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 		}
 	}
 	e.Repeat = repeatFromAttrs(attrs, loc)
+	e.Tags = tagsOf(attrs)
+	e.Extra = customFields(attrs)
 	if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
 		e.Updated = t
 	}
@@ -467,6 +473,98 @@ func attrDates(attrs map[string]any, key string, loc *time.Location) []time.Time
 	for _, s := range attrStrings(attrs, key) {
 		if t, ok := parseTime(s, loc); ok {
 			out = append(out, startOfDay(t, loc))
+		}
+	}
+	return out
+}
+
+const (
+	maxTags        = 32
+	maxExtraKeys   = 16
+	maxExtraValues = 16
+	maxExtraBytes  = 200
+)
+
+// shippedEventKeys are the properties of schemas/calendar-event.json; any other
+// top-level attribute is a field the site added.
+var shippedEventKeys = []string{
+	"page_sections", "start_at", "end_at", "all_day",
+	"time_zone", "event_status", "attendance_mode", "online_url",
+	"venue", "venue_name", "venue_address", "venue_city",
+	"organizers", "category", "series", "ticket_url",
+	"website", "price", "price_amount", "currency",
+	"featured", "image", "description", "tags",
+	"repeat", "repeat_every", "repeat_weekdays", "repeat_by",
+	"repeat_nth", "repeat_until", "repeat_count", "repeat_extra_dates",
+	"repeat_skip_dates", "repeat_overrides", "source_kind", "source_uid",
+	"source_url",
+}
+
+var customKeyRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
+
+// tagsOf reads the tags attribute: trimmed strings of at most 200 bytes, at
+// most 32.
+func tagsOf(attrs map[string]any) []string {
+	var out []string
+	for _, s := range attrStrings(attrs, "tags") {
+		if len(s) <= maxExtraBytes {
+			out = append(out, s)
+			if len(out) == maxTags {
+				break
+			}
+		}
+	}
+	return out
+}
+
+// customFields returns the site-added attributes the calendar can filter on:
+// a lower-case key not in shippedEventKeys with a short string or a list of
+// short strings. At most 16 keys, taken in key order.
+func customFields(attrs map[string]any) map[string]any {
+	shipped := make(map[string]bool, len(shippedEventKeys))
+	for _, k := range shippedEventKeys {
+		shipped[k] = true
+	}
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		if customKeyRe.MatchString(k) && !shipped[k] {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	var out map[string]any
+	for _, k := range keys {
+		var v any
+		switch x := attrs[k].(type) {
+		case string:
+			if s := strings.TrimSpace(x); s != "" && len(s) <= maxExtraBytes {
+				v = s
+			}
+		case []any:
+			list := make([]string, 0, len(x))
+			ok := len(x) > 0 && len(x) <= maxExtraValues
+			for _, item := range x {
+				s, isStr := item.(string)
+				s = strings.TrimSpace(s)
+				if !isStr || s == "" || len(s) > maxExtraBytes {
+					ok = false
+					break
+				}
+				list = append(list, s)
+			}
+			if ok {
+				v = list
+			}
+		}
+		if v == nil {
+			continue
+		}
+		if out == nil {
+			out = map[string]any{}
+		}
+		out[k] = v
+		if len(out) == maxExtraKeys {
+			break
 		}
 	}
 	return out
