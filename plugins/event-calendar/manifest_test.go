@@ -329,3 +329,37 @@ func TestManifestSDKValidate(t *testing.T) {
 		t.Error("the manifest decoded without runs")
 	}
 }
+
+func TestImportSourceURLPatternAllowsAnEmptyAddress(t *testing.T) {
+	raw, err := os.ReadFile("plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Settings struct {
+			Properties struct {
+				Sources struct {
+					Items struct {
+						Properties struct {
+							URL struct {
+								Pattern string `json:"pattern"`
+							} `json:"url"`
+						} `json:"properties"`
+					} `json:"items"`
+				} `json:"import_sources"`
+			} `json:"properties"`
+		} `json:"settings_schema"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	re, err := regexp.Compile(m.Settings.Properties.Sources.Items.Properties.URL.Pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for in, want := range map[string]bool{"": true, "https://x.example/a.ics": true, "webcal://x.example/a.ics": true, "http://x.example": false, "ftp://x": false} {
+		if re.MatchString(in) != want {
+			t.Errorf("address %q: match %v, want %v", in, !want, want)
+		}
+	}
+}
