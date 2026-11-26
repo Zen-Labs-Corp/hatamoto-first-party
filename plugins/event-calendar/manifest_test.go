@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 
 	"hatamoto.dev/sdk"
 )
@@ -103,12 +105,19 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m, _ := loadManifest(t)
-	if m.Name != "event-calendar" || m.Version != "0.6.0" {
+	if m.Name != "event-calendar" || m.Version != "0.6.1" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 	// the description is shown in the plugin list: short, and without characters the host's text checks refuse
-	if n := len(m.Description); n == 0 || n > 200 || strings.ContainsAny(m.Description, "\"\\|&") {
+	if n := len(m.Description); n > 200 || strings.ContainsAny(m.Description, "\"\\|&") {
 		t.Errorf("description %q: %d bytes, or a quote, backslash, pipe or ampersand", m.Description, n)
+	}
+	// the registry validator (and core) accept 20..160 characters and no control characters
+	if n := utf8.RuneCountInString(m.Description); n < 20 || n > 160 {
+		t.Errorf("description is %d characters, want 20..160", n)
+	}
+	if strings.IndexFunc(m.Description, unicode.IsControl) >= 0 {
+		t.Errorf("description %q has a control character", m.Description)
 	}
 	if icsProdID != "-//Hatamoto//event-calendar "+m.Version+"//EN" {
 		t.Errorf("PRODID %q does not follow version %s", icsProdID, m.Version)
