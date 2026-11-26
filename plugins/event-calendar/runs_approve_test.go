@@ -33,7 +33,7 @@ func TestApproveRunStages(t *testing.T) {
 		got[k] = s
 	}
 	want := map[string]string{
-		"start_at": "2027-02-20T20:00", "end_at": "2027-02-20T22:00", "venue_name": "The Anchor",
+		"start_at": "2027-02-20T20:00:00Z", "end_at": "2027-02-20T22:00:00Z", "venue_name": "The Anchor",
 		"description": "Bring a song.", "source_kind": "submission", "source_uid": "sub-12",
 	}
 	if len(got) != len(want) {
@@ -104,10 +104,10 @@ func TestApproveRunCapsTitleByCharacters(t *testing.T) {
 
 func TestApproveWritesTheEditorForm(t *testing.T) {
 	for _, c := range []struct{ name, start, end, wantStart, wantEnd string }{
-		{"local", "2027-02-20T20:00", "2027-02-20T22:00", "2027-02-20T20:00", "2027-02-20T22:00"},
-		{"utc row in winter", "2026-12-20T20:00:00Z", "2026-12-20T22:00:00Z", "2026-12-20T21:00", "2026-12-20T23:00"},
-		{"utc row in summer", "2027-06-12T18:00:00Z", "", "2027-06-12T20:00", ""},
-		{"across the change", "2027-03-27T23:30:00Z", "2027-03-28T01:30:00Z", "2027-03-28T00:30", "2027-03-28T03:30"},
+		{"local", "2027-02-20T20:00", "2027-02-20T22:00", "2027-02-20T20:00:00+01:00", "2027-02-20T22:00:00+01:00"},
+		{"utc row in winter", "2026-12-20T20:00:00Z", "2026-12-20T22:00:00Z", "2026-12-20T21:00:00+01:00", "2026-12-20T23:00:00+01:00"},
+		{"utc row in summer", "2027-06-12T18:00:00Z", "", "2027-06-12T20:00:00+02:00", ""},
+		{"across the change", "2027-03-27T23:30:00Z", "2027-03-28T01:30:00Z", "2027-03-28T00:30:00+01:00", "2027-03-28T03:30:00+02:00"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := approveParams()

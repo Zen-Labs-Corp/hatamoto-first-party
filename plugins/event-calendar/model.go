@@ -95,13 +95,11 @@ func parseTime(s string, loc *time.Location) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// editorTime writes t as the schema's start_at/end_at pattern asks: the local
-// date and time in loc, no zone, rounded to the minute. The fields are plain
-// text with a pattern, not format date-time: core asserts that format as
-// RFC 3339 on save and on publish, which its own datetime-local input never
-// posts.
+// editorTime writes t as the schema's start_at/end_at format asks: RFC 3339
+// with the offset of loc, rounded to the minute. The offset form also matches
+// the pattern older installs keep on these fields.
 func editorTime(t time.Time, loc *time.Location) string {
-	return t.Round(time.Minute).In(loc).Format("2006-01-02T15:04")
+	return t.Round(time.Minute).In(loc).Format(time.RFC3339)
 }
 
 // attrString returns a string attribute, empty when missing or not a string.

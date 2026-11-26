@@ -77,14 +77,14 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 		}
 		for _, k := range []string{"start_at", "end_at"} {
 			if v := attrText(t, attrs, k); v != "" {
-				if _, err := time.Parse("2006-01-02T15:04", v); err != nil {
+				if _, err := time.Parse(time.RFC3339, v); err != nil {
 					t.Errorf("%s %q is not the editor's form", k, v)
 				}
 			}
 		}
 	}
 	a := attrsOf(t, byKey[plain.Key])
-	if attrText(t, a, "source_kind") != "google" || attrText(t, a, "start_at") != "2027-06-12T10:00" || attrText(t, a, "end_at") != "2027-06-12T12:00" ||
+	if attrText(t, a, "source_kind") != "google" || attrText(t, a, "start_at") != "2027-06-12T10:00:00Z" || attrText(t, a, "end_at") != "2027-06-12T12:00:00Z" ||
 		string(a["venue"]) != `["v1"]` || string(a["category"]) != `["c1"]` || a["venue_name"] != nil || attrText(t, a, "description") != "Bring a friend." {
 		t.Errorf("plain: %s", byKey[plain.Key].Attributes)
 	}
@@ -138,7 +138,7 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 	}
 	up := h3.upserts[0]
 	a = attrsOf(t, up)
-	if up.Slug != "open-mic" || up.Name != "Open mic" || up.Locale != "en" || up.SourceKey != plain.Key || attrText(t, a, "end_at") != "2027-06-12T13:00" ||
+	if up.Slug != "open-mic" || up.Name != "Open mic" || up.Locale != "en" || up.SourceKey != plain.Key || attrText(t, a, "end_at") != "2027-06-12T13:00:00Z" ||
 		string(a["page_sections"]) != `[{"k":1}]` || attrText(t, a, "price") != "Free" || a["source_url"] != nil {
 		t.Errorf("update: %+v %s", up, up.Attributes)
 	}
@@ -163,7 +163,7 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 		t.Fatalf("own zone, moved end: %+v", h6.upserts)
 	}
 	a = attrsOf(t, h6.upserts[0])
-	if attrText(t, a, "start_at") != "2027-06-12T06:00" || attrText(t, a, "end_at") != "2027-06-12T09:00" || attrText(t, a, "time_zone") != "America/New_York" {
+	if attrText(t, a, "start_at") != "2027-06-12T06:00:00-04:00" || attrText(t, a, "end_at") != "2027-06-12T09:00:00-04:00" || attrText(t, a, "time_zone") != "America/New_York" {
 		t.Errorf("own zone update: %s", h6.upserts[0].Attributes)
 	}
 
@@ -179,7 +179,7 @@ func TestImportStagesCreatesAndUpdates(t *testing.T) {
 	if h7.failed != "" || len(h7.upserts) != 0 {
 		t.Fatalf("all day, own zone: failed %q, upserts %+v", h7.failed, h7.upserts)
 	}
-	if a := buildCreateAttrs(day.Ev, time.UTC, "google", "k", "", ""); attrText(t, a, "start_at") != "2029-10-31T00:00" || attrText(t, a, "end_at") != "2029-11-01T00:00" {
+	if a := buildCreateAttrs(day.Ev, time.UTC, "google", "k", "", ""); attrText(t, a, "start_at") != "2029-10-31T00:00:00Z" || attrText(t, a, "end_at") != "2029-11-01T00:00:00Z" {
 		t.Errorf("all day dates: %s", a["start_at"])
 	}
 
@@ -259,8 +259,8 @@ func TestSameImport(t *testing.T) {
 	}
 }
 
-// Core's editor posts a local "2006-01-02T15:04" for a time field
-// without a zone, and the schema takes it as a pattern, not as RFC 3339.
+// The schema types start_at/end_at as date-time, so core takes strict RFC 3339
+// only: the importer writes the local time with its offset.
 func TestImportedTimesAreEditorLoadable(t *testing.T) {
 	berlin, _ := time.LoadLocation("Europe/Berlin")
 	london, _ := time.LoadLocation("Europe/London")
@@ -269,13 +269,13 @@ func TestImportedTimesAreEditorLoadable(t *testing.T) {
 		ev         importEvent
 		start, end string
 	}{
-		{"winter", importEvent{Start: time.Date(2026, 12, 20, 20, 0, 0, 0, time.UTC), End: time.Date(2026, 12, 20, 22, 0, 0, 0, time.UTC)}, "2026-12-20T21:00", "2026-12-20T23:00"},
-		{"summer", importEvent{Start: time.Date(2027, 6, 12, 18, 0, 0, 0, time.UTC)}, "2027-06-12T20:00", ""},
+		{"winter", importEvent{Start: time.Date(2026, 12, 20, 20, 0, 0, 0, time.UTC), End: time.Date(2026, 12, 20, 22, 0, 0, 0, time.UTC)}, "2026-12-20T21:00:00+01:00", "2026-12-20T23:00:00+01:00"},
+		{"summer", importEvent{Start: time.Date(2027, 6, 12, 18, 0, 0, 0, time.UTC)}, "2027-06-12T20:00:00+02:00", ""},
 		// the clocks change on 2027-03-28: 01:30 UTC+1 and 03:30 UTC+2 are one hour apart
-		{"across the change", importEvent{Start: time.Date(2027, 3, 27, 23, 30, 0, 0, time.UTC), End: time.Date(2027, 3, 28, 1, 30, 0, 0, time.UTC)}, "2027-03-28T00:30", "2027-03-28T03:30"},
+		{"across the change", importEvent{Start: time.Date(2027, 3, 27, 23, 30, 0, 0, time.UTC), End: time.Date(2027, 3, 28, 1, 30, 0, 0, time.UTC)}, "2027-03-28T00:30:00+01:00", "2027-03-28T03:30:00+02:00"},
 		// a feed in another zone: 19:00 in London is 20:00 in Berlin
-		{"feed zone", importEvent{Start: time.Date(2027, 6, 12, 19, 0, 0, 0, london)}, "2027-06-12T20:00", ""},
-		{"all day", importEvent{Start: time.Date(2027, 7, 1, 0, 0, 0, 0, berlin), End: time.Date(2027, 7, 2, 0, 0, 0, 0, berlin), AllDay: true}, "2027-07-01T00:00", "2027-07-02T00:00"},
+		{"feed zone", importEvent{Start: time.Date(2027, 6, 12, 19, 0, 0, 0, london)}, "2027-06-12T20:00:00+02:00", ""},
+		{"all day", importEvent{Start: time.Date(2027, 7, 1, 0, 0, 0, 0, berlin), End: time.Date(2027, 7, 2, 0, 0, 0, 0, berlin), AllDay: true}, "2027-07-01T00:00:00+02:00", "2027-07-02T00:00:00+02:00"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -310,9 +310,9 @@ func TestImportedTimesAreEditorLoadable(t *testing.T) {
 
 func TestEditorTimeRoundsToTheMinute(t *testing.T) {
 	for in, want := range map[time.Time]string{
-		time.Date(2027, 6, 12, 18, 0, 29, 0, time.UTC):  "2027-06-12T20:00",
-		time.Date(2027, 6, 12, 18, 0, 30, 0, time.UTC):  "2027-06-12T20:01",
-		time.Date(2027, 6, 12, 17, 59, 45, 0, time.UTC): "2027-06-12T20:00",
+		time.Date(2027, 6, 12, 18, 0, 29, 0, time.UTC):  "2027-06-12T20:00:00+02:00",
+		time.Date(2027, 6, 12, 18, 0, 30, 0, time.UTC):  "2027-06-12T20:01:00+02:00",
+		time.Date(2027, 6, 12, 17, 59, 45, 0, time.UTC): "2027-06-12T20:00:00+02:00",
 	} {
 		if got := editorTime(in, time.FixedZone("x", 7200)); got != want {
 			t.Errorf("editorTime(%v) = %q, want %q", in, got, want)

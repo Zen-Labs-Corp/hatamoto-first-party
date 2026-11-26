@@ -48,7 +48,7 @@ var sections = fieldSpec{typ: "array", free: true}
 var wantSchemas = map[string]map[string]fieldSpec{
 	"calendar-event": {
 		"page_sections": sections,
-		"start_at":      str(""), "end_at": str(""), "all_day": scalar("boolean"),
+		"start_at":      str("date-time"), "end_at": str("date-time"), "all_day": scalar("boolean"),
 		"time_zone":       str(""),
 		"event_status":    en("scheduled", "cancelled", "postponed"),
 		"attendance_mode": en("offline", "online", "hybrid"),
@@ -288,8 +288,8 @@ func TestShapeMirrorRejectsReservedNames(t *testing.T) {
 }
 
 // schemaAcceptsTime reports whether core's entity validator takes v for
-// calendar-event start_at/end_at. Core asserts any date* format as strict
-// RFC 3339 on save and on publish, so the fields carry a pattern instead.
+// calendar-event start_at/end_at. Core asserts a date-time format as strict
+// RFC 3339 on save and on publish.
 func schemaAcceptsTime(t *testing.T, name, v string) bool {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("schemas", "calendar-event.json"))
@@ -313,15 +313,34 @@ func schemaAcceptsTime(t *testing.T, name, v string) bool {
 
 func TestTimeFieldsTakeWhatTheEditorPosts(t *testing.T) {
 	for _, name := range []string{"start_at", "end_at"} {
-		for _, v := range []string{"2026-12-20T20:00", "2026-12-20T20:00:30", "2026-12-20T20:00:00Z", "2026-12-20T20:00:00+01:00"} {
+		for _, v := range []string{"2026-12-20T20:00:00Z", "2026-12-20T20:00:00+01:00", "2026-12-20T20:00:30.5Z"} {
 			if !schemaAcceptsTime(t, name, v) {
 				t.Errorf("%s refuses %q", name, v)
 			}
 		}
-		for _, v := range []string{"", "2026-12-20", "20:00", "tomorrow", "2026-12-20 20:00"} {
+		for _, v := range []string{"", "2026-12-20", "20:00", "tomorrow", "2026-12-20 20:00", "2026-12-20T20:00", "2026-12-20T20:00:30"} {
 			if v != "" && schemaAcceptsTime(t, name, v) {
 				t.Errorf("%s takes %q", name, v)
 			}
+		}
+	}
+}
+
+// Sites installed before date-time keep the pattern the fields had in 0.5.0
+// (evolution never retypes), so what the plugin writes must match it too.
+func TestOldPatternTakesWhatThePluginWrites(t *testing.T) {
+	old := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(Z|[+\-]\d{2}:\d{2})?$`)
+	berlin, _ := time.LoadLocation("Europe/Berlin")
+	allDay := importEvent{Start: time.Date(2027, 7, 1, 0, 0, 0, 0, berlin), AllDay: true}
+	attrs := buildCreateAttrs(allDay, berlin, "google", "k", "", "")
+	vals := []string{
+		editorTime(time.Date(2026, 12, 20, 20, 0, 0, 0, time.UTC), berlin),
+		editorTime(time.Date(2027, 6, 12, 18, 0, 0, 0, time.UTC), time.UTC),
+		attrText(t, attrs, "start_at"),
+	}
+	for _, v := range vals {
+		if !old.MatchString(v) {
+			t.Errorf("the 0.5.0 pattern refuses %q", v)
 		}
 	}
 }

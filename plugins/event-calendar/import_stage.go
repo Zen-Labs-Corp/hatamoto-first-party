@@ -121,7 +121,7 @@ func buildCreateAttrs(ev importEvent, loc *time.Location, kind, key, venueID, ca
 	// an all-day event keeps the feed's calendar date whatever zone it is read in
 	stamp := func(t time.Time) string {
 		if ev.AllDay {
-			return t.Format("2006-01-02") + "T00:00"
+			return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc).Format(time.RFC3339)
 		}
 		return editorTime(t, loc)
 	}
