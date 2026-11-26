@@ -166,9 +166,15 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		}
 		up.Attributes, _ = json.Marshal(want)
 		upserts++
-		if _, err := guest.EntityUpsert(callHost, up); err != nil {
+		res, err := guest.EntityUpsert(callHost, up)
+		if err != nil {
 			sum["failed"]++
 			continue
+		}
+		if sched && !res.Created {
+			// the key is mapped to an event the run cannot see: core would refuse this create and hold back the whole changeset
+			return failRun(fmt.Sprintf("%s (%s) was imported before and is now a draft or was deleted. Publish it or wait until it leaves the feed. Nothing was published.",
+				up.Name, ev.Start.In(loc).Format("2006-01-02")))
 		}
 		if found {
 			sum["updated"]++
@@ -459,9 +465,6 @@ func finishImport(sum map[string]int, createCap int, sched bool) (sdk.RunStepRes
 	}
 	if n := sum["dropped_recurrence"]; n > 0 {
 		msg += fmt.Sprintf("; %d repeating rules left out", n)
-	}
-	if sched {
-		msg += "; an imported event that was deleted or unpublished and is still in a feed holds back publishing until it leaves the feed"
 	}
 	_ = guest.RunProgress(callHost, done+skipped, done+skipped, msg)
 	return sdk.RunStepResult{}, guest.RunFinish(callHost, sum)

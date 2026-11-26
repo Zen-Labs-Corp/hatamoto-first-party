@@ -490,14 +490,32 @@ func TestScheduledRunStagesNothingWhenItCannotCheckEveryEvent(t *testing.T) {
 	}
 }
 
-func TestScheduledProgressWarnsAboutDeletedEvents(t *testing.T) {
+func TestScheduledRunFailsNamingAnEventItCannotSee(t *testing.T) {
 	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
-	h := &runHost{name: runScheduledImport, runID: "rw", created: true}
+	ev := record("google", "Town", "a", importEvent{Title: "Open Mic", Start: time.Date(2027, 6, 20, 10, 0, 0, 0, time.UTC)})
+	// the host maps the key already (created is false) but the run listed no such event
+	h := &runHost{name: runScheduledImport, runID: "rw", created: false}
 	h.install(t)
-	buffered(t, h, record("google", "Town", "a", importEvent{Title: "A", Start: time.Date(2027, 6, 20, 10, 0, 0, 0, time.UTC)}))
+	buffered(t, h, ev)
 	h.step(t)
-	if !strings.Contains(h.progress, "deleted or unpublished") {
-		t.Errorf("progress %q", h.progress)
+	if !strings.Contains(h.failed, "Open Mic (2027-06-20)") || !strings.Contains(h.failed, "draft") || h.finished != nil {
+		t.Errorf("failed %q, finished %v", h.failed, h.finished)
+	}
+	// a clean run says nothing about drafts
+	h = &runHost{name: runScheduledImport, runID: "rw2", created: true}
+	h.install(t)
+	buffered(t, h, ev)
+	h.step(t)
+	if h.failed != "" || strings.Contains(h.progress, "draft") {
+		t.Errorf("failed %q, progress %q", h.failed, h.progress)
+	}
+	// Run now is reviewed and keeps staging
+	h = &runHost{name: runEditDates, params: map[string]any{"action": "import_url"}, runID: "rm", created: false}
+	h.install(t)
+	buffered(t, h, ev)
+	h.step(t)
+	if h.failed != "" || len(h.upserts) != 1 {
+		t.Errorf("manual: failed %q, upserts %d", h.failed, len(h.upserts))
 	}
 }
 
