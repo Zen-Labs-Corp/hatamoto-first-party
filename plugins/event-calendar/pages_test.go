@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -63,7 +64,7 @@ func TestPagesRenderEscapedHTMLWithCacheHeader(t *testing.T) {
 				t.Errorf("%s: missing %q in\n%s", c.slug, want, r.Body)
 			}
 		}
-		for _, bad := range []string{"<script", "<b>", "javascript:", "Stale type", "<style", " style=", "onclick"} {
+		for _, bad := range []string{"<script", "<b>", "javascript:", "Stale type", " style=", "onclick"} {
 			if strings.Contains(r.Body, bad) {
 				t.Errorf("%s: unexpected %q in\n%s", c.slug, bad, r.Body)
 			}
@@ -169,5 +170,51 @@ func TestOrganizerContactNeedsShowContact(t *testing.T) {
 				t.Errorf("%s: %q shown = %v, want %v", name, v, got, c.show)
 			}
 		}
+	}
+}
+
+func TestPagesCarryOneStaticStyle(t *testing.T) {
+	h := &fakeHost{entities: []string{pgVenue, pgOrganizer, pgSeries}, dbRows: pgRows}
+	h.install(t)
+	for _, c := range []struct{ pattern, slug string }{{"/venue/{slug}", "mill"}, {"/organizer/{slug}", "guild"}, {"/series/{slug}", "jazz"}} {
+		body := callPage(t, c.pattern, c.slug).Body
+		if strings.Count(body, "<style>") != 1 || strings.Count(body, "</style>") != 1 {
+			t.Fatalf("%s: want exactly one style:\n%s", c.slug, body)
+		}
+		head := body[:strings.Index(body, "</head>")]
+		if !strings.Contains(head, "<style>"+pageCSS+"</style>") {
+			t.Errorf("%s: style is not pageCSS inside head", c.slug)
+		}
+	}
+	for _, bad := range []string{"url(", "@import", "expression(", "<"} {
+		if strings.Contains(pageCSS, bad) {
+			t.Errorf("pageCSS contains %q", bad)
+		}
+	}
+}
+
+func TestVenueUpcomingMore(t *testing.T) {
+	rows := func(n int) string {
+		var parts []string
+		for i := 0; i < n; i++ {
+			d := 10 + i
+			parts = append(parts, `{"id":"f`+strings.Repeat("x", i)+`","schema_slug":"event","slug":"a","name":"Gig","url":"/events/a","starts_at":"2026-07-`+
+				strconv.Itoa(d)+`T17:00:00+00:00","ends_at":"2026-07-`+strconv.Itoa(d)+`T19:00:00+00:00"}`)
+		}
+		return "[" + strings.Join(parts, ",") + "]"
+	}
+	h := &fakeHost{entities: []string{pgVenue}, dbRows: rows(12)}
+	h.install(t)
+	body := callPage(t, "/venue/{slug}", "mill").Body
+	if !strings.Contains(body, "<h2>Upcoming here</h2>") || !strings.Contains(body, "More (2)") {
+		t.Fatalf("12 rows:\n%s", body)
+	}
+	if before := body[:strings.Index(body, "<details>")]; strings.Count(before, "<li>") != 10 {
+		t.Errorf("want 10 items before More:\n%s", before)
+	}
+	h = &fakeHost{entities: []string{pgVenue}, dbRows: rows(3)}
+	h.install(t)
+	if body := callPage(t, "/venue/{slug}", "mill").Body; strings.Contains(body, "<details>") {
+		t.Errorf("3 rows must not have More:\n%s", body)
 	}
 }
