@@ -168,8 +168,13 @@ func TestItemPage(t *testing.T) {
 	install(t, pageDB(0, map[string]any{"body": "first\n\n  \n\nsecond ", "url": ""}))
 	r := newRegistry(t, nil)
 	c := render(t, r, "/item/42", "k1", nil).Blocks[0].Content
-	if paras := c["paras"].([]string); !reflect.DeepEqual(paras, []string{"first", "second"}) {
+	if paras := c["paras"].([][]map[string]any); !reflect.DeepEqual(paras, [][]map[string]any{{seg("first", "", false)}, {seg("second", "", false)}}) {
 		t.Errorf("paras %v", paras)
+	}
+	install(t, pageDB(0, map[string]any{"body": "go to https://a.example/x.", "url": ""}))
+	c = render(t, r, "/item/42", "k1", nil).Blocks[0].Content
+	if paras := c["paras"].([][]map[string]any); len(paras) != 1 || paras[0][1]["href"] != "https://a.example/x" {
+		t.Errorf("link paras %v", paras)
 	}
 	if row := c["row"].(map[string]any); row["rank"] != "" || row["next"] != "/item/42#42" || row["vote"] != "up" {
 		t.Errorf("row %v", row)

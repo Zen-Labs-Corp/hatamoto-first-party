@@ -234,6 +234,8 @@ func TestPagesAboutSegments(t *testing.T) {
 		{"a\nb", []map[string]any{seg("a", "", false), seg("", "", true), seg("b", "", false)}},
 		{"a\r\nb", []map[string]any{seg("a", "", false), seg("", "", true), seg("b", "", false)}},
 		{"javascript:alert(1)", []map[string]any{seg("javascript:alert(1)", "", false)}},
+		{"(https://example.com/x)", []map[string]any{seg("(", "", false), seg("https://example.com/x", "https://example.com/x", false), seg(")", "", false)}},
+		{"https://en.wikipedia.org/wiki/Foo_(bar)", []map[string]any{seg("https://en.wikipedia.org/wiki/Foo_(bar)", "https://en.wikipedia.org/wiki/Foo_(bar)", false)}},
 		{"", nil},
 	}
 	for _, c := range cases {

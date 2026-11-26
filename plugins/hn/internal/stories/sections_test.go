@@ -145,7 +145,15 @@ func TestSectionsRenderItem(t *testing.T) {
 	r := newRegistry(t, nil)
 	s := storyRow{EntityID: entityID, ItemNo: 42, AuthorID: 2, By: "bob", Title: "T", Kind: "story", CreatedAt: feedNow.Add(-3 * time.Hour)}
 	row := rowView(r, nil, s, 0, "/item/42", core.DefaultSettings())
-	html := run(t, "section-hn_item", map[string]any{"row": row, "paras": []string{"one <b>", "two"}})
+	html := run(t, "section-hn_item", map[string]any{"row": row, "paras": [][]map[string]any{textSegments("one <b>"), textSegments("two"), textSegments("<script>alert(1)</script> see https://a.example/x.")}})
+	for _, want := range []string{`<a href="https://a.example/x" rel="nofollow ugc noopener">https://a.example/x</a>.`, `&lt;script&gt;`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("item lacks %q: %s", want, html)
+		}
+	}
+	if strings.Contains(html, "<textarea") || strings.Contains(html, "<script>") {
+		t.Errorf("item: %s", html)
+	}
 	if !strings.Contains(html, "<p>one &lt;b&gt;</p>") || !strings.Contains(html, "<p>two</p>") || !strings.Contains(html, "hn-item-head") {
 		t.Errorf("item: %s", html)
 	}

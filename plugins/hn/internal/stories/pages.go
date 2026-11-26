@@ -143,10 +143,10 @@ func itemPage(r *core.Registry, p *core.Page) error {
 		c["gone"] = true
 	} else {
 		c["row"] = rowView(r, v, it.storyRow, 0, itemPath(no), core.LoadSettings())
-		paras := []string{}
+		paras := [][]map[string]any{}
 		for _, s := range strings.Split(it.Body, "\n\n") {
 			if s = strings.TrimSpace(s); s != "" {
-				paras = append(paras, s)
+				paras = append(paras, textSegments(s))
 			}
 		}
 		c["paras"] = paras
