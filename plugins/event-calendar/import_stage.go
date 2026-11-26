@@ -325,7 +325,7 @@ func finishImport(sum map[string]int) (sdk.RunStepResult, error) {
 	read := sum["created"] + sum["updated"] + sum["unchanged"] + sum["failed"]
 	msg := fmt.Sprintf("%d events read", read)
 	if n := sum["skipped_over_cap"]; n > 0 {
-		msg += fmt.Sprintf(", %d left out by the %d-event limit", n, maxImportEvents)
+		msg += fmt.Sprintf(", %d left out by the %d-event limit", n, maxReadEvents)
 	}
 	if n := sum["dropped_recurrence"]; n > 0 {
 		msg += fmt.Sprintf(", %d repeating rules left out", n)

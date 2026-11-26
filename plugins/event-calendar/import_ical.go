@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	maxICalEvents   = 500
+	maxICalEvents   = 5000 // the run reads at most maxReadEvents of them and counts the rest
 	maxImportTitle  = 200
 	maxImportText   = 4000
 	maxImportUID    = 512

@@ -176,9 +176,9 @@ func TestParseICalEvents(t *testing.T) {
 		}
 	})
 
-	t.Run("at most 500 events", func(t *testing.T) {
+	t.Run("at most maxICalEvents events", func(t *testing.T) {
 		var b strings.Builder
-		for i := range 600 {
+		for i := range maxICalEvents + 100 {
 			b.WriteString(vevent("UID:e"+strconv.Itoa(i), "SUMMARY:x", "DTSTART:20260612T100000Z"))
 		}
 		got, err := parseICalEvents(icsBody(b.String()), utc)

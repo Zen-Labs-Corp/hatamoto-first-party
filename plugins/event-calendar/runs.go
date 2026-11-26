@@ -53,7 +53,7 @@ func onStep(s sdk.RunStep) (res sdk.RunStepResult, err error) {
 		var p map[string]any
 		_ = json.Unmarshal(info.Params, &p)
 		switch {
-		case info.Name == runEditDates && paramString(p, "action") == actionImportURL:
+		case info.Name == runScheduledImport, info.Name == runEditDates && importAction(info):
 			return importTransformStep()
 		case info.Name == runEditDates && paramString(p, "action") == actionApprove:
 			return approveSubmission(p)
