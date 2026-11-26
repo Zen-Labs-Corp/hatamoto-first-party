@@ -80,6 +80,31 @@ func TestFeedsBuild(t *testing.T) {
 	}
 }
 
+func TestFeedsPinned(t *testing.T) {
+	clause := "AND NOT (s.item_no = ANY(string_to_array($5, ',')::bigint[]))"
+	for _, c := range []struct {
+		path  string
+		query []string
+		pins  []int64
+		want  bool
+	}{
+		{"/news", nil, []int64{1, 5}, true},
+		{"/", nil, []int64{1, 5}, true},
+		{"/news", []string{"p", "2"}, []int64{1, 5}, true},
+		{"/news", []string{"view", "best"}, []int64{1, 5}, false},
+		{"/newest", nil, []int64{1, 5}, false},
+		{"/news", nil, nil, false},
+	} {
+		q, _ := buildFeed(feedReq{Path: c.path, Q: qf(c.query...), Viewer: &core.User{ID: 7}, PageSize: 30, Pinned: c.pins})
+		if has := strings.Contains(q.SQL, clause); has != c.want {
+			t.Errorf("%s %v pins %v: clause present %v, want %v", c.path, c.query, c.pins, has, c.want)
+		}
+		if c.want && (len(q.Args) != 5 || q.Args[4] != "1,5") {
+			t.Errorf("%s %v: args %v", c.path, c.query, q.Args)
+		}
+	}
+}
+
 func TestFeedsShowdead(t *testing.T) {
 	sd := &core.User{ID: 1, Showdead: true}
 	if q, _ := buildFeed(feedReq{Path: "/news", Q: qf(), Viewer: sd, PageSize: 30}); q.Args[1] != false {

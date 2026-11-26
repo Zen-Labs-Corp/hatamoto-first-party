@@ -29,7 +29,8 @@ func place(p *core.Page, typ string, c map[string]any, appendOK bool) {
 // a host failure leaves the page as it was.
 func feedPage(r *core.Registry, p *core.Page) error {
 	st, v := core.LoadSettings(), p.Viewer()
-	rows, more, first, heading, err := loadFeed(feedReq{Path: p.Ctx.Path, Q: p.Query, Viewer: v, PageSize: st.PageSize})
+	pins := parsePinned(st.PinnedItems)
+	rows, more, first, heading, err := loadFeed(feedReq{Path: p.Ctx.Path, Q: p.Query, Viewer: v, PageSize: st.PageSize, Pinned: pins})
 	if err != nil {
 		return nil
 	}
@@ -43,12 +44,19 @@ func feedPage(r *core.Registry, p *core.Page) error {
 	if len(back) > 0 {
 		next += "?" + back.Encode()
 	}
-	views := make([]map[string]any, 0, len(rows))
+	views := make([]map[string]any, 0, len(rows)+len(pins))
+	if (p.Ctx.Path == "/" || p.Ctx.Path == "/news") && p.Query("view") != "best" && parsePage(p.Query("p")) == 1 && len(pins) > 0 {
+		if pinned, err := loadPinned(pins, v); err == nil { // fail open: no pins
+			for _, s := range pinned {
+				views = append(views, rowView(r, v, s, 0, next, st))
+			}
+		}
+	}
 	for i, s := range rows {
 		views = append(views, rowView(r, v, s, first+i, next, st))
 	}
 	place(p, "hn_feed", map[string]any{
-		"notice": core.NoticeText(p.Query("m")), "heading": heading, "rows": views, "more": more, "empty": len(rows) == 0,
+		"notice": core.NoticeText(p.Query("m")), "heading": heading, "rows": views, "more": more, "empty": len(views) == 0,
 	}, p.Ctx.Path != "/") // "/" only fills a block the site already has
 	return nil
 }

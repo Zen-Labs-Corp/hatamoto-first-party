@@ -33,6 +33,17 @@ func TestSettingsPartialOverrideAndMinimums(t *testing.T) {
 	}
 }
 
+func TestSettingsPinnedItems(t *testing.T) {
+	settingsHost(t, map[string]any{"pinned_items": "1, 5"}, nil)
+	if got := core.LoadSettings().PinnedItems; got != "1, 5" {
+		t.Errorf("PinnedItems %q", got)
+	}
+	settingsHost(t, map[string]any{"page_size": 10}, nil)
+	if got := core.LoadSettings().PinnedItems; got != "" {
+		t.Errorf("absent PinnedItems %q", got)
+	}
+}
+
 func TestSettingsPageSizeClamp(t *testing.T) {
 	settingsHost(t, map[string]any{"page_size": 5000}, nil)
 	if got := core.LoadSettings().PageSize; got != 100 {

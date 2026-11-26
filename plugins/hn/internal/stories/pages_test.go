@@ -63,6 +63,46 @@ func TestFeedsPageReplacesBlock(t *testing.T) {
 	}
 }
 
+// pinnedDB answers the pinned query (array_position) with pinned and the ranked feed with n rows.
+func pinnedDB(n int, pinned string, pinErr bool) *fakeDB {
+	db := pageDB(n, nil)
+	db.Settings = map[string]any{"pinned_items": "1"}
+	db.Query = func(sql string, _ []any) (any, error) {
+		switch {
+		case strings.Contains(sql, "array_position"):
+			if pinErr {
+				return nil, hostErr("db_error")
+			}
+			return map[string]any{"rows": [][]any{{pinned}}}, nil
+		case strings.Contains(sql, "jsonb_agg"):
+			return map[string]any{"rows": [][]any{{rowsJSON(n, 900)}}}, nil
+		}
+		return map[string]any{"rows": [][]any{}}, nil
+	}
+	return db
+}
+
+func TestFeedsPagePinned(t *testing.T) {
+	pinNow(t, feedNow)
+	pin := `[{"entity_id":"` + entityID + `","item_no":1,"author_id":2,"by":"bob","kind":"story","dead":false,"points":9,"comment_count":0,"created_at":"2026-11-25T11:00:00Z","title":"Welcome","url":"","domain":"","voted_at":null}]`
+	r := newRegistry(t, nil)
+	rowsOf := func(db *fakeDB, q map[string]string) []map[string]any {
+		install(t, db)
+		out := render(t, r, "/news", "k1", q, sdk.Block{ID: "b7", Type: "hn_feed"})
+		return out.Blocks[0].Content["rows"].([]map[string]any)
+	}
+	rows := rowsOf(pinnedDB(2, pin, false), nil)
+	if len(rows) != 3 || rows[0]["no"] != "1" || rows[0]["rank"] != "" || rows[0]["score"] == "" || rows[1]["rank"] != "1." || rows[2]["rank"] != "2." {
+		t.Errorf("page 1 rows %v", rows)
+	}
+	if rows = rowsOf(pinnedDB(2, pin, false), map[string]string{"p": "2"}); len(rows) != 2 || rows[0]["rank"] != "31." {
+		t.Errorf("page 2 rows %v", rows)
+	}
+	if rows = rowsOf(pinnedDB(2, pin, true), nil); len(rows) != 2 || rows[0]["rank"] != "1." {
+		t.Errorf("pin error rows %v", rows)
+	}
+}
+
 func TestFeedsPageBestKeepsView(t *testing.T) {
 	pinNow(t, feedNow)
 	install(t, pageDB(3, nil))

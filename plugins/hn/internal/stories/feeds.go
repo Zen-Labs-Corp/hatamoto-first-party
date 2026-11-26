@@ -15,6 +15,7 @@ type feedReq struct {
 	Q        func(string) string
 	Viewer   *core.User
 	PageSize int
+	Pinned   []int64 // item numbers kept off the ranked /, /news list
 }
 
 // feedQuery is the SQL of a feed, its arguments ($1 viewer id, $2 showdead,
@@ -91,6 +92,9 @@ func buildFeed(f feedReq) (q feedQuery, ok bool) {
 	case "/", "/news":
 		where = "NOT s.dead AND s.kind <> 'job'"
 		args[1] = false
+		if len(f.Pinned) > 0 {
+			where += " AND NOT (s.item_no = ANY(string_to_array(" + arg(pinArg(f.Pinned)) + ", ',')::bigint[]))"
+		}
 	case "/newest":
 		where, order = "s.kind <> 'job'", "s.item_no DESC"
 		q.FirstRank, args[3] = 1, 0
