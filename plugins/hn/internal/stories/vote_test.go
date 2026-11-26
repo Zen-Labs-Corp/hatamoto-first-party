@@ -300,3 +300,23 @@ func TestStoryVoteReportsOnlyStoredVotes(t *testing.T) {
 		t.Errorf("lost race (uncounted): %v", got)
 	}
 }
+
+func TestStoryVoteKeepsRowFragment(t *testing.T) {
+	pinNow(t, voteNow)
+	db := voteDB(nil)
+	install(t, db)
+	r := newRegistry(t, nil)
+	if resp := vote(t, r, "42", url.Values{"next": {"/news?p=2#42"}}, "k1", false); resp.Status != 303 || location(resp) != "/news?p=2#42" {
+		t.Errorf("vote %d %q", resp.Status, location(resp))
+	}
+	db = voteDB(map[string]any{"voted_at": "2026-01-02T11:30:00Z"})
+	install(t, db)
+	if resp := vote(t, r, "42", url.Values{"how": {"un"}, "next": {"/news#42"}}, "k1", false); location(resp) != "/news#42" {
+		t.Errorf("unvote %q", location(resp))
+	}
+	db = voteDB(map[string]any{"voted_at": "2026-01-02T10:59:00Z"})
+	install(t, db)
+	if resp := vote(t, r, "42", url.Values{"how": {"un"}, "next": {"/news#42"}}, "k1", false); location(resp) != "/news?m=story-unvote-late#42" {
+		t.Errorf("refusal %q", location(resp))
+	}
+}

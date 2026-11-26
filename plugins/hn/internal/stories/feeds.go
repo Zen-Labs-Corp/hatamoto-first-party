@@ -15,6 +15,7 @@ type feedReq struct {
 	Q        func(string) string
 	Viewer   *core.User
 	PageSize int
+	Pinned   []int64 // item numbers kept off the ranked /, /news list
 }
 
 // feedQuery is the SQL of a feed, its arguments ($1 viewer id, $2 showdead,
@@ -91,6 +92,9 @@ func buildFeed(f feedReq) (q feedQuery, ok bool) {
 	case "/", "/news":
 		where = "NOT s.dead AND s.kind <> 'job'"
 		args[1] = false
+		if len(f.Pinned) > 0 {
+			where += " AND NOT (s.item_no = ANY(string_to_array(" + arg(pinArg(f.Pinned)) + ", ',')::bigint[]))"
+		}
 	case "/newest":
 		where, order = "s.kind <> 'job'", "s.item_no DESC"
 		q.FirstRank, args[3] = 1, 0
@@ -166,9 +170,10 @@ func rowView(r *core.Registry, v *core.User, s storyRow, rank int, next string, 
 	no := strconv.FormatInt(s.ItemNo, 10)
 	itemHref := "/item/" + no
 	voteHref := "/p/hn/vote/story/" + no
+	rowNext := next + "#" + no
 	m := map[string]any{
 		"no": no, "title": s.Title, "href": itemHref, "external": s.URL != "", "site": s.Domain,
-		"site_href": "/from?site=" + url.QueryEscape(s.Domain), "vote_href": voteHref, "next": next,
+		"site_href": "/from?site=" + url.QueryEscape(s.Domain), "vote_href": voteHref, "next": rowNext,
 		"job": s.Kind == "job", "by": s.By, "user_href": "/user?id=" + url.QueryEscape(s.By),
 		"age": ageText(core.Now().Sub(s.CreatedAt)), "item_href": itemHref, "rank": "", "score": "", "comments": "",
 	}
@@ -196,10 +201,11 @@ func rowView(r *core.Registry, v *core.User, s storyRow, rank int, next string, 
 
 	var acts []map[string]any
 	add := func(label, href, class string, post bool) {
-		acts = append(acts, map[string]any{"label": label, "href": href, "class": class, "post": post})
+		acts = append(acts, map[string]any{"label": label, "href": href, "class": class, "post": post, "next": ""})
 	}
 	if v != nil && s.VotedAt != nil && core.Now().Sub(*s.VotedAt) <= unvoteWindow {
 		add("unvote", voteHref+"?how=un", "hn-unvote", true)
+		acts[len(acts)-1]["next"] = rowNext
 	}
 	if v != nil && canChange(v, &storyRef{AuthorID: s.AuthorID, CreatedAt: s.CreatedAt}, st) == "" {
 		add("edit", "/submit?id="+no, "hn-edit", false)

@@ -42,7 +42,7 @@ func TestManifestIsValidForTheSDK(t *testing.T) {
 	if ok, err := m.Compatible(); !ok || err != nil {
 		t.Fatalf("Compatible() = %v, %v", ok, err)
 	}
-	if m.Name != "hn" || m.SDK != "^0.29" || m.Version != "1.2.0" {
+	if m.Name != "hn" || m.SDK != "^0.29" || m.Version != "1.3.0" {
 		t.Fatalf("name %q sdk %q version %q", m.Name, m.SDK, m.Version)
 	}
 }
@@ -219,7 +219,7 @@ func TestManifestSettingsSchema(t *testing.T) {
 		Settings struct {
 			Properties map[string]struct {
 				Type      string `json:"type"`
-				Default   int    `json:"default"`
+				Default   any    `json:"default"`
 				WriteOnly bool   `json:"writeOnly"`
 			} `json:"properties"`
 		} `json:"settings_schema"`
@@ -227,14 +227,18 @@ func TestManifestSettingsSchema(t *testing.T) {
 	if err := json.Unmarshal(rawManifest(t), &doc); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]int{"flag_karma": 30, "downvote_karma": 500, "vouch_karma": 31, "edit_window_minutes": 120, "submit_per_hour": 6, "flags_to_dead": 5, "page_size": 30}
+	want := map[string]any{"flag_karma": 30.0, "downvote_karma": 500.0, "vouch_karma": 31.0, "edit_window_minutes": 120.0, "submit_per_hour": 6.0, "flags_to_dead": 5.0, "page_size": 30.0, "pinned_items": ""}
 	if len(doc.Settings.Properties) != len(want) {
 		t.Fatalf("%d settings, want %d", len(doc.Settings.Properties), len(want))
 	}
 	for k, def := range want {
 		p, ok := doc.Settings.Properties[k]
-		if !ok || p.Type != "integer" || p.Default != def || p.WriteOnly {
-			t.Errorf("setting %s = %+v, want integer default %d", k, p, def)
+		typ := "integer"
+		if _, isStr := def.(string); isStr {
+			typ = "string"
+		}
+		if !ok || p.Type != typ || p.Default != def || p.WriteOnly {
+			t.Errorf("setting %s = %+v, want %s default %v", k, p, typ, def)
 		}
 	}
 }

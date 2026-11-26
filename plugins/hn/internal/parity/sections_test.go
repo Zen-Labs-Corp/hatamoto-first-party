@@ -89,7 +89,7 @@ func TestFavoritesSectionRenders(t *testing.T) {
 		"stories_href": "/favorites?id=bob", "comments_href": "/favorites?id=bob&kind=comment", "rows": []map[string]any{row}, "comments": []map[string]any{cm}, "more": "/favorites?id=bob&p=2", "empty": false})
 	for _, want := range []string{
 		`&lt;script&gt;alert(1)&lt;/script&gt;`, `action="/p/hn/favorite/story/42"`, `action="/p/hn/hide/42"`, `href="/favorites?id=bob&amp;kind=comment"`,
-		`href="/favorites?id=bob&amp;p=2" rel="next"`, `<p class="hn-notice" role="status">Saved.</p>`, `bob&#39;s favorites`, `href="/item/42#` + commentUUID + `"`,
+		`href="/favorites?id=bob&amp;p=2" rel="next"`, `<p class="hn-notice" role="status">Saved.</p>`, `bob&#39;s favorites`, `href="/item/42#comment-` + commentUUID + `"`,
 		`S &lt;b&gt;x&lt;/b&gt;`, `&lt;img src=x&gt;`,
 	} {
 		if !strings.Contains(html, want) {

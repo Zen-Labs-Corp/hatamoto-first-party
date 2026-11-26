@@ -25,7 +25,7 @@ func aboutSegments(s string) []map[string]any {
 		}
 		rest := line
 		for _, m := range urlRe.FindAllStringIndex(line, -1) {
-			link := strings.TrimRight(line[m[0]:m[1]], ".,;:!?)")
+			link := trimLink(line[m[0]:m[1]])
 			end := m[0] + len(link)
 			if link == "" || end <= m[0] {
 				continue
@@ -41,4 +41,21 @@ func aboutSegments(s string) []map[string]any {
 		}
 	}
 	return out
+}
+
+// trimLink drops trailing .,;:!? and a ')' that has no '(' to close inside the link.
+func trimLink(l string) string {
+	for l != "" {
+		c := l[len(l)-1]
+		if strings.IndexByte(".,;:!?", c) >= 0 {
+			l = l[:len(l)-1]
+			continue
+		}
+		if c == ')' && strings.Count(l, "(") < strings.Count(l, ")") {
+			l = l[:len(l)-1]
+			continue
+		}
+		break
+	}
+	return l
 }

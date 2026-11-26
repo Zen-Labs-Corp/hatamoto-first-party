@@ -63,6 +63,46 @@ func TestFeedsPageReplacesBlock(t *testing.T) {
 	}
 }
 
+// pinnedDB answers the pinned query (array_position) with pinned and the ranked feed with n rows.
+func pinnedDB(n int, pinned string, pinErr bool) *fakeDB {
+	db := pageDB(n, nil)
+	db.Settings = map[string]any{"pinned_items": "1"}
+	db.Query = func(sql string, _ []any) (any, error) {
+		switch {
+		case strings.Contains(sql, "array_position"):
+			if pinErr {
+				return nil, hostErr("db_error")
+			}
+			return map[string]any{"rows": [][]any{{pinned}}}, nil
+		case strings.Contains(sql, "jsonb_agg"):
+			return map[string]any{"rows": [][]any{{rowsJSON(n, 900)}}}, nil
+		}
+		return map[string]any{"rows": [][]any{}}, nil
+	}
+	return db
+}
+
+func TestFeedsPagePinned(t *testing.T) {
+	pinNow(t, feedNow)
+	pin := `[{"entity_id":"` + entityID + `","item_no":1,"author_id":2,"by":"bob","kind":"story","dead":false,"points":9,"comment_count":0,"created_at":"2026-11-25T11:00:00Z","title":"Welcome","url":"","domain":"","voted_at":null}]`
+	r := newRegistry(t, nil)
+	rowsOf := func(db *fakeDB, q map[string]string) []map[string]any {
+		install(t, db)
+		out := render(t, r, "/news", "k1", q, sdk.Block{ID: "b7", Type: "hn_feed"})
+		return out.Blocks[0].Content["rows"].([]map[string]any)
+	}
+	rows := rowsOf(pinnedDB(2, pin, false), nil)
+	if len(rows) != 3 || rows[0]["no"] != "1" || rows[0]["rank"] != "" || rows[0]["score"] == "" || rows[1]["rank"] != "1." || rows[2]["rank"] != "2." {
+		t.Errorf("page 1 rows %v", rows)
+	}
+	if rows = rowsOf(pinnedDB(2, pin, false), map[string]string{"p": "2"}); len(rows) != 2 || rows[0]["rank"] != "31." {
+		t.Errorf("page 2 rows %v", rows)
+	}
+	if rows = rowsOf(pinnedDB(2, pin, true), nil); len(rows) != 2 || rows[0]["rank"] != "1." {
+		t.Errorf("pin error rows %v", rows)
+	}
+}
+
 func TestFeedsPageBestKeepsView(t *testing.T) {
 	pinNow(t, feedNow)
 	install(t, pageDB(3, nil))
@@ -82,7 +122,7 @@ func TestFeedsPageAppendsAndRoot(t *testing.T) {
 	if len(out.Blocks) != 2 || out.Blocks[1].Type != "hn_feed" || out.Blocks[1].ID != "hn_feed" {
 		t.Fatalf("not appended last: %+v", out.Blocks)
 	}
-	if rows := out.Blocks[1].Content["rows"].([]map[string]any); rows[0]["next"] != "/news?p=1" {
+	if rows := out.Blocks[1].Content["rows"].([]map[string]any); rows[0]["next"] != "/news?p=1#"+rows[0]["no"].(string) {
 		t.Errorf("next %v", rows[0]["next"])
 	}
 	blocks := []sdk.Block{{ID: "b1", Type: "hn_userbar"}}
@@ -128,10 +168,15 @@ func TestItemPage(t *testing.T) {
 	install(t, pageDB(0, map[string]any{"body": "first\n\n  \n\nsecond ", "url": ""}))
 	r := newRegistry(t, nil)
 	c := render(t, r, "/item/42", "k1", nil).Blocks[0].Content
-	if paras := c["paras"].([]string); !reflect.DeepEqual(paras, []string{"first", "second"}) {
+	if paras := c["paras"].([][]map[string]any); !reflect.DeepEqual(paras, [][]map[string]any{{seg("first", "", false)}, {seg("second", "", false)}}) {
 		t.Errorf("paras %v", paras)
 	}
-	if row := c["row"].(map[string]any); row["rank"] != "" || row["next"] != "/item/42" || row["vote"] != "up" {
+	install(t, pageDB(0, map[string]any{"body": "go to https://a.example/x.", "url": ""}))
+	c = render(t, r, "/item/42", "k1", nil).Blocks[0].Content
+	if paras := c["paras"].([][]map[string]any); len(paras) != 1 || paras[0][1]["href"] != "https://a.example/x" {
+		t.Errorf("link paras %v", paras)
+	}
+	if row := c["row"].(map[string]any); row["rank"] != "" || row["next"] != "/item/42#42" || row["vote"] != "up" {
 		t.Errorf("row %v", row)
 	}
 	if out := render(t, r, "/item/42/", "k1", nil); len(out.Blocks) != 1 {

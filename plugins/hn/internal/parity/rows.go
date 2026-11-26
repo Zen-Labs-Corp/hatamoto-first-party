@@ -57,7 +57,7 @@ func storyView(r *core.Registry, v *core.User, s storyRow, rank int, next string
 	itemHref := "/item/" + no
 	m := map[string]any{
 		"no": no, "title": s.Title, "href": itemHref, "external": s.URL != "", "site": s.Domain,
-		"site_href": "/from?site=" + url.QueryEscape(s.Domain), "vote_href": "/p/hn/vote/story/" + no, "next": next,
+		"site_href": "/from?site=" + url.QueryEscape(s.Domain), "vote_href": "/p/hn/vote/story/" + no, "next": next + "#" + no,
 		"job": s.Kind == "job", "by": s.By, "user_href": "/user?id=" + url.QueryEscape(s.By),
 		"age": ageText(core.Now().Sub(s.CreatedAt)), "item_href": itemHref, "rank": "", "score": "", "comments": "",
 	}
@@ -83,7 +83,7 @@ func storyView(r *core.Registry, v *core.User, s storyRow, rank int, next string
 	}
 	var acts []map[string]any
 	for _, a := range r.ActionsFor(v, core.Item{Kind: "story", ID: s.EntityID, ItemNo: s.ItemNo, AuthorID: s.AuthorID, Dead: s.Dead}) {
-		acts = append(acts, map[string]any{"label": a.Label, "href": a.Href, "class": a.Class, "post": a.Post})
+		acts = append(acts, map[string]any{"label": a.Label, "href": a.Href, "class": a.Class, "post": a.Post, "next": ""})
 	}
 	m["actions"] = acts
 	return m
@@ -94,7 +94,7 @@ func commentView(c commentRow) map[string]any {
 	return map[string]any{
 		"by": c.By, "user_href": "/user?id=" + url.QueryEscape(c.By),
 		"age":         ageText(core.Now().Sub(c.CreatedAt)),
-		"item_href":   "/item/" + strconv.FormatInt(c.ItemNo, 10) + "#" + c.CommentID,
+		"item_href":   "/item/" + strconv.FormatInt(c.ItemNo, 10) + "#comment-" + c.CommentID,
 		"story_title": c.StoryTitle, "excerpt": c.Excerpt,
 	}
 }

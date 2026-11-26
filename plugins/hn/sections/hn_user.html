@@ -38,7 +38,7 @@
 <tr><th>user:</th><td>{{$c.name}}</td></tr>
 <tr><th>created:</th><td>{{$c.created}}</td></tr>
 <tr><th>karma:</th><td>{{$c.karma}}</td></tr>
-<tr><th>about:</th><td>{{range $c.about}}{{if .br}}<br>{{else if .href}}<a href="{{.href}}" rel="nofollow noopener">{{.text}}</a>{{else}}{{.text}}{{end}}{{end}}</td></tr>
+<tr><th>about:</th><td>{{range $c.about}}{{if .br}}<br>{{else if .href}}<a href="{{.href}}" rel="nofollow ugc noopener">{{.text}}</a>{{else}}{{.text}}{{end}}{{end}}</td></tr>
 </table>
 <p><a href="{{$c.submissions_href}}">submissions</a> | <a href="{{$c.comments_href}}">comments</a> | <a href="{{$c.favorites_href}}">favorites</a></p>
 {{end}}</div>{{end}}

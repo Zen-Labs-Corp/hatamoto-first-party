@@ -103,7 +103,7 @@ func row(r *core.Registry, in rowIn, vv voteView, next string) map[string]any {
 	}
 	context := focusHref(in.ItemNo, in.ID)
 	return map[string]any{
-		"id": in.ID, "anchor": "c-" + in.ID,
+		"id": in.ID, "anchor": "comment-" + in.ID,
 		"author": in.Author, "author_href": "/user?id=" + url.QueryEscape(in.Author),
 		"ago":          ago(in.Created),
 		"context_href": context, "parent_href": focusHref(in.ItemNo, in.ParentID),
@@ -113,7 +113,7 @@ func row(r *core.Registry, in rowIn, vv voteView, next string) map[string]any {
 		"replies": []map[string]any{}, "actions": acts,
 		"vote": vote, "vote_cell": cell,
 		"can_up": canUp, "can_down": canUp && vv.downOK, "can_un": vote && voted,
-		"next": next,
+		"next": next + "#comment-" + in.ID,
 	}
 }
 

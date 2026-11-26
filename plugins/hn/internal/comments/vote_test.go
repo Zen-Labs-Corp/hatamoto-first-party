@@ -74,6 +74,14 @@ func TestCommentVote(t *testing.T) {
 		}
 	})
 
+	t.Run("next keeps the comment fragment", func(t *testing.T) {
+		voteFake(t)
+		next := "/threads?id=bob#comment-" + cid1
+		expectLoc(t, vote(newRegistry(nil), "k1", cid1, url.Values{"how": {"up"}, "next": {next}}), next)
+		want := "/threads?id=bob&m=comment-voted#comment-" + cid1 // a repeat gets a notice before the fragment
+		expectLoc(t, vote(newRegistry(nil), "k1", cid1, url.Values{"next": {next}}), want)
+	})
+
 	t.Run("missing how is up", func(t *testing.T) {
 		f := voteFake(t)
 		expectLoc(t, vote(newRegistry(nil), "k1", cid1, next), "/item/7")

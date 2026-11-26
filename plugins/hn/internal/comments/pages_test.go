@@ -90,7 +90,7 @@ func TestThreadsPageNewcomments(t *testing.T) {
 		}
 		r := rows[0]
 		if r["item_href"] != "/item/7" || r["title"] != "Seven" || r["context_href"] != "/item/7?id="+cid(35) ||
-			r["author_href"] != "/user?id=bob" || r["ago"] != "25 minutes ago" || r["anchor"] != "c-"+cid(35) {
+			r["author_href"] != "/user?id=bob" || r["ago"] != "25 minutes ago" || r["anchor"] != "comment-"+cid(35) {
 			t.Errorf("row: %+v", r)
 		}
 		c = newcomments(t, "", map[string]string{"p": "2"})
@@ -160,7 +160,7 @@ func TestThreadsPageNewcomments(t *testing.T) {
 		}
 		c = newcomments(t, "", map[string]string{"p": "2"})
 		r := rowsOf(c)[0]
-		if r["row_class"] != "hn-c hn-faint" || r["depth"] != "0" || r["next"] != "/newcomments?p=2" {
+		if r["row_class"] != "hn-c hn-faint" || r["depth"] != "0" || r["next"] != "/newcomments?p=2#comment-"+r["id"].(string) {
 			t.Errorf("row: %+v", r)
 		}
 	})

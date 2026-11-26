@@ -117,7 +117,8 @@ func TestSectionsRenderFeed(t *testing.T) {
 	for _, want := range []string{
 		`&lt;script&gt;alert(1)&lt;/script&gt;`, `action="/p/hn/vote/story/42"`, `href="https://example.com/a" rel="nofollow noopener"`,
 		`class="hn-vote hn-voted"`, `href="/news?p=2" rel="next"`, `<p class="hn-notice" role="status">Saved.</p>`, `action="/p/hn/vote/story/43?how=un"`,
-		`href="/from?site=example.com"`,
+		`href="/from?site=example.com"`, `id="42"`, `name="next" value="/news#42"`,
+		`<input type="hidden" name="next" value="/news#43"><button class="hn-unvote"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("feed lacks %q", want)
@@ -144,7 +145,15 @@ func TestSectionsRenderItem(t *testing.T) {
 	r := newRegistry(t, nil)
 	s := storyRow{EntityID: entityID, ItemNo: 42, AuthorID: 2, By: "bob", Title: "T", Kind: "story", CreatedAt: feedNow.Add(-3 * time.Hour)}
 	row := rowView(r, nil, s, 0, "/item/42", core.DefaultSettings())
-	html := run(t, "section-hn_item", map[string]any{"row": row, "paras": []string{"one <b>", "two"}})
+	html := run(t, "section-hn_item", map[string]any{"row": row, "paras": [][]map[string]any{textSegments("one <b>"), textSegments("two"), textSegments("<script>alert(1)</script> see https://a.example/x.")}})
+	for _, want := range []string{`<a href="https://a.example/x" rel="nofollow ugc noopener">https://a.example/x</a>.`, `&lt;script&gt;`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("item lacks %q: %s", want, html)
+		}
+	}
+	if strings.Contains(html, "<textarea") || strings.Contains(html, "<script>") {
+		t.Errorf("item: %s", html)
+	}
 	if !strings.Contains(html, "<p>one &lt;b&gt;</p>") || !strings.Contains(html, "<p>two</p>") || !strings.Contains(html, "hn-item-head") {
 		t.Errorf("item: %s", html)
 	}

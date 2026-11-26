@@ -78,10 +78,10 @@ func TestSearchQueryRunsOneStatement(t *testing.T) {
 	c := out.Blocks[0].Content
 	rows, _ := c["rows"].([]map[string]any)
 	cs, _ := c["comments"].([]map[string]any)
-	if len(rows) != 2 || len(cs) != 1 || c["empty"] != false || c["more"] != "" || rows[0]["rank"] != "1." || rows[0]["next"] != "/search?q=wasm" {
+	if len(rows) != 2 || len(cs) != 1 || c["empty"] != false || c["more"] != "" || rows[0]["rank"] != "1." || rows[0]["next"] != "/search?q=wasm#"+rows[0]["no"].(string) {
 		t.Fatalf("content %v", c)
 	}
-	if cs[0]["item_href"] != "/item/42#"+commentUUID || cs[0]["excerpt"] != "found <b>it</b>" || cs[0]["story_title"] != "S" {
+	if cs[0]["item_href"] != "/item/42#comment-"+commentUUID || cs[0]["excerpt"] != "found <b>it</b>" || cs[0]["story_title"] != "S" {
 		t.Errorf("comment %v", cs[0])
 	}
 	// signed out: viewer id 0

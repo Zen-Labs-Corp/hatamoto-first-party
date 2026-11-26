@@ -147,7 +147,7 @@ func TestPagesSectionStates(t *testing.T) {
 	}
 	hasLabels("user own, password", withPw, "hn-email", "hn-pw-current", "hn-pw-new")
 	other := render("/user", "", "hn_user")
-	has("user other", other, `<a href="https://example.com/x" rel="nofollow noopener">`)
+	has("user other", other, `<a href="https://example.com/x" rel="nofollow ugc noopener">`)
 	if strings.Contains(other, "<form") || strings.Contains(other, "<input") {
 		t.Errorf("user page shows a form to others: %s", other)
 	}

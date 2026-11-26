@@ -9,6 +9,8 @@ type Settings struct {
 	SubmitPerHour     int `json:"submit_per_hour"`
 	FlagsToDead       int `json:"flags_to_dead"`
 	PageSize          int `json:"page_size"`
+	// PinnedItems is the raw comma-separated list; a string keeps Settings comparable.
+	PinnedItems string `json:"pinned_items"`
 }
 
 // DefaultSettings equals the defaults in plugin.json.
@@ -25,13 +27,14 @@ func LoadSettings() Settings {
 	}
 	// Decode over a pointer-valued shape so an absent key is told from a zero.
 	var raw struct {
-		FlagKarma         *int `json:"flag_karma"`
-		DownvoteKarma     *int `json:"downvote_karma"`
-		VouchKarma        *int `json:"vouch_karma"`
-		EditWindowMinutes *int `json:"edit_window_minutes"`
-		SubmitPerHour     *int `json:"submit_per_hour"`
-		FlagsToDead       *int `json:"flags_to_dead"`
-		PageSize          *int `json:"page_size"`
+		FlagKarma         *int    `json:"flag_karma"`
+		DownvoteKarma     *int    `json:"downvote_karma"`
+		VouchKarma        *int    `json:"vouch_karma"`
+		EditWindowMinutes *int    `json:"edit_window_minutes"`
+		SubmitPerHour     *int    `json:"submit_per_hour"`
+		FlagsToDead       *int    `json:"flags_to_dead"`
+		PageSize          *int    `json:"page_size"`
+		PinnedItems       *string `json:"pinned_items"`
 	}
 	if err := Call("settings.get", struct{}{}, &raw); err != nil {
 		return def
@@ -50,6 +53,9 @@ func LoadSettings() Settings {
 		SubmitPerHour:     pick(raw.SubmitPerHour, def.SubmitPerHour, 0),
 		FlagsToDead:       pick(raw.FlagsToDead, def.FlagsToDead, 1),
 		PageSize:          pick(raw.PageSize, def.PageSize, 1),
+	}
+	if raw.PinnedItems != nil {
+		s.PinnedItems = *raw.PinnedItems
 	}
 	if s.PageSize > 100 {
 		s.PageSize = 100
