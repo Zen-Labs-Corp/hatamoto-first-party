@@ -1,8 +1,8 @@
 {
   "name": "event-calendar",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "sdk": "^0.28.1",
-  "description": "Event calendar for the page builder: month, list, week and map views, repeating events, venues, filters, scheduled iCal and Eventbrite imports, visitor submissions and an iCal feed.",
+  "description": "Event calendar for the page builder: calendar views, repeating events, venues, filters, scheduled iCal and Eventbrite imports, submissions and an iCal feed.",
   "permissions": [
     "entities.read",
     "builder.data",
