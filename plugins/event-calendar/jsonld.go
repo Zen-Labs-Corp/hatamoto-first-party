@@ -54,7 +54,7 @@ func enrichEvent(d sdk.JSONLDDoc) (sdk.JSONLDDoc, error) {
 		if isAbsoluteURL(o.Website) {
 			org["url"] = o.Website
 		}
-		if o.Email != "" {
+		if o.ShowContact && o.Email != "" {
 			org["email"] = o.Email
 		}
 		add("organizer", org)

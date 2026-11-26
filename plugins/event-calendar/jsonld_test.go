@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"hatamoto.dev/sdk"
@@ -172,7 +173,7 @@ func TestEnrichStatusVenueOrganizerOffers(t *testing.T) {
 	if !reflect.DeepEqual(doc["location"], wantLoc) {
 		t.Errorf("location = %v", doc["location"])
 	}
-	wantOrg := map[string]any{"@type": "Organization", "name": "Jazz Society", "url": "https://example.org", "email": "hi@example.org"}
+	wantOrg := map[string]any{"@type": "Organization", "name": "Jazz Society", "url": "https://example.org"}
 	if !reflect.DeepEqual(doc["organizer"], wantOrg) {
 		t.Errorf("organizer = %v", doc["organizer"])
 	}
@@ -232,5 +233,21 @@ func TestLocationOfTextVenueKeepsTheCity(t *testing.T) {
 	want := map[string]any{"@type": "Place", "name": "Town hall", "address": "1 High St, Leeds"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("location = %v", got)
+	}
+}
+
+func TestEnrichOrganizerEmailNeedsShowContact(t *testing.T) {
+	for name, c := range map[string]struct {
+		attr string
+		want bool
+	}{"missing": {"", false}, "false": {`"show_contact":false,`, false}, "true": {`"show_contact":true,`, true}} {
+		org := strings.Replace(orgDoc, `"attributes":{`, `"attributes":{`+c.attr, 1)
+		(&fakeHost{entities: []string{evHybrid, venueDoc, org}}).install(t)
+		d := baseDoc()
+		d.Entity = sdk.EntityRef{ID: "h1", SchemaSlug: "calendar-event"}
+		o, _ := enrich(t, d).Doc["organizer"].(map[string]any)
+		if _, has := o["email"]; has != c.want {
+			t.Errorf("%s: email present = %v, want %v (%v)", name, has, c.want, o)
+		}
 	}
 }

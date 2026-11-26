@@ -75,7 +75,9 @@ func answerEventCard(q sdk.BuilderDataQuery, entityID string) sdk.BuilderDataRes
 	if len(ev.OrganizerIDs) > 0 && inBudget() {
 		if o, ok := loadOrganizer(ev.OrganizerIDs[0]); ok {
 			item.Author, item.AuthorURL = capString(o.Name), capString(o.Website)
-			set("organizer_email", o.Email)
+			if o.ShowContact {
+				set("organizer_email", o.Email)
+			}
 			organizerPage = pagePath(pageOrganizer, o.Slug)
 		}
 	}

@@ -139,11 +139,13 @@ func writeVenue(b *strings.Builder, a map[string]any, s settings) {
 }
 
 func writeOrganizer(b *strings.Builder, a map[string]any) {
-	if email := attrString(a, "email"); email != "" {
-		b.WriteString("<p>" + esc(email) + "</p>\n")
-	}
-	if phone := attrString(a, "phone"); phone != "" {
-		b.WriteString("<p>" + esc(phone) + "</p>\n")
+	if attrBool(a, "show_contact") {
+		if email := attrString(a, "email"); email != "" {
+			b.WriteString("<p>" + esc(email) + "</p>\n")
+		}
+		if phone := attrString(a, "phone"); phone != "" {
+			b.WriteString("<p>" + esc(phone) + "</p>\n")
+		}
 	}
 	if site := attrString(a, "website"); isAbsoluteURL(site) {
 		b.WriteString("<p>" + link(site, site) + "</p>\n")

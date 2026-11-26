@@ -27,7 +27,7 @@ const (
 	pgVenue = `{"id":"v1","schema_slug":"calendar-venue","slug":"mill","name":"The <script>alert(1)</script> Mill","status":"published",
  "attributes":{"address":"12 High St","city":"Leeds","postcode":"LS1","country":"UK","phone":"+44 1","website":"https://mill.example/?a=1&b=2","latitude":53.8,"longitude":-1.55}}`
 	pgOrganizer = `{"id":"o1","schema_slug":"calendar-organizer","slug":"guild","name":"Guild & Co","status":"published",
- "attributes":{"email":"hi@guild.example","website":"javascript:alert(1)"}}`
+ "attributes":{"email":"hi@guild.example","phone":"+44 2","website":"javascript:alert(1)"}}`
 	pgSeries = `{"id":"s1","schema_slug":"calendar-series","slug":"jazz","name":"Jazz Nights","status":"published",
  "attributes":{"description":"Every <b>week</b>.\nSecond line","image":"/media/jazz.png"}}`
 	pgDraft = `{"id":"v2","schema_slug":"calendar-venue","slug":"hidden","name":"Hidden","status":"draft","attributes":{}}`
@@ -50,7 +50,7 @@ func TestPagesRenderEscapedHTMLWithCacheHeader(t *testing.T) {
 			`<a href="https://mill.example/?a=1&amp;b=2">`,
 			"Gig &lt;1&gt;</a>", `<a href="/events/a">`,
 		}},
-		{"/organizer/{slug}", "guild", []string{"<h1>Guild &amp; Co</h1>", "hi@guild.example"}},
+		{"/organizer/{slug}", "guild", []string{"<h1>Guild &amp; Co</h1>"}},
 		{"/series/{slug}", "jazz", []string{"<h1>Jazz Nights</h1>", "<p>Every &lt;b&gt;week&lt;/b&gt;.</p>", "<p>Second line</p>",
 			`<img src="/media/jazz.png" alt="">`, `<h3><a href="/events/a">Gig &lt;1&gt;</a></h3>`}},
 	} {
@@ -149,5 +149,25 @@ func TestPagesWithoutIndexStillRender(t *testing.T) {
 	h.install(t)
 	if r := callPage(t, "/venue/{slug}", "mill"); !strings.Contains(r.Body, "No upcoming events.") {
 		t.Errorf("empty: %s", r.Body)
+	}
+}
+
+func TestOrganizerContactNeedsShowContact(t *testing.T) {
+	for name, c := range map[string]struct {
+		attr string
+		show bool
+	}{
+		"missing": {"", false},
+		"false":   {`"show_contact":false,`, false},
+		"true":    {`"show_contact":true,`, true},
+	} {
+		org := strings.Replace(pgOrganizer, `"attributes":{`, `"attributes":{`+c.attr, 1)
+		(&fakeHost{entities: []string{org}, dbRows: pgRows}).install(t)
+		body := callPage(t, "/organizer/{slug}", "guild").Body
+		for _, v := range []string{"hi@guild.example", "+44 2"} {
+			if got := strings.Contains(body, v); got != c.show {
+				t.Errorf("%s: %q shown = %v, want %v", name, v, got, c.show)
+			}
+		}
 	}
 }

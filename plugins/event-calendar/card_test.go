@@ -76,13 +76,16 @@ func TestEventSourceAttrs(t *testing.T) {
 	}
 	a := it.Attrs
 	for k, want := range map[string]string{
-		"status": "Scheduled", "venue": "Old Mill, 12 High St, Leeds", "organizer_email": "hi@example.org", "price": "12 GBP",
+		"status": "Scheduled", "venue": "Old Mill, 12 High St, Leeds", "price": "12 GBP",
 		"online_url": "https://example.org/join", "series": "Winter season", "series_url": "https://example.org/series/winter",
 		"ticket_url": "https://example.org/tickets", "ics_url": "/p/event-calendar/event/spring-jazz.ics",
 	} {
 		if a[k] != want {
 			t.Errorf("attrs[%s] = %q, want %q", k, a[k], want)
 		}
+	}
+	if v, ok := a["organizer_email"]; ok {
+		t.Errorf("organizer_email = %q without show_contact", v)
 	}
 	for _, k := range []string{"when", "google_url", "outlook_url", "yahoo_url"} {
 		if a[k] == "" {
@@ -203,5 +206,21 @@ func TestEventCardLinksToThePluginPages(t *testing.T) {
 	a = runCard(t, "c1").Items[0].Attrs
 	if len(a) != sdk.MaxBuilderDataAttrs || a["map_url"] == "" || a["venue_url"] == "" || a["yahoo_url"] == "" {
 		t.Errorf("full card: %d attrs %v", len(a), a)
+	}
+}
+
+func TestEventCardOrganizerEmailNeedsShowContact(t *testing.T) {
+	for name, c := range map[string]struct {
+		attr, want string
+	}{
+		"missing": {"", ""},
+		"false":   {`"show_contact":false,`, ""},
+		"true":    {`"show_contact":true,`, "hi@example.org"},
+	} {
+		org := strings.Replace(orgDoc, `"attributes":{`, `"attributes":{`+c.attr, 1)
+		cardHost(t, `{}`, cardEvent, venueDoc, org, cardRefs[2], cardRefs[3])
+		if got := runCard(t, "c1").Items[0].Attrs["organizer_email"]; got != c.want {
+			t.Errorf("%s: organizer_email = %q, want %q", name, got, c.want)
+		}
 	}
 }
