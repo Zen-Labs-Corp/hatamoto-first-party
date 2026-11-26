@@ -117,7 +117,8 @@ func TestSectionsRenderFeed(t *testing.T) {
 	for _, want := range []string{
 		`&lt;script&gt;alert(1)&lt;/script&gt;`, `action="/p/hn/vote/story/42"`, `href="https://example.com/a" rel="nofollow noopener"`,
 		`class="hn-vote hn-voted"`, `href="/news?p=2" rel="next"`, `<p class="hn-notice" role="status">Saved.</p>`, `action="/p/hn/vote/story/43?how=un"`,
-		`href="/from?site=example.com"`,
+		`href="/from?site=example.com"`, `id="42"`, `name="next" value="/news#42"`,
+		`<input type="hidden" name="next" value="/news#43"><button class="hn-unvote"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("feed lacks %q", want)

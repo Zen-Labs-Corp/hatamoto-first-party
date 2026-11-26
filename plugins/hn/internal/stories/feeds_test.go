@@ -201,6 +201,11 @@ func TestFeedsRowView(t *testing.T) {
 	}
 	if a := m["actions"].([]map[string]any)[0]; a["href"] != "/p/hn/vote/story/42?how=un" || a["post"] != true {
 		t.Errorf("unvote action %v", a)
+	} else if a["next"] != "/news#42" || m["next"] != "/news#42" {
+		t.Errorf("unvote next %v, row next %v", a["next"], m["next"])
+	}
+	if a := m["actions"].([]map[string]any)[1]; a["next"] != "" {
+		t.Errorf("non-unvote next %v", a["next"])
 	}
 	late := feedNow.Add(-2 * time.Hour)
 	voted.VotedAt = &late

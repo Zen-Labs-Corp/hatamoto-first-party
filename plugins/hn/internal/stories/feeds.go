@@ -166,9 +166,10 @@ func rowView(r *core.Registry, v *core.User, s storyRow, rank int, next string, 
 	no := strconv.FormatInt(s.ItemNo, 10)
 	itemHref := "/item/" + no
 	voteHref := "/p/hn/vote/story/" + no
+	rowNext := next + "#" + no
 	m := map[string]any{
 		"no": no, "title": s.Title, "href": itemHref, "external": s.URL != "", "site": s.Domain,
-		"site_href": "/from?site=" + url.QueryEscape(s.Domain), "vote_href": voteHref, "next": next,
+		"site_href": "/from?site=" + url.QueryEscape(s.Domain), "vote_href": voteHref, "next": rowNext,
 		"job": s.Kind == "job", "by": s.By, "user_href": "/user?id=" + url.QueryEscape(s.By),
 		"age": ageText(core.Now().Sub(s.CreatedAt)), "item_href": itemHref, "rank": "", "score": "", "comments": "",
 	}
@@ -196,10 +197,11 @@ func rowView(r *core.Registry, v *core.User, s storyRow, rank int, next string, 
 
 	var acts []map[string]any
 	add := func(label, href, class string, post bool) {
-		acts = append(acts, map[string]any{"label": label, "href": href, "class": class, "post": post})
+		acts = append(acts, map[string]any{"label": label, "href": href, "class": class, "post": post, "next": ""})
 	}
 	if v != nil && s.VotedAt != nil && core.Now().Sub(*s.VotedAt) <= unvoteWindow {
 		add("unvote", voteHref+"?how=un", "hn-unvote", true)
+		acts[len(acts)-1]["next"] = rowNext
 	}
 	if v != nil && canChange(v, &storyRef{AuthorID: s.AuthorID, CreatedAt: s.CreatedAt}, st) == "" {
 		add("edit", "/submit?id="+no, "hn-edit", false)

@@ -82,7 +82,7 @@ func TestFeedsPageAppendsAndRoot(t *testing.T) {
 	if len(out.Blocks) != 2 || out.Blocks[1].Type != "hn_feed" || out.Blocks[1].ID != "hn_feed" {
 		t.Fatalf("not appended last: %+v", out.Blocks)
 	}
-	if rows := out.Blocks[1].Content["rows"].([]map[string]any); rows[0]["next"] != "/news?p=1" {
+	if rows := out.Blocks[1].Content["rows"].([]map[string]any); rows[0]["next"] != "/news?p=1#"+rows[0]["no"].(string) {
 		t.Errorf("next %v", rows[0]["next"])
 	}
 	blocks := []sdk.Block{{ID: "b1", Type: "hn_userbar"}}
@@ -131,7 +131,7 @@ func TestItemPage(t *testing.T) {
 	if paras := c["paras"].([]string); !reflect.DeepEqual(paras, []string{"first", "second"}) {
 		t.Errorf("paras %v", paras)
 	}
-	if row := c["row"].(map[string]any); row["rank"] != "" || row["next"] != "/item/42" || row["vote"] != "up" {
+	if row := c["row"].(map[string]any); row["rank"] != "" || row["next"] != "/item/42#42" || row["vote"] != "up" {
 		t.Errorf("row %v", row)
 	}
 	if out := render(t, r, "/item/42/", "k1", nil); len(out.Blocks) != 1 {
