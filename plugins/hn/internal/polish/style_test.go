@@ -152,7 +152,8 @@ func TestStyleZeroSpecificity(t *testing.T) {
 	css = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(css, "")
 	css = strings.Replace(css, "@media (max-width:750px){", "", 1)
 	for _, r := range regexp.MustCompile(`([^{}]+)\{`).FindAllStringSubmatch(css, -1) {
-		if sel := strings.TrimSpace(r[1]); !strings.HasPrefix(sel, ":where(") {
+		// .hn-gone is the one exception: !important must beat the :where() display rules.
+		if sel := strings.TrimSpace(r[1]); !strings.HasPrefix(sel, ":where(") && sel != ".hn-gone" {
 			t.Errorf("selector %q is not wrapped in :where()", sel)
 		}
 	}
