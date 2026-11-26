@@ -80,6 +80,16 @@
       "minimum": 1,
       "maximum": 10,
       "default": 3
+    },
+    "tag_filter": {
+      "type": "boolean",
+      "default": true
+    },
+    "filter_fields": {
+      "type": "string",
+      "maxLength": 163,
+      "default": "",
+      "pattern": "^([a-z][a-z0-9_]{0,39}(,[a-z][a-z0-9_]{0,39}){0,3})?$"
     }
   }
 }

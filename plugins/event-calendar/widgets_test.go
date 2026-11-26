@@ -402,3 +402,35 @@ func TestPhotoListHasNoBulletsAndMiniCalendarLinksWithoutScript(t *testing.T) {
 		t.Error("the mini calendar shows nothing useful without JavaScript")
 	}
 }
+
+func TestCalendarFilterSettings(t *testing.T) {
+	var sc struct {
+		Properties map[string]struct {
+			Type      string `json:"type"`
+			Pattern   string `json:"pattern"`
+			MaxLength int    `json:"maxLength"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(readWidget(t, "calendar", "schema.json")), &sc); err != nil {
+		t.Fatal(err)
+	}
+	if sc.Properties["tag_filter"].Type != "boolean" {
+		t.Errorf("tag_filter = %+v", sc.Properties["tag_filter"])
+	}
+	ff := sc.Properties["filter_fields"]
+	re, err := regexp.Compile(ff.Pattern)
+	if err != nil || ff.MaxLength != 163 {
+		t.Fatalf("filter_fields = %+v, %v", ff, err)
+	}
+	for in, want := range map[string]bool{"": true, "audience": true, "a,b_c,d,e": true, "a,b,c,d,e": false, "Audience": false, "a,": false, "1a": false} {
+		if re.MatchString(in) != want {
+			t.Errorf("filter_fields %q matches %v, want %v", in, !want, want)
+		}
+	}
+	html := readWidget(t, "calendar", "widget.html")
+	for _, want := range []string{`data-tag-filter="{{.P.tag_filter}}"`, `data-fields="{{.P.filter_fields}}"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("calendar widget.html lacks %s", want)
+		}
+	}
+}

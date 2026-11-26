@@ -9,7 +9,10 @@
 const DAY_MS = 86400000;
 const VIEWS = ["month", "list", "week", "day", "photo", "summary", "map"];
 const PRICES = ["", "free", "paid"];
-const TEXT_KEYS = ["q", "category", "venue", "city"];
+const TEXT_KEYS = ["q", "category", "venue", "city", "tag"];
+// Slot N of a state holds the value of the Nth site-added field the widget lists.
+const FIELD_SLOTS = ["f1", "f2", "f3", "f4"];
+const FIELD_KEY = /^[a-z][a-z0-9_]{0,39}$/;
 const FEED_PATH = "/p/event-calendar/events.ics";
 // Two slashes, spelled so the install lint does not read them as a URL start.
 const SLASHES = "/".repeat(2);
@@ -127,6 +130,23 @@ function cellEvents(list, perDay) {
   return { shown: list.slice(0, n), more: Math.max(0, list.length - n) };
 }
 
+// fieldKeys reads the widget's comma list of site-added field keys: up to four
+// distinct valid keys, anything else dropped.
+function fieldKeys(list) {
+  const out = [];
+  for (const k of String(list || "").split(",")) {
+    const key = k.trim();
+    if (FIELD_KEY.test(key) && !out.includes(key) && out.length < FIELD_SLOTS.length) out.push(key);
+  }
+  return out;
+}
+
+// humanKey turns a field key into a label: "age_group" -> "Age group".
+function humanKey(key) {
+  const s = String(key).replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function cap(s) {
   return typeof s === "string" ? s.trim().slice(0, 200) : "";
 }
@@ -143,7 +163,7 @@ function stateFromSearch(search, today, defView) {
     date: validDay(date) ? date : today,
     price: PRICES.includes(price) ? price : "",
   };
-  for (const k of TEXT_KEYS) st[k] = cap(p.get(k));
+  for (const k of TEXT_KEYS.concat(FIELD_SLOTS)) st[k] = cap(p.get(k));
   return st;
 }
 
@@ -153,26 +173,33 @@ function searchFromState(st, today, defView) {
   const p = new URLSearchParams();
   if (st.view !== defView) p.set("view", st.view);
   if (st.date !== today) p.set("date", st.date);
-  for (const k of TEXT_KEYS) if (st[k]) p.set(k, st[k]);
+  for (const k of TEXT_KEYS.concat(FIELD_SLOTS)) if (st[k]) p.set(k, st[k]);
   if (st.price) p.set("price", st.price);
   return p.toString();
 }
 
 // addFilters copies the search and filter values of a state into a query.
-function addFilters(p, st) {
+// fields are the widget's site-added field keys: the route gets them as
+// "fields" and a value for slot N only when that slot has a field.
+function addFilters(p, st, fields = []) {
   for (const k of TEXT_KEYS) if (st[k]) p.set(k, st[k]);
   if (st.price) p.set("price", st.price);
+  if (!fields.length) return;
+  p.set("fields", fields.join(","));
+  fields.forEach((_, i) => {
+    if (st[FIELD_SLOTS[i]]) p.set(FIELD_SLOTS[i], st[FIELD_SLOTS[i]]);
+  });
 }
 
 // apiQuery is the query string of one route call; the view is not sent.
-function apiQuery(range, st) {
+function apiQuery(range, st, fields = []) {
   const p = new URLSearchParams({ from: range.from, to: range.to });
-  addFilters(p, st);
+  addFilters(p, st, fields);
   return p.toString();
 }
 
 function cacheKey(range, st, weekStart) {
-  return [range.from, range.to, weekStart, st.q, st.category, st.venue, st.city, st.price].join("|");
+  return [range.from, range.to, weekStart, st.q, st.category, st.venue, st.city, st.price, st.tag].concat(FIELD_SLOTS.map((k) => st[k])).join("|");
 }
 
 // debounce delays fn until ms have passed without a call; timers can be
@@ -274,6 +301,8 @@ function init(box) {
   if (!api.startsWith("/") || api.startsWith(SLASHES)) return;
   const defView = box.getAttribute("data-view");
   const perDay = +box.getAttribute("data-per-day") || 3;
+  const fields = fieldKeys(box.getAttribute("data-fields"));
+  const showTag = box.getAttribute("data-tag-filter") !== "false";
   const mapUrl = safeUrl(box.getAttribute("data-map-url") || "");
   const today = fmtDay(Date.now() - new Date().getTimezoneOffset() * 60000);
   const st = stateFromSearch(location.search, today, defView);
@@ -322,7 +351,8 @@ function init(box) {
   // filters
   const filters = el("div", "filters");
   const lists = {};
-  for (const k of ["category", "venue", "city"]) {
+  // Each filter is a text input with a datalist of the values the loaded events carry.
+  const addFilter = (k, label) => {
     const input = el("input");
     input.type = "text";
     input.placeholder = "All";
@@ -331,8 +361,11 @@ function init(box) {
     input.addEventListener("change", () => go({ [k]: cap(input.value) }));
     lists[k] = el("datalist");
     lists[k].id = id + "-" + k;
-    filters.append(labelled(k.charAt(0).toUpperCase() + k.slice(1), input), lists[k]);
-  }
+    filters.append(labelled(label, input), lists[k]);
+  };
+  for (const k of ["category", "venue", "city"]) addFilter(k, k.charAt(0).toUpperCase() + k.slice(1));
+  if (showTag) addFilter("tag", "Tag");
+  fields.forEach((key, i) => addFilter(FIELD_SLOTS[i], humanKey(key)));
   const price = el("select");
   for (const [v, t] of [["", "Any"], ["free", "Free"], ["paid", "Paid"]]) {
     const o = el("option", "", t);
@@ -370,11 +403,17 @@ function init(box) {
   app.append(bar, filters, tabs, nav, status, content, sub);
 
   function fillLists(events) {
-    const found = { category: new Set(), venue: new Set(), city: new Set() };
+    const found = {};
+    for (const k of Object.keys(lists)) found[k] = new Set();
     for (const ev of events) {
       for (const c of ev.categories || []) found.category.add(c);
       if (ev.venue) found.venue.add(ev.venue);
       if (ev.city) found.city.add(ev.city);
+      if (found.tag) for (const t of ev.tags || []) if (t) found.tag.add(t);
+      fields.forEach((key, i) => {
+        const v = (ev.fields || {})[key];
+        for (const x of Array.isArray(v) ? v : [v]) if (typeof x === "string" && x) found[FIELD_SLOTS[i]].add(x);
+      });
     }
     for (const k of Object.keys(found)) {
       const have = new Set(Array.from(lists[k].children, (o) => o.value));
@@ -477,7 +516,7 @@ function init(box) {
     wrap.appendChild(places.size ? ul : el("p", "", "No venues in this range."));
     if (mapUrl) {
       const f = new URLSearchParams();
-      addFilters(f, st);
+      addFilters(f, st, fields);
       const qs = f.toString();
       const a = el("a", "", "Open map");
       a.href = mapUrl + (qs ? (mapUrl.includes("?") ? "&" : "?") + qs : "");
@@ -532,7 +571,7 @@ function init(box) {
       const mine = (ctl = new AbortController());
       if (shown) status.textContent = "Loading events...";
       try {
-        const r = await fetch(api + "?" + apiQuery(range, st), { signal: mine.signal, headers: { Accept: "application/json" } });
+        const r = await fetch(api + "?" + apiQuery(range, st, fields), { signal: mine.signal, headers: { Accept: "application/json" } });
         if (!r.ok) throw new Error("status " + r.status);
         res = await r.json();
       } catch (e) {
@@ -577,6 +616,6 @@ if (typeof document !== "undefined") {
 if (typeof module !== "undefined") {
   module.exports = {
     validDay, latest, addDays, shiftMonth, monthGrid, weekRange, dayRange, shiftDate, rangeFor, eventsByDay,
-    cellEvents, stateFromSearch, searchFromState, apiQuery, cacheKey, debounce, subscribeLinks, safeUrl,
+    cellEvents, stateFromSearch, searchFromState, apiQuery, cacheKey, debounce, subscribeLinks, safeUrl, fieldKeys, humanKey,
   };
 }
