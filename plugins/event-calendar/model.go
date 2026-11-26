@@ -126,20 +126,25 @@ func attrBool(m map[string]any, key string) bool {
 	return false
 }
 
-// attrBoolDefault reads a boolean attribute; def when it is missing or not a boolean.
+// attrBoolDefault reads a boolean attribute; def only when the key is missing.
+// A present value that is not a recognised true ("true", 1) is false, so a
+// flag meant to gate something fails closed on junk, "no", "off", null or "".
 func attrBoolDefault(m map[string]any, key string, def bool) bool {
-	switch v := m[key].(type) {
+	v, ok := m[key]
+	if !ok {
+		return def
+	}
+	switch v := v.(type) {
 	case bool:
 		return v
 	case string:
-		switch strings.ToLower(strings.TrimSpace(v)) {
-		case "true":
-			return true
-		case "false":
-			return false
-		}
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	case float64:
+		return v == 1
+	case int:
+		return v == 1
 	}
-	return def
+	return false
 }
 
 // attrIDs reads an array of strings (a reference field holds entity ids):

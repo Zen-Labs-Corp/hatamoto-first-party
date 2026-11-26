@@ -547,12 +547,17 @@ func TestAttrBoolDefault(t *testing.T) {
 		{"false", false, true, false},
 		{"string false", "false", true, false},
 		{"string true", " TRUE ", false, true},
-		{"number", 1, true, true},
-		{"junk string", "maybe", false, false},
+		{"number", 1, false, true},
+		{"zero", 0, true, false},
+		{"junk string", "maybe", true, false},
+		{"no", "no", true, false},
+		{"off", "off", true, false},
+		{"empty", "", true, false},
+		{"null", nil, true, false},
 	}
 	for _, c := range cases {
 		m := map[string]any{}
-		if c.v != nil {
+		if !strings.HasPrefix(c.name, "missing") {
 			m["k"] = c.v
 		}
 		if got := attrBoolDefault(m, "k", c.def); got != c.want {
