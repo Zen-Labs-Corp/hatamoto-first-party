@@ -204,6 +204,12 @@ func safeLink(raw string) string {
 	if !linkHost(out) || strings.Contains(strings.TrimPrefix(out, "https://"), "://") || mentionsMediaPath(out) {
 		return ""
 	}
+	// core also scans link values for image markup, in the plain and the decoded form
+	for _, f := range []string{strings.ToLower(out), normalizeValue(out)} {
+		if strings.Contains(f, "![") || cssURLRe.MatchString(f) || dataURIRe.MatchString(f) {
+			return ""
+		}
+	}
 	return out
 }
 
