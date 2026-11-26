@@ -51,6 +51,7 @@ type manifestFile struct {
 			Create  struct {
 				Schemas    []string `json:"schemas"`
 				MaxPerHour int      `json:"max_per_hour"`
+				LinkFields []string `json:"link_fields"`
 			} `json:"create"`
 		} `json:"standing_approval"`
 		Stages []string `json:"stages"`
@@ -65,11 +66,12 @@ type manifestFile struct {
 	} `json:"limits"`
 	Settings struct {
 		Properties map[string]struct {
-			Type    string   `json:"type"`
-			Default any      `json:"default"`
-			Pattern string   `json:"pattern"`
-			Enum    []string `json:"enum"`
-			MaxLen  int      `json:"maxLength"`
+			Type      string   `json:"type"`
+			Default   any      `json:"default"`
+			Pattern   string   `json:"pattern"`
+			Enum      []string `json:"enum"`
+			MaxLen    int      `json:"maxLength"`
+			WriteOnly bool     `json:"writeOnly"`
 		} `json:"properties"`
 	} `json:"settings_schema"`
 }
@@ -122,11 +124,11 @@ func TestManifest(t *testing.T) {
 	if !slices.Equal(perms, wantPerms) {
 		t.Errorf("permissions = %v, want %v", perms, wantPerms)
 	}
-	wantHosts := []string{"nominatim.openstreetmap.org", "calendar.google.com", "outlook.office365.com", "outlook.office.com", "outlook.live.com", "www.meetup.com", "www.eventbrite.com", "*"}
+	wantHosts := []string{"nominatim.openstreetmap.org", "calendar.google.com", "outlook.office365.com", "outlook.office.com", "outlook.live.com", "www.meetup.com", "www.eventbrite.com", "www.eventbriteapi.com", "*"}
 	if !slices.Equal(m.AllowedHosts, wantHosts) || len(m.AllowedHosts)-1 > 32 {
 		t.Errorf("allowed_hosts = %v", m.AllowedHosts)
 	}
-	if len(m.Cron) != 2 || m.Cron[1].Name != "prune" || m.Cron[1].Every != "1h" || m.Cron[0].Name != "reconcile" || m.Cron[0].Every != "1h" {
+	if len(m.Cron) != 3 || m.Cron[1].Name != "prune" || m.Cron[1].Every != "1h" || m.Cron[0].Name != "reconcile" || m.Cron[0].Every != "1h" || m.Cron[2].Name != "import" || m.Cron[2].Every != "12h" {
 		t.Errorf("cron = %+v", m.Cron)
 	}
 	if !slices.Equal(m.Funcs, []string{"when", "addlink"}) {
@@ -226,6 +228,7 @@ func TestManifest(t *testing.T) {
 	wantRuns := map[string]string{
 		"edit_dates": "event:text:false action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false " +
 			"url:url:false kind:select:false name:text:false title:text:false venue_name:text:false description:text:false submission:text:false",
+		"scheduled_import": "",
 	}
 	if len(m.Runs) != len(wantRuns) {
 		t.Fatalf("runs = %+v", m.Runs)
@@ -261,31 +264,45 @@ func TestShippedFiles(t *testing.T) {
 	exists(t, "partials/event_details.html")
 }
 
-// Scheduled imports are not shipped: core refuses a standing approval for the
-// hyphenated calendar-event type, so no run may carry a cron job or a rule.
-func TestManifestStandingApproval(t *testing.T) {
+// The scheduled import is the plugin's one standing run: it takes no inputs,
+// is started by the import cron job and may only create calendar events.
+func TestManifestScheduledImport(t *testing.T) {
 	m, _ := loadManifest(t)
-	raw, err := os.ReadFile("plugin.json")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if len(m.Runs) == 0 || m.Runs[0].Name != "edit_dates" {
-		t.Fatalf("the first run must be edit_dates (the only one the admin starts): %+v", m.Runs)
+		t.Fatalf("the first run must be edit_dates (the only one a page-started run reaches): %+v", m.Runs)
 	}
+	if r := m.Runs[0]; r.StandingApproval != nil || r.Cron != "" {
+		t.Errorf("edit_dates has a standing approval or cron job: %+v", r)
+	}
+	standing := 0
 	for _, r := range m.Runs {
-		if r.StandingApproval != nil || r.Cron != "" {
-			t.Errorf("run %s has a standing approval or cron job: %+v", r.Name, r)
+		if r.StandingApproval == nil {
+			continue
+		}
+		standing++
+		sa := r.StandingApproval
+		if r.Name != "scheduled_import" || r.Cron != "import" || len(r.Inputs) != 0 {
+			t.Errorf("standing run %+v", r)
+		}
+		wantSchemas := []string{"calendar-event"}
+		if !slices.Equal(sa.Schemas, wantSchemas) || !slices.Equal(sa.Create.Schemas, wantSchemas) || sa.Create.MaxPerHour != 100 ||
+			!slices.Equal(sa.Create.LinkFields, []string{"ticket_url", "online_url", "website"}) {
+			t.Errorf("standing approval %+v", sa)
 		}
 	}
-	for _, c := range m.Cron {
-		if c.Name == "import" {
-			t.Error("cron job import must not be declared")
+	if standing != 1 {
+		t.Errorf("%d runs with a standing approval, want 1", standing)
+	}
+	if len(m.AllowedHosts) == 0 || m.AllowedHosts[0] != "nominatim.openstreetmap.org" || !slices.Contains(m.AllowedHosts, "www.eventbriteapi.com") || len(m.AllowedHosts)-1 > 32 {
+		t.Errorf("allowed_hosts = %v", m.AllowedHosts)
+	}
+	for _, key := range []string{"eventbrite_token", "import_sources"} {
+		if _, ok := m.Settings.Properties[key]; !ok {
+			t.Errorf("setting %s missing", key)
 		}
 	}
-	for _, bad := range []string{"link_fields", "standing_approval", "import_scheduled", "on_cron_import"} {
-		if strings.Contains(string(raw), bad) {
-			t.Errorf("plugin.json must not mention %s", bad)
-		}
+	if tok := m.Settings.Properties["eventbrite_token"]; !tok.WriteOnly {
+		t.Errorf("eventbrite_token must be writeOnly (sealed): %+v", tok)
 	}
 }
 

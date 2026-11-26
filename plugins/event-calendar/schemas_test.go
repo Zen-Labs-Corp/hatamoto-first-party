@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -341,6 +342,47 @@ func TestOldPatternTakesWhatThePluginWrites(t *testing.T) {
 	for _, v := range vals {
 		if !old.MatchString(v) {
 			t.Errorf("the 0.5.0 pattern refuses %q", v)
+		}
+	}
+}
+
+// Core keeps a link_fields property to these keys (its LinkFieldDef): any
+// other, such as x-hm-group, makes core refuse the standing approval.
+func TestLinkFieldsArePlain(t *testing.T) {
+	m, _ := loadManifest(t)
+	var fields []string
+	for _, r := range m.Runs {
+		if r.StandingApproval != nil {
+			fields = r.StandingApproval.Create.LinkFields
+		}
+	}
+	if len(fields) == 0 {
+		t.Fatal("no link_fields declared")
+	}
+	raw, err := os.ReadFile(filepath.Join("schemas", "calendar-event.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Properties map[string]map[string]any `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	allowed := []string{"type", "format", "title", "description"}
+	for _, f := range fields {
+		prop, ok := schema.Properties[f]
+		if !ok {
+			t.Errorf("link field %s is not a calendar-event property", f)
+			continue
+		}
+		for k := range prop {
+			if !slices.Contains(allowed, k) {
+				t.Errorf("link field %s carries %q, core allows only %v", f, k, allowed)
+			}
+		}
+		if prop["type"] != "string" || prop["format"] != "uri" {
+			t.Errorf("link field %s = %v, want a string with format uri", f, prop)
 		}
 	}
 }

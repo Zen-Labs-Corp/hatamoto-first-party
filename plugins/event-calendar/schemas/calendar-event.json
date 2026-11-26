@@ -68,8 +68,7 @@
       "type": "string",
       "title": "Online link",
       "description": "Link to join the event online.",
-      "format": "uri",
-      "x-hm-group": "Place"
+      "format": "uri"
     },
     "venue": {
       "type": "array",
@@ -137,15 +136,13 @@
       "type": "string",
       "title": "Ticket link",
       "description": "Where to book or buy tickets.",
-      "format": "uri",
-      "x-hm-group": "Price and tickets"
+      "format": "uri"
     },
     "website": {
       "type": "string",
       "title": "Event website",
       "description": "A page with more about the event.",
-      "format": "uri",
-      "x-hm-group": "Price and tickets"
+      "format": "uri"
     },
     "price": {
       "type": "string",
