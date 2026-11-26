@@ -320,7 +320,8 @@ func writeRule(b *strings.Builder, id string, s settings, at time.Time) bool {
 	_, to := windowFor(at)
 	var items []string
 	dates, changed := 0, 0
-	for _, o := range expandAll(e, loc, at, to, maxPageDates) {
+	occ := expandAll(e, loc, at, to, maxPageDates)
+	for _, o := range occ {
 		text := esc(formatWhen(o.Start, o.End, e.HasEnd, e.AllDay, s.DateFormat, loc, at))
 		switch o.State {
 		case stateSkipped:
@@ -333,7 +334,12 @@ func writeRule(b *strings.Builder, id string, s settings, at time.Time) bool {
 		dates++
 		items = append(items, "<li>"+text+"</li>\n")
 	}
-	b.WriteString(`<p class="summary">` + esc(ruleText(e, loc)) + ", " + strconv.Itoa(dates) + " dates, " + strconv.Itoa(changed) + " changed</p>\n")
+	// A full page is cut off at maxPageDates, so the count is not a total.
+	label := strconv.Itoa(dates) + " dates"
+	if len(occ) >= maxPageDates {
+		label = "next " + label
+	}
+	b.WriteString(`<p class="summary">` + esc(ruleText(e, loc)) + ", " + label + ", " + strconv.Itoa(changed) + " changed</p>\n")
 	writeDatesList(b, items)
 	return true
 }

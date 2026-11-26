@@ -257,3 +257,17 @@ func TestSeriesPageBudgetFallsBackToTheIndex(t *testing.T) {
 		t.Errorf("want the index list:\n%s", body)
 	}
 }
+
+// TestSeriesPageSummaryCapped: a rule with more dates than a page lists must
+// not read as if the listed count were the total.
+func TestSeriesPageSummaryCapped(t *testing.T) {
+	start := time.Now().AddDate(0, 0, 1).Format("2006-01-02") + "T18:00"
+	daily := `{"id":"f1","schema_slug":"calendar-event","slug":"a","name":"Daily","status":"published","attributes":{
+"start_at":"` + start + `","repeat":"daily"}}`
+	h := &fakeHost{entities: []string{pgSeries, daily}, dbRows: pgRows}
+	h.install(t)
+	body := callPage(t, "/series/{slug}", "jazz").Body
+	if !strings.Contains(body, "next 100 dates, 0 changed") {
+		t.Errorf("want a capped label:\n%s", body)
+	}
+}
