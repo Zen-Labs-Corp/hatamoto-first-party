@@ -35,10 +35,11 @@
     n.type = 'hidden';
     n.name = 'next';
     n.value = val(f, 'next');
+    u.appendChild(d.createTextNode('| '));
     u.appendChild(n);
     u.appendChild(button(d.createElement('button')));
     r = age.nextSibling;
-    p.insertBefore(d.createTextNode(' | '), r);
+    p.insertBefore(d.createTextNode(' '), r);
     p.insertBefore(u, r);
     return u;
   }

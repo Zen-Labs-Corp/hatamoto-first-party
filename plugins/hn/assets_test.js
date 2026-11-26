@@ -204,8 +204,8 @@ async function main() {
   check('story: vote form kept in the DOM, hidden', s.form.parentNode === s.cell && s.form.className.indexOf('hn-gone') >= 0 && s.cell.children.length === 1);
   check('story: cell marked voted', s.cell.className.indexOf('hn-voted') >= 0);
   check('story: no submit()', s.form.submitted === 0);
-  check('story: exactly one unvote form after the age link, preceded by " | "',
-    un.length === 1 && un[0].previousSibling.nodeValue === ' | ' && un[0].previousSibling.previousSibling === s.age);
+  check('story: exactly one unvote form after the age link, led by the "| " inside it',
+    un.length === 1 && un[0].children[0].nodeValue === '| ' && un[0].previousSibling.nodeValue === ' ' && un[0].previousSibling.previousSibling === s.age);
   check('story: unvote action and next', un[0].getAttribute('action') === '/p/hn/vote/story/7?how=un' && body2(un[0]) === 'next=%2Fnews%237');
   check('story: unvote button', un[0].querySelector('button').textContent === 'unvote' && un[0].className.indexOf('hn-act') >= 0);
   check('story: row not moved', s.row.parentNode !== null && s.sub.children.length === 9);
