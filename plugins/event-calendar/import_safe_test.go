@@ -86,7 +86,7 @@ func TestSafeCreateLeavesNoLinkText(t *testing.T) {
 	attrs := buildCreateAttrs(hostile, time.UTC, "google", "k", "", "")
 	attrs["price"], _ = json.Marshal("Free, see tel:+441")
 	attrs["image"], _ = json.Marshal("x")
-	out, name := safeCreate(attrs, hostile.Title)
+	out, name, _ := safeCreate(attrs, hostile.Title)
 	if _, bad := out["image"]; bad {
 		t.Error("image kept")
 	}
@@ -117,5 +117,71 @@ func TestSafeCreateLeavesNoLinkText(t *testing.T) {
 	}
 	if !strings.Contains(check["description"], "Doors: 7pm") || name != "Jam night" {
 		t.Errorf("name %q, description %q", name, check["description"])
+	}
+}
+
+func TestSafeTextMatchesCoreGate(t *testing.T) {
+	for in, want := range map[string]string{
+		"Pride Picnic \U0001F3F3\uFE0F\u200D\U0001F308": "Pride Picnic \U0001F3F3\uFE0F\U0001F308",
+		"Notes\u200B here\uFEFF":                        "Notes here",
+		"Questions? (mailto:info@club.org)":             "Questions?",
+		`<a href="#more">More</a> info`:                 "More info",
+		`<img src="x"> Hall`:                            "Hall",
+		"<iframe src=x></iframe>Hall":                   "Hall",
+		"Read programme.pdf?v=2 now":                    "Read now",
+		"no.jpg-files here":                             "here",
+		"Pic url (x) end":                               "",
+		"https&#58;//evil.example/x ok":                 "ok",
+		"%68ttps://evil.example ok":                     "ok",
+		"Tel :020 7946 0000":                            "",
+		"Doors: 7pm, Tel: 020 7946 0000":                "Doors: 7pm, Tel: 020 7946 0000",
+		"a ![x] b":                                      "a b",
+		"See data:text/html,x":                          "See",
+	} {
+		if got := safeText(in); got != want {
+			t.Errorf("safeText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSafeLinkMatchesCoreGate(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://x.com/?q=caf\u00e9":             "https://x.com/?q=caf%C3%A9",
+		"https://x.com/?a=b c":                   "https://x.com/?a=b%20c",
+		"https://m\u00fcnchen.de/":               "",
+		"https://my_host.example/":               "",
+		"https://drive.example/flyer.pdf/view":   "",
+		"https://drive.example/?file=poster.jpg": "",
+		"https://venue.org/uploads/info":         "",
+		"https://venue.org/a/media/b":            "",
+		"https://venue.org/%2Fmedia%2Fb":         "",
+		"https://2130706433/a":                   "",
+		"https://venue.org/ok":                   "https://venue.org/ok",
+	} {
+		if got := safeLink(in); got != want {
+			t.Errorf("safeLink(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSafeCreateSkipsAnEventWhoseNameStillFails(t *testing.T) {
+	attrs := map[string]json.RawMessage{"description": json.RawMessage(`"Tel :020 7946 0000"`)}
+	out, _, ok := safeCreate(attrs, "Jam Tel :020")
+	if ok {
+		t.Error("name that still reads as a link was kept")
+	}
+	_ = out
+	out, _, ok = safeCreate(attrs, "Jam")
+	if !ok {
+		t.Fatal("clean name skipped")
+	}
+	if _, kept := out["description"]; kept {
+		t.Error("description that still reads as a link was kept")
+	}
+}
+
+func TestCleanTextDropsHiddenCharacters(t *testing.T) {
+	if got := cleanText("a\u200Db\u202Ec\u2060", 50, false); got != "abc" {
+		t.Errorf("got %q", got)
 	}
 }

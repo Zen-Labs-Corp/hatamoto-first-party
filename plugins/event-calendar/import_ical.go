@@ -166,7 +166,7 @@ func unescapeText(s string) string {
 	return b.String()
 }
 
-// cleanText drops control characters (a newline stays when multiline) and
+// cleanText drops control and hidden characters (a newline stays when multiline) and
 // trims, then caps the result.
 func cleanText(s string, n int, multiline bool) string {
 	s = strings.Map(func(r rune) rune {
@@ -175,7 +175,7 @@ func cleanText(s string, n int, multiline bool) string {
 			return r
 		case r == '\t' || r == '\n' || r == '\r':
 			return ' '
-		case unicode.IsControl(r):
+		case unicode.IsControl(r), hiddenRune(r):
 			return -1
 		}
 		return r

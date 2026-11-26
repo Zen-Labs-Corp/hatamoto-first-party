@@ -56,7 +56,7 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 			return failRun("The run buffer could not be read. Try again.")
 		}
 		cur.Sum = map[string]int{"created": 0, "updated": 0, "unchanged": 0, "with_links": 0, "failed": 0, "failed_sources": failedSources, "dropped_recurrence": 0, "skipped_over_cap": overCap(),
-			"not_updated": 0, "past": 0, "next_run": 0}
+			"not_updated": 0, "unsafe": 0, "past": 0, "next_run": 0}
 	}
 	sum := cur.Sum
 	createCap := manualCreateCap
@@ -133,7 +133,11 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		}
 		if sched {
 			// created without review: text and links that cannot park the changeset
-			want, up.Name = safeCreate(want, ev.Title)
+			var clean bool
+			if want, up.Name, clean = safeCreate(want, ev.Title); !clean {
+				sum["unsafe"]++
+				continue
+			}
 			up.Slug = scheduledSlug(up.Name, ev.Start.In(loc), rec.Key)
 			up.Status = "published"
 		}
@@ -410,7 +414,7 @@ func namesToIDs(schema string) map[string]string {
 // summary, so the counts the owner needs are also put in the message.
 func finishImport(sum map[string]int, createCap int) (sdk.RunStepResult, error) {
 	done := sum["created"] + sum["updated"]
-	skipped := sum["unchanged"] + sum["not_updated"] + sum["past"] + sum["next_run"] + sum["failed"] + sum["skipped_over_cap"]
+	skipped := sum["unchanged"] + sum["not_updated"] + sum["past"] + sum["next_run"] + sum["failed"] + sum["skipped_over_cap"] + sum["unsafe"]
 	msg := fmt.Sprintf("Imported %d events, %d skipped", done, skipped)
 	if n := sum["next_run"]; n > 0 {
 		msg += fmt.Sprintf("; %d left for the next run (at most %d new events a run)", n, createCap)
