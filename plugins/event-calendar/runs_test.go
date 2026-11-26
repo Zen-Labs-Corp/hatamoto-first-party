@@ -27,6 +27,7 @@ type runHost struct {
 	failed   string
 	finished any
 	calls    []string
+	steps    int // transform steps run
 
 	// settings is the answer of settings.get ("{}" when empty); phase is the
 	// phase run.info reports ("transform" when empty).
@@ -36,7 +37,9 @@ type runHost struct {
 	buffer   map[string][]byte
 	cursor   string // the last run.checkpoint
 	fetched  []string
+	headers  []map[string]string // request headers of each fetch
 	lists    map[string][]string // entities.list answers by content type
+	endless  bool                // entities.list always has a next page
 }
 
 // fakePage is the answer of a fake http.fetch.
@@ -82,6 +85,8 @@ func (h *runHost) install(t *testing.T) {
 		case "http.fetch":
 			u := args.(map[string]any)["url"].(string)
 			h.fetched = append(h.fetched, u)
+			hdr, _ := args.(map[string]any)["headers"].(map[string]string)
+			h.headers = append(h.headers, hdr)
 			page, ok := h.pages[u]
 			if !ok {
 				return &sdk.HostError{Code: sdk.ErrBlocked}
@@ -94,14 +99,18 @@ func (h *runHost) install(t *testing.T) {
 		case "entities.list":
 			// the whole list comes on the first page, whatever the cursor
 			schema := args.(map[string]any)["schema_slug"].(string)
-			if args.(map[string]any)["cursor"] != nil {
+			if args.(map[string]any)["cursor"] != nil && !h.endless {
 				return json.Unmarshal([]byte(`{"items":[]}`), out)
 			}
 			items := h.lists[schema]
 			if items == nil {
 				items = []string{}
 			}
-			return json.Unmarshal([]byte(`{"items":[`+strings.Join(items, ",")+`]}`), out)
+			next := ""
+			if h.endless {
+				next = `,"next_cursor":"more"`
+			}
+			return json.Unmarshal([]byte(`{"items":[`+strings.Join(items, ",")+`]`+next+`}`), out)
 		case "buffer.put":
 			a := args.(sdk.BufferPutArgs)
 			v, err := base64.StdEncoding.DecodeString(a.ValueB64)
@@ -167,11 +176,22 @@ func (h *runHost) install(t *testing.T) {
 	}
 }
 
+// step runs the transform phase the way the host does: each step starts from
+// the last checkpoint of the phase, until a step leaves none.
 func (h *runHost) step(t *testing.T) {
 	t.Helper()
-	if _, err := onStep(sdk.RunStep{RunID: h.runID, Phase: sdk.RunPhaseTransform}); err != nil {
-		t.Fatalf("step error: %v", err)
+	h.cursor = ""
+	for range 40 {
+		before := h.cursor
+		if _, err := onStep(sdk.RunStep{RunID: h.runID, Phase: sdk.RunPhaseTransform, Cursor: before}); err != nil {
+			t.Fatalf("step error: %v", err)
+		}
+		h.steps++
+		if h.cursor == before {
+			return
+		}
 	}
+	t.Fatal("the transform phase did not end")
 }
 
 const ownedEvent = `{"id":"e1","schema_slug":"calendar-event","slug":"yoga","name":"Yoga","locale":"en","status":"published","attributes":{

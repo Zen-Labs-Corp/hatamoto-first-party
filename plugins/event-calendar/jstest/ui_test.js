@@ -67,23 +67,28 @@ const HOUR = 3600 * 1000;
 const IMPORTS = {
   role: "owner",
   sources: [
-    { name: "Town council", kind: "google", host: "calendar.google.com", category: "Civic", enabled: true, last_imported: new Date(Date.now() - 3 * HOUR - 60000).toISOString(), url: "https://calendar.example.org/town.ics" },
-    { name: "Riverside venue", kind: "outlook", host: "outlook.office365.com", category: "", enabled: false, last_imported: null, url: "https://outlook.example.org/river.ics" },
+    { name: "Town council", kind: "google", host: "calendar.google.com", category: "Civic", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: true, last_new: new Date(Date.now() - 3 * HOUR - 60000).toISOString(), created_today: 12, url: "https://calendar.example.org/town.ics" },
+    { name: "Riverside venue", kind: "outlook", host: "outlook.office365.com", category: "", enabled: false, last_imported: null, schedule: "off", scheduled_ok: true, last_new: null, created_today: 0, url: "https://outlook.example.org/river.ics" },
+    { name: "Club", kind: "ical", host: "events.example.org", category: "", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: false, last_new: null, created_today: 3, url: "https://events.example.org/club.ics" },
+    { name: "Tickets", kind: "eventbrite", host: "", category: "", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: true, last_new: null, created_today: 0 },
   ],
+  daily_cap: 200,
+  run_cap: 100,
 };
 
 const IDS = [
   "#notice", "#hint", "#state", "#events", "#rows", "#duplicate", "#dup-event", "#dup-shift", "#dup-go",
   "#tab-submissions", "#tab-imports", "#tab-repeating", "#panel-submissions", "#panel-imports", "#panel-repeating",
-  "#sub-status", "#sub-off", "#sub-reject-all", "#sub-state", "#sub-table", "#sub-rows", "#imp-state", "#imp-table", "#imp-rows", "#imp-detail", "#imp-url", "#imp-go", "#imp-confirm",
+  "#sub-status", "#sub-off", "#sub-reject-all", "#sub-state", "#sub-table", "#sub-rows", "#imp-state", "#imp-table", "#imp-rows", "#imp-detail", "#imp-add", "#imp-url", "#imp-go", "#imp-confirm",
 ];
 
 // load runs the page and opens a tab (the repeating one unless told).
-async function load({ data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS } = {}) {
+async function load({ named = "old", data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS } = {}) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   els["#dup-shift"].value = "7";
   const calls = [];
+  const named_calls = [];
   const routes = [];
   const document = { querySelector: (s) => els[s], createElement: (t) => new Node(t) };
   const bodies = { "/admin/repeating": data, "/admin/submissions": subs, "/admin/imports": imports };
@@ -96,7 +101,15 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
       routes.push({ method, p, query: sent });
       return { status, body: JSON.stringify(method === "GET" ? bodies[p] : { ok: true }) };
     },
-    runInputs: (v) => {
+    // named is how the core answers runInputs("edit_dates", values): "old" throws, as an older core does
+    runInputs: (...args) => {
+      if (args.length === 2) {
+        named_calls.push(args);
+        if (named === "old") throw new Error("values must be an object");
+        if (named === "rejects") return Promise.reject(new Error("bridge closed"));
+        return Promise.resolve(named);
+      }
+      const v = args[0];
       calls.push(v);
       return refuse ? Promise.reject(new Error("no run form on this page")) : Promise.resolve();
     },
@@ -107,7 +120,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
     els[`#tab-${tab}`].click();
     await new Promise((r) => setTimeout(r, 10));
   }
-  return { els, calls, routes };
+  return { els, calls, routes, named_calls };
 }
 
 (async () => {
@@ -156,6 +169,53 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   const dup = calls[calls.length - 1];
   check(dup.action === "duplicate" && dup.shift_days === "7" && "event" in dup, "duplicate fills the one run: action, event and shift");
 
+  // named form: started from the click, empty values left out
+  let named_calls;
+  ({ els, calls, named_calls } = await load({ named: { ok: true, run_id: "r1", url: "/admin/runs/r1" } }));
+  els["#rows"].buttons("v dates")[0].click();
+  const pending = els["#rows"].buttons("Skip")[0].click();
+  check(named_calls.length === 1 && calls.length === 0, "the named form is called synchronously from the click");
+  await pending;
+  check(named_calls[0][0] === "edit_dates" && JSON.stringify(named_calls[0][1]) === JSON.stringify({ event: "yoga", action: "skip", date: "2026-02-17" }), "named values: " + JSON.stringify(named_calls[0]));
+  check(els["#hint"].textContent.startsWith("Started.") && !els["#hint"].classes.has("error"), "hint after a started run: " + els["#hint"].textContent);
+  els["#rows"].buttons("Change time")[0].click();
+  const timeInputs = els["#rows"].all((n) => n.tag === "input");
+  timeInputs[0].value = "17:30";
+  timeInputs[1].value = "";
+  await els["#rows"].buttons("Use these times")[0].click();
+  check(JSON.stringify(named_calls[1][1]) === JSON.stringify({ event: "yoga", action: "change", date: "2026-02-17", start_at: "17:30" }), "change through the named form: " + JSON.stringify(named_calls[1]));
+
+  // cancelled: quiet
+  ({ els, calls, named_calls } = await load({ named: { ok: false, error: "cancelled" } }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Skip")[0].click();
+  check(named_calls.length === 1 && els["#hint"].textContent === "" && !els["#hint"].classes.has("error") && calls.length === 0, "cancelled is ignored quietly");
+
+  // another error: shown
+  const busy = "That plugin already has a run in progress. Wait for it to end.";
+  ({ els, calls, named_calls } = await load({ named: { ok: false, error: busy } }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Skip")[0].click();
+  check(els["#hint"].textContent === busy && els["#hint"].classes.has("error") && calls.length === 0, "other errors are shown: " + els["#hint"].textContent);
+
+  // an older core throws on the named form: the one-arg fill, with every key
+  ({ els, calls, named_calls } = await load({ named: "old" }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Skip")[0].click();
+  await next();
+  check(named_calls.length === 1 && calls.length === 1 && calls[0].action === "skip" && calls[0].start_at === "" && calls[0].shift_days === "" && els["#hint"].textContent.includes("Press Start"), "fallback to the form fill: " + els["#hint"].textContent);
+  // a rejected promise falls back too
+  ({ els, calls } = await load({ named: "rejects" }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Restore")[0].click();
+  await next();
+  check(calls.length === 1 && calls[0].action === "restore", "a rejected named call falls back");
+
+  // an editor never reaches runInputs
+  ({ els, named_calls } = await load({ named: { ok: true }, data: { ...DATA, role: "editor" } }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Skip")[0].click();
+  check(named_calls.length === 0, "editor buttons start nothing");
   // the admin refuses the inputs (Settings tab): instruction line
   ({ els, calls } = await load({ refuse: true }));
   els["#rows"].buttons("v dates")[0].click();
@@ -269,18 +329,26 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   ({ els } = await load({ tab: "submissions", status: 503, subs: { error: "unavailable" } }));
   check(els["#notice"].classes.has("error"), "a failing list shows an error");
 
-  // imports: rows, last imported, run now, edit, the any-url box
+  // imports: rows, schedule, last new event, created today, run now, edit, the any-url box
   ({ els, calls } = await load({ tab: "imports" }));
   let impRows = els["#imp-rows"];
   const impText = impRows.text();
-  check(impRows.children.length === 2 && impText.includes("Town council") && impText.includes("Google") && impText.includes("manual") && !impText.includes("every 6"), "source rows");
-  check(impText.includes("3 hours ago") && impText.includes("never") && impText.includes("off"), "last imported and a disabled source");
+  const cells = (i) => impRows.children[i].children.map((td) => td.textContent);
+  check(impRows.children.length === 4 && impText.includes("Town council") && impText.includes("Google"), "source rows");
+  check(cells(0).slice(0, 5).join("|") === "Town council|Google|Daily|3 hours ago|12 / 200", "daily source: " + cells(0));
+  check(cells(1).slice(2, 5).join("|") === "Off|never|-", "off source: " + cells(1));
+  check(cells(2)[2] === "Daily (Run now only)" && cells(2)[4] === "3 / 200", "unlisted host: " + cells(2));
+  check(cells(3)[1] === "Eventbrite" && cells(3)[2] === "Daily", "eventbrite source: " + cells(3));
   check(!impText.includes("calendar.example.org"), "the address is not shown in the table");
   await impRows.buttons("Run now")[0].click();
-  check(calls.length === 1 && calls[0].action === "import_url" && calls[0].url === "https://calendar.example.org/town.ics" && calls[0].kind === "google" && calls[0].name === "Town council", "run now fills the import inputs");
+  check(calls.length === 1 && calls[0].action === "import_source" && calls[0].name === "Town council" && !("url" in calls[0]), "run now fills the named source");
+  await impRows.buttons("Run now")[3].click();
+  check(calls.length === 2 && calls[1].action === "import_source" && calls[1].name === "Tickets", "run now works for a source without an address");
   impRows.buttons("Edit")[0].click();
   const detail = els["#imp-detail"].textContent;
   check(detail.includes("calendar.google.com") && detail.includes("Civic") && detail.includes("Settings tab") && !detail.includes("calendar.example.org"), "edit shows the details read-only: " + detail);
+  els["#imp-add"].click();
+  check(els["#imp-detail"].textContent === "Change or add sources on the plugin's Settings tab.", "add source points to Settings");
 
   // any other iCal address: host confirmation, then the inputs
   els["#imp-url"].value = "webcal://Feeds.Example.org/cal/events.ics?token=abc";

@@ -64,14 +64,22 @@ assert.equal(c.cellEvents(five, 0).shown.length, 1);
 // URL state
 const today = "2026-02-14";
 let st = c.stateFromSearch("", today, "month");
-assert.deepEqual(st, { view: "month", date: today, price: "", q: "", category: "", venue: "", city: "" });
+assert.deepEqual(st, { view: "month", date: today, price: "", q: "", category: "", venue: "", city: "", tag: "", f1: "", f2: "", f3: "", f4: "" });
 assert.equal(c.stateFromSearch("", today, "list").view, "list");
 assert.equal(c.stateFromSearch("", today, "bogus").view, "month");
 st = c.stateFromSearch("?view=week&date=2026-03-02&q=jazz%20night&category=Music&venue=Old+Mill&city=Leeds&price=free", today, "month");
-assert.deepEqual(st, { view: "week", date: "2026-03-02", price: "free", q: "jazz night", category: "Music", venue: "Old Mill", city: "Leeds" });
+assert.deepEqual(st, { view: "week", date: "2026-03-02", price: "free", q: "jazz night", category: "Music", venue: "Old Mill", city: "Leeds", tag: "", f1: "", f2: "", f3: "", f4: "" });
 assert.deepEqual(c.stateFromSearch("?" + c.searchFromState(st, today, "month"), today, "month"), st);
 assert.equal(c.searchFromState(c.stateFromSearch("", today, "month"), today, "month"), "");
 assert.equal(c.searchFromState({ ...st, view: "month", date: today, q: "", category: "", venue: "", city: "", price: "" }, today, "month"), "");
+// tag and field slots round-trip
+const tagged = c.stateFromSearch("?tag=Live+music&f1=Adults&f3=" + "y".repeat(300), today, "month");
+assert.equal(tagged.tag, "Live music");
+assert.equal(tagged.f1, "Adults");
+assert.equal(tagged.f2, "");
+assert.equal(tagged.f3.length, 200);
+assert.deepEqual(c.stateFromSearch("?" + c.searchFromState(tagged, today, "month"), today, "month"), tagged);
+assert.equal(new URLSearchParams(c.searchFromState(tagged, today, "month")).get("tag"), "Live music");
 // hostile values fall back
 const bad = c.stateFromSearch("?view=%3Cscript%3E&date=2026-02-30&price=free%27&q=" + "x".repeat(500), today, "month");
 assert.equal(bad.view, "month");
@@ -89,6 +97,21 @@ assert.equal(
   c.apiQuery(range, { ...st, q: "a&b=c" }),
   "from=2026-01-26&to=2026-03-09&q=a%26b%3Dc&category=Music&venue=Old+Mill&city=Leeds&price=free",
 );
+// tag and site-added fields reach the route only as the route knows them
+const base = c.stateFromSearch("", today, "month");
+assert.equal(c.apiQuery(range, { ...base, tag: "Jazz" }), "from=2026-01-26&to=2026-03-09&tag=Jazz");
+assert.equal(c.apiQuery(range, { ...base, f1: "Adults" }, ["audience"]), "from=2026-01-26&to=2026-03-09&fields=audience&f1=Adults");
+assert.equal(c.apiQuery(range, base, ["audience"]), "from=2026-01-26&to=2026-03-09&fields=audience");
+assert.equal(c.apiQuery(range, { ...base, f1: "Adults" }), "from=2026-01-26&to=2026-03-09", "a slot value without a field is not sent");
+assert.equal(c.apiQuery(range, { ...base, f2: "x" }, ["audience"]), "from=2026-01-26&to=2026-03-09&fields=audience", "slot 2 has no field");
+assert.equal(c.apiQuery(range, { ...base, f1: "a", f2: "b" }, ["audience", "age"]), "from=2026-01-26&to=2026-03-09&fields=audience%2Cage&f1=a&f2=b");
+assert.notEqual(c.cacheKey(range, base, "monday"), c.cacheKey(range, { ...base, tag: "Jazz" }, "monday"));
+for (const k of ["f1", "f2", "f3", "f4"]) assert.notEqual(c.cacheKey(range, base, "monday"), c.cacheKey(range, { ...base, [k]: "x" }, "monday"));
+assert.deepEqual(c.fieldKeys("audience, age_group,Bad,audience,a,b,c,d"), ["audience", "age_group", "a", "b"]);
+assert.deepEqual(c.fieldKeys(""), []);
+assert.deepEqual(c.fieldKeys(null), []);
+assert.equal(c.humanKey("age_group"), "Age group");
+assert.equal(c.humanKey("audience"), "Audience");
 assert.notEqual(c.cacheKey(range, st, "monday"), c.cacheKey(range, st, "sunday"));
 assert.notEqual(c.cacheKey(range, st, "monday"), c.cacheKey(range, { ...st, city: "Hull" }, "monday"));
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -214,7 +215,7 @@ func TestAPIEventsCheckCap(t *testing.T) {
 }
 
 func TestAPIEventsFilters(t *testing.T) {
-	h := &apiHost{fakeHost: fakeHost{dbRows: `[]`}}
+	h := &apiHost{fakeHost: fakeHost{dbRows: `[]`}, settings: `{"public_filter_fields":"audience,age"}`}
 	if r, _ := getAPI(t, h, q1("q", "jazz", "category", "Music", "venue", "hall", "city", "Bonn", "price", "free", "view", "month")); r.Status != 200 {
 		t.Fatalf("status = %d", r.Status)
 	}
@@ -230,6 +231,58 @@ func TestAPIEventsFilters(t *testing.T) {
 	getAPI(t, h, q1("price", "any"))
 	if h.args[6] != "" {
 		t.Errorf("price any = %v", h.args[6])
+	}
+	getAPI(t, h, q1("tag", "Jazz", "fields", "audience,age", "f1", "Adults"))
+	if len(h.args) != 17 || h.args[15] != "Jazz" || h.args[16] != `[{"k":"audience","v":"Adults"}]` {
+		t.Errorf("tag and field args = %v", h.args[15:])
+	}
+	getAPI(t, h, q1())
+	if h.args[15] != "" || h.args[16] != "[]" {
+		t.Errorf("no tag or field args = %v", h.args[15:])
+	}
+}
+
+func TestAPIEventsTagsAndFields(t *testing.T) {
+	rows := `[{"id":"a","schema_slug":"calendar-event","name":"Jazz","slug":"jazz","starts_at":"2026-06-10T17:00:00+00:00","ends_at":"2026-06-10T19:00:00+00:00",
+ "tags":["Live","Jazz"],"extra":{"audience":"Adults","age":["Kids","Teens"],"other":"hidden"}},
+ {"id":"b","schema_slug":"calendar-event","name":"Fair","slug":"fair","starts_at":"2026-06-11T17:00:00+00:00","ends_at":"2026-06-11T19:00:00+00:00"}]`
+	h := &apiHost{fakeHost: fakeHost{dbRows: rows, entities: published("a", "b")}, settings: `{"public_filter_fields":"audience,missing"}`}
+	r, body := getAPI(t, h, q1("tag", "jazz", "fields", "audience,missing", "f1", "adults"))
+	if r.Status != 200 || len(body.Events) != 2 {
+		t.Fatalf("status %d events %d: %s", r.Status, len(body.Events), r.Body)
+	}
+	a, b := body.Events[0], body.Events[1]
+	if !reflect.DeepEqual(a.Tags, []string{"Live", "Jazz"}) || !reflect.DeepEqual(a.Fields, map[string]any{"audience": "Adults"}) {
+		t.Errorf("tags %v fields %v", a.Tags, a.Fields)
+	}
+	if b.Tags == nil || len(b.Tags) != 0 || b.Fields != nil {
+		t.Errorf("event without tags: %v %v", b.Tags, b.Fields)
+	}
+	if strings.Contains(r.Body, "hidden") || strings.Contains(r.Body, "Teens") {
+		t.Errorf("unrequested field in the body: %s", r.Body)
+	}
+	if _, body := getAPI(t, h, q1()); body.Events[0].Fields != nil {
+		t.Errorf("fields without a request: %v", body.Events[0].Fields)
+	}
+}
+
+func TestAPIEventsOnlyOptedInFields(t *testing.T) {
+	rows := `[{"id":"a","schema_slug":"calendar-event","name":"Jazz","slug":"jazz","starts_at":"2026-06-10T17:00:00+00:00","ends_at":"2026-06-10T19:00:00+00:00",
+ "extra":{"audience":"Adults","contact_email":"x@y.example"}}]`
+	h := &apiHost{fakeHost: fakeHost{dbRows: rows, entities: published("a")}, settings: `{"public_filter_fields":"audience"}`}
+	r, body := getAPI(t, h, q1("fields", "audience,contact_email"))
+	if r.Status != 200 || strings.Contains(r.Body, "x@y.example") || body.Events[0].Fields["audience"] != "Adults" {
+		t.Errorf("status %d: %s", r.Status, r.Body)
+	}
+	if r, _ := getAPI(t, h, q1("fields", "audience,contact_email", "f2", "x")); r.Status != 400 {
+		t.Errorf("filter on a private field: status %d", r.Status)
+	}
+	h.settings = ""
+	if r, _ := getAPI(t, h, q1("fields", "audience", "f1", "Adults")); r.Status != 400 {
+		t.Errorf("no opt-in: status %d", r.Status)
+	}
+	if r, _ := getAPI(t, h, q1("fields", "audience")); strings.Contains(r.Body, "Adults") {
+		t.Errorf("no opt-in leaks: %s", r.Body)
 	}
 }
 

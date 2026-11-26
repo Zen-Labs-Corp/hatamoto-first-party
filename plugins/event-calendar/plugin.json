@@ -1,8 +1,8 @@
 {
   "name": "event-calendar",
-  "version": "0.5.0",
-  "sdk": "^0.22",
-  "description": "Events with dates, venue and ticket link: upcoming and past lists for the page builder, an iCal feed and Event structured data.",
+  "version": "0.6.0",
+  "sdk": "^0.28.1",
+  "description": "Event calendar for the page builder: month, list, week and map views, repeating events, venues, filters, scheduled iCal and Eventbrite imports, visitor submissions and an iCal feed.",
   "permissions": [
     "entities.read",
     "builder.data",
@@ -21,6 +21,7 @@
     "outlook.live.com",
     "www.meetup.com",
     "www.eventbrite.com",
+    "www.eventbriteapi.com",
     "*"
   ],
   "builder_sources": [
@@ -206,7 +207,8 @@
             "restore",
             "duplicate",
             "import_url",
-            "approve"
+            "approve",
+            "import_source"
           ],
           "required": true
         },
@@ -277,6 +279,35 @@
         "fetch",
         "transform"
       ]
+    },
+    {
+      "name": "scheduled_import",
+      "title": "Scheduled calendar import",
+      "stages": [
+        "fetch",
+        "transform"
+      ],
+      "cron": "import",
+      "standing_approval": {
+        "fields": [
+          "event_status"
+        ],
+        "schemas": [
+          "calendar-event"
+        ],
+        "max_per_hour": 100,
+        "create": {
+          "schemas": [
+            "calendar-event"
+          ],
+          "max_per_hour": 100,
+          "link_fields": [
+            "ticket_url",
+            "online_url",
+            "website"
+          ]
+        }
+      }
     }
   ],
   "limits": {
@@ -347,6 +378,14 @@
         "description": "Email or web address added to the lookup User-Agent, as the Nominatim usage policy asks.",
         "default": ""
       },
+      "public_filter_fields": {
+        "type": "string",
+        "title": "Public filter fields",
+        "description": "Up to four field keys (lower case, comma separated, such as audience,age_group) that the public events route may filter on and return. Leave empty to keep your own fields private.",
+        "maxLength": 163,
+        "default": "",
+        "pattern": "^([a-z][a-z0-9_]{0,39}(,[a-z][a-z0-9_]{0,39}){0,3})?$"
+      },
       "submissions_enabled": {
         "type": "boolean",
         "title": "Accept public event submissions",
@@ -361,18 +400,24 @@
         "default": "",
         "maxLength": 200
       },
+      "eventbrite_token": {
+        "type": "string",
+        "title": "Eventbrite private token",
+        "description": "Private token of your Eventbrite account, for Eventbrite sources. Stored sealed; never shown again.",
+        "writeOnly": true,
+        "maxLength": 200
+      },
       "import_sources": {
         "type": "array",
         "title": "Calendar sources",
-        "description": "Public calendar addresses you can import with Run now on the Imports tab. At most 8. Google, Outlook and Meetup addresses only.",
+        "description": "Calendars for the Imports tab, at most 8. Sources set to daily are read twice a day and publish up to 100 new events each time (200 a day) once you allow automatic updates. Scheduled reading works for Google, Outlook, Meetup and Eventbrite addresses only; other addresses are imported with Run now.",
         "default": [],
         "maxItems": 8,
         "items": {
           "type": "object",
           "required": [
             "name",
-            "kind",
-            "url"
+            "kind"
           ],
           "properties": {
             "name": {
@@ -386,14 +431,16 @@
               "enum": [
                 "google",
                 "outlook",
-                "meetup"
+                "meetup",
+                "ical",
+                "eventbrite"
               ]
             },
             "url": {
               "type": "string",
               "title": "Address",
               "maxLength": 2048,
-              "pattern": "^(https|webcal)://"
+              "pattern": "^((https|webcal)://.*)?$"
             },
             "category": {
               "type": "string",
@@ -404,6 +451,22 @@
               "type": "boolean",
               "title": "Enabled",
               "default": true
+            },
+            "schedule": {
+              "type": "string",
+              "title": "Schedule",
+              "enum": [
+                "off",
+                "daily"
+              ],
+              "default": "off"
+            },
+            "organization_id": {
+              "type": "string",
+              "title": "Eventbrite organization ID",
+              "description": "For the eventbrite kind: the number in your organization's API address.",
+              "pattern": "^([0-9]{1,20})?$",
+              "default": ""
             }
           }
         }
@@ -418,6 +481,10 @@
     {
       "name": "prune",
       "every": "1h"
+    },
+    {
+      "name": "import",
+      "every": "12h"
     }
   ]
 }

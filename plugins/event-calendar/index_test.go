@@ -75,7 +75,7 @@ func (h *indexHost) assertSingleStatements(t *testing.T) {
 }
 
 const idxDoc = `{"id":"e1","schema_slug":"calendar-event","slug":"gala","name":"Gala","status":"published",
- "attributes":{"start_at":"2026-07-01T19:00","end_at":"2026-07-01T21:00","time_zone":"Europe/Berlin","venue":["v1"],"category":["c1"],"price_amount":12.5}}`
+ "attributes":{"start_at":"2026-07-01T19:00","end_at":"2026-07-01T21:00","time_zone":"Europe/Berlin","venue":["v1"],"category":["c1"],"price_amount":12.5,"tags":["Gala night"],"audience":"Adults"}}`
 
 func TestIndexUpsertOnEntityEvents(t *testing.T) {
 	h := &indexHost{docs: map[string]string{
@@ -108,8 +108,15 @@ func TestIndexUpsertOnEntityEvents(t *testing.T) {
 	if ex[0].args[31] != false || ex[0].args[32] != `[]` {
 		t.Errorf("recurring args = %v", ex[0].args[31:])
 	}
-	if len(ex[0].args) != 33 || strings.Count(ex[0].sql, "$33") != 1 {
+	if ex[0].args[33] != `["Gala night"]` || ex[0].args[34] != `{"audience":"Adults"}` {
+		t.Errorf("tags and extra args = %v", ex[0].args[33:])
+	}
+	if len(ex[0].args) != 35 || strings.Count(ex[0].sql, "$35") != 1 {
 		t.Errorf("args = %d", len(ex[0].args))
+	}
+	// first_seen is filled by the column default on the first insert and never rewritten
+	if strings.Contains(ex[0].sql, "first_seen") {
+		t.Errorf("upsert touches first_seen: %s", ex[0].sql)
 	}
 	if ex[1].args[0] != "e1" || len(ex[1].args) != 2 || ex[1].args[1] != `[{"s":"2026-07-01T17:00:00Z","e":"2026-07-01T19:00:00Z"}]` {
 		t.Errorf("occurrence args = %v", ex[1].args)
@@ -238,7 +245,8 @@ func TestIndexQueryRange(t *testing.T) {
 	h.install(t)
 	from := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	to := from.AddDate(0, 0, 31)
-	got, err := queryRange(rangeQuery{From: from, To: to, Q: `50%_\ "off"; DROP`, Category: "Music", Venue: "hall", City: "Bonn", Price: "free", Slug: "gala", Language: "de", Limit: 9999})
+	got, err := queryRange(rangeQuery{From: from, To: to, Q: `50%_\ "off"; DROP`, Category: "Music", Venue: "hall", City: "Bonn", Price: "free", Slug: "gala", Language: "de", Limit: 9999,
+		Tag: "Jazz", Fields: []fieldFilter{{"audience", "Adults"}}})
 	if err != nil || len(got) != 2 {
 		t.Fatalf("rows = %+v, %v", got, err)
 	}
@@ -251,7 +259,7 @@ func TestIndexQueryRange(t *testing.T) {
 	if !strings.Contains(c.sql, "o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz") {
 		t.Errorf("no overlap test: %s", c.sql)
 	}
-	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false, "", "", ""}
+	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false, "", "", "", "Jazz", `[{"k":"audience","v":"Adults"}]`}
 	if fmt.Sprint(c.args) != fmt.Sprint(want) {
 		t.Errorf("args = %v, want %v", c.args, want)
 	}

@@ -58,6 +58,8 @@ type indexRow struct {
 	SourceKind, SourceUID, SourceURL         string
 	Repeating                                bool
 	OrganizerIDs                             []string
+	Tags                                     []string
+	Extra                                    map[string]any
 }
 
 // rowFromEvent is the index row of an event. loc is the zone an all-day event
@@ -82,6 +84,7 @@ func rowFromEvent(e Event, v *Venue, cats categoryRefs, loc *time.Location) inde
 		Featured: e.Featured, Image: e.Image,
 		SourceKind: e.SourceKind, SourceUID: e.SourceUID, SourceURL: e.SourceURL,
 		Repeating: e.Repeat.Kind != "" && e.Repeat.Kind != "none", OrganizerIDs: nonNil(e.OrganizerIDs),
+		Tags: nonNil(e.Tags), Extra: e.Extra,
 	}
 }
 
@@ -90,6 +93,13 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+func nonNilMap(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
 }
 
 func jsonText(v any) string {
@@ -102,10 +112,10 @@ func utcText(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 const upsertEventSQL = `INSERT INTO events (entity_id, schema_slug, slug, locale, name, starts_at, ends_at, all_day, time_zone,
  event_status, attendance_mode, venue_id, venue_name, venue_city, category_ids, category_names, series_id,
  price, price_amount, featured, image, source_kind, source_uid, source_url,
- url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs, repeating, organizer_ids)
+ url, venue_slug, venue_address, venue_lat, venue_lon, category_slugs, repeating, organizer_ids, tags, extra)
 SELECT $1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8::boolean, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17,
  $18, $19::double precision, $20::boolean, $21, $22, $23, $24,
- $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb, $32::boolean, $33::jsonb
+ $26, $27, $28, $29::double precision, $30::double precision, $31::jsonb, $32::boolean, $33::jsonb, $34::jsonb, $35::jsonb
 WHERE $25::timestamptz IS NULL OR NOT EXISTS (SELECT 1 FROM deleted_events WHERE entity_id = $1 AND deleted_at >= $25::timestamptz)
 ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug = EXCLUDED.slug, locale = EXCLUDED.locale,
  name = EXCLUDED.name, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, all_day = EXCLUDED.all_day,
@@ -116,7 +126,8 @@ ON CONFLICT (entity_id) DO UPDATE SET schema_slug = EXCLUDED.schema_slug, slug =
  source_kind = EXCLUDED.source_kind, source_uid = EXCLUDED.source_uid, source_url = EXCLUDED.source_url,
  url = EXCLUDED.url, venue_slug = EXCLUDED.venue_slug, venue_address = EXCLUDED.venue_address,
  venue_lat = EXCLUDED.venue_lat, venue_lon = EXCLUDED.venue_lon, category_slugs = EXCLUDED.category_slugs,
- repeating = EXCLUDED.repeating, organizer_ids = EXCLUDED.organizer_ids, updated_at = now()`
+ repeating = EXCLUDED.repeating, organizer_ids = EXCLUDED.organizer_ids, tags = EXCLUDED.tags, extra = EXCLUDED.extra,
+ updated_at = now()`
 
 // One statement writes every date of the event from a jsonb array of
 // {"s": start, "e": end}. The delete skips the rows the insert writes, so the
@@ -154,7 +165,8 @@ func upsertEvent(r indexRow, occs []occ, notDeletedSince *time.Time) error {
 		utcText(r.StartsAt), utcText(r.EndsAt), r.AllDay, r.TimeZone, r.EventStatus, r.AttendanceMode,
 		r.VenueID, r.VenueName, r.VenueCity, jsonText(r.CategoryIDs), jsonText(r.CategoryNames), r.SeriesID,
 		r.Price, amount, r.Featured, r.Image, r.SourceKind, r.SourceUID, r.SourceURL, guard,
-		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs), r.Repeating, jsonText(r.OrganizerIDs)); err != nil {
+		r.URL, r.VenueSlug, r.VenueAddress, lat, lon, jsonText(r.CategorySlugs), r.Repeating, jsonText(r.OrganizerIDs),
+		jsonText(nonNil(r.Tags)), jsonText(nonNilMap(r.Extra))); err != nil {
 		return err
 	}
 	return dbExec(upsertOccurrencesSQL, r.EntityID, occurrencesJSON(occs))
@@ -415,6 +427,7 @@ func (r apiRow) event(loc *time.Location) Event {
 		AllDay: r.AllDay, TimeZone: r.TimeZone, EventStatus: r.EventStatus,
 		Venue: r.VenueName, VenueCity: r.VenueCity, Address: r.VenueAddress,
 		Price: r.Price, PriceAmount: r.PriceAmount, Featured: r.Featured, Image: r.Image,
+		Tags: r.Tags, Extra: r.Extra,
 	}
 	e.Start, e.End, e.HasEnd = indexTimes(r.StartsAt.UTC(), r.EndsAt.UTC(), r.AllDay, r.TimeZone, loc)
 	if !r.BaseStartsAt.IsZero() {
@@ -434,32 +447,36 @@ type rangeQuery struct {
 	StartsAfter                     bool // only events that start at or after From, not ones in progress
 	// Entity ids of the page the events are listed for; empty matches all.
 	SeriesID, OrganizerID, VenueID string
+	Tag                            string
+	Fields                         []fieldFilter
 }
 
 // apiRow is one occurrence as the range query returns it.
 type apiRow struct {
-	ID            string    `json:"id"`
-	SchemaSlug    string    `json:"schema_slug"`
-	Name          string    `json:"name"`
-	Slug          string    `json:"slug"`
-	URL           string    `json:"url"`
-	StartsAt      time.Time `json:"starts_at"`
-	EndsAt        time.Time `json:"ends_at"`
-	AllDay        bool      `json:"all_day"`
-	TimeZone      string    `json:"time_zone"`
-	EventStatus   string    `json:"event_status"`
-	VenueName     string    `json:"venue_name"`
-	VenueSlug     string    `json:"venue_slug"`
-	VenueCity     string    `json:"venue_city"`
-	VenueAddress  string    `json:"venue_address"`
-	Lat           *float64  `json:"lat"`
-	Lon           *float64  `json:"lon"`
-	CategoryNames []string  `json:"category_names"`
-	Price         string    `json:"price"`
-	PriceAmount   *float64  `json:"price_amount"`
-	Featured      bool      `json:"featured"`
-	Image         string    `json:"image"`
-	BaseStartsAt  time.Time `json:"base_starts_at"`
+	ID            string         `json:"id"`
+	SchemaSlug    string         `json:"schema_slug"`
+	Name          string         `json:"name"`
+	Slug          string         `json:"slug"`
+	URL           string         `json:"url"`
+	StartsAt      time.Time      `json:"starts_at"`
+	EndsAt        time.Time      `json:"ends_at"`
+	AllDay        bool           `json:"all_day"`
+	TimeZone      string         `json:"time_zone"`
+	EventStatus   string         `json:"event_status"`
+	VenueName     string         `json:"venue_name"`
+	VenueSlug     string         `json:"venue_slug"`
+	VenueCity     string         `json:"venue_city"`
+	VenueAddress  string         `json:"venue_address"`
+	Lat           *float64       `json:"lat"`
+	Lon           *float64       `json:"lon"`
+	CategoryNames []string       `json:"category_names"`
+	Price         string         `json:"price"`
+	PriceAmount   *float64       `json:"price_amount"`
+	Featured      bool           `json:"featured"`
+	Image         string         `json:"image"`
+	BaseStartsAt  time.Time      `json:"base_starts_at"`
+	Tags          []string       `json:"tags"`
+	Extra         map[string]any `json:"extra"`
 }
 
 // freeSQL is the free rule of priceText: an amount of 0 or the text "free".
@@ -475,6 +492,7 @@ SELECT e.entity_id AS id, e.schema_slug, e.name, e.slug, e.url, o.starts_at, o.e
  e.venue_name, e.venue_slug, e.venue_city, e.venue_address,
  COALESCE(e.venue_lat, g.latitude) AS lat, COALESCE(e.venue_lon, g.longitude) AS lon,
  e.category_names, e.price, e.price_amount, e.featured, e.image, e.starts_at AS base_starts_at,
+ e.tags, e.extra,
  row_number() OVER (ORDER BY CASE WHEN $11::boolean THEN -extract(epoch FROM o.starts_at) ELSE extract(epoch FROM o.starts_at) END,
   e.name, e.entity_id) AS n
 FROM events e JOIN occurrences o ON o.event_id = e.entity_id
@@ -493,7 +511,23 @@ WHERE o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz
  AND ($13::text = '' OR e.series_id = $13::text)
  AND ($14::text = '' OR e.organizer_ids @> to_jsonb($14::text))
  AND ($15::text = '' OR e.venue_id = $15::text)
+ AND ($16::text = '' OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(e.tags) t WHERE lower(t) = lower($16::text)))
+ AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements($17::jsonb) f WHERE NOT (lower(COALESCE(e.extra->>(f->>'k'), '')) = lower(f->>'v')
+  OR (jsonb_typeof(e.extra->(f->>'k')) = 'array' AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(e.extra->(f->>'k')) x WHERE lower(x) = lower(f->>'v')))))
 LIMIT $10::int) r`
+
+// fieldFiltersJSON is the array of {k, v} the query's field clause reads.
+func fieldFiltersJSON(fs []fieldFilter) string {
+	type kv struct {
+		K string `json:"k"`
+		V string `json:"v"`
+	}
+	list := make([]kv, 0, len(fs))
+	for _, f := range fs {
+		list = append(list, kv{f.Key, f.Value})
+	}
+	return jsonText(list)
+}
 
 // escapeLike makes s literal inside an ILIKE pattern.
 func escapeLike(s string) string {
@@ -509,7 +543,8 @@ func queryRange(r rangeQuery) ([]apiRow, error) {
 	}
 	var rows *[]apiRow
 	if err := dbJSON(queryRangeSQL, &rows, utcText(r.From), utcText(r.To), escapeLike(r.Q), r.Category, r.Venue,
-		r.City, r.Price, r.Slug, r.Language, limit, r.Desc, r.StartsAfter, r.SeriesID, r.OrganizerID, r.VenueID); err != nil {
+		r.City, r.Price, r.Slug, r.Language, limit, r.Desc, r.StartsAfter, r.SeriesID, r.OrganizerID, r.VenueID,
+		r.Tag, fieldFiltersJSON(r.Fields)); err != nil {
 		return nil, err
 	}
 	if rows == nil {

@@ -16,7 +16,7 @@ type adminHost struct {
 	settings string
 	rows     string // the submissions listing cell
 	counts   string
-	last     string // answer of the last-imported query
+	last     string // answer of the per-source stats query
 	affected int
 	dbErr    error
 	queries  []sqlCall
@@ -46,7 +46,7 @@ func (h *adminHost) install(t *testing.T) {
 			switch {
 			case strings.Contains(call.sql, "jsonb_object_agg"):
 				cell = h.counts
-			case strings.Contains(call.sql, "max(updated_at)"):
+			case strings.Contains(call.sql, "max(first_seen)"):
 				cell = h.last
 			}
 			return json.Unmarshal([]byte(`{"rows":[[`+cell+`]]}`), out)
@@ -240,12 +240,13 @@ func TestAdminSubmissionActions(t *testing.T) {
 }
 
 const importSettings = `{"import_sources":[
-{"name":"Town council","kind":"google","url":"https://calendar.google.com/calendar/ical/secret-token/basic.ics","category":"Civic","enabled":true},
+{"name":"Town council","kind":"google","url":"https://calendar.google.com/calendar/ical/secret-token/basic.ics","category":"Civic","enabled":true,"schedule":"daily"},
 {"name":"Riverside venue","kind":"outlook","url":"webcal://outlook.office365.com/owa/calendar/x/reachcalendar.ics","enabled":false},
-{"kind":"meetup","url":"https://www.meetup.com/example-group/events/ical/"}]}`
+{"kind":"meetup","url":"https://www.meetup.com/example-group/events/ical/"},
+{"name":"Club","kind":"ical","url":"https://events.example.org/feed.ics","schedule":"daily"}]}`
 
 func TestAdminImports(t *testing.T) {
-	h := &adminHost{settings: importSettings, last: `"2027-02-01T10:00:00+00:00"`}
+	h := &adminHost{settings: importSettings, last: `{"last":"2027-02-01T10:00:00+00:00","last_new":"2027-01-30T08:00:00+00:00","today":12}`}
 	h.install(t)
 
 	r := callRoute(t, "GET", "/admin/imports", owner, nil, nil)
@@ -256,10 +257,10 @@ func TestAdminImports(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.Body), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Sources) != 3 {
+	if len(got.Sources) != 4 || got.DailyCap != 200 || got.RunCap != 100 {
 		t.Fatalf("list = %+v", got)
 	}
-	s0, s1, s2 := got.Sources[0], got.Sources[1], got.Sources[2]
+	s0, s1, s2, s3 := got.Sources[0], got.Sources[1], got.Sources[2], got.Sources[3]
 	if s0.Name != "Town council" || s0.Host != "calendar.google.com" || s0.Category != "Civic" || !s0.Enabled || s0.URL == "" {
 		t.Errorf("source 0 = %+v", s0)
 	}
@@ -272,13 +273,23 @@ func TestAdminImports(t *testing.T) {
 	if s0.LastImported == nil || *s0.LastImported != "2027-02-01T10:00:00+00:00" {
 		t.Errorf("last imported = %v", s0.LastImported)
 	}
+	if s0.LastNew == nil || *s0.LastNew != "2027-01-30T08:00:00+00:00" || s0.CreatedToday != 12 {
+		t.Errorf("last new %v, created today %d", s0.LastNew, s0.CreatedToday)
+	}
+	// schedule and whether a scheduled run can read the source
+	if s0.Schedule != "daily" || !s0.ScheduledOK || s1.Schedule != "off" || !s1.ScheduledOK || s2.Schedule != "off" {
+		t.Errorf("schedules: %+v %+v %+v", s0, s1, s2)
+	}
+	if s3.Schedule != "daily" || s3.ScheduledOK || s3.Host != "events.example.org" {
+		t.Errorf("unlisted host = %+v", s3)
+	}
 
 	// the last-imported query: parameters only, the key prefix of the source
-	if len(h.queries) != 3 {
+	if len(h.queries) != 4 {
 		t.Fatalf("queries = %v", h.queries)
 	}
 	q := h.queries[0]
-	if q.args[0] != "google-town-council-" || q.args[1] != "google" || strings.Contains(q.sql, "town") || strings.Contains(q.sql, "google") {
+	if q.args[0] != "google-town-council-" || q.args[1] != "google" || strings.Contains(q.sql, "town") || strings.Contains(q.sql, "google") || !strings.Contains(q.sql, "first_seen") {
 		t.Errorf("query = %+v", q)
 	}
 	if h.queries[1].args[0] != "outlook-riverside-venue-" {
@@ -295,11 +306,30 @@ func TestAdminImports(t *testing.T) {
 	}
 	var ed importList
 	_ = json.Unmarshal([]byte(r.Body), &ed)
-	if ed.Role != "editor" || len(ed.Sources) != 3 || ed.Sources[0].Host != "calendar.google.com" {
+	if ed.Role != "editor" || len(ed.Sources) != 4 || ed.Sources[0].Host != "calendar.google.com" {
 		t.Errorf("editor list = %+v", ed)
 	}
 	if r := callRoute(t, "GET", "/admin/imports", nil, nil, nil); r.Status != 403 {
 		t.Errorf("no user: %d", r.Status)
+	}
+}
+
+func TestAdminImportsNeverShowTheEventbriteToken(t *testing.T) {
+	h := &adminHost{settings: `{"eventbrite_token":"SECRET-TOKEN-123","import_sources":[{"name":"Tickets","kind":"eventbrite","organization_id":"123","schedule":"daily"}]}`}
+	h.install(t)
+	for _, u := range []*sdk.HTTPUser{owner, editor} {
+		r := callRoute(t, "GET", "/admin/imports", u, nil, nil)
+		if r.Status != 200 || strings.Contains(r.Body, "SECRET-TOKEN-123") || !strings.Contains(r.Body, `"Tickets"`) {
+			t.Errorf("%s: %d %s", u.Role, r.Status, r.Body)
+		}
+		// a token and an organization id make the source schedulable
+		if !strings.Contains(r.Body, `"scheduled_ok":true`) {
+			t.Errorf("%s: eventbrite source is not schedulable: %s", u.Role, r.Body)
+		}
+	}
+	h.settings = `{"import_sources":[{"name":"Tickets","kind":"eventbrite","organization_id":"123","schedule":"daily"}]}`
+	if r := callRoute(t, "GET", "/admin/imports", owner, nil, nil); !strings.Contains(r.Body, `"scheduled_ok":false`) {
+		t.Errorf("no token: %s", r.Body)
 	}
 }
 
@@ -308,7 +338,7 @@ func TestAdminImportsNoDatabase(t *testing.T) {
 	h.install(t)
 	r := callRoute(t, "GET", "/admin/imports", owner, nil, nil)
 	var got importList
-	if r.Status != 200 || json.Unmarshal([]byte(r.Body), &got) != nil || len(got.Sources) != 3 || got.Sources[0].LastImported != nil {
+	if r.Status != 200 || json.Unmarshal([]byte(r.Body), &got) != nil || len(got.Sources) != 4 || got.Sources[0].LastImported != nil || got.Sources[0].LastNew != nil || got.Sources[0].CreatedToday != 0 {
 		t.Errorf("%d %s", r.Status, r.Body)
 	}
 	h.settings = `{}`

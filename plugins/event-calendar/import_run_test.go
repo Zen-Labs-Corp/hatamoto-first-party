@@ -84,8 +84,8 @@ func manualRun(url, kind, name string, pages map[string]fakePage) *runHost {
 }
 
 func TestImportCaps(t *testing.T) {
-	t.Run("events over the cap are dropped and counted", func(t *testing.T) {
-		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(120, "g")}})
+	t.Run("a feed of 250 events is read whole", func(t *testing.T) {
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(250, "g")}})
 		h.install(t)
 		if steps := h.runFetch(t); steps != 1 {
 			t.Errorf("%d steps, one source wanted", steps)
@@ -93,16 +93,31 @@ func TestImportCaps(t *testing.T) {
 		if h.failed != "" || h.finished == nil {
 			t.Fatalf("failed %q finished %v", h.failed, h.finished)
 		}
-		if got := len(h.records(t)); got != maxImportEvents {
-			t.Errorf("%d events buffered, want %d", got, maxImportEvents)
+		if got := len(h.records(t)); got != 250 {
+			t.Errorf("%d events buffered, want 250", got)
 		}
-		if string(h.buffer[bufStat]) != `{"over":20}` {
+		if string(h.buffer[bufStat]) != `{"over":0}` {
+			t.Errorf("stat %s", h.buffer[bufStat])
+		}
+	})
+
+	t.Run("events over the read cap are dropped and counted", func(t *testing.T) {
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(2050, "g")}})
+		h.install(t)
+		h.runFetch(t)
+		if h.failed != "" || h.finished == nil {
+			t.Fatalf("failed %q finished %v", h.failed, h.finished)
+		}
+		if got := len(h.records(t)); got != maxReadEvents {
+			t.Errorf("%d events buffered, want %d", got, maxReadEvents)
+		}
+		if string(h.buffer[bufStat]) != `{"over":50}` {
 			t.Errorf("stat %s", h.buffer[bufStat])
 		}
 	})
 
 	t.Run("the run summary says how many were left out", func(t *testing.T) {
-		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(120, "g")}})
+		h := manualRun(gcalURL, "google", "Google", map[string]fakePage{gcalURL: {status: 200, body: feedOf(2050, "g")}})
 		h.created = true
 		h.install(t)
 		h.runFetch(t)
@@ -112,11 +127,35 @@ func TestImportCaps(t *testing.T) {
 		b, _ := json.Marshal(sum.Summary)
 		var got map[string]int
 		_ = json.Unmarshal(b, &got)
-		if h.failed != "" || got["created"] != maxImportEvents || got["skipped_over_cap"] != 20 {
+		if h.failed != "" || got["created"] != manualCreateCap || got["skipped_over_cap"] != 50 || got["next_run"] != 1800 {
 			t.Errorf("failed %q, summary %v", h.failed, got)
 		}
-		if want := "100 events read, 20 left out by the 100-event limit"; h.progress != want {
+		if want := "Imported 200 events, 1850 skipped; 1800 left for the next run (at most 200 new events a run)"; h.progress != want {
 			t.Errorf("progress message %q, want %q", h.progress, want)
+		}
+	})
+
+	t.Run("the checkpoint stays small with 8 sources", func(t *testing.T) {
+		var items []string
+		pages := map[string]fakePage{}
+		for i := range 8 {
+			u := fmt.Sprintf("https://calendar.google.com/calendar/ical/c%d%%40example.org/public/basic.ics", i)
+			items = append(items, fmt.Sprintf(`{"name":"Cal %d","kind":"google","url":%q,"schedule":"daily"}`, i, u))
+			pages[u] = fakePage{status: 200, body: feedOf(40, fmt.Sprintf("c%d", i))}
+		}
+		h := &runHost{name: runScheduledImport, runID: "r9", pages: pages, settings: `{"import_sources":[` + strings.Join(items, ",") + `]}`}
+		h.install(t)
+		h.phase = "fetch"
+		for range 7 {
+			if _, err := onStep(sdk.RunStep{RunID: h.runID, Phase: sdk.RunPhaseFetch, Cursor: h.cursor}); err != nil {
+				t.Fatal(err)
+			}
+			if len(h.cursor) >= maxImportCursor/2 {
+				t.Errorf("checkpoint of %d bytes", len(h.cursor))
+			}
+		}
+		if h.failed != "" {
+			t.Errorf("failed %q", h.failed)
 		}
 	})
 
@@ -202,6 +241,49 @@ func TestImportURLFetch(t *testing.T) {
 	h.install(t)
 	h.runFetch(t)
 	if !strings.HasPrefix(h.failed, "No calendar could be read") {
+		t.Errorf("failed %q", h.failed)
+	}
+}
+
+// A scheduled run reads the enabled daily sources whose host is listed; an
+// address outside the list is noted, never fetched.
+func TestScheduledRunReadsListedDailySources(t *testing.T) {
+	other := "https://calendar.example.org/x.ics"
+	h := &runHost{name: runScheduledImport, runID: "r10", settings: `{"import_sources":[
+		{"name":"Town","kind":"google","url":"` + gcalURL + `","schedule":"daily"},
+		{"name":"Off","kind":"google","url":"` + gcalURL + `","schedule":"off"},
+		{"name":"Paused","kind":"google","url":"` + gcalURL + `","schedule":"daily","enabled":false},
+		{"name":"Elsewhere","kind":"ical","url":"` + other + `","schedule":"daily"}]}`,
+		pages: map[string]fakePage{gcalURL: {status: 200, body: feedOf(3, "g")}, other: {status: 200, body: feedOf(3, "o")}}}
+	h.install(t)
+	h.runFetch(t)
+	if h.failed != "" || len(h.records(t)) != 3 {
+		t.Fatalf("failed %q, records %d", h.failed, len(h.records(t)))
+	}
+	if len(h.fetched) != 1 || h.fetched[0] != gcalURL {
+		t.Errorf("fetched %v", h.fetched)
+	}
+	note := string(h.buffer["err/01"])
+	if !strings.Contains(note, "Run now") || !strings.Contains(note, "Elsewhere") || strings.Contains(note, "example.org") {
+		t.Errorf("note %q", note)
+	}
+}
+
+func TestImportSourceReadsTheNamedSource(t *testing.T) {
+	h := &runHost{name: runEditDates, runID: "r11", params: map[string]any{"action": "import_source", "name": "Town"},
+		settings: `{"import_sources":[{"name":"Other","kind":"google","url":"` + gcalURL + `"},{"name":"Town","kind":"google","url":"` + gcalURL + `","schedule":"off"}]}`,
+		pages:    map[string]fakePage{gcalURL: {status: 200, body: feedOf(2, "t")}}}
+	h.install(t)
+	h.runFetch(t)
+	recs := h.records(t)
+	if h.failed != "" || len(recs) != 2 || recs[0].Source != "Town" {
+		t.Errorf("failed %q, records %+v", h.failed, recs)
+	}
+
+	h = &runHost{name: runEditDates, runID: "r12", params: map[string]any{"action": "import_source", "name": "Nope"}, settings: `{"import_sources":[]}`}
+	h.install(t)
+	h.runFetch(t)
+	if h.failed != "That source is not in the settings." {
 		t.Errorf("failed %q", h.failed)
 	}
 }

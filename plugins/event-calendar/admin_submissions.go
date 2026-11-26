@@ -142,51 +142,60 @@ type importRow struct {
 	Enabled      bool    `json:"enabled"`
 	LastImported *string `json:"last_imported"`
 	URL          string  `json:"url,omitempty"`
+	Schedule     string  `json:"schedule"`      // "off" or "daily"
+	ScheduledOK  bool    `json:"scheduled_ok"`  // a scheduled run can read the source
+	LastNew      *string `json:"last_new"`      // when the index first saw the newest event of the source
+	CreatedToday int     `json:"created_today"` // events first seen since midnight UTC
 }
 
 type importList struct {
-	Role    string      `json:"role"`
-	Sources []importRow `json:"sources"`
+	Role     string      `json:"role"`
+	DailyCap int         `json:"daily_cap"` // creates a day: two scheduled runs
+	RunCap   int         `json:"run_cap"`   // creates a scheduled run
+	Sources  []importRow `json:"sources"`
 }
 
-const lastImportedSQL = `SELECT to_jsonb(max(updated_at)) FROM events WHERE source_kind = $2 AND left(source_uid, length($1::text)) = $1::text`
+// sourceStatsSQL is one document per source: the latest update, the newest
+// first-seen time and the events first seen today (UTC). The key prefix and
+// the kind are arguments.
+const sourceStatsSQL = `SELECT jsonb_build_object('last', max(updated_at), 'last_new', max(first_seen),
+ 'today', count(*) FILTER (WHERE first_seen >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')))
+ FROM events WHERE source_kind = $2 AND left(source_uid, length($1::text)) = $1::text`
 
 // serveImports answers GET /admin/imports: the import_sources setting, the
-// disabled ones included, each with the time of its latest imported event.
+// disabled ones included, each with its schedule and the events it brought.
+// The Eventbrite token is read only to tell whether it is set.
 func serveImports(u *sdk.HTTPUser) sdk.HTTPResponse {
 	if u == nil {
 		return plain(http.StatusForbidden, "forbidden")
 	}
 	var raw struct {
-		Sources []struct {
-			Name     string `json:"name"`
-			Kind     string `json:"kind"`
-			URL      string `json:"url"`
-			Category string `json:"category"`
-			Enabled  *bool  `json:"enabled"`
-		} `json:"import_sources"`
+		Token   string           `json:"eventbrite_token"`
+		Sources []settingsSource `json:"import_sources"`
 	}
 	_ = callHost(sdk.FnSettingsGet, struct{}{}, &raw)
-	out := importList{Role: u.Role, Sources: []importRow{}}
+	hasToken := strings.TrimSpace(raw.Token) != ""
+	out := importList{Role: u.Role, DailyCap: 2 * scheduledCreateCap, RunCap: scheduledCreateCap, Sources: []importRow{}}
 	for _, r := range raw.Sources {
 		if len(out.Sources) >= maxSources {
 			break
 		}
-		name := cleanText(r.Name, 80, false)
-		addr, err := normaliseFeedURL(r.URL)
-		if err != nil {
-			addr = ""
+		src := r.source()
+		row := importRow{Name: src.Name, Kind: r.Kind, Host: hostOf(src.URL), Category: src.Category, Enabled: r.enabled(), Schedule: "off"}
+		if r.Schedule == "daily" {
+			row.Schedule = "daily"
 		}
-		if name == "" {
-			name = hostOf(addr)
-		}
-		row := importRow{Name: name, Kind: r.Kind, Host: hostOf(addr), Category: cleanText(r.Category, 80, false), Enabled: r.Enabled == nil || *r.Enabled}
+		row.ScheduledOK = hostListed(src.URL) || (r.Kind == "eventbrite" && src.OrganizationID != "" && hasToken)
 		if u.Role == "owner" {
-			row.URL = addr
+			row.URL = src.URL
 		}
-		var last *string
-		if err := dbJSON(lastImportedSQL, &last, importPrefix(r.Kind, name), r.Kind); err == nil {
-			row.LastImported = last
+		var stats struct {
+			Last  *string `json:"last"`
+			New   *string `json:"last_new"`
+			Today int     `json:"today"`
+		}
+		if err := dbJSON(sourceStatsSQL, &stats, importPrefix(r.Kind, src.Name), r.Kind); err == nil {
+			row.LastImported, row.LastNew, row.CreatedToday = stats.Last, stats.New, stats.Today
 		}
 		out.Sources = append(out.Sources, row)
 	}

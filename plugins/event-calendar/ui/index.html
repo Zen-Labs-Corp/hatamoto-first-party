@@ -35,16 +35,17 @@
       <p id="imp-state" class="muted"></p>
       <table id="imp-table" hidden>
         <thead>
-          <tr><th>Source</th><th>Kind</th><th>Schedule</th><th>Last imported</th><th>Action</th></tr>
+          <tr><th>Source</th><th>Kind</th><th>Schedule</th><th>Last new event</th><th>Created today</th><th>Action</th></tr>
         </thead>
         <tbody id="imp-rows"></tbody>
       </table>
+      <button id="imp-add" type="button">Add source</button>
       <p id="imp-detail" class="muted" hidden></p>
       <h2>Any other iCal URL</h2>
       <label>Address <input id="imp-url" type="text" size="48" maxlength="2048"></label>
       <button id="imp-go" type="button">Import now</button>
       <p id="imp-confirm" class="muted" hidden></p>
-      <p class="muted">New events stay in Changes until you publish them there, and then arrive as drafts: publish each event to put it on the site. A run imports at most 100 events: the first 100 in the calendar. The rest are left out, and running again does not reach them. Imports run only when you press Run now or Import now. Eventbrite pages are imported with Any other iCal URL.</p>
+      <p class="muted">Daily sources are read twice a day and publish up to 100 new events each time (200 a day) after you allow the rule on the Automatic updates tab. A scheduled run only adds new events; Run now also updates events you imported before and waits for your review in Changes. Addresses outside the listed hosts are imported with Run now. Publish or discard a waiting import before the next scheduled run. Events from Run now arrive as drafts: publish each one to put it on the site.</p>
     </section>
 
     <section id="panel-repeating" hidden>
@@ -63,7 +64,7 @@
         <button id="dup-go" type="button">Duplicate event...</button>
       </section>
 
-      <footer class="muted">Skip / Change time / Restore stage a change in Changes (review, then publish).</footer>
+      <footer class="muted">Skip, Change time and Restore start the Edit dates run after you confirm; review the change in Changes. On an older Hatamoto core they fill in the run form instead.</footer>
     </section>
   </main>
   <script src="/plugin-ui/_sdk/bridge.js"></script>

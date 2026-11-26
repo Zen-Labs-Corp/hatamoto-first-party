@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -29,7 +30,7 @@ func TestFiltersFromQuery(t *testing.T) {
 	}
 	f, ok := filtersFromQuery(one("q", " jazz ", "category", "Music", "venue", "hall", "city", "Bonn", "price", "paid", "view", "week",
 		"from", "2026-06-01", "to", "2026-07-01", "limit", "10", "slug", "gala"))
-	if !ok || f != (filters{Q: "jazz", Category: "Music", Venue: "hall", City: "Bonn", Price: "paid"}) {
+	if !ok || !reflect.DeepEqual(f, filters{Q: "jazz", Category: "Music", Venue: "hall", City: "Bonn", Price: "paid"}) {
 		t.Errorf("filters = %+v, %v", f, ok)
 	}
 	if f, ok := filtersFromQuery(nil); !ok || !f.empty() {
@@ -38,14 +39,33 @@ func TestFiltersFromQuery(t *testing.T) {
 	if f, ok := filtersFromQuery(one("price", "any")); !ok || f.Price != "" {
 		t.Errorf("price any = %+v, %v", f, ok)
 	}
+	f, ok = filtersFromQuery(one("tag", "Jazz", "fields", "audience,age", "f1", "Adults", "f2", "Kids"))
+	if !ok || !reflect.DeepEqual(f, filters{Tag: "Jazz", Fields: []fieldFilter{{"audience", "Adults"}, {"age", "Kids"}}}) {
+		t.Errorf("tag and fields = %+v, %v", f, ok)
+	}
+	f, ok = filtersFromQuery(one("fields", "audience,age", "f2", "Kids"))
+	if !ok || !reflect.DeepEqual(f.Fields, []fieldFilter{{"age", "Kids"}}) {
+		t.Errorf("second slot only = %+v, %v", f, ok)
+	}
+	if f, ok := filtersFromQuery(one("fields", "audience")); !ok || !f.empty() {
+		t.Errorf("fields without a value = %+v, %v", f, ok)
+	}
 	bad := map[string]map[string][]string{
-		"unknown key":    one("x", "1"),
-		"repeated key":   {"q": {"a", "b"}},
-		"no value":       {"q": {}},
-		"oversized":      one("q", strings.Repeat("a", maxFilterBytes+1)),
-		"bad price":      one("price", "cheap"),
-		"bad view":       one("view", "carousel"),
-		"unknown, valid": {"city": {"Bonn"}, "debug": {"1"}},
+		"five fields":         one("fields", "a,b,c,d,e"),
+		"upper-case field":    one("fields", "Audience"),
+		"duplicate field":     one("fields", "a,a"),
+		"empty field":         one("fields", "a,"),
+		"slot without field":  one("fields", "audience", "f2", "x"),
+		"value without list":  one("f1", "x"),
+		"repeated f1":         {"fields": {"a"}, "f1": {"x", "y"}},
+		"oversized field val": one("fields", "a", "f1", strings.Repeat("a", maxFilterBytes+1)),
+		"unknown key":         one("x", "1"),
+		"repeated key":        {"q": {"a", "b"}},
+		"no value":            {"q": {}},
+		"oversized":           one("q", strings.Repeat("a", maxFilterBytes+1)),
+		"bad price":           one("price", "cheap"),
+		"bad view":            one("view", "carousel"),
+		"unknown, valid":      {"city": {"Bonn"}, "debug": {"1"}},
 	}
 	for name, q := range bad {
 		if _, ok := filtersFromQuery(q); ok {
@@ -83,6 +103,15 @@ func TestFiltersMatch(t *testing.T) {
 		{"paid text", filters{Price: "paid"}, Event{Price: "5 EUR"}, true},
 		{"no price data", filters{Price: "free"}, Event{}, false},
 		{"no price data paid", filters{Price: "paid"}, Event{}, false},
+		{"tag", filters{Tag: "jazz"}, Event{Tags: []string{"Live", "Jazz"}}, true},
+		{"tag miss", filters{Tag: "rock"}, Event{Tags: []string{"Jazz"}}, false},
+		{"tag none", filters{Tag: "rock"}, Event{}, false},
+		{"field string", filters{Fields: []fieldFilter{{"audience", "adults"}}}, Event{Extra: map[string]any{"audience": "Adults"}}, true},
+		{"field list", filters{Fields: []fieldFilter{{"age", "teens"}}}, Event{Extra: map[string]any{"age": []string{"Kids", "Teens"}}}, true},
+		{"field decoded list", filters{Fields: []fieldFilter{{"age", "teens"}}}, Event{Extra: map[string]any{"age": []any{"Kids", "Teens"}}}, true},
+		{"field miss", filters{Fields: []fieldFilter{{"age", "adults"}}}, Event{Extra: map[string]any{"age": []string{"Kids"}}}, false},
+		{"field absent", filters{Fields: []fieldFilter{{"age", "adults"}}}, Event{}, false},
+		{"two fields one misses", filters{Fields: []fieldFilter{{"a", "x"}, {"b", "y"}}}, Event{Extra: map[string]any{"a": "x"}}, false},
 	}
 	for _, tc := range tests {
 		if got := tc.f.match(tc.e, cats); got != tc.want {

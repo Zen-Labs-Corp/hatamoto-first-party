@@ -13,16 +13,19 @@ import (
 	"hatamoto.dev/sdk/guest"
 )
 
-// Calendar imports, started by hand from the run form. The fetch phase reads one source per step and buffers the
+// Calendar imports, started by hand from the run form or by the import cron
+// job (scheduled_import). The fetch phase reads one source per step and buffers the
 // normalised events; the transform phase (import_stage.go) matches them with
 // the events on the site and stages the changes.
 
 const (
-	actionImportURL = "import_url"
-	maxImportEvents = 100 // per run
-	maxSources      = 8   // import_sources entries listed on the Imports tab
-	importFetchMs   = 7000
-	maxImportCursor = 4096
+	runScheduledImport = "scheduled_import"
+	actionImportURL    = "import_url"
+	actionImportSource = "import_source"
+	maxReadEvents      = 2000 // per run, all sources (the run buffer holds 10,000 keys)
+	maxSources         = 8    // import_sources entries listed on the Imports tab
+	importFetchMs      = 7000
+	maxImportCursor    = 4096
 
 	bufEvent = "ev/"
 	bufError = "err/"
@@ -34,7 +37,47 @@ var (
 	nonSlugRe   = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
-type importSource struct{ Name, Kind, URL, Category string }
+type importSource struct{ Name, Kind, URL, Category, OrganizationID string }
+
+// settingsSource is one import_sources item as the settings hold it.
+type settingsSource struct {
+	Name           string `json:"name"`
+	Kind           string `json:"kind"`
+	URL            string `json:"url"`
+	Category       string `json:"category"`
+	Schedule       string `json:"schedule"`
+	OrganizationID string `json:"organization_id"`
+	Enabled        *bool  `json:"enabled"`
+}
+
+// loadSources reads the import_sources setting, at most maxSources items. It
+// never reads the Eventbrite token.
+func loadSources() []settingsSource {
+	var raw struct {
+		Sources []settingsSource `json:"import_sources"`
+	}
+	_ = callHost(sdk.FnSettingsGet, struct{}{}, &raw)
+	if len(raw.Sources) > maxSources {
+		raw.Sources = raw.Sources[:maxSources]
+	}
+	return raw.Sources
+}
+
+func (r settingsSource) enabled() bool { return r.Enabled == nil || *r.Enabled }
+
+// source cleans a settings item into what a run reads. The address is empty
+// when it is missing or unusable.
+func (r settingsSource) source() importSource {
+	addr, err := normaliseFeedURL(r.URL)
+	if err != nil {
+		addr = ""
+	}
+	name := cleanText(r.Name, 80, false)
+	if name == "" {
+		name = hostOf(addr)
+	}
+	return importSource{Name: name, Kind: r.Kind, URL: addr, Category: cleanText(r.Category, 80, false), OrganizationID: strings.TrimSpace(r.OrganizationID)}
+}
 
 // importSlug is a lower-case, dash-separated form of a name.
 func importSlug(s string) string {
@@ -68,20 +111,12 @@ type importRecord struct {
 }
 
 type importCursor struct {
-	Src    int `json:"src"`    // next source to read
-	N      int `json:"n"`      // events buffered
-	Over   int `json:"over"`   // events left out by the cap
-	Failed int `json:"failed"` // sources that could not be read
-	// Keys are short hashes of the keys buffered so far, so a later source
-	// that carries the same event is skipped (the buffer cannot be read in
-	// the fetch phase). At most maxImportEvents of 8 characters each.
-	Keys []string `json:"keys,omitempty"`
-}
-
-// keyTag is the short hash kept in importCursor.Keys.
-func keyTag(key string) string {
-	sum := sha1.Sum([]byte(key))
-	return hex.EncodeToString(sum[:])[:8]
+	Src    int    `json:"src"`            // next source to read
+	N      int    `json:"n"`              // events buffered
+	Over   int    `json:"over"`           // events left out by the cap
+	Failed int    `json:"failed"`         // sources that could not be read
+	Cont   string `json:"cont,omitempty"` // continuation of a paged source
+	Page   int    `json:"page,omitempty"` // pages of the current source read
 }
 
 // fetchPhase routes the fetch phase: the import runs read calendars, every
@@ -91,22 +126,45 @@ func fetchPhase(s sdk.RunStep) (sdk.RunStepResult, error) {
 	if err != nil {
 		return failRun("The run inputs could not be read.")
 	}
-	if info.Name == runEditDates && importAction(info) {
+	if scheduled(info) || info.Name == runEditDates && importAction(info) {
 		return importFetchStep(s, info)
 	}
 	return sdk.RunStepResult{}, guest.RunFinish(callHost, nil)
 }
 
+func scheduled(info sdk.RunInfo) bool { return info.Name == runScheduledImport }
+
 func importAction(info sdk.RunInfo) bool {
 	var p map[string]any
 	_ = json.Unmarshal(info.Params, &p)
-	return paramString(p, "action") == actionImportURL
+	a := paramString(p, "action")
+	return a == actionImportURL || a == actionImportSource
 }
 
-// sourcesFor lists what this run reads: the one address of the run form.
+// sourcesFor lists what this run reads: the daily sources of the settings for
+// a scheduled run, the one named source for import_source, else the one
+// address of the run form.
 func sourcesFor(info sdk.RunInfo) ([]importSource, string) {
 	var p map[string]any
 	_ = json.Unmarshal(info.Params, &p)
+	if scheduled(info) {
+		var out []importSource
+		for _, r := range loadSources() {
+			if r.enabled() && r.Schedule == "daily" {
+				out = append(out, r.source())
+			}
+		}
+		return out, ""
+	}
+	if paramString(p, "action") == actionImportSource {
+		want := cleanText(paramString(p, "name"), 80, false)
+		for _, r := range loadSources() {
+			if src := r.source(); want != "" && src.Name == want {
+				return []importSource{src}, ""
+			}
+		}
+		return nil, "That source is not in the settings."
+	}
 	u, err := normaliseFeedURL(paramString(p, "url"))
 	if err != nil {
 		return nil, "The calendar address must start with https:// or webcal://."
@@ -139,10 +197,14 @@ func importFetchStep(s sdk.RunStep, info sdk.RunInfo) (sdk.RunStepResult, error)
 	}
 	if cur.Src < len(sources) {
 		src := sources[cur.Src]
-		if err := readSource(&cur, src, loadSettings()); err != nil {
+		done, err := readSource(&cur, src, loadSettings(), scheduled(info))
+		if err != nil {
 			return failRun("The run buffer could not be written. Try again.")
 		}
-		cur.Src++
+		if done {
+			cur.Src++
+			cur.Cont, cur.Page = "", 0
+		}
 	}
 	stat, _ := json.Marshal(map[string]int{"over": cur.Over})
 	if err := guest.BufferPut(callHost, bufStat, stat); err != nil {
@@ -162,38 +224,57 @@ func importFetchStep(s sdk.RunStep, info sdk.RunInfo) (sdk.RunStepResult, error)
 	return sdk.RunStepResult{}, guest.RunFinish(callHost, map[string]any{"phase": "fetch", "events": cur.N})
 }
 
-// readSource fetches and parses one source and buffers its events. It returns
-// an error only when the run buffer fails; a bad source is counted in cur.
-func readSource(cur *importCursor, src importSource, s settings) error {
-	events, why := fetchEvents(src, s)
+// readSource fetches and parses one source and buffers its events, and says
+// whether the source is done: an Eventbrite organization is read one page a
+// step, its place kept in cur. It returns an error only when the run buffer
+// fails; a bad source is counted in cur.
+// A scheduled run reads only listed hosts: it never gets the "*" grant.
+func readSource(cur *importCursor, src importSource, s settings, scheduled bool) (bool, error) {
+	var events []importEvent
+	var why string
+	more := false
+	switch {
+	case src.Kind == "eventbrite" && src.OrganizationID != "":
+		var next string
+		events, next, why = fetchEventbritePage(src.OrganizationID, cur.Cont, eventbriteToken())
+		cur.Page++
+		if next != "" && cur.Page < maxEventbritePages {
+			cur.Cont, more = next, true
+		}
+	case src.URL == "":
+		why = "the source has no usable address"
+	case scheduled && !hostListed(src.URL):
+		why = "this address can only be imported with Run now"
+	case !slices.Contains(importKinds, src.Kind):
+		why = "the source kind is not known"
+	default:
+		events, why = fetchEvents(src, s)
+	}
 	if why != "" {
 		cur.Failed++
 		note, _ := json.Marshal(map[string]string{"source": src.Name, "reason": why})
-		return guest.BufferPut(callHost, fmt.Sprintf("%s%02d", bufError, cur.Src), note)
+		return true, guest.BufferPut(callHost, fmt.Sprintf("%s%02d", bufError, cur.Src), note)
 	}
+	// The same UID twice in one source is read once. Another source with the
+	// same key overwrites the buffered record: the buffer key is the event key.
 	seen := map[string]bool{}
 	for _, ev := range events {
 		key := importKey(src.Kind, src.Name, ev.UID)
 		if seen[key] {
-			continue // the same UID twice in one source
+			continue
 		}
 		seen[key] = true
-		tag := keyTag(key)
-		if slices.Contains(cur.Keys, tag) {
-			continue // an earlier source already buffered this key
-		}
-		if cur.N >= maxImportEvents {
+		if cur.N >= maxReadEvents {
 			cur.Over++
 			continue
 		}
 		rec, _ := json.Marshal(importRecord{Source: src.Name, Kind: src.Kind, Category: src.Category, Key: key, Ev: ev})
 		if err := guest.BufferPut(callHost, bufEvent+key, rec); err != nil {
-			return err
+			return false, err
 		}
 		cur.N++
-		cur.Keys = append(cur.Keys, tag)
 	}
-	return nil
+	return !more, nil
 }
 
 // fetchEvents reads one address. The reason is a short text without the
