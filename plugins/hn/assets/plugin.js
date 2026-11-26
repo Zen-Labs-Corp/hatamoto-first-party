@@ -8,32 +8,64 @@
   function up(el, c) { while (el && el !== d) { if (has(el, c)) return el; el = el.parentNode; } return null; }
   function drop(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
   function body(f) {
-    var out = [], e = f.elements || [], i;
+    var out = [], e = f.elements, i;
     for (i = 0; i < e.length; i++) {
       if (e[i].name && e[i].type !== 'submit') out.push(encodeURIComponent(e[i].name) + '=' + encodeURIComponent(e[i].value || ''));
     }
     return out.join('&');
   }
-  function label(n) { return n === 1 ? '1 point' : n + ' points'; }
-
-  function done(f, j) {
-    var cell = up(f, 'hn-vote-cell') || up(f, 'hn-vote') || f.parentNode, row = up(f, 'hn-story'), s, all, i;
-    if (row && typeof j.points === 'number') {
-      s = row.querySelector('.hn-score');
-      if (s) s.textContent = label(j.points);
-    }
-    all = cell && cell.querySelectorAll ? cell.querySelectorAll('form.hn-vote-form') : [f];
-    for (i = all.length - 1; i >= 0; i--) drop(all[i]);
-    if (cell && j.voted && !has(cell, 'hn-voted')) cell.className += ' hn-voted';
+  function val(f, n) {
+    var e = f.elements, i;
+    for (i = 0; i < e.length; i++) if (e[i].name === n) return e[i].value;
+  }
+  function how(f) { var h = val(f, 'how'); return h == null ? 'up' : h; }
+  function isUn(f) { return how(f) === 'un' || f.getAttribute('action').indexOf('how=un') > 0; }
+  function cls(el, c, on) {
+    var s = (' ' + el.className + ' ').replace(' ' + c + ' ', ' ').replace(/^ | $/g, '');
+    el.className = on ? s + ' ' + c : s;
+  }
+  function cellOf(f) { return f.__hnCell || up(f, 'hn-vote-cell') || up(f, 'hn-vote') || f.parentNode; }
+  function button(b) { b.className = 'hn-unvote'; b.type = 'submit'; b.title = b.textContent = 'unvote'; b.setAttribute('aria-label', 'unvote'); return b; }
+  function storyUn(f, row) {
+    var us = row.querySelector('a.hn-user'), age = us && us.nextSibling.nextSibling, u = d.createElement('form'), n = d.createElement('input'), p = age && age.parentNode, r;
+    if (!p) return null;
+    u.className = 'hn-act hn-un';
+    u.method = 'post';
+    u.setAttribute('action', f.getAttribute('action') + '?how=un');
+    n.type = 'hidden';
+    n.name = 'next';
+    n.value = val(f, 'next');
+    u.appendChild(n);
+    u.appendChild(button(d.createElement('button')));
+    r = age.nextSibling;
+    p.insertBefore(d.createTextNode(' | '), r);
+    p.insertBefore(u, r);
+    return u;
+  }
+  function commentUn(f, cell) {
+    var u = f.cloneNode(true), e = u.elements, b = u.querySelector('button'), i;
+    for (i = 0; i < e.length; i++) if (e[i].name === 'how') e[i].value = 'un';
+    if (b) button(b);
+    return cell.appendChild(u);
   }
 
-  // A JS submit() does not fire the submit event, so the fallback cannot loop.
+  function done(f, j) {
+    var cell = cellOf(f), row = up(cell, 'hn-story'), a = cell.querySelectorAll('form.hn-vote-form'), un = isUn(f), u, i;
+    f.__hnBusy = 0;
+    if (un === !!j.voted) return;
+    for (i = 0; i < a.length; i++) if (!isUn(a[i])) cls(a[i], 'hn-gone', !un);
+    cls(cell, 'hn-voted', !un);
+    if (un) return cls(f, 'hn-gone', 1);
+    u = cell.__hnUn || (cell.__hnUn = row ? storyUn(f, row) : commentUn(f, cell));
+    if (u) { u.__hnCell = cell; cls(u, 'hn-gone', 0); }
+  }
+
   function fallback(f) { try { f.__hnBusy = 0; f.submit(); } catch (e) {} }
 
   function vote(ev) {
-    var f = ev && ev.target;
-    var a = f && f.getAttribute && f.getAttribute('action');
-    if (!f || !has(f, 'hn-vote-form') || (a || '').indexOf('/p/hn/vote/') !== 0) return;
+    var f = ev && ev.target, a = f && f.getAttribute && f.getAttribute('action');
+    if (!f || !(has(f, 'hn-vote-form') || has(f, 'hn-un')) || (a || '').indexOf('/p/hn/vote/') !== 0) return;
+    if (isUn(f) && !cellOf(f).querySelector('form.hn-gone')) return;
     if (f.__hnBusy) { ev.preventDefault(); return; }
     try {
       ev.preventDefault();
@@ -54,7 +86,6 @@
   }
 
   function within(n, a) { for (; n; n = n.parentNode) if (n === a) return true; return false; }
-  // A theme that renders the bar in its header (inside a wrapper) keeps it there.
   function userbar() {
     try {
       var ub = d.querySelector('.hn-ub'), slot = d.querySelector('.hn-userbar');
@@ -66,19 +97,12 @@
     var p = '/p/hn/' + kind + '/comment/';
     return (action || '').indexOf(p) === 0 ? action.slice(p.length) : '';
   }
-  function how(f) {
-    var e = f.elements || [], i;
-    for (i = 0; i < e.length; i++) if (e[i].name === 'how') return e[i].value;
-    return 'up';
-  }
-  // The theme prints " | " before the inline forms; drop it with the form.
   function dropForm(f) {
     var t = f.previousSibling;
     if (t && t.nodeType === 3 && /^\s*\|\s*$/.test(t.nodeValue)) drop(t);
     drop(f);
   }
 
-  // Hides the controls the viewer cannot use. {} (signed out) prunes nothing.
   function prune(s) {
     var v = s && s.viewer, cs = (s && s.comments) || {}, cells, forms, i, j, c;
     if (!v) return;
@@ -115,9 +139,7 @@
     } catch (e) {}
   }
 
-  // The host refuses <textarea> in a section without site.scripts, so the
-  // submit and reply texts are one-line inputs; this file loads only with that
-  // grant. The reply input's name is rotated by the server: copy it.
+  // No <textarea> without site.scripts: inputs are swapped here (reply's name is rotated: copy it).
   function swap(i, rows, cols, max) {
     var t = d.createElement('textarea');
     t.setAttribute('id', i.getAttribute('id') || '');
@@ -132,9 +154,10 @@
 
   function textarea() {
     try {
-      var i = d.querySelector('input[id="hn-text"]'), r = d.querySelector('input[data-hn-reply]');
+      var i = d.querySelector('input[id="hn-text"]'), r = d.querySelector('input[data-hn-reply]'), a = d.querySelector('input[id="hn-about"]');
       if (i) swap(i, '4', '49');
       if (r) swap(r, '6', '60', '5000');
+      if (a) swap(a, '5', '60', '2000');
     } catch (e) {}
   }
 

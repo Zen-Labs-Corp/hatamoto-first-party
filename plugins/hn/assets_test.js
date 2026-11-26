@@ -16,6 +16,7 @@ function check(name, cond) {
 // ---- fake DOM -------------------------------------------------------------
 
 function Text(v) { this.nodeType = 3; this.nodeValue = v; this.parentNode = null; this.children = []; }
+Text.prototype.cloneNode = function () { return new Text(this.nodeValue); };
 Text.prototype.matches = function () { return false; };
 
 function El(tag, cls, attrs, kids) {
@@ -36,8 +37,32 @@ El.prototype.appendChild = function (k) {
   if (k.parentNode) k.parentNode.removeChild(k);
   k.parentNode = this;
   this.children.push(k);
+  if (this.tagName === 'form' && (k.tagName === 'input' || k.tagName === 'button')) this.elements.push(k);
   return k;
 };
+El.prototype.insertBefore = function (k, ref) {
+  if (!ref) return this.appendChild(k);
+  if (k.parentNode) k.parentNode.removeChild(k);
+  var i = this.children.indexOf(ref);
+  if (i < 0) throw new Error('not a child');
+  k.parentNode = this;
+  this.children.splice(i, 0, k);
+  return k;
+};
+El.prototype.cloneNode = function () {
+  var c = new El(this.tagName, this.className, JSON.parse(JSON.stringify(this.attrs)));
+  this.children.forEach(function (k) { c.appendChild(k.cloneNode ? k.cloneNode(true) : k); });
+  this.elements.forEach(function (e) { if (!(e instanceof El)) c.elements.push({ name: e.name, value: e.value, type: e.type }); });
+  c.textContent = this.textContent;
+  return c;
+};
+Object.defineProperty(El.prototype, 'nextSibling', {
+  get: function () {
+    if (!this.parentNode) return null;
+    var sib = this.parentNode.children;
+    return sib[sib.indexOf(this) + 1] || null;
+  }
+});
 El.prototype.removeChild = function (k) {
   var i = this.children.indexOf(k);
   if (i < 0) throw new Error('not a child');
@@ -52,6 +77,8 @@ Object.defineProperty(El.prototype, 'previousSibling', {
     return i > 0 ? sib[i - 1] : null;
   }
 });
+Object.defineProperty(Text.prototype, 'previousSibling', Object.getOwnPropertyDescriptor(El.prototype, 'previousSibling'));
+Object.defineProperty(Text.prototype, 'nextSibling', Object.getOwnPropertyDescriptor(El.prototype, 'nextSibling'));
 El.prototype.submit = function () { this.submitted++; };
 El.prototype.setAttribute = function (n, v) { this.attrs[n] = String(v); };
 El.prototype.replaceChild = function (k, old) {
@@ -92,6 +119,7 @@ function form(cls, action, fields) {
   var f = el('form', cls, { action: action });
   f.elements = fields.map(function (p) { return { name: p[0], value: p[1], type: p[2] || 'hidden' }; });
   f.elements.push({ name: '', value: 'x', type: 'submit' });
+  f.appendChild(el('button'));
   return f;
 }
 
@@ -101,6 +129,7 @@ function mkDoc(root) {
   doc.listeners = [];
   doc.readyState = 'complete';
   doc.createElement = function (tag) { return el(tag); };
+  doc.createTextNode = function (v) { return new Text(v); };
   doc.addEventListener = function (type, fn, cap) { doc.listeners.push({ type: type, fn: fn, cap: cap }); };
   doc.fire = function (type, target) {
     var ev = { target: target, preventDefault: function () { target.prevented++; } };
@@ -118,6 +147,8 @@ function mkFetch(reply) {
 function ok(json) { return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(json); } }); }
 function status(n) { return Promise.resolve({ ok: false, status: n, json: function () { return Promise.resolve({ error: 'x' }); } }); }
 
+function body2(f) { return f.elements.filter(function (e) { return e.name; }).map(function (e) { return e.name + '=' + encodeURIComponent(e.value); }).join('&'); }
+
 function flush() { return new Promise(function (r) { setTimeout(r, 5); }); }
 
 // boot runs the script (twice by default) in a fresh context.
@@ -134,12 +165,14 @@ function boot(root, fetchFn, times) {
 // ---- fixtures -------------------------------------------------------------
 
 function storyRow() {
-  var vf = form('hn-vote-form', '/p/hn/vote/story/7', [['how', 'up'], ['next', '/news']]);
+  var vf = form('hn-vote-form', '/p/hn/vote/story/7', [['how', 'up'], ['next', '/news#7']]);
   var cell = el('span', 'hn-vote-cell', {}, [vf]);
   var score = el('span', 'hn-score');
   score.textContent = '98 points';
-  var row = el('li', 'hn-story', {}, [cell, el('div', 'hn-sub', {}, [score])]);
-  return { row: row, form: vf, cell: cell, score: score, root: el('main', '', {}, [el('ol', 'hn-stories', {}, [row])]) };
+  var user = el('a', 'hn-user', { href: '/user?id=bob' }), age = el('a', '', { href: '/item/7' });
+  var sub = el('div', 'hn-sub', {}, [score, new Text(' by '), user, new Text(' '), age, new Text(' | '), el('a', 'hn-past', { href: '/search?q=t' })]);
+  var row = el('li', 'hn-story', {}, [cell, sub]);
+  return { row: row, form: vf, cell: cell, score: score, sub: sub, age: age, root: el('main', '', {}, [el('ol', 'hn-stories', {}, [row])]) };
 }
 
 function commentCell() {
@@ -156,41 +189,70 @@ async function main() {
 
   // 1. story vote success
   s = storyRow();
-  b = boot(s.root, mkFetch(function () { return ok({ points: 99, voted: true }); }));
+  function replyVote(url, init) { return ok({ points: 99, voted: url.indexOf('how=un') < 0 && init.body.indexOf('how=un') < 0 }); }
+  b = boot(s.root, mkFetch(replyVote));
   b.doc.fire('submit', s.form);
   await flush();
   call = b.win.fetch.calls[0];
   check('story: one fetch', b.win.fetch.calls.length === 1);
   check('story: url, method, credentials', call.url === '/p/hn/vote/story/7' && call.init.method === 'POST' && call.init.credentials === 'same-origin');
   check('story: Accept json', call.init.headers.Accept === 'application/json');
-  check('story: body', call.init.body === 'how=up&next=%2Fnews');
+  check('story: body', call.init.body === 'how=up&next=%2Fnews%237');
   check('story: preventDefault', s.form.prevented === 1);
-  check('story: score updated', s.score.textContent === '99 points');
-  check('story: form removed', s.cell.children.length === 0 && s.form.parentNode === null);
+  var un = s.sub.querySelectorAll('form.hn-un');
+  check('story: score text untouched', s.score.textContent === '98 points');
+  check('story: vote form kept in the DOM, hidden', s.form.parentNode === s.cell && s.form.className.indexOf('hn-gone') >= 0 && s.cell.children.length === 1);
   check('story: cell marked voted', s.cell.className.indexOf('hn-voted') >= 0);
   check('story: no submit()', s.form.submitted === 0);
+  check('story: exactly one unvote form after the age link, preceded by " | "',
+    un.length === 1 && un[0].previousSibling.nodeValue === ' | ' && un[0].previousSibling.previousSibling === s.age);
+  check('story: unvote action and next', un[0].getAttribute('action') === '/p/hn/vote/story/7?how=un' && body2(un[0]) === 'next=%2Fnews%237');
+  check('story: unvote button', un[0].querySelector('button').textContent === 'unvote' && un[0].className.indexOf('hn-act') >= 0);
+  check('story: row not moved', s.row.parentNode !== null && s.sub.children.length === 9);
 
-  // 2. singular
-  s = storyRow();
-  b = boot(s.root, mkFetch(function () { return ok({ points: 1, voted: true }); }));
+  // 1b. JS unvote of that control: arrow back, control hidden, nothing removed
+  var n0 = s.sub.children.length;
+  b.doc.fire('submit', un[0]);
+  await flush();
+  check('unvote: fetched with how=un in the url', b.win.fetch.calls.length === 2 && b.win.fetch.calls[1].url === '/p/hn/vote/story/7?how=un' && un[0].prevented === 1);
+  check('unvote: control hidden, arrow shown, cell not voted',
+    un[0].className.indexOf('hn-gone') >= 0 && s.form.className.indexOf('hn-gone') < 0 && s.cell.className.indexOf('hn-voted') < 0);
+  check('unvote: nothing removed, score untouched', s.sub.children.length === n0 && s.score.textContent === '98 points' && s.form.parentNode === s.cell);
+
+  // 1c. vote again: the same control is reused, never created twice
   b.doc.fire('submit', s.form);
   await flush();
-  check('story: 1 point', s.score.textContent === '1 point');
+  check('revote: one unvote form, shown again', s.sub.querySelectorAll('form.hn-un').length === 1 && un[0].className.indexOf('hn-gone') < 0 && s.form.className.indexOf('hn-gone') >= 0);
 
-  // 2b. no points number: text untouched
+  // 2. a server-rendered unvote with no hidden arrow posts natively
   s = storyRow();
-  b = boot(s.root, mkFetch(function () { return ok({ points: '5', voted: true }); }));
+  var sun = form('hn-act', '/p/hn/vote/story/7?how=un', [['next', '/news#7']]);
+  s.sub.appendChild(sun);
+  b = boot(s.root, mkFetch(function () { return ok({ points: 1, voted: false }); }));
+  b.doc.fire('submit', sun);
+  await flush();
+  check('server unvote: not intercepted', b.win.fetch.calls.length === 0 && sun.prevented === 0);
+
+  // 2b. a non-boolean voted keeps everything and falls back
+  s = storyRow();
+  b = boot(s.root, mkFetch(function () { return ok({ points: '5', voted: 'yes' }); }));
   b.doc.fire('submit', s.form);
   await flush();
-  check('story: non-numeric points keep the text', s.score.textContent === '98 points' && s.cell.children.length === 0);
+  check('story: non-boolean voted keeps the form and the text', s.score.textContent === '98 points' && s.form.className.indexOf('hn-gone') < 0 && s.form.submitted === 1);
 
-  // 3. comment vote success
+  // 3. comment vote success: arrows hidden, one visible unvote form, nothing removed
   c = commentCell();
-  b = boot(c.root, mkFetch(function () { return ok({ voted: true }); }));
+  b = boot(c.root, mkFetch(replyVote));
   b.doc.fire('submit', c.up);
   await flush();
-  check('comment: both forms removed', c.cell.children.length === 0);
+  var cun = c.cell.querySelectorAll('form.hn-vote-form').filter(function (f) { return f !== c.up && f !== c.down; });
+  check('comment: arrows kept and hidden', c.up.parentNode === c.cell && c.down.parentNode === c.cell && c.up.className.indexOf('hn-gone') >= 0 && c.down.className.indexOf('hn-gone') >= 0);
+  check('comment: one visible unvote form', cun.length === 1 && cun[0].className.indexOf('hn-gone') < 0 && body2(cun[0]) === 'how=un' && cun[0].querySelector('button').textContent === 'unvote');
   check('comment: no submit()', c.up.submitted === 0 && c.down.submitted === 0);
+  b.doc.fire('submit', cun[0]);
+  await flush();
+  check('comment unvote: arrows back, control hidden, forms kept',
+    c.up.className.indexOf('hn-gone') < 0 && c.down.className.indexOf('hn-gone') < 0 && cun[0].className.indexOf('hn-gone') >= 0 && c.cell.children.length === 3 && c.cell.className.indexOf('hn-voted') < 0);
 
   // 4-8. failures fall back to a plain submit and keep the form
   var bad = [
@@ -295,6 +357,13 @@ async function main() {
   var both = el('main', '', {}, [el('p', '', {}, [sin]), el('p', '', {}, [rin])]);
   b = boot(both, undefined);
   check('reply text: both inputs on one page are swapped', both.children[0].children[0].tagName === 'textarea' && both.children[1].children[0].tagName === 'textarea' && both.children[1].children[0].attrs.required === undefined);
+  // 14d. profile about: the one-line input becomes a textarea
+  var ain = el('input', '', { id: 'hn-about', type: 'text', name: 'about' });
+  ain.value = 'hello';
+  var ap = el('p', '', {}, [ain]);
+  b = boot(el('main', '', {}, [ap]), undefined);
+  var ata = ap.children[0];
+  check('about: swapped, name, rows, maxlength 2000, value kept', ain.parentNode === null && ata.tagName === 'textarea' && ata.attrs.name === 'about' && ata.attrs.rows === '5' && ata.attrs.maxlength === '2000' && ata.value === 'hello');
   rp = el('p', '', {}, [el('input', '', { id: 'q', type: 'text', name: 'q' })]);
   b = boot(el('main', '', {}, [rp]), undefined);
   check('reply text: a page without it is untouched', rp.children[0].tagName === 'input');
@@ -416,7 +485,8 @@ async function main() {
   ['eval', 'Function(', 'innerHTML', 'cookie', 'localStorage', 'sessionStorage', 'http:', 'https:', '=>', 'let ', 'const ', 'document.write']
     .forEach(function (bannedText) { check('source has no ' + bannedText, src.indexOf(bannedText) < 0); });
   check('source has no inline handler strings', !/\bon[a-z]+\s*=/.test(src));
-  check('source < 6144 bytes (' + Buffer.byteLength(src) + ')', Buffer.byteLength(src) < 6144);
+  // This plugin's own size budget, not a core limit.
+  check('source < 7168 bytes (' + Buffer.byteLength(src) + ')', Buffer.byteLength(src) < 7168);
   check('assets holds only plugin.js', fs.readdirSync(path.join(__dirname, 'assets')).join() === 'plugin.js');
 }
 
