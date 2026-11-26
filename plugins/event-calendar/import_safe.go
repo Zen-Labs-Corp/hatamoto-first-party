@@ -121,14 +121,14 @@ func scrubText(s string) (string, bool) {
 	s = tagRe.ReplaceAllString(stripHidden(decodeStable(stripHidden(s))), " ")
 	s = strings.NewReplacer("<", " ", ">", " ").Replace(s)
 	out := spaceRunRe.ReplaceAllStringFunc(s, func(tok string) string {
-		if linkLike(tok) {
+		if linkLike(tok) || mentionsMediaPath(tok) {
 			return ""
 		}
 		return tok
 	})
 	out = padRe.ReplaceAllString(out, " ")
 	out = strings.TrimSpace(lineEndRe.ReplaceAllString(out, "\n"))
-	if linkLike(out) {
+	if linkLike(out) || mentionsMediaPath(out) {
 		return "", false
 	}
 	return out, true

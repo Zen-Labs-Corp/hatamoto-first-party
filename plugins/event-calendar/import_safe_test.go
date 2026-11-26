@@ -124,6 +124,8 @@ func TestSafeTextMatchesCoreGate(t *testing.T) {
 	for in, want := range map[string]string{
 		"Pride Picnic \U0001F3F3\uFE0F\u200D\U0001F308": "Pride Picnic \U0001F3F3\uFE0F\U0001F308",
 		"Notes\u200B here\uFEFF":                        "Notes here",
+		"An evening of film/media/art":                  "An evening of",
+		"Media/Arts Centre":                             "Centre",
 		"Notes&#8203; here&zwj;&#xFEFF;":                "Notes here",
 		"Pride&#x200D;Picnic%E2%80%8B":                  "PridePicnic",
 		"Questions? (mailto:info@club.org)":             "Questions?",
