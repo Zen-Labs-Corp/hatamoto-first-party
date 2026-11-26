@@ -21,27 +21,29 @@ const (
 // are calendar dates (end_day inclusive): a timed event's in the site zone, an
 // all-day event's in its own zone, so a client never does zone maths.
 type apiEvent struct {
-	ID         string   `json:"id"`
-	Title      string   `json:"title"`
-	Slug       string   `json:"slug"`
-	URL        string   `json:"url"`
-	Start      string   `json:"start"`
-	End        string   `json:"end"`
-	Day        string   `json:"day"`
-	EndDay     string   `json:"end_day"`
-	AllDay     bool     `json:"all_day"`
-	When       string   `json:"when"`
-	Venue      string   `json:"venue"`
-	VenueSlug  string   `json:"venue_slug"`
-	City       string   `json:"city"`
-	Address    string   `json:"address"`
-	Lat        *float64 `json:"lat"`
-	Lon        *float64 `json:"lon"`
-	Categories []string `json:"categories"`
-	Price      string   `json:"price"`
-	Image      string   `json:"image"`
-	Featured   bool     `json:"featured"`
-	Status     string   `json:"status"`
+	ID         string         `json:"id"`
+	Title      string         `json:"title"`
+	Slug       string         `json:"slug"`
+	URL        string         `json:"url"`
+	Start      string         `json:"start"`
+	End        string         `json:"end"`
+	Day        string         `json:"day"`
+	EndDay     string         `json:"end_day"`
+	AllDay     bool           `json:"all_day"`
+	When       string         `json:"when"`
+	Venue      string         `json:"venue"`
+	VenueSlug  string         `json:"venue_slug"`
+	City       string         `json:"city"`
+	Address    string         `json:"address"`
+	Lat        *float64       `json:"lat"`
+	Lon        *float64       `json:"lon"`
+	Categories []string       `json:"categories"`
+	Price      string         `json:"price"`
+	Image      string         `json:"image"`
+	Featured   bool           `json:"featured"`
+	Status     string         `json:"status"`
+	Tags       []string       `json:"tags"`
+	Fields     map[string]any `json:"fields,omitempty"`
 }
 
 // apiResponse is the JSON body. ready is false while the index cannot answer;
@@ -66,6 +68,7 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 	s := loadSettings()
 	loc := s.location()
 	at := now()
+	wanted, _ := requestedFields(query)
 	q, ok := rangeFromQuery(query, f, at, loc)
 	if !ok {
 		return plain(http.StatusBadRequest, "bad request")
@@ -77,7 +80,7 @@ func serveAPI(query map[string][]string) sdk.HTTPResponse {
 		gone := map[string]bool{} // entity id -> no longer published, read once
 		for _, r := range rows {
 			if s.accepts(r.SchemaSlug) && !unpublished(r.ID, deadline, gone) {
-				resp.Events = append(resp.Events, toAPIEvent(r, s, at))
+				resp.Events = append(resp.Events, toAPIEvent(r, s, at, wanted))
 			}
 		}
 	}
@@ -133,7 +136,7 @@ func rangeFromQuery(query map[string][]string, f filters, at time.Time, loc *tim
 		}
 		return ""
 	}
-	q := rangeQuery{From: at, Q: f.Q, Category: f.Category, Venue: f.Venue, City: f.City, Price: f.Price, Limit: maxIndexRows}
+	q := rangeQuery{From: at, Q: f.Q, Category: f.Category, Venue: f.Venue, City: f.City, Price: f.Price, Tag: f.Tag, Fields: f.Fields, Limit: maxIndexRows}
 	if v := get("from"); v != "" {
 		t, ok := parseQueryTime(v, loc)
 		if !ok {
@@ -178,7 +181,7 @@ func parseQueryTime(v string, loc *time.Location) (time.Time, bool) {
 }
 
 // toAPIEvent maps one occurrence row to its JSON shape.
-func toAPIEvent(r apiRow, s settings, at time.Time) apiEvent {
+func toAPIEvent(r apiRow, s settings, at time.Time, wanted []string) apiEvent {
 	site := s.location()
 	e := r.event(site)
 	loc := dateLocation(e, site)
@@ -193,6 +196,15 @@ func toAPIEvent(r apiRow, s settings, at time.Time) apiEvent {
 		last = last.Add(-time.Second) // ending at midnight ends the day before
 	}
 	const dateLayout = "2006-01-02"
+	var fields map[string]any
+	for _, k := range wanted {
+		if v, ok := r.Extra[k]; ok {
+			if fields == nil {
+				fields = map[string]any{}
+			}
+			fields[k] = v
+		}
+	}
 	return apiEvent{
 		ID: r.ID, Title: r.Name, Slug: r.Slug, URL: r.URL,
 		Start: utcText(r.StartsAt), End: utcText(r.EndsAt),
@@ -202,6 +214,7 @@ func toAPIEvent(r apiRow, s settings, at time.Time) apiEvent {
 		Venue:  r.VenueName, VenueSlug: r.VenueSlug, City: r.VenueCity, Address: r.VenueAddress,
 		Lat: r.Lat, Lon: r.Lon, Categories: nonNil(r.CategoryNames),
 		Price: priceText(e), Image: r.Image, Featured: r.Featured, Status: statusOf(r.EventStatus),
+		Tags: nonNil(r.Tags), Fields: fields,
 	}
 }
 

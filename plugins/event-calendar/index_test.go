@@ -245,7 +245,8 @@ func TestIndexQueryRange(t *testing.T) {
 	h.install(t)
 	from := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	to := from.AddDate(0, 0, 31)
-	got, err := queryRange(rangeQuery{From: from, To: to, Q: `50%_\ "off"; DROP`, Category: "Music", Venue: "hall", City: "Bonn", Price: "free", Slug: "gala", Language: "de", Limit: 9999})
+	got, err := queryRange(rangeQuery{From: from, To: to, Q: `50%_\ "off"; DROP`, Category: "Music", Venue: "hall", City: "Bonn", Price: "free", Slug: "gala", Language: "de", Limit: 9999,
+		Tag: "Jazz", Fields: []fieldFilter{{"audience", "Adults"}}})
 	if err != nil || len(got) != 2 {
 		t.Fatalf("rows = %+v, %v", got, err)
 	}
@@ -258,7 +259,7 @@ func TestIndexQueryRange(t *testing.T) {
 	if !strings.Contains(c.sql, "o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz") {
 		t.Errorf("no overlap test: %s", c.sql)
 	}
-	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false, "", "", ""}
+	want := []any{"2026-07-01T00:00:00Z", "2026-08-01T00:00:00Z", `50\%\_\\ "off"; DROP`, "Music", "hall", "Bonn", "free", "gala", "de", maxIndexRows, false, false, "", "", "", "Jazz", `[{"k":"audience","v":"Adults"}]`}
 	if fmt.Sprint(c.args) != fmt.Sprint(want) {
 		t.Errorf("args = %v, want %v", c.args, want)
 	}
