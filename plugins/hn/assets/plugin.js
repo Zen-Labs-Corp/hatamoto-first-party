@@ -67,6 +67,7 @@
   function vote(ev) {
     var f = ev && ev.target, a = f && f.getAttribute && f.getAttribute('action');
     if (!f || !(has(f, 'hn-vote-form') || has(f, 'hn-un')) || (a || '').indexOf('/p/hn/vote/') !== 0) return;
+    if (up(f, 'hn-c-row')) return;
     if (isUn(f) && !cellOf(f).querySelector('form.hn-gone')) return;
     if (f.__hnBusy) { ev.preventDefault(); return; }
     try {

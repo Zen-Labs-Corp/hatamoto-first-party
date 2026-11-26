@@ -255,6 +255,14 @@ async function main() {
   check('comment unvote: arrows back, control hidden, forms kept',
     c.up.className.indexOf('hn-gone') < 0 && c.down.className.indexOf('hn-gone') < 0 && cun[0].className.indexOf('hn-gone') >= 0 && c.cell.children.length === 3 && c.cell.className.indexOf('hn-voted') < 0);
 
+  // 3b. the theme's own comment rows (.hn-c-row) are left to the theme script
+  c = commentCell();
+  var trow = el('div', 'hn-c-row', {}, [c.cell]);
+  b = boot(el('main', '', {}, [trow]), mkFetch(replyVote));
+  b.doc.fire('submit', c.up);
+  await flush();
+  check('theme row: no fetch, no preventDefault, no clone', b.win.fetch.calls.length === 0 && c.up.prevented === 0 && c.cell.querySelectorAll('form.hn-un').length === 0 && c.cell.children.length === 2);
+
   // 4-8. failures fall back to a plain submit and keep the form
   var bad = [
     ['error body', function () { return ok({ error: 'no' }); }],
