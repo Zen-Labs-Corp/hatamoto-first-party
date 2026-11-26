@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -317,5 +318,121 @@ func TestEditorTimeRoundsToTheMinute(t *testing.T) {
 		if got := editorTime(in, time.FixedZone("x", 7200)); got != want {
 			t.Errorf("editorTime(%v) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// fixedNow pins the clock the transform phase reads.
+func fixedNow(t *testing.T, at time.Time) {
+	t.Helper()
+	now = func() time.Time { return at }
+	t.Cleanup(func() { now = time.Now })
+}
+
+// publishedBy is the entities.list answer for the events these upserts created.
+func publishedBy(ups []sdk.EntityUpsert) []string {
+	var out []string
+	for i, up := range ups {
+		out = append(out, fmt.Sprintf(`{"id":"p%d","schema_slug":"calendar-event","slug":"e%d","name":%q,"locale":"en","status":"published","attributes":{"start_at":"2027-06-12T10:00:00Z","source_kind":"google","source_uid":%q}}`,
+			i, i, up.Name, up.SourceKey))
+	}
+	return out
+}
+
+func scheduledHost(published []string) *runHost {
+	return &runHost{name: runScheduledImport, runID: "rs", created: true,
+		settings: `{"import_sources":[{"name":"Town","kind":"google","url":"` + gcalURL + `","schedule":"daily"}]}`,
+		pages:    map[string]fakePage{gcalURL: {status: 200, body: feedOf(250, "g")}},
+		lists:    map[string][]string{"calendar-event": published}}
+}
+
+func TestScheduledImportPagesOverDays(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 1, 12, 0, 0, 0, time.UTC))
+	var published []string
+	seen := map[string]bool{}
+	for i, want := range []struct {
+		created int
+		line    string
+	}{
+		{100, "Imported 100 events, 150 skipped"},
+		{100, "Imported 100 events, 150 skipped"},
+		{50, "Imported 50 events, 200 skipped"},
+	} {
+		h := scheduledHost(published)
+		h.install(t)
+		h.runFetch(t)
+		h.phase = "transform"
+		h.step(t)
+		if h.failed != "" || len(h.upserts) != want.created {
+			t.Fatalf("run %d: failed %q, %d upserts, want %d", i+1, h.failed, len(h.upserts), want.created)
+		}
+		if !strings.HasPrefix(h.progress, want.line) {
+			t.Errorf("run %d: progress %q, want prefix %q", i+1, h.progress, want.line)
+		}
+		for _, up := range h.upserts {
+			if seen[up.SourceKey] {
+				t.Errorf("run %d: %s staged twice", i+1, up.SourceKey)
+			}
+			seen[up.SourceKey] = true
+		}
+		published = append(published, publishedBy(h.upserts)...)
+	}
+	if len(seen) != 250 {
+		t.Errorf("%d events in all, want 250", len(seen))
+	}
+}
+
+func TestManualImportCap(t *testing.T) {
+	h := manualRun(gcalURL, "google", "Town", map[string]fakePage{gcalURL: {status: 200, body: feedOf(250, "g")}})
+	h.created = true
+	h.install(t)
+	h.runFetch(t)
+	h.phase = "transform"
+	h.step(t)
+	if h.failed != "" || len(h.upserts) != 200 {
+		t.Fatalf("failed %q, %d upserts", h.failed, len(h.upserts))
+	}
+	if !strings.HasPrefix(h.progress, "Imported 200 events, 50 skipped") || !strings.Contains(h.progress, "50 left for the next run") {
+		t.Errorf("progress %q", h.progress)
+	}
+}
+
+func TestScheduledSkipsPastAndNeverUpdates(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
+	ended := time.Date(2027, 6, 12, 10, 0, 0, 0, time.UTC) // two days ago
+	recent := time.Date(2027, 6, 14, 1, 0, 0, 0, time.UTC) // ended less than a day ago
+	past := record("google", "Town", "past", importEvent{Title: "Past", Start: ended, End: ended.Add(time.Hour)})
+	fresh := record("google", "Town", "recent", importEvent{Title: "Recent", Start: recent, End: recent.Add(time.Hour)})
+	known := record("google", "Town", "known", importEvent{Title: "Known renamed", Start: recent.Add(48 * time.Hour)})
+	h := &runHost{name: runScheduledImport, runID: "rp", created: true, lists: map[string][]string{"calendar-event": {existingJSON(known, "known", "")}}}
+	h.install(t)
+	buffered(t, h, past, fresh, known)
+	h.step(t)
+	if h.failed != "" || len(h.upserts) != 1 || h.upserts[0].SourceKey != fresh.Key {
+		t.Fatalf("failed %q, upserts %+v", h.failed, h.upserts)
+	}
+	if !strings.HasPrefix(h.progress, "Imported 1 events, 2 skipped") {
+		t.Errorf("progress %q", h.progress)
+	}
+}
+
+func TestTransformSteps(t *testing.T) {
+	h := manualRun(gcalURL, "google", "Town", map[string]fakePage{gcalURL: {status: 200, body: feedOf(120, "g")}})
+	h.created = true
+	h.install(t)
+	h.runFetch(t)
+	h.phase = "transform"
+	h.step(t)
+	if h.failed != "" || h.steps < 3 {
+		t.Fatalf("failed %q after %d steps", h.failed, h.steps)
+	}
+	keys := map[string]bool{}
+	for _, up := range h.upserts {
+		keys[up.SourceKey] = true
+	}
+	if len(h.upserts) != 120 || len(keys) != 120 {
+		t.Errorf("%d upserts, %d distinct keys, want 120", len(h.upserts), len(keys))
+	}
+	if h.cursor != "" && len(h.cursor) > maxImportCursor {
+		t.Errorf("checkpoint of %d bytes", len(h.cursor))
 	}
 }

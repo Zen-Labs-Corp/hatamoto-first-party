@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,43 +17,103 @@ const (
 	maxRefPages      = 5
 	maxExistingPages = 25
 	bufferPage       = 100
+	smallPageSize    = 50
 )
 
-// importTransformStep stages the buffered events: a create for an event the
-// site does not have, an update for one whose feed data changed, nothing for
-// an unchanged one. It deletes nothing.
-func importTransformStep() (sdk.RunStepResult, error) {
-	s := loadSettings()
-	schema := s.slugs()[0]
+const (
+	scheduledCreateCap = 100 // standing_approval.create.max_per_hour; cron every 12h, so 200 a day
+	manualCreateCap    = 200
+	stepUpserts        = 50
+	stepBudget         = 7 * time.Second
+	pastGrace          = 24 * time.Hour // a scheduled run skips events that ended longer ago
+)
+
+// stageCursor is the checkpoint of the transform phase: the next record and
+// the counts so far.
+type stageCursor struct {
+	I   int            `json:"i"`
+	Sum map[string]int `json:"sum"`
+}
+
+// importTransformStep stages the buffered events a bounded number of upserts
+// a step, in start order. A manual run creates what the site does not have (at
+// most manualCreateCap) and updates what the feed changed. A scheduled run
+// only creates (at most scheduledCreateCap, the rest waits for the next run):
+// an update would wait for review and park the whole changeset. It deletes
+// nothing.
+func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
+	started := clock()
+	cfg := loadSettings()
+	schema := cfg.slugs()[0]
+
+	var cur stageCursor
+	if s.Cursor != "" && json.Unmarshal([]byte(s.Cursor), &cur) != nil {
+		return failRun("The run cursor could not be read.")
+	}
+	if cur.Sum == nil {
+		failedSources, err := bufferCount(bufError)
+		if err != nil {
+			return failRun("The run buffer could not be read. Try again.")
+		}
+		cur.Sum = map[string]int{"created": 0, "updated": 0, "unchanged": 0, "with_links": 0, "failed": 0, "failed_sources": failedSources, "dropped_recurrence": 0, "skipped_over_cap": overCap(),
+			"not_updated": 0, "past": 0, "next_run": 0}
+	}
+	sum := cur.Sum
+	createCap := manualCreateCap
+	if sched {
+		createCap = scheduledCreateCap
+	}
 
 	records, err := bufferedRecords()
 	if err != nil {
 		return failRun("The run buffer could not be read. Try again.")
 	}
-	failedSources, err := bufferCount(bufError)
-	if err != nil {
-		return failRun("The run buffer could not be read. Try again.")
+	if len(records) == 0 || cur.I >= len(records) {
+		return finishImport(sum, createCap)
 	}
-	sum := map[string]int{"created": 0, "updated": 0, "unchanged": 0, "with_links": 0, "failed": 0, "failed_sources": failedSources, "dropped_recurrence": 0, "skipped_over_cap": overCap()}
-	if len(records) == 0 {
-		return finishImport(sum)
-	}
+	sort.SliceStable(records, func(i, j int) bool {
+		if !records[i].Ev.Start.Equal(records[j].Ev.Start) {
+			return records[i].Ev.Start.Before(records[j].Ev.Start)
+		}
+		return records[i].Key < records[j].Key
+	})
 
-	existing, err := loadImported(s)
+	existing, err := loadImported(cfg)
 	if err != nil {
 		return failRun("The existing events could not be read. Nothing was staged.")
 	}
 	venues := namesToIDs("calendar-venue")
 	cats := namesToIDs("calendar-category")
+	cutoff := now().Add(-pastGrace)
 
-	for _, rec := range records {
+	upserts := 0
+	for ; cur.I < len(records); cur.I++ {
+		if upserts >= stepUpserts || clock().Sub(started) >= stepBudget {
+			cp, _ := json.Marshal(cur)
+			if len(cp) > maxImportCursor || guest.RunCheckpoint(callHost, string(cp)) != nil {
+				return failRun("The run could not save its place. Try again.")
+			}
+			return sdk.RunStepResult{}, nil
+		}
+		rec := records[cur.I]
 		ev := rec.Ev
 		if ev.Title == "" {
 			ev.Title = "Untitled event"
 		}
-		sum["dropped_recurrence"] += ev.Dropped
 		old, found := existing[rec.Key]
-		loc := s.location()
+		switch {
+		case found && sched:
+			sum["not_updated"]++
+			continue
+		case !found && sched && endOf(ev).Before(cutoff):
+			sum["past"]++
+			continue
+		case !found && sum["created"] >= createCap:
+			sum["next_run"]++
+			continue
+		}
+		sum["dropped_recurrence"] += ev.Dropped
+		loc := cfg.location()
 		if found {
 			loc = storedLocation(old.Attrs, loc)
 		}
@@ -71,6 +132,7 @@ func importTransformStep() (sdk.RunStepResult, error) {
 			want = attrs
 		}
 		up.Attributes, _ = json.Marshal(want)
+		upserts++
 		if _, err := guest.EntityUpsert(callHost, up); err != nil {
 			sum["failed"]++
 			continue
@@ -84,7 +146,19 @@ func importTransformStep() (sdk.RunStepResult, error) {
 			sum["with_links"]++
 		}
 	}
-	return finishImport(sum)
+	return finishImport(sum, createCap)
+}
+
+// endOf is when an event ends: its end, else its start (a whole day for an
+// all-day event without an end).
+func endOf(ev importEvent) time.Time {
+	switch {
+	case !ev.End.IsZero():
+		return ev.End
+	case ev.AllDay:
+		return ev.Start.AddDate(0, 0, 1)
+	}
+	return ev.Start
 }
 
 // storedLocation is the zone an event's stored times are read in: its own
@@ -250,9 +324,9 @@ type importedEvent struct {
 func loadImported(s settings) (map[string]importedEvent, error) {
 	out := map[string]importedEvent{}
 	for si, schema := range s.slugs() {
-		cursor := ""
+		cursor, limit := "", listPageSize
 		for page := 0; page < maxExistingPages; page++ {
-			args := map[string]any{"schema_slug": schema, "status": "published", "limit": listPageSize}
+			args := map[string]any{"schema_slug": schema, "status": "published", "limit": limit}
 			if cursor != "" {
 				args["cursor"] = cursor
 			}
@@ -260,7 +334,14 @@ func loadImported(s settings) (map[string]importedEvent, error) {
 				Items      []entityDTO `json:"items"`
 				NextCursor string      `json:"next_cursor"`
 			}
-			if err := callHost(sdk.FnEntitiesList, args, &res); err != nil {
+			err := callHost(sdk.FnEntitiesList, args, &res)
+			if isInvalidArgument(err) && limit > smallPageSize {
+				// the answer was over the host's size cap: read this page again in smaller pieces
+				limit = smallPageSize
+				args["limit"] = limit
+				err = callHost(sdk.FnEntitiesList, args, &res)
+			}
+			if err != nil {
 				if isNotFound(err) || si > 0 {
 					break // the type does not exist, or the older type cannot be read: it has no imports
 				}
@@ -321,15 +402,19 @@ func namesToIDs(schema string) map[string]string {
 
 // finishImport ends the run. Core shows a run's progress message but not its
 // summary, so the counts the owner needs are also put in the message.
-func finishImport(sum map[string]int) (sdk.RunStepResult, error) {
-	read := sum["created"] + sum["updated"] + sum["unchanged"] + sum["failed"]
-	msg := fmt.Sprintf("%d events read", read)
-	if n := sum["skipped_over_cap"]; n > 0 {
-		msg += fmt.Sprintf(", %d left out by the %d-event limit", n, maxReadEvents)
+func finishImport(sum map[string]int, createCap int) (sdk.RunStepResult, error) {
+	done := sum["created"] + sum["updated"]
+	skipped := sum["unchanged"] + sum["not_updated"] + sum["past"] + sum["next_run"] + sum["failed"] + sum["skipped_over_cap"]
+	msg := fmt.Sprintf("Imported %d events, %d skipped", done, skipped)
+	if n := sum["next_run"]; n > 0 {
+		msg += fmt.Sprintf("; %d left for the next run (at most %d new events a run)", n, createCap)
+	}
+	if n := sum["failed_sources"]; n > 0 {
+		msg += fmt.Sprintf("; %d calendars could not be read", n)
 	}
 	if n := sum["dropped_recurrence"]; n > 0 {
-		msg += fmt.Sprintf(", %d repeating rules left out", n)
+		msg += fmt.Sprintf("; %d repeating rules left out", n)
 	}
-	_ = guest.RunProgress(callHost, read, read, msg)
+	_ = guest.RunProgress(callHost, done+skipped, done+skipped, msg)
 	return sdk.RunStepResult{}, guest.RunFinish(callHost, sum)
 }

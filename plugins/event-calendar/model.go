@@ -331,6 +331,11 @@ func isNotFound(err error) bool {
 	return errors.As(err, &he) && he.Code == sdk.ErrNotFound
 }
 
+func isInvalidArgument(err error) bool {
+	var he *sdk.HostError
+	return errors.As(err, &he) && he.Code == sdk.ErrInvalidArgument
+}
+
 // eachEvent pages the published events of every accepted content type and
 // passes each one to visit until it returns true, so a caller that has what it
 // needs reads no further page. At most maxListPages pages are read in all, and

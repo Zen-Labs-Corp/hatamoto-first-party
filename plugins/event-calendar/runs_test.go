@@ -27,6 +27,7 @@ type runHost struct {
 	failed   string
 	finished any
 	calls    []string
+	steps    int // transform steps run
 
 	// settings is the answer of settings.get ("{}" when empty); phase is the
 	// phase run.info reports ("transform" when empty).
@@ -167,11 +168,22 @@ func (h *runHost) install(t *testing.T) {
 	}
 }
 
+// step runs the transform phase the way the host does: each step starts from
+// the last checkpoint of the phase, until a step leaves none.
 func (h *runHost) step(t *testing.T) {
 	t.Helper()
-	if _, err := onStep(sdk.RunStep{RunID: h.runID, Phase: sdk.RunPhaseTransform}); err != nil {
-		t.Fatalf("step error: %v", err)
+	h.cursor = ""
+	for range 40 {
+		before := h.cursor
+		if _, err := onStep(sdk.RunStep{RunID: h.runID, Phase: sdk.RunPhaseTransform, Cursor: before}); err != nil {
+			t.Fatalf("step error: %v", err)
+		}
+		h.steps++
+		if h.cursor == before {
+			return
+		}
 	}
+	t.Fatal("the transform phase did not end")
 }
 
 const ownedEvent = `{"id":"e1","schema_slug":"calendar-event","slug":"yoga","name":"Yoga","locale":"en","status":"published","attributes":{

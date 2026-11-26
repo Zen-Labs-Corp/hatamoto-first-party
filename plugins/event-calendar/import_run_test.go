@@ -127,10 +127,10 @@ func TestImportCaps(t *testing.T) {
 		b, _ := json.Marshal(sum.Summary)
 		var got map[string]int
 		_ = json.Unmarshal(b, &got)
-		if h.failed != "" || got["created"] != maxReadEvents || got["skipped_over_cap"] != 50 {
+		if h.failed != "" || got["created"] != manualCreateCap || got["skipped_over_cap"] != 50 || got["next_run"] != 1800 {
 			t.Errorf("failed %q, summary %v", h.failed, got)
 		}
-		if want := "2000 events read, 50 left out by the 2000-event limit"; h.progress != want {
+		if want := "Imported 200 events, 1850 skipped; 1800 left for the next run (at most 200 new events a run)"; h.progress != want {
 			t.Errorf("progress message %q, want %q", h.progress, want)
 		}
 	})
