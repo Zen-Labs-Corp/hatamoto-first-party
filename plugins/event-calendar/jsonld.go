@@ -46,7 +46,8 @@ func enrichEvent(d sdk.JSONLDDoc) (sdk.JSONLDDoc, error) {
 	}
 	add("eventStatus", eventStatusURL(e.EventStatus))
 	add("eventAttendanceMode", attendanceModeURL(e.AttendanceMode))
-	if loc := locationOf(e); loc != nil {
+	pageURL, _ := doc["url"].(string)
+	if loc := locationOf(e, absoluteURL(d.BaseURL, pageURL)); loc != nil {
 		add("location", loc)
 	}
 	if o, ok := loadOrganizer(firstID(e.OrganizerIDs)); ok {
@@ -128,8 +129,9 @@ func attendanceModeURL(mode string) string {
 // locationOf is the event's location: a Place for a venue (a postal address
 // and coordinates when a venue entity resolves, else the text address) and a
 // VirtualLocation for an online or hybrid event with a link. Nil when the event
-// has neither.
-func locationOf(e Event) any {
+// has neither. A private join link is never published: the VirtualLocation
+// then carries pageURL (the event's own absolute page), or no url when empty.
+func locationOf(e Event, pageURL string) any {
 	var places []any
 	name, address, city, v := venueOrText(e)
 	if name != "" {
@@ -157,6 +159,8 @@ func locationOf(e Event) any {
 		vl := map[string]any{"@type": "VirtualLocation"}
 		if e.JoinPublic {
 			vl["url"] = e.OnlineURL
+		} else if pageURL != "" {
+			vl["url"] = pageURL
 		}
 		places = append(places, vl)
 	}
