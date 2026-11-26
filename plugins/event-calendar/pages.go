@@ -22,7 +22,37 @@ const (
 
 	// maxPageDates is how many upcoming dates a page lists.
 	maxPageDates = 100
+
+	// maxSeriesEvents and pageFillBudget bound the reads a series page makes
+	// to describe the rule of each of its events.
+	maxSeriesEvents = 10
+	pageFillBudget  = time.Second
+
+	// pagePreview is how many dates a page list shows before "More".
+	pagePreview = 10
 )
+
+// pageCSS is the pages' only style: static, no url() and no import, so the
+// page loads nothing else (plugin routes allow inline style, not scripts).
+const pageCSS = `body{margin:0;font-family:system-ui,sans-serif;line-height:1.5}
+.hm-ec-page{max-width:48rem;margin:0 auto;padding:var(--hm-space-4,1rem)}
+.hm-ec-page .card{margin:var(--hm-space-4,1rem) 0;padding:var(--hm-space-4,1rem);border:1px solid var(--hm-color-border,#d8dce3);border-radius:var(--hm-radius,.5rem)}
+.hm-ec-page .kind{margin:0;font-size:.75rem;font-weight:600;text-transform:uppercase}
+.hm-ec-page h1{margin:0 0 var(--hm-space-3,.75rem);font-size:1.5rem}
+.hm-ec-page h2{margin:0 0 var(--hm-space-3,.75rem);font-size:1.125rem}
+.hm-ec-page .btn{display:inline-block;padding:var(--hm-space-2,.5rem) var(--hm-space-4,1rem);border-radius:var(--hm-radius,.5rem);background:var(--hm-color-accent,#1a56db);color:var(--hm-color-on-accent,#fff);font-weight:600;text-decoration:none}
+.hm-ec-page .badge{display:inline-block;padding:0 var(--hm-space-2,.5rem);border-radius:var(--hm-radius,.5rem);background:var(--hm-color-accent,#1a56db);color:var(--hm-color-on-accent,#fff);font-size:.75rem;font-weight:600}
+.hm-ec-page .skipped{text-decoration:line-through}
+.hm-ec-page ul.dates{list-style:none;margin:0;padding:0}
+.hm-ec-page ul.dates li{padding:var(--hm-space-1,.25rem) 0}
+.hm-ec-page summary{cursor:pointer;font-weight:600}
+@media (max-width:600px){.hm-ec-page{padding:var(--hm-space-3,.75rem)}.hm-ec-page h1{font-size:1.25rem}}`
+
+var pageKinds = map[string]string{
+	pageSeries:    "Series",
+	pageVenue:     "Venue",
+	pageOrganizer: "Organizer",
+}
 
 var pageSchemas = map[string]string{
 	pageSeries:    "calendar-series",
@@ -56,7 +86,7 @@ func servePage(kind, slug string) sdk.HTTPResponse {
 	s := loadSettings()
 	at := now()
 	var b strings.Builder
-	b.WriteString("<h1>" + esc(raw.Name) + "</h1>\n")
+	b.WriteString(`<section class="card">` + "\n<p class=\"kind\">" + pageKinds[kind] + "</p>\n<h1>" + esc(raw.Name) + "</h1>\n")
 	switch kind {
 	case pageVenue:
 		writeVenue(&b, attrs, s)
@@ -65,14 +95,16 @@ func servePage(kind, slug string) sdk.HTTPResponse {
 	case pageSeries:
 		writeSeries(&b, attrs)
 	}
-	writeDates(&b, pageDates(kind, raw.ID, s, at), kind == pageSeries, s, at)
+	b.WriteString("</section>\n")
+	writeDates(&b, pageDates(kind, raw.ID, s, at), kind, s, at)
 	return pageResponse(raw.Name, raw.Locale, b.String())
 }
 
 func esc(s string) string { return html.EscapeString(s) }
 
-// pageResponse wraps the body in a page. The page has no script, style or
-// outside resource, so any theme-free browser shows it plainly.
+// pageResponse wraps the body in a page. The page has no script and no
+// outside resource, only the one static style, so any theme-free browser
+// shows it plainly.
 func pageResponse(title, locale, body string) sdk.HTTPResponse {
 	lang := ""
 	if langRe.MatchString(locale) {
@@ -80,7 +112,7 @@ func pageResponse(title, locale, body string) sdk.HTTPResponse {
 	}
 	doc := "<!doctype html>\n<html" + lang + ">\n<head>\n<meta charset=\"utf-8\">\n" +
 		"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n" +
-		"<title>" + esc(title) + "</title>\n</head>\n<body>\n<main>\n" + body + "</main>\n</body>\n</html>\n"
+		"<title>" + esc(title) + "</title>\n<style>" + pageCSS + "</style>\n</head>\n<body>\n<main class=\"hm-ec-page\">\n" + body + "</main>\n</body>\n</html>\n"
 	return sdk.HTTPResponse{
 		Status: http.StatusOK,
 		Headers: map[string]string{
@@ -103,6 +135,14 @@ func link(href, text string) string {
 		return esc(text)
 	}
 	return `<a href="` + esc(href) + `">` + esc(text) + `</a>`
+}
+
+// linkClass is link with a class on the anchor.
+func linkClass(href, text, class string) string {
+	if !safeHref(href) {
+		return esc(text)
+	}
+	return `<a class="` + esc(class) + `" href="` + esc(href) + `">` + esc(text) + `</a>`
 }
 
 // paragraphs renders plain text as one <p> per line of text.
@@ -134,16 +174,18 @@ func writeVenue(b *strings.Builder, a map[string]any, s settings) {
 	}
 	if lat, lon := attrFloat(a, "latitude"), attrFloat(a, "longitude"); s.ShowMap && lat != nil && lon != nil {
 		la, lo := strconv.FormatFloat(*lat, 'f', 5, 64), strconv.FormatFloat(*lon, 'f', 5, 64)
-		b.WriteString("<p>" + link("https://www.openstreetmap.org/?mlat="+la+"&mlon="+lo+"#map=16/"+la+"/"+lo, "Map") + "</p>\n")
+		b.WriteString("<p>" + linkClass("https://www.openstreetmap.org/?mlat="+la+"&mlon="+lo+"#map=16/"+la+"/"+lo, "Map", "btn") + "</p>\n")
 	}
 }
 
 func writeOrganizer(b *strings.Builder, a map[string]any) {
-	if email := attrString(a, "email"); email != "" {
-		b.WriteString("<p>" + esc(email) + "</p>\n")
-	}
-	if phone := attrString(a, "phone"); phone != "" {
-		b.WriteString("<p>" + esc(phone) + "</p>\n")
+	if attrBool(a, "show_contact") {
+		if email := attrString(a, "email"); email != "" {
+			b.WriteString("<p>" + esc(email) + "</p>\n")
+		}
+		if phone := attrString(a, "phone"); phone != "" {
+			b.WriteString("<p>" + esc(phone) + "</p>\n")
+		}
 	}
 	if site := attrString(a, "website"); isAbsoluteURL(site) {
 		b.WriteString("<p>" + link(site, site) + "</p>\n")
@@ -189,10 +231,29 @@ func pageDates(kind, id string, s settings, at time.Time) pageRows {
 	return pageRows{rows: out, ok: true}
 }
 
+// writeDatesList writes list items as one list; those past pagePreview go
+// behind a "More" disclosure (no script).
+func writeDatesList(b *strings.Builder, items []string) {
+	head, rest := items, []string(nil)
+	if len(items) > pagePreview {
+		head, rest = items[:pagePreview], items[pagePreview:]
+	}
+	b.WriteString("<ul class=\"dates\">\n" + strings.Join(head, "") + "</ul>\n")
+	if len(rest) > 0 {
+		b.WriteString("<details><summary>More (" + strconv.Itoa(len(rest)) + ")</summary>\n<ul class=\"dates\">\n" +
+			strings.Join(rest, "") + "</ul>\n</details>\n")
+	}
+}
+
 // writeDates lists the dates, flat by start, or (a series) under the event
 // each belongs to.
-func writeDates(b *strings.Builder, p pageRows, grouped bool, s settings, at time.Time) {
-	b.WriteString("<h2>Upcoming</h2>\n")
+func writeDates(b *strings.Builder, p pageRows, kind string, s settings, at time.Time) {
+	heading := "Upcoming"
+	if kind == pageVenue {
+		heading = "Upcoming here"
+	}
+	b.WriteString("<section class=\"card\">\n<h2>" + heading + "</h2>\n")
+	defer b.WriteString("</section>\n")
 	switch {
 	case !p.ok:
 		b.WriteString("<p>Dates are not available yet.</p>\n")
@@ -205,14 +266,21 @@ func writeDates(b *strings.Builder, p pageRows, grouped bool, s settings, at tim
 		e := r.event(s.location())
 		return formatWhen(e.Start, e.End, e.HasEnd, e.AllDay, s.DateFormat, dateLocation(e, s.location()), at)
 	}
-	if !grouped {
-		b.WriteString("<ul>\n")
+	if kind != pageSeries {
+		var items []string
 		for _, r := range p.rows {
-			b.WriteString("<li>" + esc(when(r)) + ": " + link(r.URL, r.Name) + "</li>\n")
+			items = append(items, "<li>"+esc(when(r))+": "+link(r.URL, r.Name)+"</li>\n")
 		}
-		b.WriteString("</ul>\n")
+		writeDatesList(b, items)
 		return
 	}
+	writeSeriesDates(b, p, s, at, when)
+}
+
+// writeSeriesDates lists each event of a series with its rule: how many dates
+// are ahead, how many changed, and every date with skipped and changed ones
+// marked. An event that cannot be read in time is listed from the index.
+func writeSeriesDates(b *strings.Builder, p pageRows, s settings, at time.Time, when func(apiRow) string) {
 	var order []string
 	byEvent := map[string][]apiRow{}
 	for _, r := range p.rows {
@@ -221,12 +289,57 @@ func writeDates(b *strings.Builder, p pageRows, grouped bool, s settings, at tim
 		}
 		byEvent[r.ID] = append(byEvent[r.ID], r)
 	}
-	for _, id := range order {
+	deadline := clock().Add(pageFillBudget)
+	for i, id := range order {
 		rows := byEvent[id]
-		b.WriteString("<h3>" + link(rows[0].URL, rows[0].Name) + "</h3>\n<ul>\n")
-		for _, r := range rows {
-			b.WriteString("<li>" + esc(when(r)) + "</li>\n")
+		b.WriteString("<h3>" + link(rows[0].URL, rows[0].Name) + "</h3>\n")
+		if i < maxSeriesEvents && clock().Before(deadline) && writeRule(b, id, s, at) {
+			continue
 		}
-		b.WriteString("</ul>\n")
+		var items []string
+		for _, r := range rows {
+			items = append(items, "<li>"+esc(when(r))+"</li>\n")
+		}
+		writeDatesList(b, items)
 	}
+}
+
+// writeRule writes the rule summary and the dates of one event, read from the
+// event itself. It writes nothing and reports false when the event cannot be
+// read.
+func writeRule(b *strings.Builder, id string, s settings, at time.Time) bool {
+	var raw entityDTO
+	if callHost(sdk.FnEntitiesGet, map[string]any{"id": id}, &raw) != nil || raw.Status != "published" || !s.accepts(raw.SchemaSlug) {
+		return false
+	}
+	e, ok := eventFromEntity(raw, s)
+	if !ok {
+		return false
+	}
+	loc := eventLocation(e, s)
+	_, to := windowFor(at)
+	var items []string
+	dates, changed := 0, 0
+	occ := expandAll(e, loc, at, to, maxPageDates)
+	for _, o := range occ {
+		text := esc(formatWhen(o.Start, o.End, e.HasEnd, e.AllDay, s.DateFormat, loc, at))
+		switch o.State {
+		case stateSkipped:
+			items = append(items, `<li class="skipped">`+text+" (skipped)</li>\n")
+			continue
+		case stateChanged:
+			changed++
+			text += ` <span class="badge">changed</span>`
+		}
+		dates++
+		items = append(items, "<li>"+text+"</li>\n")
+	}
+	// A full page is cut off at maxPageDates, so the count is not a total.
+	label := strconv.Itoa(dates) + " dates"
+	if len(occ) >= maxPageDates {
+		label = "next " + label
+	}
+	b.WriteString(`<p class="summary">` + esc(ruleText(e, loc)) + ", " + label + ", " + strconv.Itoa(changed) + " changed</p>\n")
+	writeDatesList(b, items)
+	return true
 }

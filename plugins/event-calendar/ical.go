@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	icsProdID    = "-//Hatamoto//event-calendar 0.6.1//EN"
+	icsProdID    = "-//Hatamoto//event-calendar 0.7.0//EN"
 	icsUIDDomain = "event-calendar.hatamoto"
 	icsMaxOctets = 75
 	icsDateTime  = "20060102T150405Z"
@@ -95,9 +95,20 @@ func writeCalendarWith(evs []Event, stamp time.Time, loc *time.Location, venues 
 
 // occurrenceUID is the UID of one date of an event: the bare id for the date
 // the event started on (what a subscriber had before events repeated), the id
-// with the date (YYYYMMDD, in the event's zone) for every other.
+// with the date (YYYYMMDD, in the event's zone) for every other. The date is
+// the generated day (OccDay) when the index knows it, so a changed date that
+// moves keeps its own UID; else the day it starts on.
 func occurrenceUID(e Event, uid string, loc *time.Location) string {
-	if e.BaseStart.IsZero() || e.Start.Equal(e.BaseStart) {
+	if e.BaseStart.IsZero() {
+		return uid
+	}
+	if e.OccDay != "" {
+		if e.OccDay == e.BaseStart.In(loc).Format("2006-01-02") {
+			return uid
+		}
+		return uid + "-" + strings.ReplaceAll(e.OccDay, "-", "")
+	}
+	if e.Start.Equal(e.BaseStart) {
 		return uid
 	}
 	return uid + "-" + e.Start.In(loc).Format("20060102")

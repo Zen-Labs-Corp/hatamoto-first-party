@@ -105,7 +105,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m, _ := loadManifest(t)
-	if m.Name != "event-calendar" || m.Version != "0.6.1" {
+	if m.Name != "event-calendar" || m.Version != "0.7.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 	// the description is shown in the plugin list: short, and without characters the host's text checks refuse

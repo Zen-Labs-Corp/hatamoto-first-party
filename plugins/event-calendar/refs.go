@@ -16,6 +16,7 @@ type Venue struct {
 // Organizer is a resolved organizer entity.
 type Organizer struct {
 	ID, Slug, Name, URL, Email, Phone, Website string
+	ShowContact                                bool
 }
 
 // Series is a resolved series entity.
@@ -82,6 +83,7 @@ func loadOrganizer(id string) (Organizer, bool) {
 	return Organizer{
 		ID: id, Slug: raw.Slug, Name: raw.Name, URL: raw.URL,
 		Email: attrString(a, "email"), Phone: attrString(a, "phone"), Website: attrString(a, "website"),
+		ShowContact: attrBool(a, "show_contact"),
 	}, true
 }
 

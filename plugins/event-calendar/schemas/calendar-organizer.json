@@ -25,6 +25,12 @@
       "title": "Phone",
       "description": "Phone number."
     },
+    "show_contact": {
+      "type": "boolean",
+      "title": "Show contact",
+      "description": "Show email and phone on public pages.",
+      "default": false
+    },
     "website": {
       "type": "string",
       "title": "Website",
@@ -47,6 +53,7 @@
   "x-hm-order": [
     "email",
     "phone",
+    "show_contact",
     "website",
     "image",
     "description"

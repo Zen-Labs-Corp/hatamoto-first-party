@@ -58,7 +58,7 @@ func TestWriteCalendarGolden(t *testing.T) {
 		},
 	}
 	want := strings.Join([]string{
-		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hatamoto//event-calendar 0.6.1//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hatamoto//event-calendar 0.7.0//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
 		"BEGIN:VEVENT", "UID:3f2a@event-calendar.hatamoto", "DTSTAMP:20261104T091500Z",
 		"DTSTART:20270214T190000Z", "DTEND:20270214T213000Z", "SUMMARY:Winter jazz night",
 		`LOCATION:The Blue Room\, 12 High St`, "URL:https://example.com/events/jazz",
@@ -158,5 +158,26 @@ func TestWriteCalendarOccurrenceUIDs(t *testing.T) {
 	late := Event{ID: "z", Name: "Late", TimeZone: "Pacific/Auckland", Start: time.Date(2027, 3, 1, 22, 0, 0, 0, time.UTC), BaseStart: base}
 	if body := unfold(writeCalendar([]Event{late}, base, time.UTC)); !strings.Contains(body, "UID:z-20270302@") {
 		t.Errorf("zone date: %s", body)
+	}
+}
+
+func TestOccurrenceUIDsUseTheGeneratedDay(t *testing.T) {
+	base := time.Date(2027, 2, 14, 19, 0, 0, 0, time.UTC)
+	at := func(day int, hour int) time.Time { return time.Date(2027, 2, day, hour, 0, 0, 0, time.UTC) }
+	evs := []Event{
+		{ID: "abc", Name: "A", Start: base, BaseStart: base, OccDay: "2027-02-14"},
+		// the 21st moved to the 28th at 18:00, the 28th is generated at 19:00
+		{ID: "abc", Name: "A", Start: at(28, 18), BaseStart: base, OccDay: "2027-02-21"},
+		{ID: "abc", Name: "A", Start: at(28, 19), BaseStart: base, OccDay: "2027-02-28"},
+		// the first date moved: still the bare id
+		{ID: "mv", Name: "M", Start: at(15, 9), BaseStart: base, OccDay: "2027-02-14"},
+		// no generated day yet: the start day decides
+		{ID: "old", Name: "O", Start: at(21, 19), BaseStart: base},
+	}
+	body := unfold(writeCalendar(evs, base, time.UTC))
+	for uid, n := range map[string]int{"abc@": 1, "abc-20270221@": 1, "abc-20270228@": 1, "mv@": 1, "old-20270221@": 1} {
+		if got := strings.Count(body, "UID:"+uid); got != n {
+			t.Errorf("UID %s: %d, want %d\n%s", uid, got, n, body)
+		}
 	}
 }

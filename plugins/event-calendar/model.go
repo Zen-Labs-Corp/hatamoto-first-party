@@ -38,6 +38,8 @@ type Event struct {
 	SchemaSlug, TimeZone             string
 	EventStatus, AttendanceMode      string
 	OnlineURL, Website               string
+	EmbedURL                         string
+	JoinPublic                       bool // false for index rows (never read there); entity reads default to true
 	VenueID, SeriesID, VenueCity     string
 	OrganizerIDs, CategoryIDs        []string
 	Price, Currency                  string
@@ -50,6 +52,7 @@ type Event struct {
 
 	Repeat    Repeat
 	BaseStart time.Time // start of the series' first date; zero until read from the index
+	OccDay    string    // generated day of this date (YYYY-MM-DD); "" when unknown
 }
 
 // Repeat is the recurrence rule of an event. The zero value (Kind "none") is
@@ -119,6 +122,27 @@ func attrBool(m map[string]any, key string) bool {
 		return v
 	case string:
 		return strings.EqualFold(strings.TrimSpace(v), "true")
+	}
+	return false
+}
+
+// attrBoolDefault reads a boolean attribute; def only when the key is missing.
+// A present value that is not a recognised true ("true", 1) is false, so a
+// flag meant to gate something fails closed on junk, "no", "off", null or "".
+func attrBoolDefault(m map[string]any, key string, def bool) bool {
+	v, ok := m[key]
+	if !ok {
+		return def
+	}
+	switch v := v.(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	case float64:
+		return v == 1
+	case int:
+		return v == 1
 	}
 	return false
 }
@@ -224,6 +248,8 @@ func eventFromEntity(raw entityDTO, s settings) (Event, bool) {
 		EventStatus:    attrString(attrs, "event_status"),
 		AttendanceMode: attrString(attrs, "attendance_mode"),
 		OnlineURL:      attrString(attrs, "online_url"),
+		EmbedURL:       attrString(attrs, "embed_url"),
+		JoinPublic:     attrBoolDefault(attrs, "join_link_public", true),
 		Website:        attrString(attrs, "website"),
 		OrganizerIDs:   attrIDs(attrs, "organizers"),
 		CategoryIDs:    attrIDs(attrs, "category"),
@@ -490,6 +516,7 @@ const (
 var shippedEventKeys = []string{
 	"page_sections", "start_at", "end_at", "all_day",
 	"time_zone", "event_status", "attendance_mode", "online_url",
+	"join_link_public", "embed_url",
 	"venue", "venue_name", "venue_address", "venue_city",
 	"organizers", "category", "series", "ticket_url",
 	"website", "price", "price_amount", "currency",

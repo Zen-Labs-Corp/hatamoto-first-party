@@ -375,3 +375,65 @@ func TestEventICSListsTheNextTwelveDates(t *testing.T) {
 		}
 	}
 }
+
+func TestICSNeverCarriesTheJoinLink(t *testing.T) {
+	for name, public := range map[string]string{"missing": "", "private": `"join_link_public":false,`, "public": `"join_link_public":true,`} {
+		ev := `{"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","status":"published","url":"https://example.com/e/future","attributes":{` + public +
+			`"start_at":"2026-07-01T19:00","end_at":"2026-07-01T21:00","attendance_mode":"online","online_url":"https://meet.example/secret","embed_url":"https://zoom.us/j/1"},"updated_at":"2026-05-01T00:00:00Z"}`
+		(&fakeHost{entities: []string{ev}, dbRows: idxRows}).install(t)
+		for _, c := range []struct{ pattern, file string }{{"/events.ics", ""}, {"/event/{file}", "future.ics"}} {
+			r := call(t, "GET", c.pattern, c.file)
+			if r.Status != 200 || !strings.Contains(r.Body, "SUMMARY:Future") {
+				t.Fatalf("%s %s: response = %+v", name, c.pattern, r)
+			}
+			if strings.Contains(r.Body, "meet.example") || strings.Contains(r.Body, "zoom.us") {
+				t.Errorf("%s %s: join link in the calendar:\n%s", name, c.pattern, r.Body)
+			}
+		}
+	}
+}
+
+func uidLines(body string) []string {
+	var out []string
+	for _, l := range strings.Split(unfold(body), "\r\n") {
+		if strings.HasPrefix(l, "UID:") {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func TestEventICSChangedDateKeepsUniqueUIDs(t *testing.T) {
+	// the 9th moves onto the 16th, which is generated too (at 18:00)
+	weekly := evOnType("r1", "event", `{"start_at":"2026-01-06T18:00","end_at":"2026-01-06T19:00","time_zone":"UTC","repeat":"weekly","repeat_every":1,"repeat_overrides":["2026-06-09|2026-06-16T19:00"]}`)
+	(&fakeHost{entities: []string{weekly}}).install(t)
+	uids := uidLines(call(t, "GET", "/event/{file}", "r1.ics").Body)
+	seen := map[string]bool{}
+	for _, u := range uids {
+		if seen[u] {
+			t.Errorf("repeated %s", u)
+		}
+		seen[u] = true
+	}
+	for _, want := range []string{"UID:r1-20260609@" + icsUIDDomain, "UID:r1-20260616@" + icsUIDDomain} {
+		if !seen[want] {
+			t.Errorf("missing %s in %v", want, uids)
+		}
+	}
+	if len(uids) != 12 {
+		t.Errorf("%d UIDs, want 12", len(uids))
+	}
+}
+
+func TestFeedUsesTheGeneratedDayInTheUID(t *testing.T) {
+	rows := `[{"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","starts_at":"2026-07-08T17:00:00+00:00","ends_at":"2026-07-08T19:00:00+00:00","base_starts_at":"2026-07-01T17:00:00+00:00","occ_day":"2026-07-01"},
+ {"id":"f1","schema_slug":"event","slug":"future","name":"Future, show","starts_at":"2026-07-08T18:00:00+00:00","ends_at":"2026-07-08T19:00:00+00:00","base_starts_at":"2026-07-01T17:00:00+00:00","occ_day":"2026-07-08"}]`
+	(&fakeHost{entities: []string{evFuture}, dbRows: rows}).install(t)
+	uids := uidLines(call(t, "GET", "/events.ics", "").Body)
+	if len(uids) != 2 || uids[0] == uids[1] {
+		t.Fatalf("UIDs = %v", uids)
+	}
+	if uids[0] != "UID:f1@"+icsUIDDomain && uids[1] != "UID:f1@"+icsUIDDomain {
+		t.Errorf("the date generated on the first day lost the bare UID: %v", uids)
+	}
+}

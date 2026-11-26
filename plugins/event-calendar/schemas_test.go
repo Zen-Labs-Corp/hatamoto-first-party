@@ -50,11 +50,12 @@ var wantSchemas = map[string]map[string]fieldSpec{
 	"calendar-event": {
 		"page_sections": sections,
 		"start_at":      str("date-time"), "end_at": str("date-time"), "all_day": scalar("boolean"),
-		"time_zone":       str(""),
-		"event_status":    en("scheduled", "cancelled", "postponed"),
-		"attendance_mode": en("offline", "online", "hybrid"),
-		"online_url":      str("uri"),
-		"venue":           arr(""), "venue_name": str(""), "venue_address": str(""), "venue_city": str(""),
+		"time_zone":        str(""),
+		"event_status":     en("scheduled", "cancelled", "postponed"),
+		"attendance_mode":  en("offline", "online", "hybrid"),
+		"online_url":       str("uri"),
+		"join_link_public": scalar("boolean"), "embed_url": str("uri"),
+		"venue": arr(""), "venue_name": str(""), "venue_address": str(""), "venue_city": str(""),
 		"organizers": arr(""), "category": arr(""), "series": arr(""),
 		"ticket_url": str("uri"), "website": str("uri"), "price": str(""), "price_amount": scalar("number"),
 		"currency": str(""), "featured": scalar("boolean"), "image": str(""), "description": str(""),
@@ -76,7 +77,7 @@ var wantSchemas = map[string]map[string]fieldSpec{
 	},
 	"calendar-organizer": {
 		"page_sections": sections,
-		"email":         str("email"), "phone": str(""), "website": str("uri"), "image": str(""), "description": str(""),
+		"email":         str("email"), "phone": str(""), "show_contact": scalar("boolean"), "website": str("uri"), "image": str(""), "description": str(""),
 	},
 	"calendar-series":   {"page_sections": sections, "description": str(""), "image": str("")},
 	"calendar-category": {"description": str(""), "color": str("")},
@@ -189,7 +190,7 @@ func TestShippedSchemas(t *testing.T) {
 		t.Fatalf("schemas/ holds %d files, want %d", len(got), len(wantSchemas))
 	}
 
-	uriFields := map[string]bool{"ticket_url": true, "online_url": true, "website": true, "source_url": true}
+	uriFields := map[string]bool{"ticket_url": true, "online_url": true, "embed_url": true, "website": true, "source_url": true}
 	for slug, want := range wantSchemas {
 		n, ok := got[slug]
 		if !ok {

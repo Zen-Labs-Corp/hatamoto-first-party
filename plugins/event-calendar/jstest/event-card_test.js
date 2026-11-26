@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { tileXY, parsePin, gridTiles, validHost, pinBackground, tileUrl } = require("../widgets/event-card/island.js");
+const { tileXY, parsePin, gridTiles, validHost, pinBackground, tileUrl, embedSrc, playVideo } = require("../widgets/event-card/island.js");
 
 assert.deepEqual(tileXY(0, 0, 1), { x: 1, y: 1 });
 
@@ -70,3 +70,37 @@ const banned = [
 for (const re of banned) assert.ok(!re.test(src), `island.js matches ${re}`);
 
 console.log("island ok");
+
+// the video facade: only the two shapes the card source emits become a player
+const yt = "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ";
+const vm = "https://player.vimeo.com/video/123456";
+assert.equal(embedSrc(yt), yt);
+assert.equal(embedSrc(vm), vm);
+for (const bad of [
+  "", null, undefined, 42, "javascript:alert(1)", "http://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+  "https://www.youtube.com/embed/dQw4w9WgXcQ", "https://evil.example/embed/dQw4w9WgXcQ",
+  "https://www.youtube-nocookie.com.evil.example/embed/dQw4w9WgXcQ", yt + "?x=1", yt + "x", yt + "/", vm + "/x", "https://player.vimeo.com/video/abc",
+]) {
+  assert.equal(embedSrc(bad), null, String(bad));
+}
+
+// a click on the play button creates an iframe, and only for an allowed address
+const fakeDoc = { createElement: (tag) => ({ tagName: tag.toUpperCase() }) };
+const fakeBox = (src) => {
+  const box = {
+    children: [{ tagName: "A" }],
+    get firstChild() { return this.children[0] || null; },
+    removeChild(c) { this.children = this.children.filter((x) => x !== c); },
+    appendChild(c) { this.children.push(c); },
+    getAttribute: (k) => (k === "data-embed" ? src : null),
+  };
+  return box;
+};
+const box = fakeBox(yt);
+assert.equal(playVideo(box, fakeDoc), true);
+assert.equal(box.children.length, 1);
+assert.equal(box.children[0].tagName, "IFRAME");
+assert.equal(box.children[0].src, yt + "?autoplay=1");
+const bad = fakeBox("https://evil.example/x");
+assert.equal(playVideo(bad, fakeDoc), false);
+assert.equal(bad.children[0].tagName, "A");
