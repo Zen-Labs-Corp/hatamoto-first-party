@@ -83,11 +83,12 @@ const IDS = [
 ];
 
 // load runs the page and opens a tab (the repeating one unless told).
-async function load({ data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS } = {}) {
+async function load({ named = "old", data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS } = {}) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   els["#dup-shift"].value = "7";
   const calls = [];
+  const named_calls = [];
   const routes = [];
   const document = { querySelector: (s) => els[s], createElement: (t) => new Node(t) };
   const bodies = { "/admin/repeating": data, "/admin/submissions": subs, "/admin/imports": imports };
@@ -100,7 +101,15 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
       routes.push({ method, p, query: sent });
       return { status, body: JSON.stringify(method === "GET" ? bodies[p] : { ok: true }) };
     },
-    runInputs: (v) => {
+    // named is how the core answers runInputs("edit_dates", values): "old" throws, as an older core does
+    runInputs: (...args) => {
+      if (args.length === 2) {
+        named_calls.push(args);
+        if (named === "old") throw new Error("values must be an object");
+        if (named === "rejects") return Promise.reject(new Error("bridge closed"));
+        return Promise.resolve(named);
+      }
+      const v = args[0];
       calls.push(v);
       return refuse ? Promise.reject(new Error("no run form on this page")) : Promise.resolve();
     },
@@ -111,7 +120,7 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
     els[`#tab-${tab}`].click();
     await new Promise((r) => setTimeout(r, 10));
   }
-  return { els, calls, routes };
+  return { els, calls, routes, named_calls };
 }
 
 (async () => {
@@ -160,6 +169,53 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   const dup = calls[calls.length - 1];
   check(dup.action === "duplicate" && dup.shift_days === "7" && "event" in dup, "duplicate fills the one run: action, event and shift");
 
+  // named form: started from the click, empty values left out
+  let named_calls;
+  ({ els, calls, named_calls } = await load({ named: { ok: true, run_id: "r1", url: "/admin/runs/r1" } }));
+  els["#rows"].buttons("v dates")[0].click();
+  const pending = els["#rows"].buttons("Skip")[0].click();
+  check(named_calls.length === 1 && calls.length === 0, "the named form is called synchronously from the click");
+  await pending;
+  check(named_calls[0][0] === "edit_dates" && JSON.stringify(named_calls[0][1]) === JSON.stringify({ event: "yoga", action: "skip", date: "2026-02-17" }), "named values: " + JSON.stringify(named_calls[0]));
+  check(els["#hint"].textContent.startsWith("Started.") && !els["#hint"].classes.has("error"), "hint after a started run: " + els["#hint"].textContent);
+  els["#rows"].buttons("Change time")[0].click();
+  const timeInputs = els["#rows"].all((n) => n.tag === "input");
+  timeInputs[0].value = "17:30";
+  timeInputs[1].value = "";
+  await els["#rows"].buttons("Use these times")[0].click();
+  check(JSON.stringify(named_calls[1][1]) === JSON.stringify({ event: "yoga", action: "change", date: "2026-02-17", start_at: "17:30" }), "change through the named form: " + JSON.stringify(named_calls[1]));
+
+  // cancelled: quiet
+  ({ els, calls, named_calls } = await load({ named: { ok: false, error: "cancelled" } }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Skip")[0].click();
+  check(named_calls.length === 1 && els["#hint"].textContent === "" && !els["#hint"].classes.has("error") && calls.length === 0, "cancelled is ignored quietly");
+
+  // another error: shown
+  const busy = "That plugin already has a run in progress. Wait for it to end.";
+  ({ els, calls, named_calls } = await load({ named: { ok: false, error: busy } }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Skip")[0].click();
+  check(els["#hint"].textContent === busy && els["#hint"].classes.has("error") && calls.length === 0, "other errors are shown: " + els["#hint"].textContent);
+
+  // an older core throws on the named form: the one-arg fill, with every key
+  ({ els, calls, named_calls } = await load({ named: "old" }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Skip")[0].click();
+  await next();
+  check(named_calls.length === 1 && calls.length === 1 && calls[0].action === "skip" && calls[0].start_at === "" && calls[0].shift_days === "" && els["#hint"].textContent.includes("Press Start"), "fallback to the form fill: " + els["#hint"].textContent);
+  // a rejected promise falls back too
+  ({ els, calls } = await load({ named: "rejects" }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Restore")[0].click();
+  await next();
+  check(calls.length === 1 && calls[0].action === "restore", "a rejected named call falls back");
+
+  // an editor never reaches runInputs
+  ({ els, named_calls } = await load({ named: { ok: true }, data: { ...DATA, role: "editor" } }));
+  els["#rows"].buttons("v dates")[0].click();
+  await els["#rows"].buttons("Skip")[0].click();
+  check(named_calls.length === 0, "editor buttons start nothing");
   // the admin refuses the inputs (Settings tab): instruction line
   ({ els, calls } = await load({ refuse: true }));
   els["#rows"].buttons("v dates")[0].click();

@@ -64,8 +64,29 @@ async function fillRun(inputs, summary) {
   }
 }
 
+const RUN_EDIT = "edit_dates";
+
+// startRun starts the Edit dates run from the click: Hatamoto asks the owner to
+// confirm, then starts it. It must be called straight from the click handler,
+// with nothing awaited before. An older core throws on the named form; the form
+// is filled in instead, as fillRun does.
+function startRun(inputs, summary) {
+  const values = Object.fromEntries(Object.entries(inputs).filter(([, v]) => v !== ""));
+  let started;
+  try {
+    started = hatamoto.runInputs(RUN_EDIT, values);
+  } catch {
+    return fillRun(inputs, summary);
+  }
+  return Promise.resolve(started).then((r) => {
+    if (r && r.ok) say("#hint", "Started. Review the change in Changes when the run ends.");
+    else if (r && r.error === "cancelled") say("#hint", "");
+    else say("#hint", (r && r.error) || "The run could not start.", true);
+  }, () => fillRun(inputs, summary));
+}
+
 function editDate(ev, d, action, extra = {}) {
-  return fillRun({ event: ev.slug, action, date: d.day, start_at: "", end_at: "", shift_days: "", ...extra });
+  return startRun({ event: ev.slug, action, date: d.day, start_at: "", end_at: "", shift_days: "", ...extra });
 }
 
 function button(text, onClick, canAct) {
