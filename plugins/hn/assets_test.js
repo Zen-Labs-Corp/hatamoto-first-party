@@ -248,7 +248,7 @@ async function main() {
   var cun = c.cell.querySelectorAll('form.hn-un');
   check('comment: arrows kept and hidden', c.up.parentNode === c.cell && c.down.parentNode === c.cell && c.up.className.indexOf('hn-gone') >= 0 && c.down.className.indexOf('hn-gone') >= 0);
   check('comment: one visible unvote form', cun.length === 1 && cun[0].className.indexOf('hn-gone') < 0 && body2(cun[0]) === 'how=un' && cun[0].querySelector('button').textContent === 'unvote');
-  check('comment: unvote clone is hn-un, not hn-vote-form (hn-classic hides .hn-vote-form button[title])', cun[0].className === 'hn-un' && c.cell.querySelectorAll('form.hn-vote-form').length === 2);
+  check('comment: unvote clone is hn-act hn-un, not hn-vote-form (hn-classic hides .hn-vote-form button[title])', cun[0].className === 'hn-act hn-un' && c.cell.querySelectorAll('form.hn-vote-form').length === 2);
   check('comment: no submit()', c.up.submitted === 0 && c.down.submitted === 0);
   b.doc.fire('submit', cun[0]);
   await flush();
