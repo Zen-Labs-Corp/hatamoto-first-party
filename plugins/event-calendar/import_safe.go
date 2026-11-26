@@ -117,7 +117,8 @@ func safeText(s string) string {
 // scrubText is safeText that also reports whether the result is clean: false
 // when it still reads as a link as a whole.
 func scrubText(s string) (string, bool) {
-	s = tagRe.ReplaceAllString(decodeStable(stripHidden(s)), " ")
+	// decoding can produce hidden characters (&#8203;, &zwj;, %E2%80%8B), so they go again after it
+	s = tagRe.ReplaceAllString(stripHidden(decodeStable(stripHidden(s))), " ")
 	s = strings.NewReplacer("<", " ", ">", " ").Replace(s)
 	out := spaceRunRe.ReplaceAllStringFunc(s, func(tok string) string {
 		if linkLike(tok) {
