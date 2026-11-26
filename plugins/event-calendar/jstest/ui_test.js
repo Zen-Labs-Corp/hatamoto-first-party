@@ -67,15 +67,19 @@ const HOUR = 3600 * 1000;
 const IMPORTS = {
   role: "owner",
   sources: [
-    { name: "Town council", kind: "google", host: "calendar.google.com", category: "Civic", enabled: true, last_imported: new Date(Date.now() - 3 * HOUR - 60000).toISOString(), url: "https://calendar.example.org/town.ics" },
-    { name: "Riverside venue", kind: "outlook", host: "outlook.office365.com", category: "", enabled: false, last_imported: null, url: "https://outlook.example.org/river.ics" },
+    { name: "Town council", kind: "google", host: "calendar.google.com", category: "Civic", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: true, last_new: new Date(Date.now() - 3 * HOUR - 60000).toISOString(), created_today: 12, url: "https://calendar.example.org/town.ics" },
+    { name: "Riverside venue", kind: "outlook", host: "outlook.office365.com", category: "", enabled: false, last_imported: null, schedule: "off", scheduled_ok: true, last_new: null, created_today: 0, url: "https://outlook.example.org/river.ics" },
+    { name: "Club", kind: "ical", host: "events.example.org", category: "", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: false, last_new: null, created_today: 3, url: "https://events.example.org/club.ics" },
+    { name: "Tickets", kind: "eventbrite", host: "", category: "", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: true, last_new: null, created_today: 0 },
   ],
+  daily_cap: 200,
+  run_cap: 100,
 };
 
 const IDS = [
   "#notice", "#hint", "#state", "#events", "#rows", "#duplicate", "#dup-event", "#dup-shift", "#dup-go",
   "#tab-submissions", "#tab-imports", "#tab-repeating", "#panel-submissions", "#panel-imports", "#panel-repeating",
-  "#sub-status", "#sub-off", "#sub-reject-all", "#sub-state", "#sub-table", "#sub-rows", "#imp-state", "#imp-table", "#imp-rows", "#imp-detail", "#imp-url", "#imp-go", "#imp-confirm",
+  "#sub-status", "#sub-off", "#sub-reject-all", "#sub-state", "#sub-table", "#sub-rows", "#imp-state", "#imp-table", "#imp-rows", "#imp-detail", "#imp-add", "#imp-url", "#imp-go", "#imp-confirm",
 ];
 
 // load runs the page and opens a tab (the repeating one unless told).
@@ -269,18 +273,26 @@ async function load({ data = DATA, refuse = false, status = 200, tab = "repeatin
   ({ els } = await load({ tab: "submissions", status: 503, subs: { error: "unavailable" } }));
   check(els["#notice"].classes.has("error"), "a failing list shows an error");
 
-  // imports: rows, last imported, run now, edit, the any-url box
+  // imports: rows, schedule, last new event, created today, run now, edit, the any-url box
   ({ els, calls } = await load({ tab: "imports" }));
   let impRows = els["#imp-rows"];
   const impText = impRows.text();
-  check(impRows.children.length === 2 && impText.includes("Town council") && impText.includes("Google") && impText.includes("manual") && !impText.includes("every 6"), "source rows");
-  check(impText.includes("3 hours ago") && impText.includes("never") && impText.includes("off"), "last imported and a disabled source");
+  const cells = (i) => impRows.children[i].children.map((td) => td.textContent);
+  check(impRows.children.length === 4 && impText.includes("Town council") && impText.includes("Google"), "source rows");
+  check(cells(0).slice(0, 5).join("|") === "Town council|Google|Daily|3 hours ago|12 / 200", "daily source: " + cells(0));
+  check(cells(1).slice(2, 5).join("|") === "Off|never|-", "off source: " + cells(1));
+  check(cells(2)[2] === "Daily (Run now only)" && cells(2)[4] === "3 / 200", "unlisted host: " + cells(2));
+  check(cells(3)[1] === "Eventbrite" && cells(3)[2] === "Daily", "eventbrite source: " + cells(3));
   check(!impText.includes("calendar.example.org"), "the address is not shown in the table");
   await impRows.buttons("Run now")[0].click();
-  check(calls.length === 1 && calls[0].action === "import_url" && calls[0].url === "https://calendar.example.org/town.ics" && calls[0].kind === "google" && calls[0].name === "Town council", "run now fills the import inputs");
+  check(calls.length === 1 && calls[0].action === "import_source" && calls[0].name === "Town council" && !("url" in calls[0]), "run now fills the named source");
+  await impRows.buttons("Run now")[3].click();
+  check(calls.length === 2 && calls[1].action === "import_source" && calls[1].name === "Tickets", "run now works for a source without an address");
   impRows.buttons("Edit")[0].click();
   const detail = els["#imp-detail"].textContent;
   check(detail.includes("calendar.google.com") && detail.includes("Civic") && detail.includes("Settings tab") && !detail.includes("calendar.example.org"), "edit shows the details read-only: " + detail);
+  els["#imp-add"].click();
+  check(els["#imp-detail"].textContent === "Change or add sources on the plugin's Settings tab.", "add source points to Settings");
 
   // any other iCal address: host confirmation, then the inputs
   els["#imp-url"].value = "webcal://Feeds.Example.org/cal/events.ics?token=abc";

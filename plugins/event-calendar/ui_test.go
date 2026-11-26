@@ -70,27 +70,18 @@ func TestUITellsEventsArriveAsDrafts(t *testing.T) {
 	}
 }
 
-// A run reads at most 100 events per feed and running again does not reach the
-// rest, so the Imports tab and the README must say so. Core does not show a
-// finished run's message, so neither may promise it. The Imports tab does not
-// mention scheduled imports; the README Upgrading section does.
-func TestUIAndReadmeExplainTheImportCap(t *testing.T) {
-	readme, err := os.ReadFile("README.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(readUI(t, "index.html"), "later core update") {
-		t.Error("the Imports tab footnote must not mention a later core update")
-	}
-	if _, upgrading, ok := strings.Cut(string(readme), "### Upgrading\n"); !ok || !strings.Contains(upgrading, "scheduled imports need a later core update") {
-		t.Error("README Upgrading must keep the scheduled-imports note")
-	}
-	for name, text := range map[string]string{"ui/index.html": readUI(t, "index.html"), "README.md": string(readme)} {
-		if !strings.Contains(text, "first 100") || !strings.Contains(text, "running again") {
-			t.Errorf("%s does not explain the 100-event cap", name)
+// Scheduled runs publish up to 100 new events each, twice a day. Core does not
+// show a finished run's message, so the Imports tab must not promise it.
+func TestUIExplainsScheduledImports(t *testing.T) {
+	html := readUI(t, "index.html")
+	for _, want := range []string{"100 new events", "200 a day", "Automatic updates tab", "Run now", "before the next scheduled run"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("ui/index.html lacks %q", want)
 		}
-		if strings.Contains(text, "message on the Runs tab") {
-			t.Errorf("%s promises a run message the Runs tab does not show", name)
+	}
+	for _, stale := range []string{"first 100", "running again", "message on the Runs tab", "later core update", "only when you press"} {
+		if strings.Contains(html, stale) {
+			t.Errorf("ui/index.html still says %q", stale)
 		}
 	}
 }

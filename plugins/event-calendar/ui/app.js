@@ -263,19 +263,35 @@ function agoText(stamp) {
   return `${Math.floor(hours / 24)} days ago`;
 }
 
-function importRow(src, owner) {
-  const run = () => fillRun({ action: "import_url", url: src.url || "", kind: src.kind, name: src.name });
+// "Daily", "Daily (Run now only)" for an address a scheduled run cannot read, or "Off".
+function scheduleText(src) {
+  if (src.schedule !== "daily") return "Off";
+  return src.scheduled_ok ? "Daily" : "Daily (Run now only)";
+}
+
+// "12 / 200" for a daily source: the events first seen today against the daily cap.
+function todayText(src, cap) {
+  return src.schedule === "daily" ? `${src.created_today || 0} / ${cap}` : "-";
+}
+
+const SETTINGS_HINT = "Change or add sources on the plugin's Settings tab.";
+
+// A page-started run reaches only the first allowed host, so Run now fills the
+// run form (it names the source; the run reads the address from the settings).
+function importRow(src, owner, cap) {
+  const run = () => fillRun({ action: "import_source", name: src.name });
   const edit = el("button", { type: "button", textContent: "Edit" });
   edit.addEventListener("click", () => {
     const parts = [`Name: ${src.name}`, `Kind: ${KINDS[src.kind] || src.kind}`, `Host: ${src.host || "-"}`, `Category: ${src.category || "-"}`];
-    say("#imp-detail", `${parts.join(", ")}. Change sources on the plugin's Settings tab.`);
+    say("#imp-detail", `${parts.join(", ")}. ${SETTINGS_HINT}`);
   });
   return el("tr", {},
     el("td", { textContent: src.name }),
     el("td", { textContent: KINDS[src.kind] || src.kind }),
-    el("td", { textContent: src.enabled ? "manual" : "off" }),
-    el("td", { textContent: agoText(src.last_imported) }),
-    el("td", { className: "actions" }, button("Run now", run, owner && Boolean(src.url)), edit));
+    el("td", { textContent: scheduleText(src) }),
+    el("td", { textContent: agoText(src.last_new) }),
+    el("td", { textContent: todayText(src, cap) }),
+    el("td", { className: "actions" }, button("Run now", run, owner && Boolean(src.name)), edit));
 }
 
 function renderImports(data) {
@@ -283,7 +299,7 @@ function renderImports(data) {
   imp.sources = data.sources || [];
   const rows = $("#imp-rows");
   rows.replaceChildren();
-  for (const src of imp.sources) rows.append(importRow(src, imp.role === "owner"));
+  for (const src of imp.sources) rows.append(importRow(src, imp.role === "owner", data.daily_cap || 200));
   $("#imp-table").hidden = !imp.sources.length;
   $("#imp-state").textContent = imp.sources.length ? "" : "No sources yet. Add them in import_sources on the plugin's Settings tab.";
   const owner = imp.role === "owner";
@@ -291,6 +307,8 @@ function renderImports(data) {
   $("#imp-go").title = owner ? "" : "Ask the site owner";
   $("#imp-url").disabled = !owner;
 }
+
+$("#imp-add").addEventListener("click", () => say("#imp-detail", SETTINGS_HINT));
 
 async function loadImports() {
   try {
