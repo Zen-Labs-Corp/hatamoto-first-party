@@ -149,7 +149,7 @@
     t.setAttribute('cols', cols);
     if (max) t.setAttribute('maxlength', max);
     if (i.getAttribute('required') !== null) t.setAttribute('required', '');
-    t.value = i.value || '';
+    t.value = i.getAttribute('value') || i.value || '';
     i.parentNode.replaceChild(t, i);
   }
 

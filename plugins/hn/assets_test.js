@@ -365,6 +365,12 @@ async function main() {
   b = boot(el('main', '', {}, [ap]), undefined);
   var ata = ap.children[0];
   check('about: swapped, name, rows, maxlength 2000, value kept', ain.parentNode === null && ata.tagName === 'textarea' && ata.attrs.name === 'about' && ata.attrs.rows === '5' && ata.attrs.maxlength === '2000' && ata.value === 'hello');
+  // value attribute keeps line breaks that a text input's value strips
+  var nin = el('input', '', { id: 'hn-about', type: 'text', name: 'about', value: 'a\nb' });
+  nin.value = 'ab';
+  var np = el('p', '', {}, [nin]);
+  b = boot(el('main', '', {}, [np]), undefined);
+  check('about: newlines from the value attribute survive', np.children[0].value === 'a\nb');
   rp = el('p', '', {}, [el('input', '', { id: 'q', type: 'text', name: 'q' })]);
   b = boot(el('main', '', {}, [rp]), undefined);
   check('reply text: a page without it is untouched', rp.children[0].tagName === 'input');
