@@ -124,6 +124,14 @@ type detailedPing struct {
 	Health                  health
 	Host                    string // the site's domain name or public IP, when HostSet
 	HostSet                 bool
+	Flags                   flags
+}
+
+// flags are the optional on/off and bucket keys of a Detailed report; nil
+// means the key was not sent.
+type flags struct {
+	CommentsOn, StaticMode, SSOOn, FormsInUse, OffsiteBackupsOn, CSPEnforced, WPImported *bool
+	LocalesBucket                                                                        *string
 }
 
 // pluginRow is one first-party-signed plugin; Errors is its plugin_errors count.
@@ -178,6 +186,15 @@ func parseDetailed(body string) (detailedPing, int) {
 	var p detailedPing
 	var level string
 	var errs map[string]int
+	optBool := func(dst **bool) func() error {
+		return func() error {
+			b, err := readBool(dec)
+			if err == nil {
+				*dst = &b
+			}
+			return err
+		}
+	}
 	err := readObject(dec, map[string]func() error{
 		"install":    func() (err error) { p.Install, err = readString(dec); return },
 		"version":    func() (err error) { p.Version, err = readString(dec); return },
@@ -198,7 +215,21 @@ func parseDetailed(body string) (detailedPing, int) {
 		"other_plugins": func() (err error) { p.OtherPlugins, err = readInt(dec, 0, maxOtherPlugins); return },
 		"health":        func() (err error) { p.Health, errs, err = readHealth(dec); return },
 	}, map[string]func() error{
-		"host": func() (err error) { p.Host, err = readString(dec); p.HostSet = err == nil; return },
+		"host":               func() (err error) { p.Host, err = readString(dec); p.HostSet = err == nil; return },
+		"comments_on":        optBool(&p.Flags.CommentsOn),
+		"static_mode":        optBool(&p.Flags.StaticMode),
+		"sso_on":             optBool(&p.Flags.SSOOn),
+		"forms_in_use":       optBool(&p.Flags.FormsInUse),
+		"offsite_backups_on": optBool(&p.Flags.OffsiteBackupsOn),
+		"csp_enforced":       optBool(&p.Flags.CSPEnforced),
+		"wp_imported":        optBool(&p.Flags.WPImported),
+		"locales_bucket": func() error {
+			s, err := readString(dec)
+			if err == nil {
+				p.Flags.LocalesBucket = &s
+			}
+			return err
+		},
 	})
 	if err != nil {
 		return detailedPing{}, http.StatusUnprocessableEntity
@@ -208,7 +239,8 @@ func parseDetailed(body string) (detailedPing, int) {
 	}
 	if level != "detailed" || !installRe.MatchString(p.Install) || len(p.Version) > maxVersionLen || !versionRe.MatchString(p.Version) ||
 		!osArchRe.MatchString(p.OS) || !osArchRe.MatchString(p.Arch) ||
-		!nameRe.MatchString(p.ThemeName) || !validSemver(p.ThemeVersion) || (p.HostSet && !validHost(p.Host)) {
+		!nameRe.MatchString(p.ThemeName) || !validSemver(p.ThemeVersion) || (p.HostSet && !validHost(p.Host)) ||
+		(p.Flags.LocalesBucket != nil && !validBucket(*p.Flags.LocalesBucket)) {
 		return detailedPing{}, http.StatusUnprocessableEntity
 	}
 	switch p.Channel {
@@ -236,6 +268,8 @@ func parseDetailed(body string) (detailedPing, int) {
 	}
 	return p, 0
 }
+
+func validBucket(s string) bool { return s == "1" || s == "2-3" || s == "4+" }
 
 func validSemver(v string) bool { return len(v) <= maxVersionLen && semverRe.MatchString(v) }
 

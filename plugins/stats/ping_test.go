@@ -201,6 +201,11 @@ func withHost(raw string) string {
 	return strings.Replace(detailedBody, `"level":"detailed"`, `"level":"detailed","host":`+raw, 1)
 }
 
+// withFlags adds the raw JSON members (`"key":value,...`) to the valid body.
+func withFlags(raw string) string {
+	return strings.Replace(detailedBody, `"level":"detailed"`, `"level":"detailed",`+raw, 1)
+}
+
 // hostOfLen returns a valid-looking name of n characters: three 63-character
 // labels and a last label that takes the rest (n must be 252..253+).
 func hostOfLen(n int) string {
@@ -232,6 +237,75 @@ func TestDetailedHost(t *testing.T) {
 	}
 	if res := send(t, jsonReq(detailedBody)); res.Status != 204 {
 		t.Errorf("no host: got %d", res.Status)
+	}
+}
+
+func TestDetailedFlags(t *testing.T) {
+	recordHost(t)
+	p, code := parseDetailed(detailedBody)
+	if code != 0 || p.Flags != (flags{}) {
+		t.Fatalf("no flags: code %d, %+v", code, p.Flags)
+	}
+	one := map[string]func(flags) bool{
+		`"comments_on":true`:        func(f flags) bool { return f.CommentsOn != nil && *f.CommentsOn },
+		`"static_mode":false`:       func(f flags) bool { return f.StaticMode != nil && !*f.StaticMode },
+		`"sso_on":true`:             func(f flags) bool { return f.SSOOn != nil && *f.SSOOn },
+		`"forms_in_use":true`:       func(f flags) bool { return f.FormsInUse != nil && *f.FormsInUse },
+		`"offsite_backups_on":true`: func(f flags) bool { return f.OffsiteBackupsOn != nil && *f.OffsiteBackupsOn },
+		`"csp_enforced":false`:      func(f flags) bool { return f.CSPEnforced != nil && !*f.CSPEnforced },
+		`"wp_imported":true`:        func(f flags) bool { return f.WPImported != nil && *f.WPImported },
+		`"locales_bucket":"4+"`:     func(f flags) bool { return f.LocalesBucket != nil && *f.LocalesBucket == "4+" },
+	}
+	for raw, ok := range one {
+		p, code := parseDetailed(withFlags(raw))
+		if code != 0 || !ok(p.Flags) {
+			t.Errorf("%s: code %d, %+v", raw, code, p.Flags)
+		}
+		for other := range one {
+			if other != raw && one[other](p.Flags) {
+				t.Errorf("%s also set %s", raw, other)
+			}
+		}
+		if res := send(t, jsonReq(withFlags(raw))); res.Status != 204 {
+			t.Errorf("%s: got %d", raw, res.Status)
+		}
+	}
+	all := `"comments_on":true,"static_mode":false,"sso_on":true,"locales_bucket":"1","forms_in_use":false,"offsite_backups_on":true,"csp_enforced":false,"wp_imported":true`
+	p, code = parseDetailed(withFlags(all))
+	if code != 0 || *p.Flags.CommentsOn != true || *p.Flags.StaticMode != false || *p.Flags.LocalesBucket != "1" || *p.Flags.WPImported != true {
+		t.Errorf("all flags: code %d, %+v", code, p.Flags)
+	}
+	if res := send(t, jsonReq(withFlags(all))); res.Status != 204 {
+		t.Errorf("all flags: got %d", res.Status)
+	}
+	for _, b := range []string{"2-3", "1"} {
+		if _, code := parseDetailed(withFlags(`"locales_bucket":"` + b + `"`)); code != 0 {
+			t.Errorf("bucket %s: %d", b, code)
+		}
+	}
+}
+
+func TestRejectedDetailedFlags(t *testing.T) {
+	recordHost(t)
+	var bodies []string
+	for _, k := range []string{"comments_on", "static_mode", "sso_on", "forms_in_use", "offsite_backups_on", "csp_enforced", "wp_imported"} {
+		for _, v := range []string{`"x"`, `null`, `1`, `"true"`} {
+			bodies = append(bodies, withFlags(`"`+k+`":`+v))
+		}
+		bodies = append(bodies, withFlags(`"`+k+`":true,"`+k+`":true`))
+	}
+	for _, v := range []string{`true`, `""`, `"0"`, `"2"`, `"5+"`, `"4+ "`, `null`, `1`} {
+		bodies = append(bodies, withFlags(`"locales_bucket":`+v))
+	}
+	bodies = append(bodies, withFlags(`"locales_bucket":"1","locales_bucket":"1"`), withFlags(`"Comments_on":true`))
+	for _, b := range bodies {
+		if res := send(t, jsonReq(b)); res.Status != 422 {
+			t.Errorf("%s: got %d, want 422", b, res.Status)
+		}
+	}
+	basic := `{"install":"` + goodID + `","version":"v1.2.3","channel":"stable","comments_on":true}`
+	if res := send(t, jsonReq(basic)); res.Status != 400 {
+		t.Errorf("basic body with a flag: got %d, want 400", res.Status)
 	}
 }
 
