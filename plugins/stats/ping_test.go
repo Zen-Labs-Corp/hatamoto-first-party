@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -207,7 +210,8 @@ func hostOfLen(n int) string {
 
 func TestDetailedHost(t *testing.T) {
 	recordHost(t)
-	for _, h := range []string{"example.com", "blog.example.org", "xn--bcher-kva.example", "a.b-c.example.net", "2fa.example.com", strings.Repeat("a", 63) + ".com"} {
+	for _, h := range []string{"example.com", "blog.example.org", "xn--bcher-kva.example", "a.b-c.example.net", "2fa.example.com", strings.Repeat("a", 63) + ".com",
+		"8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2a00:1450:4001:80b::200e"} {
 		p, code := parseDetailed(withHost(`"` + h + `"`))
 		if code != 0 || !p.HostSet || p.Host != h {
 			t.Errorf("%s: code %d, %q set %v", h, code, p.Host, p.HostSet)
@@ -228,6 +232,20 @@ func TestDetailedHost(t *testing.T) {
 	}
 	if res := send(t, jsonReq(detailedBody)); res.Status != 204 {
 		t.Errorf("no host: got %d", res.Status)
+	}
+}
+
+func TestHostPrefixesMirrorMigration(t *testing.T) {
+	raw, err := os.ReadFile("migrations/004_flags_ip.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := regexp.MustCompile(`[0-9a-f:.]+/[0-9]+`).FindAllString(string(raw), -1)
+	want := append(append([]string{globalV6}, blockedV4...), blockedV6...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("migration prefixes %v, Go %v", got, want)
 	}
 }
 
@@ -321,11 +339,30 @@ func TestRejectedDetailedPings(t *testing.T) {
 		{"host port", withHost(`"example.com:8080"`), 422},
 		{"host path", withHost(`"example.com/x"`), 422},
 		{"host space", withHost(`"a b.com"`), 422},
-		{"host ipv4", withHost(`"1.2.3.4"`), 422},
-		{"host ipv4 private", withHost(`"10.0.0.1"`), 422},
 		{"host ipv4 leading zero", withHost(`"1.2.3.04"`), 422},
 		{"host ipv6 bracket", withHost(`"[::1]"`), 422},
 		{"host ipv6", withHost(`"::1"`), 422},
+		{"host ip 0.0.0.0", withHost(`"0.0.0.0"`), 422},
+		{"host ip 10.0.0.1", withHost(`"10.0.0.1"`), 422},
+		{"host ip cgnat", withHost(`"100.64.0.1"`), 422},
+		{"host ip link-local", withHost(`"169.254.1.1"`), 422},
+		{"host ip 172.16", withHost(`"172.16.0.1"`), 422},
+		{"host ip 192.168", withHost(`"192.168.1.1"`), 422},
+		{"host ip doc", withHost(`"203.0.113.7"`), 422},
+		{"host ip multicast", withHost(`"224.0.0.1"`), 422},
+		{"host ip broadcast", withHost(`"255.255.255.255"`), 422},
+		{"host ip6 link-local", withHost(`"fe80::1"`), 422},
+		{"host ip6 ula", withHost(`"fc00::1"`), 422},
+		{"host ip6 zone", withHost(`"fe80::1%eth0"`), 422},
+		{"host ip6 v4-mapped", withHost(`"::ffff:8.8.8.8"`), 422},
+		{"host ip6 doc", withHost(`"2001:db8::1"`), 422},
+		{"host ip6 6to4", withHost(`"2002::1"`), 422},
+		{"host ip6 non-canonical", withHost(`"2606:4700:4700:0:0:0:0:1111"`), 422},
+		{"host ip6 upper", withHost(`"2606:4700:4700::ABCD"`), 422},
+		{"host ip port", withHost(`"8.8.8.8:80"`), 422},
+		{"host ip6 bracket port", withHost(`"[2606:4700:4700::1111]"`), 422},
+		{"host ip cidr", withHost(`"8.8.8.8/32"`), 422},
+		{"host ip short", withHost(`"1.2.3"`), 422},
 		{"host label 64", withHost(`"` + strings.Repeat("a", 64) + `.com"`), 422},
 		{"host dash edge", withHost(`"-a.example.com"`), 422},
 		{"host empty label", withHost(`"a..example.com"`), 422},

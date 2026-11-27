@@ -25,6 +25,26 @@ var (
 
 const maxVersionLen = 64
 
+// blockedV4 and blockedV6 are the address ranges that are not a public site
+// address; migrations/004_flags_ip.sql repeats them in the host CHECK
+// (TestHostPrefixesMirrorMigration keeps the two equal).
+var (
+	blockedV4 = []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
+		"192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4"}
+	blockedV6 = []string{"2001::/23", "2001:db8::/32", "2002::/16"}
+	globalV6  = "2000::/3"
+	blocked   = mustPrefixes(append(append([]string{}, blockedV4...), blockedV6...))
+	global6   = netip.MustParsePrefix(globalV6)
+)
+
+func mustPrefixes(list []string) []netip.Prefix {
+	out := make([]netip.Prefix, len(list))
+	for i, s := range list {
+		out[i] = netip.MustParsePrefix(s)
+	}
+	return out
+}
+
 // parsePing validates the body strictly: a JSON object with exactly the keys
 // install, version and channel (case-sensitive, once each), every value a
 // string, nothing after the object. It returns 0 when the ping is acceptable,
@@ -102,7 +122,7 @@ type detailedPing struct {
 	Plugins                 []pluginRow
 	OtherPlugins            int
 	Health                  health
-	Host                    string // the site's public domain name, when HostSet
+	Host                    string // the site's domain name or public IP, when HostSet
 	HostSet                 bool
 }
 
@@ -220,16 +240,35 @@ func parseDetailed(body string) (detailedPing, int) {
 func validSemver(v string) bool { return len(v) <= maxVersionLen && semverRe.MatchString(v) }
 
 // validHost reports whether h is a lowercase LDH domain name with at least one
-// dot that is not an IP literal (a TLD is never all digits).
+// dot (a TLD is never all digits) or a public IP literal in canonical form
+// (netip text: no zone, brackets, port or mask).
 func validHost(h string) bool {
-	if len(h) == 0 || len(h) > 253 || !hostRe.MatchString(h) {
+	if len(h) == 0 || len(h) > 253 {
 		return false
 	}
-	if _, err := netip.ParseAddr(h); err == nil {
+	if a, err := netip.ParseAddr(h); err == nil {
+		return publicIP(a, h)
+	}
+	if !hostRe.MatchString(h) {
 		return false
 	}
 	last := h[strings.LastIndexByte(h, '.')+1:]
 	return strings.Trim(last, "0123456789") != ""
+}
+
+func publicIP(a netip.Addr, h string) bool {
+	if a.Zone() != "" || a.Is4In6() || a.String() != h {
+		return false
+	}
+	if a.Is6() && !global6.Contains(a) {
+		return false
+	}
+	for _, p := range blocked {
+		if p.Contains(a) {
+			return false
+		}
+	}
+	return true
 }
 
 // readObject consumes one object whose keys are each of fields (all required)
