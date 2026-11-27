@@ -57,16 +57,20 @@
         <h2>Health</h2>
         <p class="muted">Panics, 5xx and render errors per install-day over the window; update and migration problems are totals.</p>
         <div id="health"></div>
+
+        <h2>Features in use</h2>
+        <p id="features-line" class="muted"></p>
+        <div id="features"></div>
       </div>
     </section>
 
     <section id="sites-section">
       <h2>Active installs (last 30 days)</h2>
-      <p class="muted">Every install seen in the last 30 days. Site is the address from its latest detailed report; installs on Basic, on core before v1.3.7, or without a public domain show no address.</p>
+      <p class="muted">Every install seen in the last 30 days. Site is the address from its latest detailed report (a domain or a public IP); installs on Basic, on core before v1.3.7, or without a public address show no address.</p>
       <div id="sites"></div>
     </section>
 
-    <footer class="muted">Stored: install ID, version, channel, day; with detailed reports also OS, architecture, plugin and theme names and versions, health counts, and the site address when sent. No IP addresses.</footer>
+    <footer class="muted">Stored: install ID, version, channel, day; with detailed reports also OS, architecture, plugin and theme names and versions, health counts, on/off feature flags and a language-count bucket, and the site address (domain or public IP) when the install sends it. The address a ping comes from is never stored.</footer>
   </main>
   <script src="/plugin-ui/_sdk/bridge.js"></script>
   <script src="app.js"></script>
