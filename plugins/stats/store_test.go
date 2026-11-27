@@ -175,3 +175,27 @@ func TestDetailedSQLShape(t *testing.T) {
 		t.Error("database clock in upsertDetailed")
 	}
 }
+
+func TestMigration004Shape(t *testing.T) {
+	raw, err := os.ReadFile("migrations/004_flags_ip.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(raw)
+	for _, want := range []string{"DROP CONSTRAINT detail_daily_host_check,", "ADD CONSTRAINT detail_daily_host_check"} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	for _, col := range []string{"comments_on", "static_mode", "sso_on", "locales_bucket", "forms_in_use", "offsite_backups_on", "csp_enforced", "wp_imported"} {
+		if n := strings.Count(sql, "ADD COLUMN "+col+" "); n != 2 {
+			t.Errorf("ADD COLUMN %s appears %d times, want 2", col, n)
+		}
+	}
+	if n := strings.Count(sql, "IN ('1', '2-3', '4+')"); n != 2 {
+		t.Errorf("locales CHECK appears %d times, want 2", n)
+	}
+	if strings.Contains(strings.ToUpper(sql), "IF EXISTS") {
+		t.Error("must not use IF EXISTS")
+	}
+}
