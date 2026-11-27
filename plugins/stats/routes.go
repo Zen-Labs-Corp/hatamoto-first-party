@@ -4,8 +4,9 @@
 // install and day (rolled up to one per month after 13 months) and shows the
 // owner the totals. It stores only the install ID, version, channel and the UTC
 // day (a Detailed report adds environment, theme, plugin and health data, and
-// may carry the site's public domain name); it stores no IP address, logs
-// nothing and reads no header except Content-Type.
+// may carry the site's address, a public domain name or public IP literal as
+// the install sends it, and on/off feature flags); it never stores the address
+// a ping comes from, logs nothing and reads no header except Content-Type.
 package main
 
 import (
