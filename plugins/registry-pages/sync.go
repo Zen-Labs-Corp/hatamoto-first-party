@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
@@ -11,10 +12,12 @@ import (
 )
 
 const (
-	blockedKey  = "sync_blocked"   // names whose create came back under another slug
-	refusedKey  = "sync_not_owned" // IDs of entries the owner took over
-	blockedTTL  = 6 * 60 * 60      // seconds, for both sets
-	writeBudget = 6 * time.Second  // counted from the start of the tick, fetch and list included
+	blockedKey  = "sync_blocked"    // names whose create came back under another slug
+	refusedKey  = "sync_not_owned"  // IDs of entries the owner took over
+	blockedTTL  = 6 * 60 * 60       // seconds, for both sets
+	patternKey  = "sync_no_pattern" // a create landed outside /plugins and /themes
+	patternTTL  = 5 * 60            // seconds until the next create is tried
+	writeBudget = 6 * time.Second   // counted from the start of the tick, fetch and list included
 	listLimit   = 200
 )
 
@@ -26,6 +29,7 @@ type entity struct {
 	ID         string         `json:"id"`
 	Slug       string         `json:"slug"`
 	Name       string         `json:"name"`
+	Path       string         `json:"path"`
 	Attributes map[string]any `json:"attributes"`
 }
 
@@ -227,7 +231,28 @@ func (s *syncer) create(w want) {
 			s.note(out.ID, err)
 		}
 		s.blocked[w.Slug], s.blockNew = true, true
+		return
 	}
+	if want := w.Attrs["canonical_url"]; out.Path != "" && out.Path != want {
+		// The content type has no URL pattern yet, so the page went live at the
+		// wrong URL. Remove it and stop creating until the owner has set it.
+		if err := callHost(sdk.FnEntitiesDelete, sdk.EntityDeleteArgs{ID: out.ID}, nil); err != nil {
+			s.note(out.ID, err)
+		}
+		s.stopped = true
+		_ = callHost(sdk.FnKVSet, map[string]any{"key": patternKey, "value": true, "ttl_seconds": patternTTL}, nil)
+		if s.first == nil {
+			s.first = fmt.Errorf("created entry %q at %s, want %s: set the URL pattern of the registry-entry content type", w.Slug, out.Path, want)
+		}
+	}
+}
+
+// patternMissing reports whether a recent create showed the URL pattern is not set.
+func patternMissing() bool {
+	var res struct {
+		Found bool `json:"found"`
+	}
+	return callHost(sdk.FnKVGet, map[string]string{"key": patternKey}, &res) == nil && res.Found
 }
 
 func (s *syncer) update(u update) {
@@ -269,6 +294,9 @@ func syncCron(sdk.CronEvent) error {
 		if s.ready() {
 			s.delete(id)
 		}
+	}
+	if patternMissing() {
+		creates = nil
 	}
 	for _, w := range creates {
 		if s.ready() {

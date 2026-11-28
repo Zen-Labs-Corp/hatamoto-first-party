@@ -3,6 +3,7 @@ package main
 import (
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -397,5 +398,27 @@ func TestSyncBudgetCountsFromTheStartOfTheTick(t *testing.T) {
 	}
 	if took := h.clock.Sub(start); took > 8*time.Second || s.counts["entities.create"] == 3 {
 		t.Fatalf("tick took %v with %d creates, want it well under the 10 s hook timeout", took, s.counts["entities.create"])
+	}
+}
+
+func TestSyncStopsWhenTheURLPatternIsNotSet(t *testing.T) {
+	h, s := syncHost(t)
+	s.pathFor = func(slug string, _ map[string]any) string { return "/" + slug }
+	err := runSync(t)
+	if err == nil || !strings.Contains(err.Error(), "URL pattern") {
+		t.Fatalf("err %v", err)
+	}
+	if s.counts["entities.create"] != 1 || s.counts["entities.delete"] != 1 || len(s.items) != 0 {
+		t.Fatalf("creates %d, deletes %d, items %v", s.counts["entities.create"], s.counts["entities.delete"], s.slugs())
+	}
+	h.advance(time.Minute)
+	if err := runSync(t); err != nil || s.counts["entities.create"] != 1 {
+		t.Fatalf("created again within the pause: err %v, creates %d", err, s.counts["entities.create"])
+	}
+	// The owner sets the pattern; the pause ends and the entries are made.
+	s.pathFor = func(slug string, attrs map[string]any) string { return attrs["canonical_url"].(string) }
+	h.advance(time.Duration(patternTTL) * time.Second)
+	if err := runSync(t); err != nil || len(s.items) != 3 {
+		t.Fatalf("err %v, items %v", err, s.slugs())
 	}
 }

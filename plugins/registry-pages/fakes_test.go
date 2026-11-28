@@ -204,6 +204,8 @@ type entityStore struct {
 	errs func(fn string, n int, args map[string]any) error
 	// slugFor overrides the slug a create ends up with.
 	slugFor func(want string) string
+	// pathFor overrides the path a create reports (default: none).
+	pathFor func(slug string, attrs map[string]any) string
 
 	counts map[string]int
 	writes int
@@ -237,7 +239,11 @@ func (s *entityStore) call(fn string, args map[string]any, out any) error {
 		e := entity{ID: "e" + strconv.Itoa(s.nextID), Slug: slug, Name: args["name"].(string), Attributes: args["attributes"].(map[string]any)}
 		s.items = append(s.items, e)
 		s.log = append(s.log, "create "+slug)
-		return reply(map[string]any{"id": e.ID, "slug": e.Slug}, out)
+		res := map[string]any{"id": e.ID, "slug": e.Slug}
+		if s.pathFor != nil {
+			res["path"] = s.pathFor(slug, e.Attributes)
+		}
+		return reply(res, out)
 	case "entities.update":
 		s.writes++
 		id := args["id"].(string)
