@@ -244,7 +244,22 @@ func TestAdminImportsCountEventbriteReadsOnePage(t *testing.T) {
 	if len(h.execs) != 1 {
 		t.Fatalf("execs = %+v", h.execs)
 	}
-	if e := h.execs[0].args; e[4] != 2 || e[5] != true || e[6] != 2 {
+	// object_count is the real total: not capped, and the unread page is open
+	if e := h.execs[0].args; e[4] != 3 || e[5] != false || e[6] != 2 {
+		t.Errorf("args = %v", e)
+	}
+}
+
+func TestAdminImportsCountEventbriteWithoutTotalIsCapped(t *testing.T) {
+	page := strings.Replace(ebPage1, `"object_count":3,`, "", 1)
+	h := &adminHost{settings: `{"eventbrite_token":"` + ebToken + `","import_sources":[{"name":"Tickets","kind":"eventbrite","organization_id":"` + ebOrg + `"}]}`,
+		last: `{"imported":1}`, fetch: map[string]fakePage{ebBase: {status: 200, body: page}}}
+	h.install(t)
+	callRoute(t, "GET", "/admin/imports", owner, nil, map[string][]string{"count": {"Tickets"}})
+	if len(h.execs) != 1 {
+		t.Fatalf("execs = %+v", h.execs)
+	}
+	if e := h.execs[0].args; e[4] != 2 || e[5] != true {
 		t.Errorf("args = %v", e)
 	}
 }

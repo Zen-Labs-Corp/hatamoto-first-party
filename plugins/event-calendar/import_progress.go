@@ -150,13 +150,15 @@ func sourceProgress(r settingsSource, name string, drafts []draftRow) (sourceSta
 // events and those after the mark. An Eventbrite organization is read for its
 // first page only, so capped is true when it has more. why is a short reason
 // without the address when the feed could not be read.
-func countSource(src importSource, s settings, mark importMark) (found, remaining int, capped bool, why string) {
+func countSource(src importSource, s settings, mark importMark, imported int) (found, remaining int, capped bool, why string) {
 	var events []importEvent
+	total := -1
 	switch {
 	case src.Kind == "eventbrite" && src.OrganizationID != "":
 		var next string
-		events, next, why = fetchEventbritePageWithin(src.OrganizationID, "", eventbriteToken(), countFetchMs)
-		capped = next != ""
+		events, next, total, why = fetchEventbritePageWithin(src.OrganizationID, "", eventbriteToken(), countFetchMs)
+		// The API's own total is the real one; without it the first page is a floor.
+		capped = next != "" && total < 0
 	case src.URL == "":
 		why = "the source has no usable address"
 	case !slices.Contains(importKinds, src.Kind):
@@ -181,6 +183,13 @@ func countSource(src importSource, s settings, mark importMark) (found, remainin
 		found++
 		if mark.Key == "" || !mark.covers(ev.Start, key) {
 			remaining++
+		}
+	}
+	if total >= 0 && !capped {
+		found = total
+		// Pages after the first were not read: what the site does not hold yet is open.
+		if next := total - imported; next > remaining && len(events) < total {
+			remaining = next
 		}
 	}
 	return found, remaining, capped, ""
@@ -208,7 +217,7 @@ func serveCount(name string) sdk.HTTPResponse {
 		}
 		key := importPrefix(r.Kind, src.Name)
 		out := countAnswer{}
-		found, remaining, capped, why := countSource(src, s, st.mark())
+		found, remaining, capped, why := countSource(src, s, st.mark(), st.Imported)
 		if why != "" {
 			storeProgress(key, st)
 			out.CountError = why
