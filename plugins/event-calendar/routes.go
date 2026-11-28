@@ -34,6 +34,8 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveAPI(r.Query), nil
 		case "/submit/token":
 			return serveSubmitToken(), nil
+		case "/admin/events":
+			return serveEvents(r.User, r.Query), nil
 		case "/admin/repeating":
 			return serveRepeating(r.User), nil
 		case "/admin/submissions":
