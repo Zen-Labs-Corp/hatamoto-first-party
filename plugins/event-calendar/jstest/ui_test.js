@@ -468,6 +468,8 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(!els["#imp-owner-only"].hidden && els["#imp-table"].hidden && els["#imp-go"].disabled, "editor: Imports are owner only");
   ({ els, routes } = await load({ tab: "imports", status: 403, raw: "forbidden" }));
   check(!els["#imp-owner-only"].hidden && els["#notice"].hidden && routes.length === 1, "a core 403 shows the same note");
+  ({ els, routes } = await load({ tab: "imports", status: 403, raw: JSON.stringify({ error: "forbidden" }) }));
+  check(!els["#imp-owner-only"].hidden && els["#notice"].hidden, "a core JSON 403 shows Owner only, no red notice");
   ({ els, calls } = await load({ tab: "imports", refuse: true }));
   await els["#imp-rows"].buttons("Run now")[0].click();
   await next();

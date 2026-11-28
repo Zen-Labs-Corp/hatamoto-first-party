@@ -30,14 +30,13 @@ function note(selector, msg) {
   n.hidden = !msg;
 }
 
-// A role the manifest does not allow gets a 403 from core with a body that is
-// not JSON; it reads the same as the plugin's own 403.
+// A role the manifest does not allow gets a 403 from core (a JSON
+// {"error":"forbidden"} or plain text); any 403 reads the same as the plugin's own.
 async function api(method, path, query) {
   const res = await hatamoto.route(method, path, null, query);
   let data = {};
-  let json = true;
-  try { data = JSON.parse(res.body || "{}"); } catch { json = false; }
-  if (res.status === 403 && !json) throw new Error("not allowed");
+  try { data = JSON.parse(res.body || "{}"); } catch { /* not JSON */ }
+  if (res.status === 403) throw new Error("not allowed");
   if (res.status >= 400) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
