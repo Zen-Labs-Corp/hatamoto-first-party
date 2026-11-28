@@ -37,7 +37,7 @@ It does not ask for `settings`, `db`, `log`, `site.scripts` or any other host. T
 1. Install the theme templates first: `layouts/single-registry-entry.html`, `sections/registry_directory.html` and `sections/registry_detail.html`. Without them the entry pages use a default layout.
 2. Install and enable the plugin and grant its permissions.
 3. In Settings > Content types > Registry entry, set the URL pattern to `/plugins/{slug}` and add an override: attribute `kind` equals `theme`, URL pattern `/themes/{slug}`. A package cannot ship these settings. Without them the entries live at `/{slug}`: if a create lands anywhere but `/plugins/<name>` or `/themes/<name>`, the sync deletes that entry, logs an error that names the missing URL pattern and creates nothing for five minutes, so set the pattern before the first tick or expect one create and delete per five minutes until then.
-4. Put a `registry_directory` block on the `/plugins` and `/themes` pages where the directory should appear.
+4. Put a `registry_directory` block on the `/plugins` and `/themes` pages where the directory should appear. Use only this block there: if the pages have core's `plugin_directory` or `theme_directory` section, remove it, because core would then serve `/plugins/<name>` and `/themes/<name>` itself and compete with the entries.
 5. Wait one or two cron ticks. The first sync creates about fifty entries, and the host allows 60 writes a minute, so it can take a few ticks.
 
 ## Notes
