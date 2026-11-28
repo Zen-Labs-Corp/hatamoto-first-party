@@ -74,16 +74,25 @@ const HOUR = 3600 * 1000;
 const IMPORTS = {
   role: "owner",
   sources: [
-    { name: "Town council", kind: "google", host: "calendar.google.com", category: "Civic", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: true, last_new: new Date(Date.now() - 3 * HOUR - 60000).toISOString(), created_today: 12, url: "https://calendar.example.org/town.ics" },
+    { name: "Town council", kind: "google", host: "calendar.google.com", category: "Civic", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: true, last_new: new Date(Date.now() - 3 * HOUR - 60000).toISOString(), created_today: 12, url: "https://calendar.example.org/town.ics", imported: 200, cursor: "2026-03-01T09:00:00Z|google-town-council-0123456789abcdef", found: null, found_capped: false, remaining: null, counted_at: null },
     { name: "Riverside venue", kind: "outlook", host: "outlook.office365.com", category: "", enabled: false, last_imported: null, schedule: "off", scheduled_ok: true, last_new: null, created_today: 0, url: "https://outlook.example.org/river.ics" },
     { name: "Club", kind: "ical", host: "events.example.org", category: "", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: false, last_new: null, created_today: 3, url: "https://events.example.org/club.ics" },
     { name: "Tickets", kind: "eventbrite", host: "", category: "", enabled: true, last_imported: null, schedule: "daily", scheduled_ok: true, last_new: null, created_today: 0 },
   ],
   daily_cap: 200,
   run_cap: 100,
+  batch_cap: 200,
 };
 
 // The element ids ui/index.html defines and app.js reads.
+// countAnswer is /admin/imports?count=<name>: the source with its feed counted
+// (214 events, 14 left after the cursor).
+function countAnswer(name, imports) {
+  const src = imports.sources.find((s) => s.name === name);
+  if (!src) return { error: "not found" };
+  return { source: { ...src, found: 214, remaining: 14, counted_at: new Date().toISOString() } };
+}
+
 // monthAnswer is /admin/events?month=...: February 2026 whatever month was asked,
 // five events on the 13th and an all-day one on the 2nd.
 function monthAnswer(q, { truncated = false } = {}) {
@@ -132,7 +141,7 @@ function eventsAnswer(q, { role = "owner", total = 232, capped = false, ready = 
 }
 
 // load runs the page and opens a tab (the repeating one unless told).
-async function load({ named = "old", data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS, events = {}, raw, post } = {}) {
+async function load({ named = "old", data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS, events = {}, raw, post, countStatus = 0 } = {}) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   els["#dup-shift"].value = "7";
@@ -140,7 +149,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   const named_calls = [];
   const routes = [];
   const document = { querySelector: (s) => els[s], createElement: (t) => new Node(t) };
-  const bodies = { "/admin/repeating": data, "/admin/submissions": subs, "/admin/imports": imports, "/admin/events": (q) => (q.month ? monthAnswer(q, events) : eventsAnswer(q, events)) };
+  const bodies = { "/admin/repeating": data, "/admin/submissions": subs, "/admin/imports": (q) => (q.count ? countAnswer(q.count, imports) : imports), "/admin/events": (q) => (q.month ? monthAnswer(q, events) : eventsAnswer(q, events)) };
   const hatamoto = {
     ready: Promise.resolve(),
     route: async (method, p, body, query) => {
@@ -149,6 +158,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
       for (const [k, v] of Object.entries(query || {})) sent[k] = typeof v === "string" ? v : v == null ? "" : JSON.stringify(v);
       routes.push({ method, p, query: sent });
       if (raw !== undefined) return { status, body: raw };
+      if (p === "/admin/imports" && sent.count && countStatus) return { status: countStatus, body: JSON.stringify({ error: "try again" }) };
       if (method === "POST" && post) return { status: post.status, body: JSON.stringify(post.body) };
       const answer = bodies[p];
       return { status, body: JSON.stringify(method === "GET" ? (typeof answer === "function" ? answer(sent) : answer) : { ok: true }) };
@@ -187,9 +197,12 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(els["#events"].hidden === false, "table shown");
   let rows = els["#rows"];
   check(rows.children.length === 2, "one row per event while collapsed");
-  check(rows.text().includes("Weekly, Tue, ends never") && rows.text().includes("Tue 17 Feb  6:00 pm"), "rule and next date shown");
-  check(rows.text().includes("Thu 12 Feb  6:30 pm"), "second event next date");
-  rows.buttons("v dates")[0].click();
+  check(rows.text().includes("Weekly, Tue, ends never") && rows.text().includes("Tue 17 Feb"), "rule and next date shown");
+  check(rows.text().includes("Thu 12 Feb"), "second event next date");
+  const chips0 = rows.children[0].all((n) => n.tag === "span" && n.textContent.match(/^\w{3} \d{2} \w{3}$/));
+  check(chips0.map((c) => c.className).join(",") === ",sk,ch", "date chips: struck through when skipped, amber when changed: " + chips0.map((c) => c.className));
+  check(chips0[2].textContent === "Wed 04 Mar", "a changed date shows where it falls now");
+  rows.buttons("Edit dates")[0].click();
   rows = els["#rows"];
   const text = rows.text();
   check(text.includes("skipped") && text.includes("changed") && text.includes("normal"), "states shown");
@@ -213,12 +226,15 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(last.action === "change" && last.start_at === "17:30" && last.end_at === "19:00" && last.date === "2026-02-17", "change fills times");
 
   // a not-owned event: hint, no buttons
-  els["#rows"].buttons("v dates")[0].click();
+  els["#rows"].buttons("Edit dates")[1].click();
   const hint = "Hand this event back in the editor (Who owns this page) to change single dates here, or edit the dates in the event itself.";
   check(els["#rows"].text().includes(hint), "not-owned hint verbatim");
   check(els["#rows"].all((n) => n.tag === "li" && n.text().includes("12 Feb")).every((li) => li.buttons("Skip").length === 0), "no buttons for a not-owned event");
 
-  // duplicate
+  // duplicate: the row button opens the form with its event chosen
+  check(els["#duplicate"].hidden, "the duplicate form starts hidden");
+  els["#rows"].buttons("Duplicate")[1].click();
+  check(!els["#duplicate"].hidden && els["#dup-event"].value === "book-club", "Duplicate opens the form for that event");
   await els["#dup-go"].click();
   const dup = calls[calls.length - 1];
   check(dup.action === "duplicate" && dup.shift_days === "7" && "event" in dup, "duplicate fills the one run: action, event and shift");
@@ -226,7 +242,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   // named form: started from the click, empty values left out
   let named_calls;
   ({ els, calls, named_calls } = await load({ named: { ok: true, run_id: "r1", url: "/admin/runs/r1" } }));
-  els["#rows"].buttons("v dates")[0].click();
+  els["#rows"].buttons("Edit dates")[0].click();
   const pending = els["#rows"].buttons("Skip")[0].click();
   check(named_calls.length === 1 && calls.length === 0, "the named form is called synchronously from the click");
   await pending;
@@ -241,49 +257,44 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
 
   // cancelled: quiet
   ({ els, calls, named_calls } = await load({ named: { ok: false, error: "cancelled" } }));
-  els["#rows"].buttons("v dates")[0].click();
+  els["#rows"].buttons("Edit dates")[0].click();
   await els["#rows"].buttons("Skip")[0].click();
   check(named_calls.length === 1 && els["#hint"].textContent === "" && !els["#hint"].classes.has("error") && calls.length === 0, "cancelled is ignored quietly");
 
   // another error: shown
   const busy = "That plugin already has a run in progress. Wait for it to end.";
   ({ els, calls, named_calls } = await load({ named: { ok: false, error: busy } }));
-  els["#rows"].buttons("v dates")[0].click();
+  els["#rows"].buttons("Edit dates")[0].click();
   await els["#rows"].buttons("Skip")[0].click();
   check(els["#hint"].textContent === busy && els["#hint"].classes.has("error") && calls.length === 0, "other errors are shown: " + els["#hint"].textContent);
 
   // an older core throws on the named form: the one-arg fill, with every key
   ({ els, calls, named_calls } = await load({ named: "old" }));
-  els["#rows"].buttons("v dates")[0].click();
+  els["#rows"].buttons("Edit dates")[0].click();
   await els["#rows"].buttons("Skip")[0].click();
   await next();
   check(named_calls.length === 1 && calls.length === 1 && calls[0].action === "skip" && calls[0].start_at === "" && calls[0].shift_days === "" && els["#hint"].textContent.includes("Press Start"), "fallback to the form fill: " + els["#hint"].textContent);
   // a rejected promise falls back too
   ({ els, calls } = await load({ named: "rejects" }));
-  els["#rows"].buttons("v dates")[0].click();
+  els["#rows"].buttons("Edit dates")[0].click();
   await els["#rows"].buttons("Restore")[0].click();
   await next();
   check(calls.length === 1 && calls[0].action === "restore", "a rejected named call falls back");
 
   // an editor never reaches runInputs
   ({ els, named_calls } = await load({ named: { ok: true }, data: { ...DATA, role: "editor" } }));
-  els["#rows"].buttons("v dates")[0].click();
-  await els["#rows"].buttons("Skip")[0].click();
-  check(named_calls.length === 0, "editor buttons start nothing");
+  check(els["#rows"].buttons("Edit dates").length === 0 && els["#rows"].buttons("Duplicate").length === 0 && els["#rows"].text().includes("Owner edits dates"), "an editor sees Owner edits dates and no Edit dates button");
+  check(els["#rows"].buttons("Skip").length === 0 && named_calls.length === 0, "an editor has nothing to start");
   // the admin refuses the inputs (Settings tab): instruction line
   ({ els, calls } = await load({ refuse: true }));
-  els["#rows"].buttons("v dates")[0].click();
+  els["#rows"].buttons("Edit dates")[0].click();
   await els["#rows"].buttons("Skip")[0].click();
   await next();
   check(els["#hint"].textContent === "This screen cannot fill in the run. Open the plugin's Runs tab and use the same button there, then press Start.", "instruction on rejection: " + els["#hint"].textContent);
 
-  // an editor sees disabled buttons
+  // an editor cannot duplicate
   ({ els } = await load({ data: { ...DATA, role: "editor" } }));
-  els["#rows"].buttons("v dates")[0].click();
-  const all = els["#rows"].all((n) => n.tag === "button" && n.textContent !== "v dates" && n.textContent !== "^ dates");
-  check(all.length > 0 && all.every((b) => b.disabled && b.title === "Ask the site owner"), "editor buttons disabled");
-  check(els["#dup-go"].disabled === true, "editor cannot duplicate");
-  check(els["#state"].textContent.includes("Ask the site owner"), "editor note");
+  check(els["#dup-go"].disabled === true && els["#duplicate"].hidden, "editor cannot duplicate");
 
   // empty, not ready, error
   ({ els } = await load({ data: { ready: true, role: "owner", events: [] } }));
@@ -300,17 +311,17 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   els["#tab-imports"].click();
   await next();
   check(els["#panel-events"].hidden && !els["#panel-imports"].hidden && els["#tab-imports"].classes.has("on") && !els["#tab-upcoming"].classes.has("on"), "tab switch");
-  check(routes.length === 2 && routes[1].p === "/admin/imports", "Imports loads on first show");
+  check(routes.length === 3 && routes[1].p === "/admin/imports" && routes[2].query.count === "Town council", "Imports loads on first show, then counts one source");
   els["#tab-submissions"].click();
   els["#tab-imports"].click();
   await next();
-  check(routes.length === 3 && routes[2].p === "/admin/submissions", "a legacy tab loads once");
+  check(routes.length === 4 && routes[3].p === "/admin/submissions", "a tab loads once");
   els["#tab-repeating"].click();
   await next();
-  check(routes.length === 4 && routes[3].p === "/admin/repeating" && !els["#panel-repeating"].hidden, "Repeating loads on first show");
+  check(routes.length === 5 && routes[4].p === "/admin/repeating" && !els["#panel-repeating"].hidden, "Repeating loads on first show");
   els["#tab-past"].click();
   await next();
-  check(!els["#panel-events"].hidden && els["#panel-repeating"].hidden && routes[4].query.tab === "past", "Past reloads the shared Events panel");
+  check(!els["#panel-events"].hidden && els["#panel-repeating"].hidden && routes[5].query.tab === "past", "Past reloads the shared Events panel");
 
   // submissions: rows, count, approve fills exactly the seven inputs
   ({ els, calls, routes } = await load({ tab: "submissions" }));
@@ -380,19 +391,22 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   ({ els } = await load({ tab: "submissions", status: 503, subs: { error: "unavailable" } }));
   check(els["#notice"].classes.has("error"), "a failing list shows an error");
 
-  // imports: rows, schedule, last new event, created today, run now, edit, the any-url box
-  ({ els, calls } = await load({ tab: "imports" }));
+  // imports: rows, schedule, progress, run now, edit, the any-url box
+  ({ els, calls, routes } = await load({ tab: "imports" }));
   let impRows = els["#imp-rows"];
   const impText = impRows.text();
-  const cells = (i) => impRows.children[i].children.map((td) => td.textContent);
+  const cells = (i) => impRows.children[i].children.map((td) => td.text().replace(/\s+/g, " ").trim());
   check(impRows.children.length === 4 && impText.includes("Town council") && impText.includes("Google"), "source rows");
-  check(cells(0).slice(0, 5).join("|") === "Town council|Google|Daily|3 hours ago|12 / 200", "daily source: " + cells(0));
-  check(cells(1).slice(2, 5).join("|") === "Off|never|-", "off source: " + cells(1));
-  check(cells(2)[2] === "Daily (Run now only)" && cells(2)[4] === "3 / 200", "unlisted host: " + cells(2));
+  check(cells(0).slice(0, 4).join("|") === "Town council|Google|Daily|3 hours ago \u00b7 200 of 214 imported", "daily source: " + cells(0));
+  check(cells(1).slice(2, 4).join("|") === "Off|Never", "off source: " + cells(1));
+  check(cells(2)[2] === "Daily (Run now only)", "unlisted host: " + cells(2));
   check(cells(3)[1] === "Eventbrite" && cells(3)[2] === "Daily", "eventbrite source: " + cells(3));
   check(!impText.includes("calendar.example.org"), "the address is not shown in the table");
+  check(els["#imp-owner-only"].hidden && els["#imp-state"].hidden, "an owner sees the table, not the owner-only note");
+  check(impRows.children[0].children[3].all((n) => n.className === "st warn").length === 1, "a source with more waiting is flagged");
+  check(routes.length === 2 && routes[1].query.count === "Town council" && !("count" in routes[0].query), "the feed of the source with imported events is counted once: " + JSON.stringify(routes.map((r) => r.query)));
   await impRows.buttons("Run now")[0].click();
-  check(calls.length === 1 && calls[0].action === "import_source" && calls[0].name === "Town council" && !("url" in calls[0]), "run now fills the named source");
+  check(calls.length === 1 && calls[0].action === "import_source" && calls[0].name === "Town council" && !("url" in calls[0]) && !("after" in calls[0]), "run now fills the named source");
   await impRows.buttons("Run now")[3].click();
   check(calls.length === 2 && calls[1].action === "import_source" && calls[1].name === "Tickets", "run now works for a source without an address");
   impRows.buttons("Edit")[0].click();
@@ -401,7 +415,30 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   els["#imp-add"].click();
   check(els["#imp-detail"].textContent === "Change or add sources on the plugin's Settings tab.", "add source points to Settings");
 
+  // the next batch continues after the cursor, from the click
+  const cursor = "2026-03-01T09:00:00Z|google-town-council-0123456789abcdef";
+  check(impRows.buttons("Import the next 200").length === 1, "one next-batch button, on the source with more waiting");
+  await impRows.buttons("Import the next 200")[0].click();
+  check(calls.length === 3 && JSON.stringify(calls[2]) === JSON.stringify({ action: "import_source", name: "Town council", after: cursor }), "next batch fills action, name and after: " + JSON.stringify(calls[2]));
+  check(!els["#imp-next"].hidden && els["#imp-next"].text().includes("Town council has 214 events") && els["#imp-next"].text().includes("brought in 200"), "callout: " + els["#imp-next"].text());
+  await els["#imp-next"].buttons("Import the next 200")[0].click();
+  check(calls.length === 4 && calls[3].after === cursor, "the callout button does the same");
+  ({ els, calls } = await load({ tab: "imports", refuse: true }));
+  await els["#imp-rows"].buttons("Import the next 200")[0].click();
+  await next();
+  check(els["#hint"].textContent.includes("action = import_source") && els["#hint"].textContent.includes("name = Town council") && els["#hint"].textContent.includes(`after = ${cursor}`), "a refused fill says what to type: " + els["#hint"].textContent);
+
+  // before the count arrives, a full batch on the site already offers the next one; a finished source does not
+  ({ els, calls, routes } = await load({ tab: "imports", countStatus: 503 }));
+  check(routes.length === 2 && els["#imp-rows"].children[0].text().includes("200 imported") && !els["#imp-rows"].children[0].text().includes("of 214"), "a failed count keeps the row as it was");
+  check(els["#imp-rows"].buttons("Import the next 200").length === 1 && els["#notice"].hidden, "and still offers the next batch, without an error");
+  const done = { ...IMPORTS, sources: [{ ...IMPORTS.sources[0], found: 200, remaining: 0, counted_at: new Date().toISOString() }] };
+  ({ els, routes } = await load({ tab: "imports", imports: done }));
+  check(routes.length === 1 && els["#imp-rows"].buttons("Import the next 200").length === 0 && els["#imp-next"].hidden, "a recent count is not repeated, and nothing is left to import");
+  check(els["#imp-rows"].children[0].text().includes("200 of 200 imported"), "finished source: " + els["#imp-rows"].children[0].text());
+
   // any other iCal address: host confirmation, then the inputs
+  ({ els, calls } = await load({ tab: "imports" }));
   els["#imp-url"].value = "webcal://Feeds.Example.org/cal/events.ics?token=abc";
   await els["#imp-go"].click();
   check(els["#imp-confirm"].textContent.includes("feeds.example.org") && els["#imp-confirm"].textContent.includes("Runs tab") && !els["#imp-confirm"].textContent.includes("token"), "host shown for confirmation: " + els["#imp-confirm"].textContent);
@@ -412,16 +449,41 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   await els["#imp-go"].click();
   check(calls.length === before && els["#imp-confirm"].classes.has("error"), "a bad address starts nothing");
 
-  // imports as an editor, refused inputs, empty list
-  ({ els, calls } = await load({ tab: "imports", imports: { ...IMPORTS, role: "editor", sources: IMPORTS.sources.map(({ url, ...rest }) => rest) } }));
-  check(els["#imp-rows"].buttons("Run now").every((b) => b.disabled && b.title === "Ask the site owner") && els["#imp-go"].disabled, "editor: run now disabled");
-  check(!els["#imp-rows"].buttons("Edit")[0].disabled, "editor may read the details");
+  // imports as an editor: owner only, from the data or from the refusal
+  ({ els, calls } = await load({ tab: "imports", imports: { ...IMPORTS, role: "editor", sources: [] } }));
+  check(!els["#imp-owner-only"].hidden && els["#imp-table"].hidden && els["#imp-go"].disabled, "editor: Imports are owner only");
+  ({ els, routes } = await load({ tab: "imports", status: 403, raw: "forbidden" }));
+  check(!els["#imp-owner-only"].hidden && els["#notice"].hidden && routes.length === 1, "a core 403 shows the same note");
   ({ els, calls } = await load({ tab: "imports", refuse: true }));
   await els["#imp-rows"].buttons("Run now")[0].click();
   await next();
   check(els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && !els["#hint"].textContent.includes("type"), "refused import shows the Runs-tab hint");
   ({ els } = await load({ tab: "imports", imports: { role: "owner", sources: [] } }));
   check(els["#imp-table"].hidden && els["#imp-state"].textContent.includes("Settings tab"), "no sources");
+
+  // repeating: paging, search
+  const manyRep = (q) => {
+    const page = Number(q.page || 1);
+    const items = [];
+    for (let i = (page - 1) * 20; i < Math.min(55, page * 20); i++) {
+      items.push({ id: `r${i}`, slug: `rep-${i}`, name: `Repeating ${i + 1}`, rule: "Weekly", owned: true, dates: [{ day: "2026-02-17", date: "2026-02-17", start: "18:00", state: "normal" }] });
+    }
+    return { ready: true, role: "owner", items, events: items, total: 55, page, per_page: 20 };
+  };
+  ({ els, routes } = await load({ tab: "repeating", data: manyRep }));
+  check(routes[0].query.page === "1" && !("q" in routes[0].query) && els["#rep-range"].textContent === "1-20 of 55" && els["#rows"].children.length === 20, "first page of repeating events: " + els["#rep-range"].textContent);
+  els["#rep-pager"].buttons("2")[0].click();
+  await next();
+  check(routes[1].query.page === "2" && els["#rep-range"].textContent === "21-40 of 55", "page 2: " + els["#rep-range"].textContent);
+  els["#rep-pager"].buttons("3")[0].click();
+  await next();
+  check(els["#rep-range"].textContent === "41-55 of 55" && els["#rows"].children.length === 15, "last page: " + els["#rep-range"].textContent);
+  els["#rep-q"].value = "yoga";
+  els["#rep-q"].fire("keydown", { key: "Enter" });
+  await next();
+  check(routes[3].query.q === "yoga" && routes[3].query.page === "1", "search starts from page 1: " + JSON.stringify(routes[3].query));
+  ({ els } = await load({ tab: "repeating", data: { ready: true, role: "owner", items: [], events: [], total: 0, page: 1, per_page: 20 } }));
+  check(els["#events"].hidden && els["#state"].textContent.includes("No repeating events"), "an empty page");
 
   // submissions: filters, paging, search, roles
   const manySubs = (q) => {

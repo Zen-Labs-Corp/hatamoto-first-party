@@ -59,6 +59,8 @@ function whenText(d) {
   return d.start ? `${dayText(d.date)}  ${clockText(d.start)}` : dayText(d.date);
 }
 
+const REP_PER_PAGE = 20;
+const rep = { q: "", page: 1 };
 const state = { role: "", events: [], open: new Set(), editing: "" };
 
 // fillRun puts the inputs into the run form. Where the page has no run form
@@ -72,7 +74,8 @@ async function fillRun(inputs, summary) {
     await hatamoto.runInputs(inputs);
     say("#hint", `The run "${RUN}" is filled in (${summary || entered}). Press Start, then review the change in Changes.`);
   } catch {
-    say("#hint", `This screen cannot fill in the run. Open the plugin's Runs tab and use the same button there, then press Start.`);
+    if (inputs.after) say("#hint", `This screen cannot fill in the run. On the plugin's Runs tab choose "${RUN}" and type action = ${inputs.action}, name = ${inputs.name}, after = ${inputs.after}. Then press Start.`);
+    else say("#hint", `This screen cannot fill in the run. Open the plugin's Runs tab and use the same button there, then press Start.`);
   }
 }
 
@@ -175,24 +178,41 @@ function dateRow(ev, d, canAct) {
   return rows;
 }
 
+// The first six dates of a repeating event: struck through when skipped, amber
+// when the time was changed.
+function dateChips(ev) {
+  const cls = { skipped: "sk", changed: "ch" };
+  return el("div", { className: "dates" }, ...ev.dates.slice(0, 6).map((d) => el("span", { className: cls[d.state] || "", textContent: dayText(d.date) })));
+}
+
 function eventRows(ev, canAct) {
   const open = state.open.has(ev.id);
-  const next = ev.dates.find((d) => d.state !== "skipped");
-  const toggle = el("button", { type: "button", className: "link", textContent: `${open ? "^" : "v"} dates` });
-  toggle.addEventListener("click", () => {
-    if (open) state.open.delete(ev.id); else state.open.add(ev.id);
-    render();
-  });
-  const first = el("tr", {},
-    el("td", {}, el("div", { textContent: ev.name }), toggle),
-    el("td", { textContent: ev.rule || "-" }),
-    el("td", { textContent: next ? whenText(next) : "-" }));
-  const rows = [first];
-  if (open) {
-    const cell = el("td", { colSpan: 3 });
+  const actions = el("td", { className: "actions" });
+  if (canAct) {
+    const edit = el("button", { type: "button", className: "btn sm", textContent: "Edit dates" });
+    edit.addEventListener("click", () => {
+      if (open) state.open.delete(ev.id); else state.open.add(ev.id);
+      render();
+    });
+    const dup = el("button", { type: "button", className: "btn sm ghost", textContent: "Duplicate" });
+    dup.addEventListener("click", () => {
+      $("#duplicate").hidden = false;
+      $("#dup-event").value = ev.slug;
+    });
+    actions.append(edit, dup);
+  } else {
+    actions.append(el("span", { className: "muted", textContent: "Owner edits dates" }));
+  }
+  const rows = [el("tr", {},
+    el("td", {}, el("span", { className: "t", textContent: ev.name })),
+    el("td", { className: "muted", textContent: ev.rule || "-" }),
+    el("td", {}, dateChips(ev)),
+    actions)];
+  if (open && canAct) {
+    const cell = el("td", { colSpan: 4 });
     if (!ev.owned) cell.append(el("p", { className: "muted", textContent: NOT_OWNED }));
     if (!ev.dates.length) cell.append(el("p", { className: "muted", textContent: "No dates to show." }));
-    const list = el("ul", { className: "dates" });
+    const list = el("ul", { className: "dates-edit" });
     for (const d of ev.dates) list.append(...dateRow(ev, d, canAct));
     cell.append(list);
     rows.push(el("tr", {}, cell));
@@ -206,28 +226,42 @@ function render() {
   tbody.replaceChildren();
   for (const ev of state.events) tbody.append(...eventRows(ev, canAct));
   $("#events").hidden = !state.events.length;
-  $("#duplicate").hidden = !state.events.length;
-  const pick = $("#dup-event");
-  pick.replaceChildren(...state.events.map((ev) => el("option", { value: ev.slug, textContent: ev.name })));
+  $("#dup-event").replaceChildren(...state.events.map((ev) => el("option", { value: ev.slug, textContent: ev.name })));
   $("#dup-go").disabled = !canAct;
   $("#dup-go").title = canAct ? "" : "Ask the site owner";
-  if (!canAct && state.events.length) note("#state", "Ask the site owner to skip, change or restore dates.");
 }
 
 async function loadRepeating() {
   try {
     say("#notice", "");
-    const data = await api("GET", "/admin/repeating");
+    const query = { page: String(rep.page) };
+    if (rep.q) query.q = rep.q;
+    const data = await api("GET", "/admin/repeating", query);
     state.role = data.role || "";
-    state.events = (data.events || []).map((e) => ({ ...e, dates: e.dates || [] }));
+    state.events = (data.items || data.events || []).map((e) => ({ ...e, dates: e.dates || [] }));
     note("#state", "");
     if (!data.ready) note("#state", "The event list is still being built. Check again in a few minutes.");
-    else if (!state.events.length) note("#state", "No repeating events yet. Set Repeats on an event to see it here.");
+    else if (!state.events.length) note("#state", rep.q ? "No repeating events match this search." : "No repeating events yet. Set Repeats on an event to see it here.");
+    $("#duplicate").hidden = true;
     render();
+    const page = data.page || 1;
+    const perPage = data.per_page || REP_PER_PAGE;
+    $("#rep-range").textContent = rangeText(page, perPage, data.total || 0);
+    pager($("#rep-pager"), page, perPage, data.total || 0, (p) => { rep.page = p; loadRepeating(); });
   } catch (e) {
     say("#notice", e.message, true);
   }
 }
+
+function searchRepeating() {
+  const q = $("#rep-q").value.trim();
+  if (q === rep.q) return;
+  rep.q = q;
+  rep.page = 1;
+  loadRepeating();
+}
+$("#rep-q").addEventListener("keydown", (e) => { if (e.key === "Enter") searchRepeating(); });
+$("#rep-q").addEventListener("change", searchRepeating);
 
 $("#dup-go").addEventListener("click", () => {
   const n = Math.trunc(Number($("#dup-shift").value));
@@ -384,7 +418,8 @@ $("#sub-q").addEventListener("change", searchSubmissions);
 // ---- Imports
 
 const KINDS = { google: "Google", outlook: "Outlook", meetup: "Meetup", ical: "iCal", eventbrite: "Eventbrite" };
-const imp = { role: "", sources: [] };
+const imp = { role: "", sources: [], batch: 200, seq: 0 };
+const COUNT_AGE_MS = 3600 * 1000;
 
 // "3 hours ago" from a timestamp; "never" when there is none.
 function agoText(stamp) {
@@ -402,43 +437,114 @@ function scheduleText(src) {
   return src.scheduled_ok ? "Daily" : "Daily (Run now only)";
 }
 
-// "12 / 200" for a daily source: the events first seen today against the daily cap.
-function todayText(src, cap) {
-  return src.schedule === "daily" ? `${src.created_today || 0} / ${cap}` : "-";
+// "200 of 214 imported" once the feed was counted, "200 imported" before.
+function progressText(src) {
+  if (src.found === null || src.found === undefined) return `${src.imported} imported`;
+  return `${src.imported} of ${src.found}${src.found_capped ? "+" : ""} imported`;
+}
+
+// More is waiting: the count says so, or a full batch is on the site and the
+// count is not known yet.
+function hasMore(src) {
+  if (!src.cursor) return false;
+  if (src.remaining !== null && src.remaining !== undefined) return src.remaining > 0;
+  return src.imported >= imp.batch;
+}
+
+function lastImportCell(src) {
+  if (!src.last_new && !src.imported) return el("td", { textContent: "Never" });
+  const when = src.last_new ? `${agoText(src.last_new)} \u00b7 ` : "";
+  const progress = src.imported || src.found ? progressText(src) : "";
+  const cell = el("td", {}, when);
+  cell.append(hasMore(src) ? el("span", { className: "st warn", textContent: progress }) : progress);
+  return cell;
 }
 
 const SETTINGS_HINT = "Change or add sources on the plugin's Settings tab.";
 
-// A page-started run reaches only the first allowed host, so Run now fills the
-// run form (it names the source; the run reads the address from the settings).
-function importRow(src, owner, cap) {
+// Run now and the next batch fill the run form with the source's name: a
+// page-started run reaches only the first allowed host, so the run reads the
+// address from the settings. The next batch adds where the last one stopped.
+function nextBatch(src) {
+  return fillRun({ action: "import_source", name: src.name, after: src.cursor });
+}
+
+function importRow(src, owner) {
   const run = () => fillRun({ action: "import_source", name: src.name });
-  const edit = el("button", { type: "button", textContent: "Edit" });
+  const edit = el("button", { type: "button", className: "btn sm ghost", textContent: "Edit" });
   edit.addEventListener("click", () => {
     const parts = [`Name: ${src.name}`, `Kind: ${KINDS[src.kind] || src.kind}`, `Host: ${src.host || "-"}`, `Category: ${src.category || "-"}`];
     say("#imp-detail", `${parts.join(", ")}. ${SETTINGS_HINT}`);
   });
+  const actions = el("td", { className: "actions" }, button("Run now", run, owner && Boolean(src.name)));
+  if (hasMore(src)) actions.append(button(`Import the next ${imp.batch}`, () => nextBatch(src), owner));
+  actions.append(edit);
   return el("tr", {},
-    el("td", { textContent: src.name }),
-    el("td", { textContent: KINDS[src.kind] || src.kind }),
-    el("td", { textContent: scheduleText(src) }),
-    el("td", { textContent: agoText(src.last_new) }),
-    el("td", { textContent: todayText(src, cap) }),
-    el("td", { className: "actions" }, button("Run now", run, owner && Boolean(src.name)), edit));
+    el("td", {}, el("span", { className: "t", textContent: src.name })),
+    el("td", { className: "muted", textContent: KINDS[src.kind] || src.kind }),
+    el("td", { className: "muted", textContent: scheduleText(src) }),
+    lastImportCell(src),
+    actions);
+}
+
+// The callout names the first source that has more to import.
+function renderNext() {
+  const src = imp.sources.find(hasMore);
+  $("#imp-next").hidden = !src;
+  if (!src) return;
+  const total = src.found === null || src.found === undefined ? "more events" : `${src.found}${src.found_capped ? "+" : ""} events`;
+  const b = el("button", { type: "button", className: "link", textContent: `Import the next ${imp.batch}` });
+  b.addEventListener("click", () => nextBatch(src));
+  $("#imp-next").replaceChildren(`${src.name} has ${total} and the last runs brought in ${src.imported}. `, b);
+}
+
+function renderRows() {
+  const rows = $("#imp-rows");
+  rows.replaceChildren(...imp.sources.map((src) => importRow(src, imp.role === "owner")));
+  $("#imp-table").hidden = !imp.sources.length;
+  renderNext();
+}
+
+// An editor has no Imports tab: core refuses the route, and so does the plugin.
+function showOwnerOnly() {
+  $("#imp-owner-only").hidden = false;
+  for (const id of ["#imp-table", "#imp-next", "#imp-state"]) $(id).hidden = true;
+  for (const id of ["#imp-go", "#imp-url", "#imp-add"]) $(id).disabled = true;
 }
 
 function renderImports(data) {
   imp.role = data.role || "";
+  if (imp.role !== "owner") return showOwnerOnly();
   imp.sources = data.sources || [];
-  const rows = $("#imp-rows");
-  rows.replaceChildren();
-  for (const src of imp.sources) rows.append(importRow(src, imp.role === "owner", data.daily_cap || 200));
-  $("#imp-table").hidden = !imp.sources.length;
+  imp.batch = data.batch_cap || 200;
+  $("#imp-owner-only").hidden = true;
+  renderRows();
   note("#imp-state", imp.sources.length ? "" : "No sources yet. Add them in import_sources on the plugin's Settings tab.");
-  const owner = imp.role === "owner";
-  $("#imp-go").disabled = !owner;
-  $("#imp-go").title = owner ? "" : "Ask the site owner";
-  $("#imp-url").disabled = !owner;
+  for (const id of ["#imp-go", "#imp-url", "#imp-add"]) $(id).disabled = false;
+  countSources(++imp.seq);
+}
+
+// A source whose feed was not counted in the last hour is counted now, one at a
+// time. A count that fails leaves the row as it was; the reason is the row's
+// tooltip.
+function needsCount(src) {
+  if (!src.enabled || !src.imported) return false;
+  const t = Date.parse(src.counted_at);
+  return Number.isNaN(t) || Date.now() - t > COUNT_AGE_MS;
+}
+
+async function countSources(seq) {
+  for (const name of imp.sources.filter(needsCount).map((s) => s.name)) {
+    try {
+      const data = await api("GET", "/admin/imports", { count: name });
+      if (seq !== imp.seq || !data.source) return;
+      const i = imp.sources.findIndex((s) => s.name === name);
+      if (i < 0) continue;
+      imp.sources[i] = data.source;
+      renderRows();
+      if (data.count_error) $("#imp-rows").children[i].title = data.count_error;
+    } catch { /* the row keeps its last numbers */ }
+  }
 }
 
 $("#imp-add").addEventListener("click", () => say("#imp-detail", SETTINGS_HINT));
@@ -448,7 +554,8 @@ async function loadImports() {
     say("#notice", "");
     renderImports(await api("GET", "/admin/imports"));
   } catch (e) {
-    say("#notice", e.message, true);
+    if (e.message === "not allowed") showOwnerOnly();
+    else say("#notice", e.message, true);
   }
 }
 
@@ -717,7 +824,7 @@ const HELP = {
   drafts: "Imported, approved and duplicated events stay here until someone publishes them. The first 500 are listed.",
   submissions: "Owners and editors can reject a submission. Approving and deleting are for the site owner.",
   imports: "Owner only. When a source has more events than one run brings in, the page says so and offers the next batch.",
-  repeating: "20 per page. Only the site owner changes dates.",
+  repeating: "20 per page. Only the site owner changes dates. Skip, Change time and Restore start the Edit dates run after you confirm; review the change in Changes. On an older Hatamoto core they fill in the run form instead.",
 };
 const loaded = new Set();
 
