@@ -512,7 +512,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   };
   ({ els, calls, routes } = await load({ tab: "submissions", subs: manySubs }));
   check(routes[0].query.status === "pending" && routes[0].query.page === "1" && !("q" in routes[0].query), "first request: " + JSON.stringify(routes[0].query));
-  check(els["#sub-pending"].classes.has("on") && els["#sub-pending"].text() === "Pending 60" && els["#sub-approved"].text() === "Approved 43" && els["#sub-all"].text() === "All 143", "status buttons carry counts (approved includes published): " + els["#sub-approved"].text());
+  check(els["#sub-pending"].classes.has("on") && els["#sub-pending"].text() === "Pending 60" && els["#sub-approved"].text() === "Approved 40" && els["#sub-all"].text() === "All 143", "status buttons carry counts (approved is the approved list only): " + els["#sub-approved"].text());
   check(els["#sub-pending"].children[1].className === "count" && els["#sub-approved"].children[1].className === "count q", "only Pending is highlighted");
   check(els["#sub-rows"].text().includes("Sent Wed 10 Feb") && els["#sub-rows"].text().includes("Pending"), "sent date and status pill: " + els["#sub-rows"].children[0].text());
   check(els["#sub-range"].textContent === "1-50 of 60", "range: " + els["#sub-range"].textContent);

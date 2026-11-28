@@ -282,9 +282,9 @@ function submittedWhen(text) {
   return rest ? `${dayText(date)} ${clockText(rest.slice(0, 5))}` : dayText(date);
 }
 
-// The submissions the Approved filter lists include the older published ones.
+// The badge counts what the filter lists: status=approved does not list the
+// older published ones (they show under All).
 function statusCount(counts, status) {
-  if (status === "approved") return (counts.approved || 0) + (counts.published || 0);
   return counts[status] || 0;
 }
 
