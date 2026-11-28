@@ -245,6 +245,9 @@ func serveImports(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 		Sources []settingsSource `json:"import_sources"`
 	}
 	settingsErr := callHost(sdk.FnSettingsGet, struct{}{}, &raw)
+	if settingsErr != nil {
+		return unavailable() // without the settings every source looks removed: nothing is pruned
+	}
 	hasToken := strings.TrimSpace(raw.Token) != ""
 	out := importList{Role: u.Role, DailyCap: 2 * scheduledCreateCap, RunCap: scheduledCreateCap, BatchCap: manualCreateCap, Sources: []importRow{}}
 	if len(raw.Sources) > maxSources {
@@ -267,9 +270,7 @@ func serveImports(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 		}
 		stats = append(stats, st)
 	}
-	if settingsErr == nil { // without the settings every source looks removed
-		pruneProgress(keys)
-	}
+	pruneProgress(keys)
 	for i, st := range stats {
 		if st != nil {
 			storeProgress(keys[i], *st)
