@@ -2,70 +2,154 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Event calendar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Events</title>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <main>
-    <h1>Event calendar</h1>
-    <nav class="tabs">
-      <button id="tab-submissions" type="button" class="tab">Submissions</button>
-      <button id="tab-imports" type="button" class="tab">Imports</button>
-      <button id="tab-repeating" type="button" class="tab">Repeating</button>
-    </nav>
     <p id="notice" class="notice" hidden></p>
     <p id="hint" class="hint" hidden></p>
 
-    <section id="panel-submissions" hidden>
-      <label>Filter <select id="sub-status"></select></label>
-      <p id="sub-off" class="muted" hidden>Public submissions are off, so visitors cannot send events. Turn on "Accept public event submissions" in this plugin's settings to use the Submit an event widget.</p>
-      <button id="sub-reject-all" type="button">Reject all pending</button>
-      <p id="sub-state" class="muted"></p>
-      <table id="sub-table" hidden>
-        <thead>
-          <tr><th>Title</th><th>When</th><th>Venue</th><th>From</th><th>Action</th></tr>
-        </thead>
-        <tbody id="sub-rows"></tbody>
-      </table>
-      <p class="muted">Approve stages the event in Changes. After you publish the change there, the event exists as a draft: open it and publish it to go live. Nothing is public until you do.</p>
-      <p class="muted">The email address is kept here only, never in an event. Approved and published submissions are deleted after 90 days, rejected ones after 30.</p>
+    <div class="head">
+      <nav id="stabs" class="seg">
+        <button id="tab-upcoming" type="button">Upcoming<span id="cnt-upcoming" class="count q"></span></button>
+        <button id="tab-past" type="button">Past<span id="cnt-past" class="count q"></span></button>
+        <button id="tab-drafts" type="button">Drafts<span id="cnt-drafts" class="count q"></span></button>
+        <button id="tab-submissions" type="button">Submissions<span id="cnt-submissions" class="count q"></span></button>
+        <button id="tab-imports" type="button">Imports</button>
+        <button id="tab-repeating" type="button">Repeating<span id="cnt-repeating" class="count q"></span></button>
+      </nav>
+      <span class="grow"></span>
+      <button id="ical" type="button" class="btn">iCal feed</button>
+      <button id="new-event" type="button" class="btn primary">New event</button>
+    </div>
+
+    <div id="feed-row" class="feed" hidden>
+      <label>iCal feed: add this to your site address <input id="feed-url" type="text" readonly value="/p/event-calendar/events.ics"></label>
+    </div>
+
+    <section id="panel-events" class="card">
+      <div class="toolbar">
+        <input id="q" type="search" placeholder="Search title, venue, city" maxlength="200">
+        <select id="venue"><option value="">All venues</option></select>
+        <select id="cat"><option value="">All categories</option></select>
+        <label class="check"><input id="novenue" type="checkbox"> No venue set</label>
+        <span class="grow"></span>
+        <div class="seg">
+          <button id="view-list" type="button">List</button>
+          <button id="view-month" type="button">Month</button>
+        </div>
+      </div>
+      <div id="chips" class="chips" hidden></div>
+      <p id="ev-state" class="empty" hidden></p>
+      <div id="list" class="scroll">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Event</th><th>Venue</th><th>Category</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="ev-rows"></tbody>
+        </table>
+      </div>
+      <div id="month" hidden>
+        <div class="toolbar flat">
+          <button id="m-prev" type="button" class="btn sm">&lsaquo;</button>
+          <b id="m-label" class="m-label"></b>
+          <button id="m-next" type="button" class="btn sm">&rsaquo;</button>
+          <button id="m-today" type="button" class="btn sm ghost">Today</button>
+          <span class="grow"></span>
+          <span id="m-total" class="muted"></span>
+        </div>
+        <div id="m-grid" class="month"></div>
+      </div>
+      <div id="ev-foot" class="foot">
+        <span id="ev-range"></span>
+        <nav id="ev-pager" class="pager"></nav>
+      </div>
     </section>
 
-    <section id="panel-imports" hidden>
-      <p id="imp-state" class="muted"></p>
-      <table id="imp-table" hidden>
-        <thead>
-          <tr><th>Source</th><th>Kind</th><th>Schedule</th><th>Last new event</th><th>Created today</th><th>Action</th></tr>
-        </thead>
-        <tbody id="imp-rows"></tbody>
-      </table>
-      <button id="imp-add" type="button">Add source</button>
-      <p id="imp-detail" class="muted" hidden></p>
-      <h2>Any other iCal URL</h2>
-      <label>Address <input id="imp-url" type="text" size="48" maxlength="2048"></label>
-      <button id="imp-go" type="button">Import now</button>
-      <p id="imp-confirm" class="muted" hidden></p>
-      <p class="muted">Daily sources are read twice a day and publish up to 100 new events each time (200 a day) after you allow the rule on the Automatic updates tab. A scheduled run only adds new events; Run now also updates events you imported before and waits for your review in Changes. Addresses outside the listed hosts are imported with Run now. Publish or discard a waiting import before the next scheduled run. Events from Run now arrive as drafts: publish each one to put it on the site.</p>
+    <section id="panel-submissions" class="card" hidden>
+      <p id="sub-off" class="callout" hidden>Public submissions are off, so visitors cannot send events. Turn on "Accept public event submissions" in this plugin's settings to use the Submit an event widget.</p>
+      <div class="toolbar">
+        <div class="seg">
+          <button id="sub-pending" type="button">Pending</button>
+          <button id="sub-approved" type="button">Approved</button>
+          <button id="sub-rejected" type="button">Rejected</button>
+          <button id="sub-all" type="button">All</button>
+        </div>
+        <span class="grow"></span>
+        <input id="sub-q" type="search" placeholder="Search title or email" maxlength="200">
+        <button id="sub-reject-all" type="button" class="btn danger">Reject all pending</button>
+      </div>
+      <p id="sub-state" class="empty" hidden></p>
+      <div class="scroll">
+        <table id="sub-table" hidden>
+          <thead>
+            <tr><th>Title</th><th>When</th><th>Venue</th><th>From</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="sub-rows"></tbody>
+        </table>
+      </div>
+      <div class="foot">
+        <span id="sub-range"></span>
+        <nav id="sub-pager" class="pager"></nav>
+      </div>
+      <p class="callout info">Approve stages the event in Changes. After you publish the change there, the event exists as a draft: open it and publish it to go live. Nothing is public until you do.</p>
+      <p class="callout info">The email address is kept here only, never in an event. Approved and published submissions are deleted after 90 days, rejected ones after 30.</p>
     </section>
 
-    <section id="panel-repeating" hidden>
-      <p id="state" class="muted"></p>
-      <table id="events" hidden>
-        <thead>
-          <tr><th>Event</th><th>Repeats</th><th>Next dates</th></tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
+    <section id="panel-imports" class="card" hidden>
+      <p id="imp-owner-only" class="empty" hidden>Imports are owner only.</p>
+      <p id="imp-state" class="empty" hidden></p>
+      <div class="scroll">
+        <table id="imp-table" hidden>
+          <thead>
+            <tr><th>Source</th><th>Kind</th><th>Schedule</th><th>Last import</th><th></th></tr>
+          </thead>
+          <tbody id="imp-rows"></tbody>
+        </table>
+      </div>
+      <p id="imp-next" class="callout" hidden></p>
+      <div class="toolbar top-rule">
+        <button id="imp-add" type="button" class="btn">Add source</button>
+        <b>Any other iCal URL</b>
+        <input id="imp-url" type="text" class="wide" maxlength="2048" placeholder="Calendar address">
+        <button id="imp-go" type="button" class="btn">Import now</button>
+      </div>
+      <p id="imp-detail" class="muted pad" hidden></p>
+      <p id="imp-confirm" class="muted pad" hidden></p>
+      <p class="callout info">Daily sources are read twice a day and publish up to 100 new events each time (200 a day) after you allow the rule on the Automatic updates tab. A scheduled run only adds new events; Run now also updates events you imported before and waits for your review in Changes. Run now and Import the next 200 add up to 200 new events each time. Addresses outside the listed hosts are imported with Run now. Publish or discard a waiting import before the next scheduled run. Events from Run now arrive as drafts: publish each one to put it on the site.</p>
+    </section>
 
-      <section id="duplicate" hidden>
+    <section id="panel-repeating" class="card" hidden>
+      <div class="toolbar">
+        <input id="rep-q" type="search" placeholder="Search repeating events" maxlength="200">
+        <span class="grow"></span>
+        <span class="muted">Struck through = skipped, amber = time changed</span>
+      </div>
+      <p id="state" class="empty" hidden></p>
+      <div class="scroll">
+        <table id="events" hidden>
+          <thead>
+            <tr><th>Event</th><th>Repeats</th><th>Next dates</th><th></th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="foot">
+        <span id="rep-range"></span>
+        <nav id="rep-pager" class="pager"></nav>
+      </div>
+
+      <section id="duplicate" class="pad" hidden>
         <h2>Duplicate an event</h2>
         <label>Event <select id="dup-event"></select></label>
         <label>Move dates by <input id="dup-shift" type="number" value="0" step="1"> days</label>
-        <button id="dup-go" type="button">Duplicate event...</button>
+        <button id="dup-go" type="button" class="btn">Duplicate event...</button>
       </section>
-
-      <footer class="muted">Skip, Change time and Restore start the Edit dates run after you confirm; review the change in Changes. On an older Hatamoto core they fill in the run form instead.</footer>
     </section>
+
+    <p id="help" class="note"></p>
   </main>
   <script src="/plugin-ui/_sdk/bridge.js"></script>
   <script src="app.js"></script>
