@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	blockedKey  = "sync_blocked"
-	blockedTTL  = 6 * 60 * 60 // seconds
+	blockedKey  = "sync_blocked"   // names whose create came back under another slug
+	refusedKey  = "sync_not_owned" // IDs of entries the owner took over
+	blockedTTL  = 6 * 60 * 60      // seconds, for both sets
 	writeBudget = 7 * time.Second
 	listLimit   = 200
 )
@@ -88,8 +89,9 @@ func (e entity) differs(w want) bool {
 }
 
 // diff compares the wanted entries with the existing ones. Names in blocked
-// are never created again; colliding names are never touched.
-func diff(ws map[string]want, collisions map[string]bool, have []entity, blocked map[string]bool) (creates []want, updates []update, deletes []string) {
+// are never created again; colliding names are never touched; entries in
+// refused (answered not_owned) are neither updated nor deleted.
+func diff(ws map[string]want, collisions map[string]bool, have []entity, blocked, refused map[string]bool) (creates []want, updates []update, deletes []string) {
 	byslug := map[string]entity{}
 	for _, e := range have {
 		byslug[e.Slug] = e
@@ -99,12 +101,12 @@ func diff(ws map[string]want, collisions map[string]bool, have []entity, blocked
 		switch {
 		case !exists && !blocked[slug]:
 			creates = append(creates, w)
-		case exists && e.differs(w):
+		case exists && e.differs(w) && !refused[e.ID]:
 			updates = append(updates, update{ID: e.ID, want: w})
 		}
 	}
 	for _, e := range have {
-		if _, keep := ws[e.Slug]; !keep && !collisions[e.Slug] {
+		if _, keep := ws[e.Slug]; !keep && !collisions[e.Slug] && !refused[e.ID] {
 			deletes = append(deletes, e.ID)
 		}
 	}
@@ -138,14 +140,14 @@ func listOwn() ([]entity, error) {
 	}
 }
 
-// loadBlocked reads the names whose create came back under another slug.
-func loadBlocked() map[string]bool {
+// loadSet reads a remembered set of names or IDs from kv.
+func loadSet(key string) map[string]bool {
 	out := map[string]bool{}
 	var res struct {
 		Found bool     `json:"found"`
 		Value []string `json:"value"`
 	}
-	if err := callHost(sdk.FnKVGet, map[string]string{"key": blockedKey}, &res); err != nil || !res.Found {
+	if err := callHost(sdk.FnKVGet, map[string]string{"key": key}, &res); err != nil || !res.Found {
 		return out
 	}
 	for _, n := range res.Value {
@@ -154,13 +156,13 @@ func loadBlocked() map[string]bool {
 	return out
 }
 
-func storeBlocked(blocked map[string]bool) {
-	names := make([]string, 0, len(blocked))
-	for n := range blocked {
+func storeSet(key string, set map[string]bool) {
+	names := make([]string, 0, len(set))
+	for n := range set {
 		names = append(names, n)
 	}
 	slices.Sort(names)
-	_ = callHost(sdk.FnKVSet, map[string]any{"key": blockedKey, "value": names, "ttl_seconds": blockedTTL}, nil)
+	_ = callHost(sdk.FnKVSet, map[string]any{"key": key, "value": names, "ttl_seconds": blockedTTL}, nil)
 }
 
 func hostCode(err error) string {
@@ -173,11 +175,13 @@ func hostCode(err error) string {
 
 // syncer applies the writes of one tick within the write budget.
 type syncer struct {
-	start    time.Time
-	first    error // first error that is not an expected refusal
-	stopped  bool  // rate limited or out of time: no more writes this tick
-	blocked  map[string]bool
-	blockNew bool
+	start      time.Time
+	first      error // first error that is not an expected refusal
+	stopped    bool  // rate limited or out of time: no more writes this tick
+	blocked    map[string]bool
+	refused    map[string]bool // IDs that answered not_owned
+	blockNew   bool
+	refusedNew bool
 }
 
 // ready reports whether another write may start.
@@ -188,11 +192,13 @@ func (s *syncer) ready() bool {
 	return !s.stopped
 }
 
-// note classifies the error of a write: not_owned is skipped (the owner took
-// the entry over), rate_limited ends the tick, anything else is remembered.
-func (s *syncer) note(err error) {
+// note classifies the error of a write on entry id: not_owned is remembered
+// and skipped (the owner took the entry over, and the refusal spends a rate
+// limit token), rate_limited ends the tick, anything else is returned at the end.
+func (s *syncer) note(id string, err error) {
 	switch hostCode(err) {
 	case sdk.ErrNotOwned:
+		s.refused[id], s.refusedNew = true, true
 	case sdk.ErrRateLimited:
 		s.stopped = true
 	default:
@@ -211,14 +217,14 @@ func (s *syncer) create(w want) {
 	var out entity
 	err := callHost(sdk.FnEntitiesCreate, map[string]any{"name": w.Name, "slug": w.Slug, "attributes": attrsJSON(w.Attrs)}, &out)
 	if err != nil {
-		s.note(err)
+		s.note("", err)
 		return
 	}
 	if out.Slug != w.Slug && out.ID != "" {
 		// An entry the list did not show (an owner draft) held the slug: the
 		// page would sit at the wrong URL, so remove it and stop trying.
 		if err := callHost(sdk.FnEntitiesDelete, sdk.EntityDeleteArgs{ID: out.ID}, nil); err != nil {
-			s.note(err)
+			s.note(out.ID, err)
 		}
 		s.blocked[w.Slug], s.blockNew = true, true
 	}
@@ -227,13 +233,13 @@ func (s *syncer) create(w want) {
 func (s *syncer) update(u update) {
 	args := map[string]any{"id": u.ID, "name": u.Name, "attributes": attrsJSON(u.Attrs)}
 	if err := callHost(sdk.FnEntitiesUpdate, args, nil); err != nil {
-		s.note(err)
+		s.note(u.ID, err)
 	}
 }
 
 func (s *syncer) delete(id string) {
 	if err := callHost(sdk.FnEntitiesDelete, sdk.EntityDeleteArgs{ID: id}, nil); err != nil {
-		s.note(err)
+		s.note(id, err)
 	}
 }
 
@@ -251,8 +257,18 @@ func syncCron(sdk.CronEvent) error {
 	if err != nil {
 		return err
 	}
-	s := &syncer{start: now(), blocked: loadBlocked()}
-	creates, updates, deletes := diff(ws, collisions, have, s.blocked)
+	s := &syncer{start: now(), blocked: loadSet(blockedKey), refused: loadSet(refusedKey)}
+	creates, updates, deletes := diff(ws, collisions, have, s.blocked, s.refused)
+	if !snap.DevOK {
+		deletes = nil // developer entries may be missing from the cards, not gone
+	}
+	// Removals first: a published page of a withdrawn plugin matters more than
+	// a cosmetic update, and must not wait behind refused or rate limited writes.
+	for _, id := range deletes {
+		if s.ready() {
+			s.delete(id)
+		}
+	}
 	for _, w := range creates {
 		if s.ready() {
 			s.create(w)
@@ -263,16 +279,11 @@ func syncCron(sdk.CronEvent) error {
 			s.update(u)
 		}
 	}
-	if !snap.DevOK {
-		deletes = nil // developer entries may be missing from the cards, not gone
-	}
-	for _, id := range deletes {
-		if s.ready() {
-			s.delete(id)
-		}
-	}
 	if s.blockNew {
-		storeBlocked(s.blocked)
+		storeSet(blockedKey, s.blocked)
+	}
+	if s.refusedNew {
+		storeSet(refusedKey, s.refused)
 	}
 	return s.first
 }

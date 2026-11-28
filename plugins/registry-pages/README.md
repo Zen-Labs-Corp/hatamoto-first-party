@@ -42,7 +42,7 @@ It does not ask for `settings`, `db`, `log`, `site.scripts` or any other host. T
 
 ## Notes
 
-- If the owner edits the SEO fields of an entry, the host treats the entry as taken over. The plugin then gets `not_owned` for it and leaves it alone.
+- If the owner edits the SEO fields of an entry, the host treats the entry as taken over. The plugin then gets `not_owned` for it, remembers that for six hours (the refusal costs a write token, so it is not retried every minute) and leaves the entry alone. Removals run before updates in each tick, so a withdrawn name is never held back by refused writes.
 - A name listed as both a plugin and a theme gets no entry, because both would need the same slug.
 - Not ported from core: the guard against an index older than one already seen. The index is fetched over HTTPS from the site's own host, and its signature and expiry are still enforced.
 

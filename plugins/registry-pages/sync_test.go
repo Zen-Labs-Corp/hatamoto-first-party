@@ -325,3 +325,53 @@ func TestSyncKeepsEntriesWhileTheDeveloperIndexIsDown(t *testing.T) {
 		t.Fatalf("a real removal was not deleted: %v", s.slugs())
 	}
 }
+
+func TestSyncRemembersNotOwnedAndStillDeletes(t *testing.T) {
+	h := newFakeHost(t)
+	h.publish(developerURL, 24*time.Hour)
+	s := newEntityStore(h)
+	var entries []entry
+	for i := range 25 {
+		name := "plug" + strconv.Itoa(100+i)
+		entries = append(entries, entry{Kind: kindPlugin, Name: name, Description: "new", Tier: tierFirstParty})
+		s.seed(newWant(kindPlugin, "plugins", name, "", "old")) // the owner changed these
+	}
+	s.seed(newWant(kindPlugin, "plugins", "gone", "", "x"))
+	h.publish(registryURL, 24*time.Hour, entries...)
+
+	// A burst of 20 writes per tick, refused ones included, as the host limits.
+	var tokens int
+	s.errs = func(fn string, n int, args map[string]any) error {
+		if fn == "entities.list" {
+			return nil
+		}
+		if tokens++; tokens > 20 {
+			return &sdk.HostError{Code: sdk.ErrRateLimited}
+		}
+		if fn == "entities.update" {
+			return &sdk.HostError{Code: sdk.ErrNotOwned}
+		}
+		return nil
+	}
+	if err := runSync(t); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(s.slugs(), "gone") {
+		t.Fatal("the removed name was not deleted in the first tick")
+	}
+	for range 2 { // the refusals are remembered, so the other 5 are tried next
+		tokens = 0
+		h.advance(time.Minute)
+		if err := runSync(t); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tokens, s.counts = 0, map[string]int{}
+	h.advance(time.Minute)
+	if err := runSync(t); err != nil {
+		t.Fatal(err)
+	}
+	if s.counts["entities.update"] != 0 || s.counts["entities.delete"] != 0 {
+		t.Fatalf("refused entries were tried again: %v", s.counts)
+	}
+}
