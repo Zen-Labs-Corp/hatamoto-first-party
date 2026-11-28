@@ -1,0 +1,24 @@
+{{define "section-registry_detail"}}{{$c := .Content}}<div class="rd">
+<p><a href="{{$c.list_url}}">{{$c.list_name}}</a></p>
+{{with $c.plugin}}<h1>{{if .title}}{{.title}}{{else}}{{.name}}{{end}}</h1>
+<p><small>{{.version}}{{if .tier_label}} · {{.tier_label}}{{end}}{{if .author}} · {{.author}}{{end}}</small></p>
+{{if .description}}<p>{{.description}}</p>{{end}}
+{{range .about}}<p>{{.}}</p>
+{{end}}{{if .features}}<ul>
+{{range .features}}<li>{{.}}</li>
+{{end}}</ul>
+{{end}}{{if .perm_lines}}<h2>Permissions ({{.perm_count}})</h2>
+<ul>
+{{range .perm_lines}}<li>{{if .warn}}<strong>Warning:</strong> {{end}}<code>{{.name}}</code> {{.text}}</li>
+{{end}}</ul>
+{{end}}{{if .source}}<p><a href="{{.source}}">Source</a></p>{{end}}{{end}}
+{{with $c.theme}}<h1>{{if .title}}{{.title}}{{else}}{{.name}}{{end}}</h1>
+<p><small>{{.version}}{{if .tier_label}} · {{.tier_label}}{{end}}{{if .author}} · {{.author}}{{end}}</small></p>
+{{if .screenshot}}<p><img src="{{.screenshot}}" alt=""></p>{{end}}
+{{if .description}}<p>{{.description}}</p>{{end}}
+{{range .about}}<p>{{.}}</p>
+{{end}}{{if .features}}<ul>
+{{range .features}}<li>{{.}}</li>
+{{end}}</ul>
+{{end}}{{if .source}}<p><a href="{{.source}}">Source</a></p>{{end}}{{end}}
+</div>{{end}}
