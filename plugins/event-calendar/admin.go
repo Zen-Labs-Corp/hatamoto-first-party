@@ -15,10 +15,10 @@ import (
 // through the edit_dates run.
 
 const (
-	maxAdminEvents = 50
-	maxAdminReads  = 30
-	adminDates     = 10
-	adminBudget    = 2 * time.Second
+	repeatingPerPage = 20
+	maxAdminReads    = 30
+	adminDates       = 10
+	adminBudget      = 2 * time.Second
 )
 
 // adminDate is one date of a repeating event. Day is the generated day the
@@ -42,32 +42,52 @@ type adminEvent struct {
 	Dates []adminDate `json:"dates"`
 }
 
+// adminList is a page of the repeating events. Events is the same list as
+// Items, kept for older pages.
 type adminList struct {
-	Ready  bool         `json:"ready"`
-	Role   string       `json:"role"`
-	Events []adminEvent `json:"events"`
+	Ready   bool         `json:"ready"`
+	Role    string       `json:"role"`
+	Items   []adminEvent `json:"items"`
+	Events  []adminEvent `json:"events"`
+	Total   int          `json:"total"`
+	Page    int          `json:"page"`
+	PerPage int          `json:"per_page"`
 }
 
-const repeatingSQL = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state)
- THEN COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.name, r.id), '[]'::jsonb) END FROM (
-SELECT e.entity_id AS id, e.slug, e.name, e.source_uid,
- (SELECT count(*) FROM events o WHERE o.source_uid = e.source_uid) AS uid_count FROM events e
-WHERE e.repeating ORDER BY e.name, e.entity_id LIMIT $1::int) r`
+// repeatingSQL reads one page ($1 rows from offset $3) of the repeating events
+// whose name contains $2 (escaped for ILIKE; empty matches all) and how many
+// match in all. It is NULL before the first complete reconcile.
+const repeatingSQL = `SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state) THEN jsonb_build_object(
+ 'total', (SELECT count(*) FROM events e WHERE e.repeating AND ($2::text = '' OR e.name ILIKE '%' || $2::text || '%')),
+ 'items', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.name, r.id) FROM (
+  SELECT e.entity_id AS id, e.slug, e.name, e.source_uid,
+   (SELECT count(*) FROM events o WHERE o.source_uid = e.source_uid) AS uid_count FROM events e
+  WHERE e.repeating AND ($2::text = '' OR e.name ILIKE '%' || $2::text || '%')
+  ORDER BY e.name, e.entity_id LIMIT $1::int OFFSET $3::int) r), '[]'::jsonb)) END`
 
 // serveRepeating answers GET /admin/repeating. It is an admin route: without a
 // signed-in user it is refused. A failure reading one event leaves that event
 // listed without dates.
-func serveRepeating(u *sdk.HTTPUser) sdk.HTTPResponse {
+func serveRepeating(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 	if u == nil {
 		return plain(http.StatusForbidden, "forbidden")
 	}
-	out := adminList{Role: u.Role, Events: []adminEvent{}}
-	var rows *[]map[string]any
-	if err := dbJSON(repeatingSQL, &rows, maxAdminEvents); err != nil {
+	q := queryValue(query["q"])
+	page, ok := pageParam(query)
+	if !ok || len(q) > maxQueryBytes {
+		return jsonReply(http.StatusBadRequest, map[string]string{"error": "bad request"})
+	}
+	out := adminList{Role: u.Role, Events: []adminEvent{}, Page: page, PerPage: repeatingPerPage}
+	var res *struct {
+		Total int              `json:"total"`
+		Items []map[string]any `json:"items"`
+	}
+	if err := dbJSON(repeatingSQL, &res, repeatingPerPage, escapeLike(q), (page-1)*repeatingPerPage); err != nil {
 		return plain(http.StatusServiceUnavailable, "unavailable")
 	}
-	if rows != nil {
-		out.Ready = true
+	if res != nil {
+		rows := &res.Items
+		out.Ready, out.Total = true, res.Total
 		s := loadSettings()
 		at := now()
 		_, to := windowFor(at)
@@ -97,6 +117,7 @@ func serveRepeating(u *sdk.HTTPUser) sdk.HTTPResponse {
 			out.Events = append(out.Events, ae)
 		}
 	}
+	out.Items = out.Events
 	body, err := json.Marshal(out)
 	if err != nil {
 		return plain(http.StatusInternalServerError, "error")

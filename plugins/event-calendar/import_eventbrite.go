@@ -48,6 +48,7 @@ type ebPage struct {
 		} `json:"venue"`
 	} `json:"events"`
 	Pagination struct {
+		ObjectCount  *int   `json:"object_count"`
 		HasMore      bool   `json:"has_more_items"`
 		Continuation string `json:"continuation"`
 	} `json:"pagination"`
@@ -66,8 +67,16 @@ func eventbriteToken() string {
 // the events, the continuation of the next page ("" after the last) and a
 // short reason without the address or the token when the page was not read.
 func fetchEventbritePage(orgID, cont, token string) ([]importEvent, string, string) {
+	events, next, _, why := fetchEventbritePageWithin(orgID, cont, token, importFetchMs)
+	return events, next, why
+}
+
+// fetchEventbritePageWithin is fetchEventbritePage with the fetch timeout in
+// milliseconds. total is the API's own count of the organization's events, -1
+// when the answer carries none.
+func fetchEventbritePageWithin(orgID, cont, token string, timeoutMs int) ([]importEvent, string, int, string) {
 	if token == "" {
-		return nil, "", "no Eventbrite token is set"
+		return nil, "", -1, "no Eventbrite token is set"
 	}
 	addr := eventbriteAPI + url.PathEscape(orgID) + "/events/?status=live&time_filter=current_future&expand=venue&page_size=50"
 	if cont != "" {
@@ -75,22 +84,22 @@ func fetchEventbritePage(orgID, cont, token string) ([]importEvent, string, stri
 	}
 	var res fetched
 	err := callHost(sdk.FnHTTPFetch, map[string]any{
-		"method": "GET", "url": addr, "timeout_ms": importFetchMs,
+		"method": "GET", "url": addr, "timeout_ms": timeoutMs,
 		"headers": map[string]string{"Authorization": "Bearer " + token, "Accept": "application/json", "User-Agent": "hatamoto-event-calendar"},
 	}, &res)
 	switch {
 	case err != nil:
-		return nil, "", "the address could not be fetched"
+		return nil, "", -1, "the address could not be fetched"
 	case res.Truncated:
-		return nil, "", "the answer was too large"
+		return nil, "", -1, "the answer was too large"
 	case res.Status == 401 || res.Status == 403:
-		return nil, "", "the Eventbrite token was refused"
+		return nil, "", -1, "the Eventbrite token was refused"
 	case res.Status != 200:
-		return nil, "", fmt.Sprintf("the answer was status %d", res.Status)
+		return nil, "", -1, fmt.Sprintf("the answer was status %d", res.Status)
 	}
 	var page ebPage
 	if json.Unmarshal([]byte(res.Body), &page) != nil {
-		return nil, "", "the answer was not Eventbrite data"
+		return nil, "", -1, "the answer was not Eventbrite data"
 	}
 	var out []importEvent
 	for _, e := range page.Events {
@@ -123,5 +132,9 @@ func fetchEventbritePage(orgID, cont, token string) ([]importEvent, string, stri
 	if page.Pagination.HasMore && len(page.Pagination.Continuation) <= maxContinuation {
 		next = page.Pagination.Continuation
 	}
-	return out, next, ""
+	total := -1
+	if n := page.Pagination.ObjectCount; n != nil && *n >= 0 {
+		total = *n
+	}
+	return out, next, total, ""
 }

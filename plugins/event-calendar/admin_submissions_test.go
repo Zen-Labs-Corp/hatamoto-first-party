@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -13,14 +14,21 @@ import (
 // adminHost fakes settings and the submissions and events tables for the
 // Submissions and Imports routes.
 type adminHost struct {
-	settings string
-	rows     string // the submissions listing cell
-	counts   string
-	last     string // answer of the per-source stats query
-	affected int
-	dbErr    error
-	queries  []sqlCall
-	execs    []sqlCall
+	settings    string
+	settingsErr error  // the settings read fails
+	rows        string // the submissions listing cell
+	counts      string
+	last        string // answer of the per-source stats query
+	progress    string // answer of the stored-counts query, "{}" when empty
+	drafts      string // the drafts of the default type, a JSON array of entities
+	fetch       map[string]fakePage
+	fetched     []string
+	fetchMs     []any     // timeout_ms of each fetch
+	seeded      []subSeed // when set, the submissions page is cut from these, as the statement does
+	affected    int
+	dbErr       error
+	queries     []sqlCall
+	execs       []sqlCall
 }
 
 func (h *adminHost) install(t *testing.T) {
@@ -32,11 +40,32 @@ func (h *adminHost) install(t *testing.T) {
 		call.args, _ = a["args"].([]any)
 		switch fn {
 		case sdk.FnSettingsGet:
+			if h.settingsErr != nil {
+				return h.settingsErr
+			}
 			s := h.settings
 			if s == "" {
 				s = `{}`
 			}
 			return json.Unmarshal([]byte(s), out)
+		case sdk.FnEntitiesList:
+			items := "[]"
+			if a["schema_slug"] == defaultNewSlug && h.drafts != "" {
+				items = h.drafts
+			}
+			return json.Unmarshal([]byte(`{"items":`+items+`,"next_cursor":""}`), out)
+		case sdk.FnHTTPFetch:
+			u, _ := a["url"].(string)
+			h.fetched = append(h.fetched, u)
+			h.fetchMs = append(h.fetchMs, a["timeout_ms"])
+			p, ok := h.fetch[u]
+			if !ok {
+				return &sdk.HostError{Code: sdk.ErrBlocked}
+			}
+			if p.err != nil {
+				return p.err
+			}
+			return json.Unmarshal([]byte(jsonText(map[string]any{"status": p.status, "body": p.body, "truncated": p.truncated})), out)
 		case sdk.FnDBQuery:
 			h.queries = append(h.queries, call)
 			if h.dbErr != nil {
@@ -44,6 +73,13 @@ func (h *adminHost) install(t *testing.T) {
 			}
 			cell := h.rows
 			switch {
+			case strings.Contains(call.sql, "'total'"):
+				cell = h.page(call)
+			case strings.Contains(call.sql, "FROM import_progress"):
+				cell = h.progress
+				if cell == "" {
+					cell = `{}`
+				}
 			case strings.Contains(call.sql, "jsonb_object_agg"):
 				cell = h.counts
 			case strings.Contains(call.sql, "max(first_seen)"):
@@ -60,6 +96,37 @@ func (h *adminHost) install(t *testing.T) {
 		t.Fatalf("unexpected host call %q", fn)
 		return nil
 	}
+}
+
+// subSeed is one row of the seeded submissions table.
+type subSeed struct {
+	ID                          int64
+	Status, Title, Email, Venue string
+}
+
+// page answers submissionsPageSQL: args are status, q, limit, offset. Without
+// seeded rows it wraps the rows cell.
+func (h *adminHost) page(c sqlCall) string {
+	if h.seeded == nil {
+		var n []json.RawMessage
+		_ = json.Unmarshal([]byte(h.rows), &n)
+		return `{"total":` + jsonText(len(n)) + `,"items":` + h.rows + `}`
+	}
+	status, q := c.args[0].(string), strings.ToLower(c.args[1].(string))
+	limit, offset := c.args[2].(int), c.args[3].(int)
+	var f []map[string]any
+	for _, r := range h.seeded {
+		if (status == "all" || r.Status == status) && (q == "" || strings.Contains(strings.ToLower(r.Title+" "+r.Email+" "+r.Venue), q)) {
+			f = append(f, map[string]any{"id": r.ID, "status": r.Status, "title": r.Title, "email": r.Email, "venue": r.Venue,
+				"start_at": "2027-02-20T20:00:00Z", "end_at": "", "description": "", "created_at": "2027-02-01T10:00:00+00:00", "notified": true})
+		}
+	}
+	items := []map[string]any{}
+	if offset < len(f) {
+		items = f[offset:min(offset+limit, len(f))]
+	}
+	b, _ := json.Marshal(map[string]any{"total": len(f), "items": items})
+	return string(b)
 }
 
 func callRoute(t *testing.T, method, pattern string, user *sdk.HTTPUser, values map[string]string, query map[string][]string) sdk.HTTPResponse {
@@ -284,8 +351,8 @@ func TestAdminImports(t *testing.T) {
 		t.Errorf("unlisted host = %+v", s3)
 	}
 
-	// the last-imported query: parameters only, the key prefix of the source
-	if len(h.queries) != 4 {
+	// the stats query per source (parameters only, the key prefix of the source), then one read of the stored counts
+	if len(h.queries) != 5 {
 		t.Fatalf("queries = %v", h.queries)
 	}
 	q := h.queries[0]
@@ -299,15 +366,11 @@ func TestAdminImports(t *testing.T) {
 		t.Errorf("prefix %v does not match key %s", q.args[0], want)
 	}
 
-	// an editor never gets an address
+	// the tab is the owner's: an editor is refused with a JSON body, and nothing is read or written
+	h.queries, h.execs = nil, nil
 	r = callRoute(t, "GET", "/admin/imports", editor, nil, nil)
-	if r.Status != 200 || strings.Contains(r.Body, "secret-token") || strings.Contains(r.Body, "reachcalendar") || strings.Contains(r.Body, `"url"`) {
-		t.Errorf("editor body: %s", r.Body)
-	}
-	var ed importList
-	_ = json.Unmarshal([]byte(r.Body), &ed)
-	if ed.Role != "editor" || len(ed.Sources) != 4 || ed.Sources[0].Host != "calendar.google.com" {
-		t.Errorf("editor list = %+v", ed)
+	if r.Status != 403 || r.Body != `{"ok":false,"error":"not allowed"}` || strings.Contains(r.Body, "secret-token") || len(h.queries)+len(h.execs) != 0 {
+		t.Errorf("editor: %d %s, %d queries, %d execs", r.Status, r.Body, len(h.queries), len(h.execs))
 	}
 	if r := callRoute(t, "GET", "/admin/imports", nil, nil, nil); r.Status != 403 {
 		t.Errorf("no user: %d", r.Status)
@@ -319,7 +382,13 @@ func TestAdminImportsNeverShowTheEventbriteToken(t *testing.T) {
 	h.install(t)
 	for _, u := range []*sdk.HTTPUser{owner, editor} {
 		r := callRoute(t, "GET", "/admin/imports", u, nil, nil)
-		if r.Status != 200 || strings.Contains(r.Body, "SECRET-TOKEN-123") || !strings.Contains(r.Body, `"Tickets"`) {
+		if strings.Contains(r.Body, "SECRET-TOKEN-123") {
+			t.Errorf("%s: the token is in the body: %s", u.Role, r.Body)
+		}
+		if u == editor {
+			continue
+		}
+		if r.Status != 200 || !strings.Contains(r.Body, `"Tickets"`) {
 			t.Errorf("%s: %d %s", u.Role, r.Status, r.Body)
 		}
 		// a token and an organization id make the source schedulable
@@ -388,5 +457,95 @@ func TestAdminSubmissionsReportsEnabled(t *testing.T) {
 		if r := callRoute(t, "GET", "/admin/submissions", owner, nil, nil); !strings.Contains(r.Body, want) {
 			t.Errorf("%s: %s", setting, r.Body)
 		}
+	}
+}
+
+// seedSubmissions makes 143 rows in creation order: 20 pending, 101 approved
+// and 22 rejected.
+func seedSubmissions() []subSeed {
+	var out []subSeed
+	for i := 1; i <= 143; i++ {
+		r := subSeed{ID: int64(i), Status: "rejected", Title: fmt.Sprintf("Show %03d", i), Email: fmt.Sprintf("user%d@example.org", i), Venue: "The Anchor"}
+		switch {
+		case i <= 20:
+			r.Status = "pending"
+		case i <= 121:
+			r.Status = "approved"
+		}
+		if i%11 == 0 {
+			r.Venue = "Barn"
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+func TestAdminSubmissionsPaging(t *testing.T) {
+	h := &adminHost{seeded: seedSubmissions(), counts: `{"pending":20,"approved":101,"rejected":22}`}
+	h.install(t)
+	read := func(u *sdk.HTTPUser, q map[string][]string) submissionList {
+		t.Helper()
+		r := callRoute(t, "GET", "/admin/submissions", u, nil, q)
+		var got submissionList
+		if r.Status != 200 || json.Unmarshal([]byte(r.Body), &got) != nil {
+			t.Fatalf("status %d: %s", r.Status, r.Body)
+		}
+		return got
+	}
+	all := read(owner, map[string][]string{"status": {"all"}})
+	if all.Total != 143 || len(all.Items) != 50 || all.Page != 1 || all.PerPage != 50 || all.Counts["all"] != 143 || all.Items[0].ID != 1 {
+		t.Errorf("all page 1: total %d items %d counts %v", all.Total, len(all.Items), all.Counts)
+	}
+	if p3 := read(editor, map[string][]string{"status": {"all"}, "page": {"3"}}); len(p3.Items) != 43 || p3.Items[0].ID != 101 || p3.Role != "editor" {
+		t.Errorf("all page 3 = %d items", len(p3.Items))
+	}
+	// the 101st approved submission is the only one on page 3
+	if p3 := read(owner, map[string][]string{"status": {"approved"}, "page": {"3"}}); p3.Total != 101 || len(p3.Items) != 1 || p3.Items[0].ID != 121 {
+		t.Errorf("approved page 3 = %+v", p3.Items)
+	}
+	if def := read(owner, nil); def.Total != 20 || len(def.Items) != 20 || def.Items[0].Status != "pending" {
+		t.Errorf("default is pending: total %d", def.Total)
+	}
+	if q := read(owner, map[string][]string{"status": {"all"}, "q": {"barn"}}); q.Total != 13 {
+		t.Errorf("search by venue: total %d", q.Total)
+	}
+	if q := read(owner, map[string][]string{"status": {"approved"}, "q": {"USER55@"}}); q.Total != 1 || q.Items[0].Email != "user55@example.org" {
+		t.Errorf("search by email: %+v", q.Items)
+	}
+	if q := read(owner, map[string][]string{"q": {"nothing like it"}}); q.Total != 0 || q.Items == nil || len(q.Items) != 0 {
+		t.Errorf("no match: %+v", q)
+	}
+	// a status the page does not offer still works for older pages
+	if p := read(owner, map[string][]string{"status": {"published"}}); p.Total != 0 {
+		t.Errorf("published: total %d", p.Total)
+	}
+	h.queries = nil
+	read(owner, map[string][]string{"status": {"approved"}, "page": {"3"}, "q": {"50%_"}})
+	if a := h.queries[0].args; a[0] != "approved" || a[1] != `50\%\_` || a[2] != 50 || a[3] != 100 {
+		t.Errorf("args = %v", a)
+	}
+	for _, want := range []string{"LIMIT $3", "OFFSET $4", "ILIKE", "ORDER BY created_at, id"} {
+		if !strings.Contains(h.queries[0].sql, want) {
+			t.Errorf("statement lacks %q", want)
+		}
+	}
+}
+
+func TestAdminSubmissionsBadRequest(t *testing.T) {
+	h := &adminHost{seeded: seedSubmissions(), counts: `{}`}
+	h.install(t)
+	for name, q := range map[string]map[string][]string{
+		"page zero": {"page": {"0"}}, "page text": {"page": {"1; DROP"}}, "page too big": {"page": {"10001"}},
+		"long search": {"q": {strings.Repeat("a", 201)}},
+	} {
+		if r := callRoute(t, "GET", "/admin/submissions", owner, nil, q); r.Status != 400 || r.Body != `{"error":"bad request"}` {
+			t.Errorf("%s: %d %s", name, r.Status, r.Body)
+		}
+	}
+	if r := callRoute(t, "GET", "/admin/submissions", owner, nil, map[string][]string{"status": {"bogus"}}); r.Status != 400 {
+		t.Errorf("bogus status: %d", r.Status)
+	}
+	if len(h.queries) != 0 {
+		t.Errorf("a bad request ran %d statements", len(h.queries))
 	}
 }

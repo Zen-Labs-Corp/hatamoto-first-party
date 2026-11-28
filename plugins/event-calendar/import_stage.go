@@ -31,6 +31,7 @@ const (
 	manualCreateCap    = 200
 	stepUpserts        = 50
 	stepBudget         = 7 * time.Second
+	maxMarkKey         = 200
 	pastGrace          = 24 * time.Hour // a scheduled run skips events that ended longer ago
 )
 
@@ -47,7 +48,7 @@ type stageCursor struct {
 // only creates (at most scheduledCreateCap, the rest waits for the next run):
 // an update would wait for review and park the whole changeset. It deletes
 // nothing.
-func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
+func importTransformStep(s sdk.RunStep, sched bool, after string) (sdk.RunStepResult, error) {
 	started := clock()
 	cfg := loadSettings()
 	schema := cfg.slugs()[0]
@@ -55,6 +56,15 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		// the standing approval covers calendar-event creates only; any other type would park the changeset
 		_ = guest.RunProgress(callHost, 0, 0, "Nothing was staged: scheduled imports create calendar-event events only, and the event content type setting names "+schema+". Use Run now, or clear the setting.")
 		return sdk.RunStepResult{}, guest.RunFinish(callHost, map[string]int{"created": 0})
+	}
+
+	// a manual run can continue after the last event of an earlier one
+	var mark importMark
+	if !sched && after != "" {
+		var ok bool
+		if mark, ok = parseMark(after); !ok {
+			return failRun("The place to continue from could not be read. Use Import the next 200 on the Imports tab again.")
+		}
 	}
 
 	var cur stageCursor
@@ -67,7 +77,7 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 			return failRun("The run buffer could not be read. Try again.")
 		}
 		cur.Sum = map[string]int{"created": 0, "updated": 0, "unchanged": 0, "with_links": 0, "failed": 0, "failed_sources": failedSources, "dropped_recurrence": 0, "skipped_over_cap": overCap(),
-			"not_updated": 0, "unsafe": 0, "past": 0, "next_run": 0}
+			"not_updated": 0, "unsafe": 0, "past": 0, "next_run": 0, "imported_before": 0}
 	}
 	sum := cur.Sum
 	createCap := manualCreateCap
@@ -136,6 +146,9 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		case !found && sched && endOf(ev).Before(cutoff):
 			sum["past"]++
 			continue
+		case !found && mark.Key != "" && mark.covers(ev.Start, rec.Key):
+			sum["imported_before"]++
+			continue
 		case !found && sum["created"] >= createCap:
 			sum["next_run"]++
 			continue
@@ -181,9 +194,12 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 			return failRun(fmt.Sprintf("%s (%s) was imported before and is now a draft or was deleted. Publish it or wait until it leaves the feed. Nothing was published.",
 				up.Name, ev.Start.In(loc).Format("2006-01-02")))
 		}
-		if found {
+		switch {
+		case found:
 			sum["updated"]++
-		} else {
+		case !res.Created:
+			sum["updated"]++ // the key is mapped to a draft the run cannot see: it is updated, and the cap counts real creates only
+		default:
 			sum["created"]++
 		}
 		if hasLink(ev) {
@@ -191,6 +207,19 @@ func importTransformStep(s sdk.RunStep, sched bool) (sdk.RunStepResult, error) {
 		}
 	}
 	return finishImport(sum, createCap, sched)
+}
+
+// parseMark reads "<RFC3339>|<key>", the place a manual run continues after.
+func parseMark(s string) (importMark, bool) {
+	at, key, ok := strings.Cut(s, "|")
+	if !ok || key == "" || len(key) > maxMarkKey {
+		return importMark{}, false
+	}
+	start, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		return importMark{}, false
+	}
+	return importMark{Start: start, Key: key}, true
 }
 
 // uidTail is the kind and the hash of the feed's UID that end an import key,
@@ -459,10 +488,13 @@ func namesToIDs(schema string) map[string]string {
 // summary, so the counts the owner needs are also put in the message.
 func finishImport(sum map[string]int, createCap int, sched bool) (sdk.RunStepResult, error) {
 	done := sum["created"] + sum["updated"]
-	skipped := sum["unchanged"] + sum["not_updated"] + sum["past"] + sum["next_run"] + sum["failed"] + sum["skipped_over_cap"] + sum["unsafe"]
+	skipped := sum["unchanged"] + sum["not_updated"] + sum["past"] + sum["next_run"] + sum["failed"] + sum["skipped_over_cap"] + sum["unsafe"] + sum["imported_before"]
 	msg := fmt.Sprintf("Imported %d events, %d skipped", done, skipped)
 	if n := sum["next_run"]; n > 0 {
 		msg += fmt.Sprintf("; %d left for the next run (at most %d new events a run)", n, createCap)
+	}
+	if n := sum["imported_before"]; n > 0 {
+		msg += fmt.Sprintf("; %d imported before were skipped", n)
 	}
 	if n := sum["failed_sources"]; n > 0 {
 		msg += fmt.Sprintf("; %d calendars could not be read", n)

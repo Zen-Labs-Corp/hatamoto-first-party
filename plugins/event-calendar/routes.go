@@ -34,12 +34,14 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 			return serveAPI(r.Query), nil
 		case "/submit/token":
 			return serveSubmitToken(), nil
+		case "/admin/events":
+			return serveEvents(r.User, r.Query), nil
 		case "/admin/repeating":
-			return serveRepeating(r.User), nil
+			return serveRepeating(r.User, r.Query), nil
 		case "/admin/submissions":
 			return serveSubmissions(r.User, r.Query), nil
 		case "/admin/imports":
-			return serveImports(r.User), nil
+			return serveImports(r.User, r.Query), nil
 		case "/series/{slug}":
 			return servePage(pageSeries, r.PathValues["slug"]), nil
 		case "/venue/{slug}":

@@ -22,7 +22,8 @@ type runHost struct {
 	entities []string
 	getErr   error
 	upErr    error
-	created  bool // the host reports the staged upsert as a new object
+	created  bool            // the host reports the staged upsert as a new object
+	mapped   map[string]bool // keys core already maps to an event the run cannot see: their upsert is not a create
 	upserts  []sdk.EntityUpsert
 	failed   string
 	finished any
@@ -169,7 +170,7 @@ func (h *runHost) install(t *testing.T) {
 			if h.upErr != nil {
 				return h.upErr
 			}
-			return json.Unmarshal([]byte(`{"source_key":"`+up.SourceKey+`","created":`+strconv.FormatBool(h.created)+`}`), out)
+			return json.Unmarshal([]byte(`{"source_key":"`+up.SourceKey+`","created":`+strconv.FormatBool(h.created && !h.mapped[up.SourceKey])+`}`), out)
 		}
 		t.Fatalf("unexpected host call %q", fn)
 		return nil

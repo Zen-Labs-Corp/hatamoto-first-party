@@ -1,6 +1,6 @@
 {
   "name": "event-calendar",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "sdk": "^0.28.1",
   "description": "Event calendar for the page builder: calendar views, repeating events, venues, filters, scheduled iCal and Eventbrite imports, submissions and an iCal feed.",
   "permissions": [
@@ -140,6 +140,14 @@
     },
     {
       "method": "GET",
+      "path": "/admin/events",
+      "roles": [
+        "owner",
+        "editor"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/admin/submissions",
       "roles": [
         "owner",
@@ -166,21 +174,19 @@
       "method": "POST",
       "path": "/admin/submissions/{id}/delete",
       "roles": [
-        "owner",
-        "editor"
+        "owner"
       ]
     },
     {
       "method": "GET",
       "path": "/admin/imports",
       "roles": [
-        "owner",
-        "editor"
+        "owner"
       ]
     }
   ],
   "ui": {
-    "title": "Event calendar",
+    "title": "Events",
     "entry": "index.html",
     "roles": [
       "owner",
@@ -272,6 +278,11 @@
         {
           "name": "submission",
           "label": "Submission number (for approve)",
+          "type": "text"
+        },
+        {
+          "name": "after",
+          "label": "Continue after (filled in by Import the next 200)",
           "type": "text"
         }
       ],

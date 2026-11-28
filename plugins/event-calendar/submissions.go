@@ -103,6 +103,29 @@ func listSubmissions(status string) ([]submission, error) {
 	return out, err
 }
 
+// submissionsPageSQL reads one page of the submissions of a status ("all" for
+// every status) whose title, email or venue contains $2 (already escaped for
+// ILIKE; empty matches all), oldest first, and the count of all of them.
+// $3 is the page size and $4 the offset.
+const submissionsPageSQL = `WITH f AS (SELECT ` + submissionCols + ` FROM submissions
+ WHERE ($1::text = 'all' OR status = $1::text)
+ AND ($2::text = '' OR title ILIKE '%' || $2::text || '%' OR email ILIKE '%' || $2::text || '%' OR venue ILIKE '%' || $2::text || '%'))
+SELECT jsonb_build_object('total', (SELECT count(*) FROM f),
+ 'items', COALESCE((SELECT jsonb_agg(to_jsonb(p) ORDER BY p.created_at, p.id) FROM (SELECT * FROM f ORDER BY created_at, id LIMIT $3::int OFFSET $4::int) p), '[]'::jsonb))`
+
+// listSubmissionsPage reads one page of the submissions for the admin page
+// and how many match in all.
+func listSubmissionsPage(status, q string, limit, offset int) (items []submission, total int, err error) {
+	var res struct {
+		Total int          `json:"total"`
+		Items []submission `json:"items"`
+	}
+	if err := dbJSON(submissionsPageSQL, &res, status, escapeLike(q), limit, offset); err != nil {
+		return nil, 0, err
+	}
+	return res.Items, res.Total, nil
+}
+
 // openSubmissions lists the pending and approved rows, oldest first.
 func openSubmissions() ([]submission, error) {
 	var out []submission

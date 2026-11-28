@@ -105,7 +105,7 @@ func exists(t *testing.T, path string) {
 
 func TestManifest(t *testing.T) {
 	m, _ := loadManifest(t)
-	if m.Name != "event-calendar" || m.Version != "0.7.0" {
+	if m.Name != "event-calendar" || m.Version != "0.8.0" {
 		t.Errorf("name %q version %q", m.Name, m.Version)
 	}
 	// the description is shown in the plugin list: short, and without characters the host's text checks refuse
@@ -213,14 +213,15 @@ func TestManifest(t *testing.T) {
 	wantRoutes := []struct {
 		method, path string
 		public       bool
+		ownerOnly    bool
 	}{
-		{"GET", "/events.ics", true}, {"GET", "/event/{file}", true}, {"GET", "/api/events", true},
-		{"GET", "/series/{slug}", true}, {"GET", "/venue/{slug}", true}, {"GET", "/organizer/{slug}", true},
-		{"GET", "/submit/token", true}, {"POST", "/submit", true},
-		{"GET", "/admin/repeating", false}, {"GET", "/admin/submissions", false},
-		{"POST", "/admin/submissions/{id}/reject", false}, {"POST", "/admin/submissions/reject-all", false},
-		{"POST", "/admin/submissions/{id}/delete", false},
-		{"GET", "/admin/imports", false},
+		{"GET", "/events.ics", true, false}, {"GET", "/event/{file}", true, false}, {"GET", "/api/events", true, false},
+		{"GET", "/series/{slug}", true, false}, {"GET", "/venue/{slug}", true, false}, {"GET", "/organizer/{slug}", true, false},
+		{"GET", "/submit/token", true, false}, {"POST", "/submit", true, false},
+		{"GET", "/admin/repeating", false, false}, {"GET", "/admin/events", false, false}, {"GET", "/admin/submissions", false, false},
+		{"POST", "/admin/submissions/{id}/reject", false, false}, {"POST", "/admin/submissions/reject-all", false, false},
+		{"POST", "/admin/submissions/{id}/delete", false, true},
+		{"GET", "/admin/imports", false, true},
 	}
 	if len(m.Routes) != len(wantRoutes) {
 		t.Fatalf("routes = %+v", m.Routes)
@@ -230,18 +231,26 @@ func TestManifest(t *testing.T) {
 		if r.Method != w.method || r.Path != w.path || r.Public != w.public {
 			t.Errorf("route %d = %+v", i, r)
 		}
-		if wantRoles := []string{"owner", "editor"}; !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {
-			t.Errorf("route %s roles = %v", r.Path, r.Roles)
+		wantRoles := []string{"owner", "editor"}
+		if w.ownerOnly {
+			wantRoles = []string{"owner"}
+		}
+		if !w.public && !slices.Equal(r.Roles, wantRoles) || w.public && len(r.Roles) != 0 {
+			t.Errorf("route %s roles = %v, want %v", r.Path, r.Roles, wantRoles)
+		}
+		// repeat edits are runs, owner-only in core: no route an editor can reach edits dates
+		if !w.ownerOnly && (strings.Contains(r.Path, "dates") || strings.Contains(r.Path, "duplicate")) {
+			t.Errorf("route %s is reachable by an editor and edits dates", r.Path)
 		}
 	}
 
-	if m.UI.Title != "Event calendar" || m.UI.Entry != "index.html" || !slices.Equal(m.UI.Roles, []string{"owner", "editor"}) {
+	if m.UI.Title != "Events" || m.UI.Entry != "index.html" || !slices.Equal(m.UI.Roles, []string{"owner", "editor"}) {
 		t.Errorf("ui = %+v", m.UI)
 	}
 	exists(t, "ui/"+m.UI.Entry)
 	wantRuns := map[string]string{
 		"edit_dates": "event:text:false action:select:true date:text:false start_at:text:false end_at:text:false shift_days:number:false " +
-			"url:url:false kind:select:false name:text:false title:text:false venue_name:text:false description:text:false submission:text:false",
+			"url:url:false kind:select:false name:text:false title:text:false venue_name:text:false description:text:false submission:text:false after:text:false",
 		"scheduled_import": "",
 	}
 	if len(m.Runs) != len(wantRuns) {

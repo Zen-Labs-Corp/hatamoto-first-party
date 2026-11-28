@@ -74,7 +74,7 @@ func TestUITellsEventsArriveAsDrafts(t *testing.T) {
 // show a finished run's message, so the Imports tab must not promise it.
 func TestUIExplainsScheduledImports(t *testing.T) {
 	html := readUI(t, "index.html")
-	for _, want := range []string{"100 new events", "200 a day", "Automatic updates tab", "Run now", "before the next scheduled run"} {
+	for _, want := range []string{"100 new events", "200 a day", "Automatic updates tab", "Run now", "before the next scheduled run", "Counts are approximate"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("ui/index.html lacks %q", want)
 		}
@@ -82,6 +82,40 @@ func TestUIExplainsScheduledImports(t *testing.T) {
 	for _, stale := range []string{"first 100", "running again", "message on the Runs tab", "later core update", "only when you press"} {
 		if strings.Contains(html, stale) {
 			t.Errorf("ui/index.html still says %q", stale)
+		}
+	}
+}
+
+// The page ships one stylesheet of its own: the frame cannot reach the admin
+// tokens, so app.css carries them.
+func TestUIHasOneOwnStylesheet(t *testing.T) {
+	links := regexp.MustCompile(`<link[^>]*>`).FindAllString(readUI(t, "index.html"), -1)
+	if len(links) != 1 || !strings.Contains(links[0], `href="app.css"`) {
+		t.Fatalf("links %v", links)
+	}
+}
+
+func TestUIEventsWorkspace(t *testing.T) {
+	html := readUI(t, "index.html")
+	for _, want := range []string{"Upcoming", "Past", "Drafts", "Submissions", "Imports", "Repeating", "No venue set", "iCal feed", "New event"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("ui/index.html lacks %q", want)
+		}
+	}
+	for _, bad := range []string{"<h1", "below", "above"} {
+		if strings.Contains(html, bad) {
+			t.Errorf("ui/index.html contains %q", bad)
+		}
+	}
+	css := readUI(t, "app.css")
+	for _, want := range []string{"prefers-color-scheme: dark", "color-scheme: light dark"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("ui/app.css lacks %q", want)
+		}
+	}
+	for _, bad := range []string{"100vh", "100vw", "position: fixed"} {
+		if strings.Contains(css, bad) {
+			t.Errorf("ui/app.css contains %q", bad)
 		}
 	}
 }
