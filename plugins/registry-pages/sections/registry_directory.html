@@ -1,0 +1,13 @@
+{{define "section-registry_directory"}}{{$c := .Content}}<div class="rd">
+{{if eq $c.state "ok"}}<ul>
+{{range $c.cards}}<li>
+<h3>{{if $c.linked}}<a href="{{$c.list_url}}/{{.name}}">{{if .title}}{{.title}}{{else}}{{.name}}{{end}}</a>{{else}}{{if .title}}{{.title}}{{else}}{{.name}}{{end}}{{end}}</h3>
+<p><small>{{.version}}{{if .tier_label}} · {{.tier_label}}{{end}}{{if .author}} · {{.author}}{{end}}</small></p>
+{{if .description}}<p>{{.description}}</p>{{end}}
+{{if .perm_lines}}<p><small>Permissions ({{.perm_count}})</small></p>{{end}}
+{{if .source}}<p><a href="{{.source}}">Source</a></p>{{end}}
+</li>
+{{end}}</ul>
+{{else if eq $c.state "empty"}}<p>Nothing listed yet.</p>
+{{else}}<p>The registry is unavailable right now. Try again in a few minutes.</p>
+{{end}}</div>{{end}}

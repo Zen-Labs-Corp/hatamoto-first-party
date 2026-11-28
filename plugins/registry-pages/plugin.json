@@ -1,0 +1,18 @@
+{
+  "name": "registry-pages",
+  "version": "0.1.0",
+  "sdk": "^0.29",
+  "description": "hatamoto.dev only: the plugin and theme directory pages from the signed registry.",
+  "permissions": ["http.fetch", "kv", "entities.read", "entities.write.own"],
+  "allowed_hosts": ["hatamoto.dev"],
+  "entity_schema": "registry-entry",
+  "entity_fields": ["kind", "meta_title", "meta_description", "canonical_url"],
+  "page_paths": ["/plugins", "/themes"],
+  "page_path_prefixes": ["/plugins/", "/themes/"],
+  "cron": [{ "name": "sync", "every": "1m" }],
+  "limits": {
+    "memory_pages": 256,
+    "max_instances": 4,
+    "hook_timeouts_ms": { "render.page": 7000, "on_cron_sync": 10000 }
+  }
+}
