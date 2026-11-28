@@ -280,9 +280,14 @@ func readSource(cur *importCursor, src importSource, s settings, scheduled bool)
 // fetchEvents reads one address. The reason is a short text without the
 // address, "" when the source was read.
 func fetchEvents(src importSource, s settings) ([]importEvent, string) {
+	return fetchEventsWithin(src, s, importFetchMs)
+}
+
+// fetchEventsWithin is fetchEvents with the fetch timeout in milliseconds.
+func fetchEventsWithin(src importSource, s settings, timeoutMs int) ([]importEvent, string) {
 	var res fetched
 	err := callHost(sdk.FnHTTPFetch, map[string]any{
-		"method": "GET", "url": src.URL, "timeout_ms": importFetchMs,
+		"method": "GET", "url": src.URL, "timeout_ms": timeoutMs,
 		"headers": map[string]string{"User-Agent": "hatamoto-event-calendar", "Accept": "text/calendar, text/html;q=0.8"},
 	}, &res)
 	switch {

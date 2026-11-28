@@ -164,9 +164,8 @@ func serveRejectAll(u *sdk.HTTPUser) sdk.HTTPResponse {
 	return jsonReply(http.StatusOK, map[string]any{"ok": true, "rejected": n})
 }
 
-// importRow is one source of the Imports tab. URL is set for the owner only:
-// the Run now button needs it for the run form, and a feed address can be a
-// secret.
+// importRow is one source of the Imports tab. The tab is the owner's: the Run
+// now button needs the address for the run form.
 type importRow struct {
 	Name         string  `json:"name"`
 	Kind         string  `json:"kind"`
@@ -179,28 +178,64 @@ type importRow struct {
 	ScheduledOK  bool    `json:"scheduled_ok"`  // a scheduled run can read the source
 	LastNew      *string `json:"last_new"`      // when the index first saw the newest event of the source
 	CreatedToday int     `json:"created_today"` // events first seen since midnight UTC
+
+	Imported    int     `json:"imported"`     // events of the source on the site, drafts included
+	Cursor      string  `json:"cursor"`       // where the next manual run continues: "<RFC3339 UTC>|<key>"
+	Found       *int    `json:"found"`        // events in the feed at the last count
+	FoundCapped bool    `json:"found_capped"` // the feed has more than found
+	Remaining   *int    `json:"remaining"`    // events after the cursor at the last count
+	CountedAt   *string `json:"counted_at"`
+	Finished    bool    `json:"finished"` // the last count found nothing left to import
 }
 
 type importList struct {
 	Role     string      `json:"role"`
 	DailyCap int         `json:"daily_cap"` // creates a day: two scheduled runs
 	RunCap   int         `json:"run_cap"`   // creates a scheduled run
+	BatchCap int         `json:"batch_cap"` // creates a manual run
 	Sources  []importRow `json:"sources"`
 }
 
 // sourceStatsSQL is one document per source: the latest update, the newest
-// first-seen time and the events first seen today (UTC). The key prefix and
-// the kind are arguments.
+// first-seen time, the events first seen today (UTC), how many events there
+// are and the latest of them by start, then key. The key prefix and the kind
+// are arguments.
 const sourceStatsSQL = `SELECT jsonb_build_object('last', max(updated_at), 'last_new', max(first_seen),
- 'today', count(*) FILTER (WHERE first_seen >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')))
+ 'today', count(*) FILTER (WHERE first_seen >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')),
+ 'imported', count(*), 'cursor_start', max(starts_at),
+ 'cursor_key', (SELECT l.source_uid FROM events l WHERE l.source_kind = $2 AND left(l.source_uid, length($1::text)) = $1::text
+  ORDER BY l.starts_at DESC, l.source_uid COLLATE "C" DESC LIMIT 1))
  FROM events WHERE source_kind = $2 AND left(source_uid, length($1::text)) = $1::text`
 
+// importRowOf is the row of a source before its progress is read.
+func importRowOf(r settingsSource, src importSource, hasToken bool) importRow {
+	row := importRow{Name: src.Name, Kind: r.Kind, Host: hostOf(src.URL), Category: src.Category, Enabled: r.enabled(), Schedule: "off", URL: src.URL}
+	if r.Schedule == "daily" {
+		row.Schedule = "daily"
+	}
+	row.ScheduledOK = hostListed(src.URL) || (r.Kind == "eventbrite" && src.OrganizationID != "" && hasToken)
+	return row
+}
+
+// fillProgress adds what the site holds of the source and the stored count.
+func fillProgress(row *importRow, st sourceStats, c storedCount) {
+	row.LastImported, row.LastNew, row.CreatedToday = st.Last, st.New, st.Today
+	row.Imported, row.Cursor = st.Imported, st.mark().String()
+	row.Found, row.FoundCapped, row.Remaining, row.CountedAt = c.Found, c.FoundCapped, c.Remaining, c.CountedAt
+	row.Finished = c.Remaining != nil && *c.Remaining == 0
+}
+
 // serveImports answers GET /admin/imports: the import_sources setting, the
-// disabled ones included, each with its schedule and the events it brought.
-// The Eventbrite token is read only to tell whether it is set.
-func serveImports(u *sdk.HTTPUser) sdk.HTTPResponse {
-	if u == nil {
-		return plain(http.StatusForbidden, "forbidden")
+// disabled ones included, each with its schedule, the events it brought and
+// where the next manual run continues. It is the owner's: another role gets
+// 403. With ?count=<name> it counts that source's feed. The Eventbrite token is
+// read only to tell whether it is set.
+func serveImports(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
+	if u == nil || u.Role != "owner" {
+		return jsonReply(http.StatusForbidden, submitAnswer{Error: "not allowed"})
+	}
+	if name := queryValue(query["count"]); name != "" {
+		return serveCount(name)
 	}
 	var raw struct {
 		Token   string           `json:"eventbrite_token"`
@@ -208,29 +243,38 @@ func serveImports(u *sdk.HTTPUser) sdk.HTTPResponse {
 	}
 	_ = callHost(sdk.FnSettingsGet, struct{}{}, &raw)
 	hasToken := strings.TrimSpace(raw.Token) != ""
-	out := importList{Role: u.Role, DailyCap: 2 * scheduledCreateCap, RunCap: scheduledCreateCap, Sources: []importRow{}}
+	out := importList{Role: u.Role, DailyCap: 2 * scheduledCreateCap, RunCap: scheduledCreateCap, BatchCap: manualCreateCap, Sources: []importRow{}}
+	if len(raw.Sources) > maxSources {
+		raw.Sources = raw.Sources[:maxSources]
+	}
+	var drafts []draftRow
+	if len(raw.Sources) > 0 {
+		if rows, _, err := scanDrafts(loadSettings(), "", clock().Add(draftBudget)); err == nil {
+			drafts = rows
+		}
+	}
+	keys, stats := []string{}, []*sourceStats{}
 	for _, r := range raw.Sources {
-		if len(out.Sources) >= maxSources {
-			break
-		}
 		src := r.source()
-		row := importRow{Name: src.Name, Kind: r.Kind, Host: hostOf(src.URL), Category: src.Category, Enabled: r.enabled(), Schedule: "off"}
-		if r.Schedule == "daily" {
-			row.Schedule = "daily"
+		out.Sources = append(out.Sources, importRowOf(r, src, hasToken))
+		keys = append(keys, importPrefix(r.Kind, src.Name))
+		var st *sourceStats
+		if got, ok := sourceProgress(r, src.Name, drafts); ok {
+			st = &got
 		}
-		row.ScheduledOK = hostListed(src.URL) || (r.Kind == "eventbrite" && src.OrganizationID != "" && hasToken)
-		if u.Role == "owner" {
-			row.URL = src.URL
+		stats = append(stats, st)
+	}
+	pruneProgress(keys)
+	for i, st := range stats {
+		if st != nil {
+			storeProgress(keys[i], *st)
 		}
-		var stats struct {
-			Last  *string `json:"last"`
-			New   *string `json:"last_new"`
-			Today int     `json:"today"`
+	}
+	counts := readCounts(keys)
+	for i, st := range stats {
+		if st != nil {
+			fillProgress(&out.Sources[i], *st, counts[keys[i]])
 		}
-		if err := dbJSON(sourceStatsSQL, &stats, importPrefix(r.Kind, src.Name), r.Kind); err == nil {
-			row.LastImported, row.LastNew, row.CreatedToday = stats.Last, stats.New, stats.Today
-		}
-		out.Sources = append(out.Sources, row)
 	}
 	return jsonReply(http.StatusOK, out)
 }

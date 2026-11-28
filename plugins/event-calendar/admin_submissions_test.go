@@ -17,7 +17,12 @@ type adminHost struct {
 	settings string
 	rows     string // the submissions listing cell
 	counts   string
-	last     string    // answer of the per-source stats query
+	last     string // answer of the per-source stats query
+	progress string // answer of the stored-counts query, "{}" when empty
+	drafts   string // the drafts of the default type, a JSON array of entities
+	fetch    map[string]fakePage
+	fetched  []string
+	fetchMs  []any // timeout_ms of each fetch
 	seeded   []subSeed // when set, the submissions page is cut from these, as the statement does
 	affected int
 	dbErr    error
@@ -39,6 +44,24 @@ func (h *adminHost) install(t *testing.T) {
 				s = `{}`
 			}
 			return json.Unmarshal([]byte(s), out)
+		case sdk.FnEntitiesList:
+			items := "[]"
+			if a["schema_slug"] == defaultNewSlug && h.drafts != "" {
+				items = h.drafts
+			}
+			return json.Unmarshal([]byte(`{"items":`+items+`,"next_cursor":""}`), out)
+		case sdk.FnHTTPFetch:
+			u, _ := a["url"].(string)
+			h.fetched = append(h.fetched, u)
+			h.fetchMs = append(h.fetchMs, a["timeout_ms"])
+			p, ok := h.fetch[u]
+			if !ok {
+				return &sdk.HostError{Code: sdk.ErrBlocked}
+			}
+			if p.err != nil {
+				return p.err
+			}
+			return json.Unmarshal([]byte(jsonText(map[string]any{"status": p.status, "body": p.body, "truncated": p.truncated})), out)
 		case sdk.FnDBQuery:
 			h.queries = append(h.queries, call)
 			if h.dbErr != nil {
@@ -48,6 +71,11 @@ func (h *adminHost) install(t *testing.T) {
 			switch {
 			case strings.Contains(call.sql, "'total'"):
 				cell = h.page(call)
+			case strings.Contains(call.sql, "FROM import_progress"):
+				cell = h.progress
+				if cell == "" {
+					cell = `{}`
+				}
 			case strings.Contains(call.sql, "jsonb_object_agg"):
 				cell = h.counts
 			case strings.Contains(call.sql, "max(first_seen)"):
@@ -319,8 +347,8 @@ func TestAdminImports(t *testing.T) {
 		t.Errorf("unlisted host = %+v", s3)
 	}
 
-	// the last-imported query: parameters only, the key prefix of the source
-	if len(h.queries) != 4 {
+	// the stats query per source (parameters only, the key prefix of the source), then one read of the stored counts
+	if len(h.queries) != 5 {
 		t.Fatalf("queries = %v", h.queries)
 	}
 	q := h.queries[0]
@@ -334,15 +362,11 @@ func TestAdminImports(t *testing.T) {
 		t.Errorf("prefix %v does not match key %s", q.args[0], want)
 	}
 
-	// an editor never gets an address
+	// the tab is the owner's: an editor is refused with a JSON body, and nothing is read or written
+	h.queries, h.execs = nil, nil
 	r = callRoute(t, "GET", "/admin/imports", editor, nil, nil)
-	if r.Status != 200 || strings.Contains(r.Body, "secret-token") || strings.Contains(r.Body, "reachcalendar") || strings.Contains(r.Body, `"url"`) {
-		t.Errorf("editor body: %s", r.Body)
-	}
-	var ed importList
-	_ = json.Unmarshal([]byte(r.Body), &ed)
-	if ed.Role != "editor" || len(ed.Sources) != 4 || ed.Sources[0].Host != "calendar.google.com" {
-		t.Errorf("editor list = %+v", ed)
+	if r.Status != 403 || r.Body != `{"ok":false,"error":"not allowed"}` || strings.Contains(r.Body, "secret-token") || len(h.queries)+len(h.execs) != 0 {
+		t.Errorf("editor: %d %s, %d queries, %d execs", r.Status, r.Body, len(h.queries), len(h.execs))
 	}
 	if r := callRoute(t, "GET", "/admin/imports", nil, nil, nil); r.Status != 403 {
 		t.Errorf("no user: %d", r.Status)
@@ -354,7 +378,13 @@ func TestAdminImportsNeverShowTheEventbriteToken(t *testing.T) {
 	h.install(t)
 	for _, u := range []*sdk.HTTPUser{owner, editor} {
 		r := callRoute(t, "GET", "/admin/imports", u, nil, nil)
-		if r.Status != 200 || strings.Contains(r.Body, "SECRET-TOKEN-123") || !strings.Contains(r.Body, `"Tickets"`) {
+		if strings.Contains(r.Body, "SECRET-TOKEN-123") {
+			t.Errorf("%s: the token is in the body: %s", u.Role, r.Body)
+		}
+		if u == editor {
+			continue
+		}
+		if r.Status != 200 || !strings.Contains(r.Body, `"Tickets"`) {
 			t.Errorf("%s: %d %s", u.Role, r.Status, r.Body)
 		}
 		// a token and an organization id make the source schedulable

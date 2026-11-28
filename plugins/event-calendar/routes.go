@@ -41,7 +41,7 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		case "/admin/submissions":
 			return serveSubmissions(r.User, r.Query), nil
 		case "/admin/imports":
-			return serveImports(r.User), nil
+			return serveImports(r.User, r.Query), nil
 		case "/series/{slug}":
 			return servePage(pageSeries, r.PathValues["slug"]), nil
 		case "/venue/{slug}":

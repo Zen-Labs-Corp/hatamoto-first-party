@@ -66,6 +66,12 @@ func eventbriteToken() string {
 // the events, the continuation of the next page ("" after the last) and a
 // short reason without the address or the token when the page was not read.
 func fetchEventbritePage(orgID, cont, token string) ([]importEvent, string, string) {
+	return fetchEventbritePageWithin(orgID, cont, token, importFetchMs)
+}
+
+// fetchEventbritePageWithin is fetchEventbritePage with the fetch timeout in
+// milliseconds.
+func fetchEventbritePageWithin(orgID, cont, token string, timeoutMs int) ([]importEvent, string, string) {
 	if token == "" {
 		return nil, "", "no Eventbrite token is set"
 	}
@@ -75,7 +81,7 @@ func fetchEventbritePage(orgID, cont, token string) ([]importEvent, string, stri
 	}
 	var res fetched
 	err := callHost(sdk.FnHTTPFetch, map[string]any{
-		"method": "GET", "url": addr, "timeout_ms": importFetchMs,
+		"method": "GET", "url": addr, "timeout_ms": timeoutMs,
 		"headers": map[string]string{"Authorization": "Bearer " + token, "Accept": "application/json", "User-Agent": "hatamoto-event-calendar"},
 	}, &res)
 	switch {
