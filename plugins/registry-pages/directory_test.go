@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 	"time"
@@ -334,5 +335,26 @@ func TestViewsNeverPanics(t *testing.T) {
 	_ = h
 	if s := views(); s.Plugins.State != stateUnavailable {
 		t.Fatalf("snapshot %+v", s)
+	}
+}
+
+func TestViewsSharedFailureDoesNotReplaceGoodMemory(t *testing.T) {
+	h := newFakeHost(t)
+	h.publish(registryURL, time.Hour, plug("zeta"))
+	views()
+	h.advance(dirTTL)
+	raw, err := json.Marshal(unavailable(h.clock)) // another instance failed just now
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.kv[snapshotKey] = kvItem{value: raw, exp: h.clock.Add(failureTTL)}
+	h.fail(registryURL)
+	s := views()
+	if !slices.Equal(pluginNames(s), []string{"zeta"}) || h.hits[registryURL] != 1 {
+		t.Fatalf("cards %v, fetches %d", pluginNames(s), h.hits[registryURL])
+	}
+	h.advance(failureTTL + time.Second)
+	if s := views(); !slices.Equal(pluginNames(s), []string{"zeta"}) {
+		t.Fatalf("after the failure TTL: cards %v", pluginNames(s))
 	}
 }

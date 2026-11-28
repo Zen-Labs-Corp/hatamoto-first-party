@@ -75,6 +75,12 @@ func views() (s snapshot) {
 	}
 	shared, found := loadSnapshot()
 	if found && t.Before(shared.Until) {
+		if !shared.verified() && mem.verified() && mem.IndexExpires.After(t) {
+			// Another instance's failure must not replace good cards that are
+			// still valid (stale-while-error, bounded by the index expiry).
+			mem.Until = minTime(shared.Until, mem.IndexExpires)
+			return mem
+		}
 		mem = shared
 		return mem
 	}
