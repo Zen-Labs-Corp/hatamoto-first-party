@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	icsProdID    = "-//Hatamoto//event-calendar 0.7.0//EN"
+	icsProdID    = "-//Hatamoto//event-calendar 0.8.0//EN"
 	icsUIDDomain = "event-calendar.hatamoto"
 	icsMaxOctets = 75
 	icsDateTime  = "20060102T150405Z"
