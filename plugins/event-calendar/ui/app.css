@@ -57,6 +57,10 @@ h2 { font-size: 15px; margin: 8px 0; }
 .grow { flex: 1; }
 .pad { padding: 12px; }
 
+.hint-values { display: grid; gap: 6px; margin: -6px 0 12px; }
+.hint-values label { display: flex; gap: 8px; align-items: center; }
+.hint-values span { min-width: 6em; color: var(--color-muted, inherit); }
+.hint-value { flex: 1; font: inherit; padding: 4px 8px; }
 .notice, .hint { padding: 8px 12px; margin: 0 0 12px; border-radius: 6px; background: var(--color-accent-soft); color: var(--color-accent); }
 .notice.error { background: var(--color-danger-soft); color: var(--color-danger); }
 

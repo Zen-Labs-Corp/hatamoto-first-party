@@ -104,7 +104,7 @@ function monthAnswer(q, { truncated = false } = {}) {
 }
 
 const IDS = [
-  "#notice", "#hint", "#feed-row", "#feed-url",
+  "#notice", "#hint", "#hint-values", "#feed-row", "#feed-url",
   "#tab-upcoming", "#tab-past", "#tab-drafts", "#tab-submissions", "#tab-imports", "#tab-repeating",
   "#cnt-upcoming", "#cnt-past", "#cnt-drafts", "#cnt-submissions", "#cnt-repeating", "#ical", "#new-event",
   "#panel-events", "#q", "#venue", "#cat", "#novenue", "#view-list", "#view-month", "#chips", "#ev-state", "#list", "#ev-rows",
@@ -290,7 +290,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   els["#rows"].buttons("Edit dates")[0].click();
   await els["#rows"].buttons("Skip")[0].click();
   await next();
-  check(els["#hint"].textContent === "This screen cannot fill in the run. Open the plugin's Runs tab and use the same button there, then press Start.", "instruction on rejection: " + els["#hint"].textContent);
+  check(els["#hint"].textContent.includes("enter these values") && els["#hint-values"].all((n) => n.tag === "input").map((b) => b.value).join("|").startsWith("yoga|skip|2026-02-17"), "instruction on rejection: " + els["#hint"].textContent);
 
   // an editor cannot duplicate
   ({ els } = await load({ data: { ...DATA, role: "editor" } }));
@@ -367,7 +367,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   ({ els, calls } = await load({ tab: "submissions", refuse: true }));
   await els["#sub-rows"].buttons("Approve")[0].click();
   await next();
-  check(els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && !els["#hint"].textContent.includes("type"), "refused approve shows the Runs-tab hint: " + els["#hint"].textContent);
+  check(!els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && els["#hint-values"].all((n) => n.tag === "input").some((b) => b.value === "approve"), "refused approve shows the Runs-tab values: " + els["#hint"].textContent);
 
   // empty and failing lists
   ({ els } = await load({ tab: "submissions", subs: { role: "owner", counts: {}, items: [] } }));
@@ -426,7 +426,13 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   ({ els, calls } = await load({ tab: "imports", refuse: true }));
   await els["#imp-rows"].buttons("Import the next 200")[0].click();
   await next();
-  check(els["#hint"].textContent.includes("action = import_source") && els["#hint"].textContent.includes("name = Town council") && els["#hint"].textContent.includes(`after = ${cursor}`), "a refused fill says what to type: " + els["#hint"].textContent);
+  check(els["#hint"].textContent.includes("Runs tab") && !els["#hint"].textContent.includes("same button") && !els["#hint-values"].hidden, "a refused fill points to the Runs tab: " + els["#hint"].textContent);
+  const boxes = els["#hint-values"].all((n) => n.tag === "input");
+  check(boxes.map((b) => b.value).join("|") === `import_source|Town council|${cursor}` && boxes.every((b) => b.readOnly), "each value in a read-only box, after included");
+  let selected = 0;
+  boxes[2].select = () => { selected++; };
+  boxes[2].fire("focus");
+  check(selected === 1, "a box selects its text on focus");
 
   // before the count arrives, a full batch on the site already offers the next one; a finished source does not
   ({ els, calls, routes } = await load({ tab: "imports", countStatus: 503 }));
@@ -473,7 +479,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   ({ els, calls } = await load({ tab: "imports", refuse: true }));
   await els["#imp-rows"].buttons("Run now")[0].click();
   await next();
-  check(els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && !els["#hint"].textContent.includes("type"), "refused import shows the Runs-tab hint");
+  check(!els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && els["#hint-values"].all((n) => n.tag === "input").map((b) => b.value).join("|") === "import_source|Town council", "refused import shows the values to enter on the Runs tab");
   ({ els } = await load({ tab: "imports", imports: { role: "owner", sources: [] } }));
   check(els["#imp-table"].hidden && els["#imp-state"].textContent.includes("Settings tab"), "no sources");
 

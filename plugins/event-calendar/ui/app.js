@@ -17,6 +17,7 @@ function el(tag, props = {}, ...kids) {
 }
 
 function say(selector, msg, isError) {
+  if (selector === "#hint") $("#hint-values").hidden = true;
   const n = $(selector);
   n.textContent = msg;
   n.classList.toggle("error", Boolean(isError));
@@ -63,8 +64,8 @@ const rep = { q: "", page: 1 };
 const state = { role: "", events: [], open: new Set(), editing: "" };
 
 // fillRun puts the inputs into the run form. Where the page has no run form
-// the admin refuses them (the Settings screen); then the owner is told to use
-// the same button on the Runs tab, whose form cannot be typed into.
+// the admin refuses them (the screen tab, the Settings screen on older cores);
+// then the owner gets each value in a box to copy into the Runs tab's form.
 // summary names what was filled in when the values themselves are too long to
 // list.
 async function fillRun(inputs, summary) {
@@ -73,9 +74,21 @@ async function fillRun(inputs, summary) {
     await hatamoto.runInputs(inputs);
     say("#hint", `The run "${RUN}" is filled in (${summary || entered}). Press Start, then review the change in Changes.`);
   } catch {
-    if (inputs.after) say("#hint", `This screen cannot fill in the run. On the plugin's Runs tab choose "${RUN}" and type action = ${inputs.action}, name = ${inputs.name}, after = ${inputs.after}. Then press Start.`);
-    else say("#hint", `This screen cannot fill in the run. Open the plugin's Runs tab and use the same button there, then press Start.`);
+    say("#hint", `This screen cannot fill in the run. On the plugin's Runs tab choose "${RUN}", enter these values and press Start.`);
+    showValues(inputs);
   }
+}
+
+// showValues lists each non-empty input in a read-only box that selects its
+// text on focus, so the owner can copy it into the Runs tab.
+function showValues(inputs) {
+  const box = $("#hint-values");
+  box.replaceChildren(...Object.entries(inputs).filter(([, v]) => v !== "").map(([k, v]) => {
+    const field = el("input", { type: "text", readOnly: true, value: String(v), className: "hint-value" });
+    field.addEventListener("focus", () => field.select());
+    return el("label", {}, el("span", { textContent: k }), field);
+  }));
+  box.hidden = false;
 }
 
 const RUN_EDIT = "edit_dates";
