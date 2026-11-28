@@ -66,9 +66,6 @@ var permTexts = map[string]permText{
 	},
 }
 
-// Lookup returns the wording for a permission. A name this build does not
-// know (a registry can be newer than the host) falls back to the raw name.
-
 // lookupPerm returns the wording for a permission. A name this build does not
 // know (a registry can be newer than the plugin) falls back to the raw name.
 func lookupPerm(name string) permText {

@@ -12,13 +12,14 @@ import (
 )
 
 const (
-	blockedKey  = "sync_blocked"    // names whose create came back under another slug
-	refusedKey  = "sync_not_owned"  // IDs of entries the owner took over
-	blockedTTL  = 6 * 60 * 60       // seconds, for both sets
-	patternKey  = "sync_no_pattern" // a create landed outside /plugins and /themes
-	patternTTL  = 5 * 60            // seconds until the next create is tried
-	writeBudget = 6 * time.Second   // counted from the start of the tick, fetch and list included
-	listLimit   = 200
+	blockedKey   = "sync_blocked"    // names whose create came back under another slug
+	refusedKey   = "sync_not_owned"  // IDs of entries the owner took over
+	blockedTTL   = 6 * 60 * 60       // seconds, for both sets
+	patternKey   = "sync_no_pattern" // a create landed outside /plugins and /themes
+	patternTTL   = 5 * 60            // seconds until the next create is tried
+	writeBudget  = 6 * time.Second   // counted from the start of the tick, fetch and list included
+	listLimit    = 200
+	maxListPages = 100 // loop guard: a page may be short or empty and still have a cursor
 )
 
 // attrKeys are the entity fields the plugin writes, in manifest order.
@@ -124,7 +125,7 @@ func diff(ws map[string]want, collisions map[string]bool, have []entity, blocked
 func listOwn() ([]entity, error) {
 	var all []entity
 	cursor := ""
-	for {
+	for range maxListPages {
 		args := map[string]any{"schema_slug": entitySchema, "limit": listLimit}
 		if cursor != "" {
 			args["cursor"] = cursor
@@ -137,11 +138,12 @@ func listOwn() ([]entity, error) {
 			return nil, err
 		}
 		all = append(all, res.Items...)
-		if res.NextCursor == nil || *res.NextCursor == "" || len(res.Items) == 0 {
+		if res.NextCursor == nil || *res.NextCursor == "" {
 			return all, nil
 		}
 		cursor = *res.NextCursor
 	}
+	return all, errors.New("entities.list: too many pages")
 }
 
 // loadSet reads a remembered set of names or IDs from kv.

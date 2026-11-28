@@ -422,3 +422,17 @@ func TestSyncStopsWhenTheURLPatternIsNotSet(t *testing.T) {
 		t.Fatalf("err %v, items %v", err, s.slugs())
 	}
 }
+
+func TestListOwnContinuesPastAnEmptyPage(t *testing.T) {
+	h := newFakeHost(t)
+	h.entities = func(fn string, args map[string]any, out any) error {
+		if args["cursor"] == nil {
+			return reply(map[string]any{"items": []entity{}, "next_cursor": "c1"}, out)
+		}
+		return reply(map[string]any{"items": []entity{{ID: "e1", Slug: "tagger"}}, "next_cursor": nil}, out)
+	}
+	have, err := listOwn()
+	if err != nil || len(have) != 1 {
+		t.Fatalf("have %v, err %v", have, err)
+	}
+}
