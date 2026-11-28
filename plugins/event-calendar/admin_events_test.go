@@ -81,6 +81,11 @@ func (h *eventsHost) install(t *testing.T) {
 
 func (h *eventsHost) cell(t *testing.T, c sqlCall) string {
 	switch {
+	case strings.Contains(c.sql, "'truncated'"):
+		if h.notReady {
+			return `null`
+		}
+		return h.month(t, c)
 	case strings.Contains(c.sql, "'day_counts'"):
 		if h.notReady {
 			return `null`
@@ -160,6 +165,48 @@ func (h *eventsHost) list(t *testing.T, c sqlCall) string {
 		})
 	}
 	b, _ := json.Marshal(map[string]any{"total": len(f), "items": items, "day_counts": days})
+	return string(b)
+}
+
+// month answers eventsMonthSQL: args are from, to, q, category, venue,
+// novenue, tz, limit.
+func (h *eventsHost) month(t *testing.T, c sqlCall) string {
+	from, err := time.Parse(time.RFC3339, c.args[0].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	to, _ := time.Parse(time.RFC3339, c.args[1].(string))
+	q, _ := c.args[2].(string)
+	cat, _ := c.args[3].(string)
+	venue, _ := c.args[4].(string)
+	novenue, _ := c.args[5].(bool)
+	loc, err := time.LoadLocation(c.args[6].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limit := c.args[7].(int)
+	var f []seedEvent
+	for _, r := range h.rows {
+		switch {
+		case !r.Start.Before(to) || !r.End.After(from):
+		case q != "" && !strings.Contains(strings.ToLower(r.Name+" "+r.Venue), strings.ToLower(q)):
+		case cat != "" && !strings.EqualFold(r.Category, cat):
+		case venue != "" && !strings.EqualFold(r.Venue, venue):
+		case novenue && r.Venue != "":
+		default:
+			f = append(f, r)
+		}
+	}
+	sort.SliceStable(f, func(i, j int) bool { return f[i].Start.Before(f[j].Start) })
+	days := map[string]int{}
+	for _, r := range f {
+		days[r.Start.In(loc).Format("2006-01-02")]++
+	}
+	items := []map[string]any{}
+	for _, r := range f[:min(limit, len(f))] {
+		items = append(items, map[string]any{"id": r.ID, "name": r.Name, "os": r.Start.Format(time.RFC3339), "all_day": r.AllDay})
+	}
+	b, _ := json.Marshal(map[string]any{"total": len(f), "truncated": len(f) > limit, "items": items, "day_counts": days})
 	return string(b)
 }
 
@@ -351,5 +398,126 @@ func TestEventsFacets(t *testing.T) {
 	last := h.queries[len(h.queries)-1]
 	if !strings.Contains(last.sql, "LIMIT $1") || last.args[0] != maxFacet {
 		t.Errorf("facet limit: %v", last.args)
+	}
+}
+
+// busyMarch seeds 1700 occurrences in March 2027 (site time), three of them
+// all-day, and one that started in February and runs into March.
+func busyMarch() []seedEvent {
+	var rows []seedEvent
+	base := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 1700; i++ {
+		e := seedEvent{ID: fmt.Sprintf("m%04d", i), Name: fmt.Sprintf("March %04d", i), Category: "Music"}
+		e.Start = base.Add(time.Duration(i) * 25 * time.Minute)
+		e.End = e.Start.Add(time.Hour)
+		if i%3 == 0 {
+			e.Venue, e.VenueID = "Anchor", "vAnchor"
+			e.Category = "Talks"
+		}
+		rows = append(rows, e)
+	}
+	rows = append(rows,
+		seedEvent{ID: "feb", Name: "From February", Start: time.Date(2027, 2, 27, 9, 0, 0, 0, time.UTC), End: time.Date(2027, 3, 2, 9, 0, 0, 0, time.UTC)},
+		seedEvent{ID: "apr", Name: "In April", Start: time.Date(2027, 4, 1, 9, 0, 0, 0, time.UTC), End: time.Date(2027, 4, 1, 10, 0, 0, 0, time.UTC)},
+		seedEvent{ID: "allday", Name: "All day", AllDay: true, Start: time.Date(2027, 3, 9, 23, 0, 0, 0, time.UTC), End: time.Date(2027, 3, 10, 23, 0, 0, 0, time.UTC)})
+	return rows
+}
+
+func TestEventsMonth(t *testing.T) {
+	h := &eventsHost{rows: busyMarch()}
+	h.install(t)
+	r := callRoute(t, "GET", "/admin/events", owner, nil, map[string][]string{"month": {"2027-03"}})
+	if r.Status != 200 {
+		t.Fatalf("status %d: %s", r.Status, r.Body)
+	}
+	var p monthPage
+	if err := json.Unmarshal([]byte(r.Body), &p); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Ready || p.Month != "2027-03" || p.Page != 1 || p.PerPage != 1500 {
+		t.Errorf("envelope = %+v", p)
+	}
+	if len(p.Items) != 1500 || p.Total != 1702 || !p.Truncated {
+		t.Errorf("items %d, total %d, truncated %v", len(p.Items), p.Total, p.Truncated)
+	}
+	sum := 0
+	for _, n := range p.DayCounts {
+		sum += n
+	}
+	if sum != p.Total {
+		t.Errorf("day counts add up to %d, total is %d", sum, p.Total)
+	}
+	if p.DayCounts["2027-02-27"] != 1 || p.DayCounts["2027-04-01"] != 0 {
+		t.Errorf("a month event counts on its start day, an April one is out: %v", p.DayCounts)
+	}
+	if it := p.Items[0]; it.Name != "From February" || it.Day != "2027-02-27" {
+		t.Errorf("first = %+v", it)
+	}
+	if it := p.Items[1]; it.Name != "March 0000" || it.Day != "2027-03-01" || it.Time != "01:00" || it.AllDay {
+		t.Errorf("second = %+v", it)
+	}
+	if p.Counts.Upcoming == 0 {
+		t.Errorf("counts are missing: %+v", p.Counts)
+	}
+	sql, a := h.queries[1].sql, h.queries[1].args
+	// 1 March 00:00 in Berlin is 23:00 UTC the day before
+	if a[0] != "2027-02-28T23:00:00Z" || a[1] != "2027-03-31T22:00:00Z" || a[6] != "Europe/Berlin" || a[7] != 1500 {
+		t.Errorf("args = %v", a)
+	}
+	if !strings.Contains(sql, "LIMIT $8") || !strings.Contains(sql, "AT TIME ZONE $7::text") || strings.Contains(sql, "o.day") {
+		t.Errorf("month statement: %s", sql)
+	}
+}
+
+func TestEventsMonthSmallAndFiltered(t *testing.T) {
+	h := &eventsHost{rows: busyMarch()}
+	h.install(t)
+	get := func(q map[string][]string) monthPage {
+		t.Helper()
+		q["month"] = []string{"2027-03"}
+		r := callRoute(t, "GET", "/admin/events", editor, nil, q)
+		var p monthPage
+		if r.Status != 200 || json.Unmarshal([]byte(r.Body), &p) != nil {
+			t.Fatalf("status %d: %s", r.Status, r.Body)
+		}
+		return p
+	}
+	p := get(map[string][]string{"novenue": {"1"}})
+	if p.Total != 1700-567+2 || p.Truncated || len(p.Items) != p.Total || p.Role != "editor" {
+		t.Errorf("no venue: total %d items %d truncated %v", p.Total, len(p.Items), p.Truncated)
+	}
+	if p := get(map[string][]string{"category": {"talks"}, "venue": {"anchor"}}); p.Total != 567 {
+		t.Errorf("category and venue: total %d", p.Total)
+	}
+	if p := get(map[string][]string{"q": {"all day"}, "tab": {"past"}}); p.Total != 1 || p.Items[0].Time != "" || !p.Items[0].AllDay {
+		t.Errorf("all-day: %+v", p)
+	}
+	if p := get(map[string][]string{"facets": {"1"}}); p.Facets == nil || len(p.Facets.Venues) != 3 {
+		t.Errorf("facets = %+v", p.Facets)
+	}
+	h.notReady = true
+	if p := get(map[string][]string{}); p.Ready || len(p.Items) != 0 {
+		t.Errorf("before the first reconcile: %+v", p)
+	}
+}
+
+func TestEventsMonthBadRequest(t *testing.T) {
+	h := &eventsHost{rows: busyMarch()}
+	h.install(t)
+	for name, q := range map[string]map[string][]string{
+		"drafts":    {"month": {"2027-03"}, "tab": {"drafts"}},
+		"page two":  {"month": {"2027-03"}, "page": {"2"}},
+		"month 13":  {"month": {"2026-13"}},
+		"month 00":  {"month": {"2027-00"}},
+		"year 1999": {"month": {"1999-12"}},
+		"no zero":   {"month": {"2027-3"}},
+	} {
+		r := callRoute(t, "GET", "/admin/events", owner, nil, q)
+		if r.Status != 400 || r.Body != `{"error":"bad request"}` {
+			t.Errorf("%s: %d %s", name, r.Status, r.Body)
+		}
+	}
+	if len(h.queries) != 0 {
+		t.Errorf("a bad request ran %d statements", len(h.queries))
 	}
 }

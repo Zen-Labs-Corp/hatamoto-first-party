@@ -19,6 +19,7 @@ const (
 	maxEventsPage = 2000
 	maxFacet      = 200
 	maxQueryBytes = 200
+	maxMonthRows  = 1500
 )
 
 var (
@@ -149,6 +150,19 @@ SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state) THEN jsonb_build_object(
  'day_counts', COALESCE((SELECT jsonb_object_agg(d, c) FROM (SELECT (f.os AT TIME ZONE $8::text)::date::text AS d, count(*) AS c FROM f
   WHERE (f.os AT TIME ZONE $8::text)::date IN (SELECT (p.os AT TIME ZONE $8::text)::date FROM p) GROUP BY 1) x), '{}'::jsonb)) END`
 
+// eventsMonthSQL answers the occurrences overlapping the month [$1, $2) in
+// start order, at most $8 of them, and the count of each local day by start.
+// $3 to $6 filter as in eventsListSQL and $7 is the time zone. It is NULL
+// before the first complete reconcile.
+const eventsMonthSQL = `WITH f AS (SELECT e.entity_id AS id, e.name, o.starts_at AS os, e.all_day
+ FROM events e JOIN occurrences o ON o.event_id = e.entity_id
+ WHERE o.starts_at < $2::timestamptz AND o.ends_at > $1::timestamptz` + eventsFilterSQL + `)
+SELECT CASE WHEN EXISTS (SELECT 1 FROM index_state) THEN jsonb_build_object(
+ 'total', (SELECT count(*) FROM f),
+ 'truncated', (SELECT count(*) FROM f) > $8::int,
+ 'items', COALESCE((SELECT jsonb_agg(to_jsonb(p) ORDER BY p.os, p.name, p.id) FROM (SELECT * FROM f ORDER BY os, name, id LIMIT $8::int) p), '[]'::jsonb),
+ 'day_counts', COALESCE((SELECT jsonb_object_agg(d, c) FROM (SELECT (f.os AT TIME ZONE $7::text)::date::text AS d, count(*) AS c FROM f GROUP BY 1) x), '{}'::jsonb)) END`
+
 // eventCountsSQL counts the occurrences before and after $1 (now), the
 // repeating events and the pending submissions, without any filter.
 const eventCountsSQL = `SELECT jsonb_build_object(
@@ -163,6 +177,30 @@ const eventFacetsSQL = `SELECT jsonb_build_object(
   GROUP BY venue_name ORDER BY lower(venue_name) LIMIT $1::int) x), '[]'::jsonb),
  'categories', COALESCE((SELECT jsonb_agg(c ORDER BY lower(c)) FROM (SELECT c FROM events, jsonb_array_elements_text(category_names) AS c
   WHERE c <> '' GROUP BY c ORDER BY lower(c) LIMIT $1::int) y), '[]'::jsonb))`
+
+// monthItem is one row of the month grid.
+type monthItem struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Day    string `json:"day"`
+	Time   string `json:"time"`
+	AllDay bool   `json:"all_day"`
+}
+
+// monthPage is the answer for ?month=YYYY-MM.
+type monthPage struct {
+	Ready     bool           `json:"ready"`
+	Role      string         `json:"role"`
+	Month     string         `json:"month"`
+	Items     []monthItem    `json:"items"`
+	Total     int            `json:"total"`
+	Truncated bool           `json:"truncated"`
+	DayCounts map[string]int `json:"day_counts"`
+	Page      int            `json:"page"`
+	PerPage   int            `json:"per_page"`
+	Counts    eventCounts    `json:"counts"`
+	Facets    *eventFacets   `json:"facets,omitempty"`
+}
 
 // eventRow is one list row as the statement returns it.
 type eventRow struct {
@@ -195,6 +233,9 @@ func serveEvents(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 	s := loadSettings()
 	loc := s.location()
 	at := now()
+	if q.Month != "" {
+		return serveMonth(u, q, loc, at)
+	}
 	out := eventsPage{
 		Role: u.Role, Items: []eventItem{}, DayCounts: map[string]int{},
 		Page: q.Page, PerPage: eventsPerPage,
@@ -226,12 +267,18 @@ func serveEvents(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 		}
 	}
 	if q.Facets {
-		out.Facets = &eventFacets{Venues: []string{}, Categories: []string{}}
-		if err := dbJSON(eventFacetsSQL, out.Facets, maxFacet); err != nil {
+		var err error
+		if out.Facets, err = readFacets(); err != nil {
 			return unavailable()
 		}
 	}
 	return jsonReply(http.StatusOK, out)
+}
+
+// readFacets reads the venues and categories the filters offer.
+func readFacets() (*eventFacets, error) {
+	f := &eventFacets{Venues: []string{}, Categories: []string{}}
+	return f, dbJSON(eventFacetsSQL, f, maxFacet)
 }
 
 // itemOf is the list row of an indexed occurrence, in the site's time zone.
@@ -255,4 +302,49 @@ func itemOf(r eventRow, loc *time.Location) eventItem {
 		it.Price = "Free"
 	}
 	return it
+}
+
+// serveMonth answers ?month=YYYY-MM: the month's occurrences in one page, in
+// the site's time zone. The month ignores the tab and has no second page.
+func serveMonth(u *sdk.HTTPUser, q eventsQuery, loc *time.Location, at time.Time) sdk.HTTPResponse {
+	if q.Tab == "drafts" || q.Page != 1 {
+		return jsonReply(http.StatusBadRequest, map[string]string{"error": "bad request"})
+	}
+	y, _ := strconv.Atoi(q.Month[:4])
+	m, _ := strconv.Atoi(q.Month[5:])
+	from := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, loc)
+	out := monthPage{
+		Role: u.Role, Month: q.Month, Items: []monthItem{}, DayCounts: map[string]int{},
+		Page: 1, PerPage: maxMonthRows,
+	}
+	if err := dbJSON(eventCountsSQL, &out.Counts, utcText(at)); err != nil {
+		return unavailable()
+	}
+	var res *struct {
+		Total     int            `json:"total"`
+		Truncated bool           `json:"truncated"`
+		Items     []eventRow     `json:"items"`
+		DayCounts map[string]int `json:"day_counts"`
+	}
+	if err := dbJSON(eventsMonthSQL, &res, utcText(from), utcText(from.AddDate(0, 1, 0)), escapeLike(q.Q), q.Category, q.Venue,
+		q.NoVenue, loc.String(), maxMonthRows); err != nil {
+		return unavailable()
+	}
+	if res != nil {
+		out.Ready, out.Total, out.Truncated = true, res.Total, res.Truncated
+		if res.DayCounts != nil {
+			out.DayCounts = res.DayCounts
+		}
+		for _, r := range res.Items {
+			it := itemOf(r, loc)
+			out.Items = append(out.Items, monthItem{ID: it.ID, Name: it.Name, Day: it.Day, Time: it.Time, AllDay: it.AllDay})
+		}
+	}
+	if q.Facets {
+		var err error
+		if out.Facets, err = readFacets(); err != nil {
+			return unavailable()
+		}
+	}
+	return jsonReply(http.StatusOK, out)
 }
