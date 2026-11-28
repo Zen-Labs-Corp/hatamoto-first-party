@@ -375,3 +375,27 @@ func TestSyncRemembersNotOwnedAndStillDeletes(t *testing.T) {
 		t.Fatalf("refused entries were tried again: %v", s.counts)
 	}
 }
+
+func TestSyncBudgetCountsFromTheStartOfTheTick(t *testing.T) {
+	h, s := syncHost(t)
+	inner := callHost
+	callHost = func(fn string, args, out any) error {
+		if fn == sdk.FnHTTPFetch {
+			h.advance(5 * time.Second) // a slow registry refresh
+		}
+		return inner(fn, args, out)
+	}
+	s.errs = func(fn string, n int, args map[string]any) error {
+		if fn == "entities.create" {
+			h.advance(time.Second)
+		}
+		return nil
+	}
+	start := h.clock
+	if err := runSync(t); err != nil {
+		t.Fatal(err)
+	}
+	if took := h.clock.Sub(start); took > 8*time.Second || s.counts["entities.create"] == 3 {
+		t.Fatalf("tick took %v with %d creates, want it well under the 10 s hook timeout", took, s.counts["entities.create"])
+	}
+}

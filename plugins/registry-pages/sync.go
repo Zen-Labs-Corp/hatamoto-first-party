@@ -14,7 +14,7 @@ const (
 	blockedKey  = "sync_blocked"   // names whose create came back under another slug
 	refusedKey  = "sync_not_owned" // IDs of entries the owner took over
 	blockedTTL  = 6 * 60 * 60      // seconds, for both sets
-	writeBudget = 7 * time.Second
+	writeBudget = 6 * time.Second  // counted from the start of the tick, fetch and list included
 	listLimit   = 200
 )
 
@@ -248,6 +248,7 @@ func (s *syncer) delete(id string) {
 // registry. It writes only from a verified directory, so a registry outage
 // never removes pages.
 func syncCron(sdk.CronEvent) error {
+	start := now()
 	snap := views()
 	ws, collisions, ok := desired(snap)
 	if !ok {
@@ -257,7 +258,7 @@ func syncCron(sdk.CronEvent) error {
 	if err != nil {
 		return err
 	}
-	s := &syncer{start: now(), blocked: loadSet(blockedKey), refused: loadSet(refusedKey)}
+	s := &syncer{start: start, blocked: loadSet(blockedKey), refused: loadSet(refusedKey)}
 	creates, updates, deletes := diff(ws, collisions, have, s.blocked, s.refused)
 	if !snap.DevOK {
 		deletes = nil // developer entries may be missing from the cards, not gone
