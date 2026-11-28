@@ -34,11 +34,20 @@ type submissionList struct {
 	Enabled bool             `json:"enabled"` // the public form is on
 	Counts  map[string]int   `json:"counts"`
 	Items   []submissionItem `json:"items"`
+	Total   int              `json:"total"` // the submissions that match status and search
+	Page    int              `json:"page"`
+	PerPage int              `json:"per_page"`
 }
+
+const (
+	submissionsPerPage = 50
+	maxListPage        = 10000
+)
 
 func unavailable() sdk.HTTPResponse { return plain(http.StatusServiceUnavailable, "unavailable") }
 
-// serveSubmissions answers GET /admin/submissions?status=pending|approved|published|rejected|all.
+// serveSubmissions answers GET /admin/submissions?status=pending|approved|rejected|published|all
+// with q (search) and page (50 a page).
 func serveSubmissions(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 	if u == nil {
 		return plain(http.StatusForbidden, "forbidden")
@@ -50,7 +59,12 @@ func serveSubmissions(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPRespon
 	if status != "all" && !slices.Contains(submissionStatuses, status) {
 		return plain(http.StatusBadRequest, "bad status")
 	}
-	rows, err := listSubmissions(status)
+	q := queryValue(query["q"])
+	page, ok := pageParam(query)
+	if !ok || len(q) > maxQueryBytes {
+		return jsonReply(http.StatusBadRequest, map[string]string{"error": "bad request"})
+	}
+	rows, total, err := listSubmissionsPage(status, q, submissionsPerPage, (page-1)*submissionsPerPage)
 	if err != nil {
 		return unavailable()
 	}
@@ -58,10 +72,18 @@ func serveSubmissions(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPRespon
 	if err != nil {
 		return unavailable()
 	}
+	all := 0
+	for _, n := range counts {
+		all += n
+	}
 	for _, s := range submissionStatuses {
 		counts[s] += 0
 	}
-	out := submissionList{Role: u.Role, Enabled: loadSettings().SubmissionsEnabled, Counts: counts, Items: make([]submissionItem, 0, len(rows))}
+	counts["all"] = all
+	out := submissionList{
+		Role: u.Role, Enabled: loadSettings().SubmissionsEnabled, Counts: counts, Items: make([]submissionItem, 0, len(rows)),
+		Total: total, Page: page, PerPage: submissionsPerPage,
+	}
 	for _, r := range rows {
 		out.Items = append(out.Items, submissionItem{
 			ID: r.ID, Title: r.Title, Start: r.Start, End: r.End, Venue: r.Venue,
@@ -69,6 +91,17 @@ func serveSubmissions(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPRespon
 		})
 	}
 	return jsonReply(http.StatusOK, out)
+}
+
+// pageParam reads the page number of a query: 1 when missing, false when it
+// is not a whole number from 1 to maxListPage.
+func pageParam(query map[string][]string) (int, bool) {
+	v := queryValue(query["page"])
+	if v == "" {
+		return 1, true
+	}
+	n, err := strconv.Atoi(v)
+	return n, err == nil && n >= 1 && n <= maxListPage
 }
 
 // queryValue is the first value of a query parameter. Core's bridge turns a

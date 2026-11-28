@@ -37,7 +37,7 @@ func serve(r sdk.HTTPRequest) (sdk.HTTPResponse, error) {
 		case "/admin/events":
 			return serveEvents(r.User, r.Query), nil
 		case "/admin/repeating":
-			return serveRepeating(r.User), nil
+			return serveRepeating(r.User, r.Query), nil
 		case "/admin/submissions":
 			return serveSubmissions(r.User, r.Query), nil
 		case "/admin/imports":
