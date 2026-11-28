@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -567,5 +568,133 @@ func TestScheduledRunStagesNothingForACustomSchema(t *testing.T) {
 	h.step(t)
 	if len(h.upserts) != 0 || h.failed != "" || h.finished == nil || !strings.Contains(h.progress, "calendar-event") {
 		t.Errorf("failed %q, upserts %d, finished %v, progress %q", h.failed, len(h.upserts), h.finished, h.progress)
+	}
+}
+
+// sortedKeys are the import keys of a feed made by feedOf: its events start at
+// the same time, so a run takes them by key.
+func sortedKeys(source, prefix string, n int) []string {
+	var keys []string
+	for i := range n {
+		keys = append(keys, importKey("google", source, fmt.Sprintf("%s%d@example.org", prefix, i)))
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func summaryOf(t *testing.T, h *runHost) map[string]int {
+	t.Helper()
+	fin, _ := h.finished.(sdk.RunFinishArgs)
+	var got map[string]int
+	b, _ := json.Marshal(fin.Summary)
+	_ = json.Unmarshal(b, &got)
+	return got
+}
+
+func TestManualImportContinuesAfterTheMark(t *testing.T) {
+	keys := sortedKeys("Town", "g", 450)
+	start := time.Date(2027, 6, 12, 10, 0, 0, 0, time.UTC)
+	h := manualRun(gcalURL, "google", "Town", map[string]fakePage{gcalURL: {status: 200, body: feedOf(450, "g")}})
+	h.params["after"] = importMark{Start: start, Key: keys[199]}.String()
+	h.created = true
+	h.install(t)
+	h.runFetch(t)
+	h.phase = "transform"
+	h.step(t)
+	if h.failed != "" || len(h.upserts) != 200 {
+		t.Fatalf("failed %q, %d upserts", h.failed, len(h.upserts))
+	}
+	for i, up := range h.upserts {
+		if up.SourceKey != keys[200+i] {
+			t.Fatalf("upsert %d is %s, want record %d after the mark", i, up.SourceKey, 200+i)
+		}
+	}
+	got := summaryOf(t, h)
+	if got["created"] != 200 || got["next_run"] != 50 || got["imported_before"] != 200 {
+		t.Errorf("summary = %v", got)
+	}
+	if !strings.HasPrefix(h.progress, "Imported 200 events, 250 skipped") || !strings.Contains(h.progress, "200 imported before were skipped") ||
+		!strings.Contains(h.progress, "50 left for the next run") {
+		t.Errorf("progress %q", h.progress)
+	}
+}
+
+func TestManualImportMarkLeavesFoundEventsToUpdate(t *testing.T) {
+	start := time.Date(2027, 6, 12, 10, 0, 0, 0, time.UTC)
+	var recs []importRecord
+	for i := range 6 {
+		recs = append(recs, record("google", "Town", fmt.Sprintf("u%d@example.org", i), importEvent{Title: fmt.Sprintf("Event %d", i), Start: start}))
+	}
+	sort.Slice(recs, func(i, j int) bool { return recs[i].Key < recs[j].Key })
+	stale := recs[0]
+	stale.Ev.Title = "Old title"
+	h := &runHost{name: runEditDates, runID: "r1", created: true,
+		params: map[string]any{"action": "import_source", "name": "Town", "after": importMark{Start: start, Key: recs[2].Key}.String()},
+		lists:  map[string][]string{"calendar-event": {existingJSON(stale, "event-0", "")}}}
+	h.install(t)
+	buffered(t, h, recs...)
+	h.step(t)
+	var keys []string
+	for _, up := range h.upserts {
+		keys = append(keys, up.SourceKey)
+	}
+	want := []string{recs[0].Key, recs[3].Key, recs[4].Key, recs[5].Key}
+	if h.failed != "" || strings.Join(keys, " ") != strings.Join(want, " ") {
+		t.Fatalf("failed %q, upserts %v", h.failed, keys)
+	}
+	if got := summaryOf(t, h); got["updated"] != 1 || got["created"] != 3 || got["imported_before"] != 2 {
+		t.Errorf("summary = %v", got)
+	}
+}
+
+func TestManualImportCountsAMappedKeyAsUpdatedNotCreated(t *testing.T) {
+	keys := sortedKeys("Town", "g", 202)
+	h := manualRun(gcalURL, "google", "Town", map[string]fakePage{gcalURL: {status: 200, body: feedOf(202, "g")}})
+	h.created = true
+	h.mapped = map[string]bool{keys[0]: true} // a draft already holds it
+	h.install(t)
+	h.runFetch(t)
+	h.phase = "transform"
+	h.step(t)
+	got := summaryOf(t, h)
+	if h.failed != "" || got["created"] != 200 || got["updated"] != 1 || got["next_run"] != 1 || len(h.upserts) != 201 {
+		t.Errorf("failed %q, summary %v, %d upserts", h.failed, got, len(h.upserts))
+	}
+	if !strings.HasPrefix(h.progress, "Imported 201 events, 1 skipped") {
+		t.Errorf("progress %q", h.progress)
+	}
+	// a plain rerun moves forward the same way: nothing is created twice
+	if strings.Contains(h.progress, "imported before") {
+		t.Errorf("no mark was given: %q", h.progress)
+	}
+}
+
+func TestManualImportRefusesAMarkItCannotRead(t *testing.T) {
+	for _, after := range []string{"garbage", "2027-06-12T10:00:00Z|", "|key", "2027-06-12|key", "2027-06-12T10:00:00Z|" + strings.Repeat("k", 201)} {
+		h := manualRun(gcalURL, "google", "Town", map[string]fakePage{gcalURL: {status: 200, body: feedOf(3, "g")}})
+		h.params["after"] = after
+		h.created = true
+		h.install(t)
+		h.runFetch(t)
+		h.phase = "transform"
+		h.step(t)
+		if !strings.Contains(h.failed, "place to continue from could not be read") || len(h.upserts) != 0 {
+			t.Errorf("%q: failed %q, %d upserts", after, h.failed, len(h.upserts))
+		}
+	}
+}
+
+func TestScheduledImportIgnoresTheMark(t *testing.T) {
+	fixedNow(t, time.Date(2027, 6, 14, 12, 0, 0, 0, time.UTC))
+	at := time.Date(2027, 6, 14, 18, 0, 0, 0, time.UTC)
+	rec := record("google", "Town", "fresh", importEvent{Title: "Fresh", Start: at, End: at.Add(time.Hour)})
+	for _, after := range []string{"garbage", importMark{Start: at.Add(time.Hour), Key: rec.Key}.String()} {
+		h := &runHost{name: runScheduledImport, runID: "rs", created: true, params: map[string]any{"after": after}}
+		h.install(t)
+		buffered(t, h, rec)
+		h.step(t)
+		if h.failed != "" || len(h.upserts) != 1 {
+			t.Errorf("%q: failed %q, %d upserts", after, h.failed, len(h.upserts))
+		}
 	}
 }

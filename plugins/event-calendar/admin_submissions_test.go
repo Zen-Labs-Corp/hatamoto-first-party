@@ -22,7 +22,7 @@ type adminHost struct {
 	drafts   string // the drafts of the default type, a JSON array of entities
 	fetch    map[string]fakePage
 	fetched  []string
-	fetchMs  []any // timeout_ms of each fetch
+	fetchMs  []any     // timeout_ms of each fetch
 	seeded   []subSeed // when set, the submissions page is cut from these, as the statement does
 	affected int
 	dbErr    error
