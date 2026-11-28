@@ -234,7 +234,7 @@ func serveEvents(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 	loc := s.location()
 	at := now()
 	if q.Month != "" {
-		return serveMonth(u, q, loc, at)
+		return serveMonth(u, q, s, at)
 	}
 	out := eventsPage{
 		Role: u.Role, Items: []eventItem{}, DayCounts: map[string]int{},
@@ -244,7 +244,9 @@ func serveEvents(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 		return unavailable()
 	}
 	if q.Tab == "drafts" {
-		out.Ready = true
+		if !serveDrafts(&out, q, s, loc) {
+			return unavailable()
+		}
 	} else {
 		var res *struct {
 			Total     int            `json:"total"`
@@ -272,7 +274,78 @@ func serveEvents(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 			return unavailable()
 		}
 	}
+	if q.Tab != "drafts" && q.WithDrafts {
+		countDrafts(&out.Counts, s)
+	}
 	return jsonReply(http.StatusOK, out)
+}
+
+// countDrafts sets the drafts count of the tabs from a bounded scan; when the
+// scan fails the count stays unset.
+func countDrafts(c *eventCounts, s settings) {
+	if rows, capped, err := scanDrafts(s, "", clock().Add(draftBudget)); err == nil {
+		n := len(rows)
+		c.Drafts, c.DraftsCapped = &n, capped
+	}
+}
+
+// serveDrafts fills the Drafts tab: the drafts of a bounded scan, soonest
+// first, one page of them. Venue and category do not filter drafts. It
+// reports false when the scan failed.
+func serveDrafts(out *eventsPage, q eventsQuery, s settings, loc *time.Location) bool {
+	rows, capped, err := scanDrafts(s, q.Q, clock().Add(draftBudget))
+	if err != nil {
+		return false
+	}
+	if q.NoVenue {
+		rows = slices.DeleteFunc(rows, func(d draftRow) bool { return d.VenueID != "" || d.VenueName != "" })
+	}
+	if q.Day != "" {
+		rows = slices.DeleteFunc(rows, func(d draftRow) bool { return !d.HasStart || d.Start.In(loc).Format("2006-01-02") != q.Day })
+	}
+	// the host lists newest first; a draft without a start goes last
+	slices.SortStableFunc(rows, func(a, b draftRow) int {
+		switch {
+		case a.HasStart != b.HasStart:
+			if a.HasStart {
+				return -1
+			}
+			return 1
+		case a.Start.Before(b.Start):
+			return -1
+		case a.Start.After(b.Start):
+			return 1
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	out.Ready, out.Total, out.TotalCapped = true, len(rows), capped
+	n := len(rows)
+	out.Counts.Drafts, out.Counts.DraftsCapped = &n, capped
+	from := min((q.Page-1)*eventsPerPage, len(rows))
+	for _, d := range rows[from:min(from+eventsPerPage, len(rows))] {
+		out.Items = append(out.Items, draftItem(d, loc))
+	}
+	return true
+}
+
+// draftItem is the list row of a draft; one with no start has no day or time.
+func draftItem(d draftRow, loc *time.Location) eventItem {
+	it := eventItem{
+		ID: d.ID, Slug: d.Slug, Name: d.Name, AllDay: d.AllDay, Venue: d.VenueName,
+		NoVenue: d.VenueID == "" && d.VenueName == "", Categories: []string{},
+		Status: "draft", Imported: slices.Contains(importKinds, d.SourceKind),
+	}
+	if d.HasStart {
+		start := d.Start.In(loc)
+		it.Start, it.Day = start.Format(time.RFC3339), start.Format("2006-01-02")
+		if !d.AllDay {
+			it.Time = start.Format("15:04")
+		}
+	}
+	if !d.End.IsZero() {
+		it.End = d.End.In(loc).Format(time.RFC3339)
+	}
+	return it
 }
 
 // readFacets reads the venues and categories the filters offer.
@@ -306,7 +379,8 @@ func itemOf(r eventRow, loc *time.Location) eventItem {
 
 // serveMonth answers ?month=YYYY-MM: the month's occurrences in one page, in
 // the site's time zone. The month ignores the tab and has no second page.
-func serveMonth(u *sdk.HTTPUser, q eventsQuery, loc *time.Location, at time.Time) sdk.HTTPResponse {
+func serveMonth(u *sdk.HTTPUser, q eventsQuery, s settings, at time.Time) sdk.HTTPResponse {
+	loc := s.location()
 	if q.Tab == "drafts" || q.Page != 1 {
 		return jsonReply(http.StatusBadRequest, map[string]string{"error": "bad request"})
 	}
@@ -345,6 +419,9 @@ func serveMonth(u *sdk.HTTPUser, q eventsQuery, loc *time.Location, at time.Time
 		if out.Facets, err = readFacets(); err != nil {
 			return unavailable()
 		}
+	}
+	if q.WithDrafts {
+		countDrafts(&out.Counts, s)
 	}
 	return jsonReply(http.StatusOK, out)
 }

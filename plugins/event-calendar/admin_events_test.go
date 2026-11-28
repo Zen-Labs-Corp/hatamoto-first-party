@@ -28,6 +28,11 @@ type eventsHost struct {
 	dbErr    error
 	pending  int
 	queries  []sqlCall
+
+	drafts  []map[string]any // drafts of the default type, newest first
+	listErr map[string]error // entities.list error by type
+	listed  []map[string]any // entities.list arguments, in call order
+	onList  func()
 }
 
 var eventsNow = time.Date(2027, 3, 1, 12, 0, 0, 0, time.UTC)
@@ -64,6 +69,11 @@ func (h *eventsHost) install(t *testing.T) {
 		switch fn {
 		case sdk.FnSettingsGet:
 			return json.Unmarshal([]byte(`{"time_zone":"Europe/Berlin"}`), out)
+		case sdk.FnEntitiesList:
+			if h.onList != nil {
+				h.onList()
+			}
+			return h.listDrafts(a, out)
 		case sdk.FnDBQuery:
 			call := sqlCall{}
 			call.sql, _ = a["sql"].(string)
@@ -77,6 +87,60 @@ func (h *eventsHost) install(t *testing.T) {
 		t.Fatalf("unexpected host call %q", fn)
 		return nil
 	}
+}
+
+// listDrafts answers entities.list for drafts: newest first, by cursor, with a
+// search on the name.
+func (h *eventsHost) listDrafts(a map[string]any, out any) error {
+	h.listed = append(h.listed, a)
+	schema, _ := a["schema_slug"].(string)
+	if err := h.listErr[schema]; err != nil {
+		return err
+	}
+	var matches []map[string]any
+	if schema == defaultNewSlug && a["status"] == "draft" {
+		for _, d := range h.drafts {
+			if q, _ := a["search"].(string); q == "" || strings.Contains(strings.ToLower(d["name"].(string)), strings.ToLower(q)) {
+				matches = append(matches, d)
+			}
+		}
+	}
+	from := 0
+	if c, _ := a["cursor"].(string); c != "" {
+		fmt.Sscanf(c, "c%d", &from)
+	}
+	end := min(from+a["limit"].(int), len(matches))
+	next := ""
+	if end < len(matches) {
+		next = fmt.Sprintf("c%d", end)
+	}
+	items := []map[string]any{}
+	if from < len(matches) {
+		items = matches[from:end]
+	}
+	b, _ := json.Marshal(map[string]any{"items": items, "next_cursor": next})
+	return json.Unmarshal(b, out)
+}
+
+// seedDrafts makes n drafts, newest first as the host lists them: draft i
+// starts i days after 1 April 2027, every 5th has no venue and every 7th is
+// an imported one.
+func seedDrafts(n int) []map[string]any {
+	var out []map[string]any
+	for i := n - 1; i >= 0; i-- {
+		attrs := map[string]any{"start_at": time.Date(2027, 4, 1, 18, 0, 0, 0, time.UTC).AddDate(0, 0, i).Format(time.RFC3339)}
+		if i%5 != 0 {
+			attrs["venue_name"] = "Anchor"
+		}
+		if i%7 == 0 {
+			attrs["source_kind"], attrs["source_uid"] = "ical", fmt.Sprintf("ical-feed-%016x", i)
+		}
+		out = append(out, map[string]any{
+			"id": fmt.Sprintf("d%04d", i), "schema_slug": defaultNewSlug, "slug": fmt.Sprintf("d%04d", i),
+			"name": fmt.Sprintf("Draft %04d", i), "status": "draft", "attributes": attrs,
+		})
+	}
+	return out
 }
 
 func (h *eventsHost) cell(t *testing.T, c sqlCall) string {
@@ -519,5 +583,103 @@ func TestEventsMonthBadRequest(t *testing.T) {
 	}
 	if len(h.queries) != 0 {
 		t.Errorf("a bad request ran %d statements", len(h.queries))
+	}
+}
+
+func TestEventsDraftsTab(t *testing.T) {
+	h := &eventsHost{drafts: seedDrafts(120)}
+	h.install(t)
+	r, p1 := getEvents(t, owner, map[string][]string{"tab": {"drafts"}})
+	if r.Status != 200 || !p1.Ready || p1.Total != 120 || p1.TotalCapped || len(p1.Items) != 50 {
+		t.Fatalf("page 1: %d ready %v total %d items %d", r.Status, p1.Ready, p1.Total, len(p1.Items))
+	}
+	// soonest first although the host lists newest first
+	if p1.Items[0].Name != "Draft 0000" || p1.Items[0].Status != "draft" || p1.Items[0].Day != "2027-04-01" || p1.Items[0].Time != "20:00" {
+		t.Errorf("first = %+v", p1.Items[0])
+	}
+	if p1.Counts.Drafts == nil || *p1.Counts.Drafts != 120 || p1.Counts.DraftsCapped {
+		t.Errorf("counts = %+v", p1.Counts)
+	}
+	if !p1.Items[7].Imported || p1.Items[8].Imported || !p1.Items[0].NoVenue || p1.Items[1].NoVenue {
+		t.Errorf("flags: %+v %+v", p1.Items[7], p1.Items[0])
+	}
+	_, p2 := getEvents(t, owner, map[string][]string{"tab": {"drafts"}, "page": {"2"}})
+	if len(p2.Items) != 50 || p2.Items[0].Name != "Draft 0050" {
+		t.Errorf("page 2 starts at %s", p2.Items[0].Name)
+	}
+	_, p3 := getEvents(t, owner, map[string][]string{"tab": {"drafts"}, "page": {"3"}})
+	if len(p3.Items) != 20 {
+		t.Errorf("page 3 has %d", len(p3.Items))
+	}
+	_, p9 := getEvents(t, owner, map[string][]string{"tab": {"drafts"}, "page": {"9"}})
+	if len(p9.Items) != 0 || p9.Total != 120 {
+		t.Errorf("a page past the end: %d items, total %d", len(p9.Items), p9.Total)
+	}
+	// no index statement for the drafts themselves
+	for _, q := range h.queries {
+		if q.sql != eventCountsSQL {
+			t.Fatalf("unexpected statement: %s", q.sql)
+		}
+	}
+}
+
+func TestEventsDraftsFilters(t *testing.T) {
+	h := &eventsHost{drafts: seedDrafts(120)}
+	h.install(t)
+	_, p := getEvents(t, owner, map[string][]string{"tab": {"drafts"}, "novenue": {"1"}})
+	if p.Total != 24 {
+		t.Errorf("no venue: total %d", p.Total)
+	}
+	for _, it := range p.Items {
+		if !it.NoVenue {
+			t.Fatalf("item with a venue: %+v", it)
+		}
+	}
+	_, p = getEvents(t, owner, map[string][]string{"tab": {"drafts"}, "q": {"draft 003"}, "venue": {"Nowhere"}, "category": {"x"}})
+	if p.Total != 10 || h.listed[len(h.listed)-2]["search"] != "draft 003" {
+		t.Errorf("search: total %d", p.Total)
+	}
+	_, p = getEvents(t, owner, map[string][]string{"tab": {"drafts"}, "day": {"2027-04-03"}})
+	if p.Total != 1 || p.Items[0].Name != "Draft 0002" {
+		t.Errorf("day: %+v", p)
+	}
+}
+
+func TestEventsDraftsCapped(t *testing.T) {
+	h := &eventsHost{drafts: seedDrafts(650)}
+	h.install(t)
+	_, p := getEvents(t, owner, map[string][]string{"tab": {"drafts"}, "page": {"10"}})
+	if p.Total != 500 || !p.TotalCapped || len(p.Items) != 50 || p.Counts.Drafts == nil || *p.Counts.Drafts != 500 || !p.Counts.DraftsCapped {
+		t.Errorf("total %d capped %v items %d counts %+v", p.Total, p.TotalCapped, len(p.Items), p.Counts)
+	}
+	h.listErr = map[string]error{defaultNewSlug: errors.New("host said no")}
+	if r, _ := getEvents(t, owner, map[string][]string{"tab": {"drafts"}}); r.Status != 503 {
+		t.Errorf("scan error: %d", r.Status)
+	}
+}
+
+func TestEventsDraftCountOnOtherTabs(t *testing.T) {
+	h := &eventsHost{rows: seedEvents(), drafts: seedDrafts(7)}
+	h.install(t)
+	r, p := getEvents(t, owner, nil)
+	if p.Counts.Drafts != nil || strings.Contains(r.Body, `"drafts"`) || len(h.listed) != 0 {
+		t.Errorf("the drafts were counted unasked: %s", r.Body)
+	}
+	_, p = getEvents(t, owner, map[string][]string{"with_drafts": {"1"}})
+	if p.Counts.Drafts == nil || *p.Counts.Drafts != 7 || p.Counts.DraftsCapped || p.Total != 900 {
+		t.Errorf("counts = %+v", p.Counts)
+	}
+	h.listed = nil
+	h.rows = busyMarch()
+	r2 := callRoute(t, "GET", "/admin/events", owner, nil, map[string][]string{"month": {"2027-03"}, "with_drafts": {"1"}})
+	var m monthPage
+	if err := json.Unmarshal([]byte(r2.Body), &m); err != nil || m.Counts.Drafts == nil || *m.Counts.Drafts != 7 {
+		t.Errorf("month counts = %+v (%v)", m.Counts, err)
+	}
+	// a failing scan leaves the count out and the page still answers
+	h.listErr = map[string]error{defaultNewSlug: errors.New("host said no")}
+	r, p = getEvents(t, owner, map[string][]string{"with_drafts": {"1"}})
+	if r.Status != 200 || p.Counts.Drafts != nil {
+		t.Errorf("failing scan: %d %+v", r.Status, p.Counts)
 	}
 }
