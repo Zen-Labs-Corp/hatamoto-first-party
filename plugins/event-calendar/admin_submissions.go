@@ -223,9 +223,9 @@ func fillProgress(row *importRow, st sourceStats, c storedCount) {
 	row.Imported, row.Cursor = st.Imported, st.mark().String()
 	row.Found, row.FoundCapped, row.Remaining, row.CountedAt = c.Found, c.FoundCapped, c.Remaining, c.CountedAt
 	// A capped count (a first page, or a read limit) cannot tell that nothing is
-	// left. Remaining counts only events after the cursor, so events of the feed
-	// the site does not hold yet (found > imported) keep the source open.
-	row.Finished = c.Remaining != nil && *c.Remaining == 0 && !c.FoundCapped && (c.Found == nil || st.Imported >= *c.Found)
+	// left. Counts are approximate: an event behind the cursor that was skipped
+	// or deleted is not chased; Run now picks up what was missed.
+	row.Finished = c.Remaining != nil && *c.Remaining == 0 && !c.FoundCapped
 }
 
 // serveImports answers GET /admin/imports: the import_sources setting, the

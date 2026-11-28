@@ -74,7 +74,7 @@ func TestUITellsEventsArriveAsDrafts(t *testing.T) {
 // show a finished run's message, so the Imports tab must not promise it.
 func TestUIExplainsScheduledImports(t *testing.T) {
 	html := readUI(t, "index.html")
-	for _, want := range []string{"100 new events", "200 a day", "Automatic updates tab", "Run now", "before the next scheduled run"} {
+	for _, want := range []string{"100 new events", "200 a day", "Automatic updates tab", "Run now", "before the next scheduled run", "Counts are approximate"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("ui/index.html lacks %q", want)
 		}

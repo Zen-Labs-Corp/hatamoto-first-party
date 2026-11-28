@@ -462,15 +462,8 @@ function progressText(src) {
 function hasMore(src) {
   if (!src.cursor) return false;
   if (src.found_capped) return true;
-  if (src.remaining !== null && src.remaining !== undefined) return src.remaining > 0 || behindCursor(src);
+  if (src.remaining !== null && src.remaining !== undefined) return src.remaining > 0;
   return src.imported >= imp.batch;
-}
-
-// Events that sort before the cursor were never created (a scheduled run skips
-// past ones, a failed one is not retried): the feed holds more than the site.
-// Remaining counts only events after the cursor, so this is the other case.
-function behindCursor(src) {
-  return !src.found_capped && src.remaining === 0 && src.found > src.imported;
 }
 
 function lastImportCell(src) {
@@ -487,10 +480,8 @@ const SETTINGS_HINT = "Change or add sources on the plugin's Settings tab.";
 // Run now and the next batch fill the run form with the source's name: a
 // page-started run reaches only the first allowed host, so the run reads the
 // address from the settings. The next batch adds where the last one stopped.
-// Without a place to continue from when only earlier events are left: a plain
-// run picks those up.
 function nextBatch(src) {
-  return fillRun(behindCursor(src) ? { action: "import_source", name: src.name } : { action: "import_source", name: src.name, after: src.cursor });
+  return fillRun({ action: "import_source", name: src.name, after: src.cursor });
 }
 
 function importRow(src, owner) {
