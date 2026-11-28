@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -189,3 +191,117 @@ func reply(res map[string]any, out any) error {
 }
 
 var errHostDown = errors.New("host down")
+
+// entityStore is an in-memory registry-entry store behind the fake host's
+// entities.* functions.
+type entityStore struct {
+	h        *fakeHost
+	items    []entity
+	nextID   int
+	pageSize int // entities.list page size (0: the requested limit)
+
+	// errs returns the error of a call (nil: succeed); n counts calls of fn from 1.
+	errs func(fn string, n int, args map[string]any) error
+	// slugFor overrides the slug a create ends up with.
+	slugFor func(want string) string
+
+	counts map[string]int
+	writes int
+	log    []string
+}
+
+// newEntityStore attaches an empty store to the fake host.
+func newEntityStore(h *fakeHost) *entityStore {
+	s := &entityStore{h: h, counts: map[string]int{}}
+	h.entities = s.call
+	return s
+}
+
+func (s *entityStore) call(fn string, args map[string]any, out any) error {
+	s.counts[fn]++
+	if s.errs != nil {
+		if err := s.errs(fn, s.counts[fn], args); err != nil {
+			return err
+		}
+	}
+	switch fn {
+	case "entities.list":
+		return s.list(args, out)
+	case "entities.create":
+		s.writes++
+		s.nextID++
+		slug, _ := args["slug"].(string)
+		if s.slugFor != nil {
+			slug = s.slugFor(slug)
+		}
+		e := entity{ID: "e" + strconv.Itoa(s.nextID), Slug: slug, Name: args["name"].(string), Attributes: args["attributes"].(map[string]any)}
+		s.items = append(s.items, e)
+		s.log = append(s.log, "create "+slug)
+		return reply(map[string]any{"id": e.ID, "slug": e.Slug}, out)
+	case "entities.update":
+		s.writes++
+		id := args["id"].(string)
+		for i := range s.items {
+			if s.items[i].ID == id {
+				s.items[i].Name = args["name"].(string)
+				s.items[i].Attributes = args["attributes"].(map[string]any)
+				s.log = append(s.log, "update "+s.items[i].Slug)
+				return nil
+			}
+		}
+		return &sdk.HostError{Code: sdk.ErrNotFound}
+	case "entities.delete":
+		s.writes++
+		id := args["id"].(string)
+		for i := range s.items {
+			if s.items[i].ID == id {
+				s.log = append(s.log, "delete "+s.items[i].Slug)
+				s.items = slices.Delete(s.items, i, i+1)
+				return nil
+			}
+		}
+		return &sdk.HostError{Code: sdk.ErrNotFound}
+	}
+	return &sdk.HostError{Code: sdk.ErrUnknownFunction}
+}
+
+func (s *entityStore) list(args map[string]any, out any) error {
+	if args["schema_slug"] != "registry-entry" {
+		return &sdk.HostError{Code: sdk.ErrInvalidArgument}
+	}
+	size := int(args["limit"].(float64))
+	if s.pageSize > 0 {
+		size = min(size, s.pageSize)
+	}
+	from := 0
+	if c, ok := args["cursor"].(string); ok {
+		from, _ = strconv.Atoi(c)
+	}
+	to := min(from+size, len(s.items))
+	res := map[string]any{"items": s.items[from:to], "next_cursor": nil}
+	if to < len(s.items) {
+		res["next_cursor"] = strconv.Itoa(to)
+	}
+	return reply(res, out)
+}
+
+// seed adds existing entries as the plugin would have made them.
+func (s *entityStore) seed(ws ...want) {
+	for _, w := range ws {
+		s.nextID++
+		attrs := map[string]any{}
+		for k, v := range w.Attrs {
+			attrs[k] = v
+		}
+		s.items = append(s.items, entity{ID: "e" + strconv.Itoa(s.nextID), Slug: w.Slug, Name: w.Name, Attributes: attrs})
+	}
+}
+
+func (s *entityStore) slugs() []string {
+	var out []string
+	for _, e := range s.items {
+		out = append(out, e.Slug)
+	}
+	slices.Sort(out)
+	return out
+}
