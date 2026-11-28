@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "title": "Registry entry",
+  "description": "A plugin or theme listed in the registry; kept in sync by the registry-pages plugin.",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "title": "Kind",
+      "description": "plugin or theme.",
+      "enum": ["plugin", "theme"]
+    },
+    "meta_title": {
+      "type": "string",
+      "title": "SEO title",
+      "description": "Page title, for example Name plugin."
+    },
+    "meta_description": {
+      "type": "string",
+      "title": "SEO description",
+      "description": "Short description from the registry."
+    },
+    "canonical_url": {
+      "type": "string",
+      "title": "Canonical URL",
+      "description": "Path of the page, /plugins/<name> or /themes/<name>."
+    }
+  },
+  "x-hm-order": ["kind", "meta_title", "meta_description", "canonical_url"]
+}
