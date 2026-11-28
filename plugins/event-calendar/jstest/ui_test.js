@@ -80,6 +80,16 @@ const IMPORTS = {
 };
 
 // The element ids ui/index.html defines and app.js reads.
+// monthAnswer is /admin/events?month=...: February 2026 whatever month was asked,
+// five events on the 13th and an all-day one on the 2nd.
+function monthAnswer(q, { truncated = false } = {}) {
+  const items = [{ id: "m0", name: "Market", day: "2026-02-02", time: "", all_day: true }];
+  for (let i = 1; i <= 5; i++) items.push({ id: `m${i}`, name: `Talk ${i}`, day: "2026-02-13", time: `1${i}:00`, all_day: false });
+  const counts = { upcoming: 232, past: 155, submissions_pending: 14, repeating: 55 };
+  if (q.with_drafts) counts.drafts = 93;
+  return { ready: true, role: "owner", month: "2026-02", items, total: 6, truncated, day_counts: { "2026-02-02": 1, "2026-02-13": 5 }, page: 1, per_page: 1500, counts };
+}
+
 const IDS = [
   "#notice", "#hint", "#feed-row", "#feed-url",
   "#tab-upcoming", "#tab-past", "#tab-drafts", "#tab-submissions", "#tab-imports", "#tab-repeating",
@@ -126,7 +136,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   const named_calls = [];
   const routes = [];
   const document = { querySelector: (s) => els[s], createElement: (t) => new Node(t) };
-  const bodies = { "/admin/repeating": data, "/admin/submissions": subs, "/admin/imports": imports, "/admin/events": (q) => eventsAnswer(q, events) };
+  const bodies = { "/admin/repeating": data, "/admin/submissions": subs, "/admin/imports": imports, "/admin/events": (q) => (q.month ? monthAnswer(q, events) : eventsAnswer(q, events)) };
   const hatamoto = {
     ready: Promise.resolve(),
     route: async (method, p, body, query) => {
@@ -504,6 +514,74 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(!els["#feed-row"].hidden, "iCal feed shows the row");
   els["#ical"].click();
   check(els["#feed-row"].hidden, "and hides it again");
+
+  // month grid
+  ({ els, routes } = await load({ tab: "upcoming" }));
+  routes.length = 0;
+  els["#view-month"].click();
+  await next();
+  const mq = routes[0].query;
+  check(/^\d{4}-\d{2}$/.test(mq.month) && !("page" in mq) && !("day" in mq) && mq.tab === "upcoming", "month request: " + JSON.stringify(mq));
+  const now = new Date();
+  check(mq.month === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`, "starts on the current month");
+  check(!els["#month"].hidden && els["#list"].hidden && els["#ev-foot"].hidden && els["#view-month"].classes.has("on") && !els["#view-list"].classes.has("on"), "month view shown, list hidden");
+  check(els["#m-label"].textContent === "February 2026" && els["#m-total"].textContent === "6 events this month", "label and total: " + els["#m-label"].textContent + " / " + els["#m-total"].textContent);
+  const grid = els["#m-grid"];
+  const heads = grid.children.filter((c) => c.className === "h");
+  const days = grid.children.filter((c) => c.className.startsWith("c"));
+  check(heads.map((h) => h.textContent).join(",") === "Mon,Tue,Wed,Thu,Fri,Sat,Sun" && days.length === 42, "7 headers and 42 cells");
+  check(days[0].className === "c out" && days[0].text().includes("26") && days[6].text().includes("1") && !days[6].className.includes("out"), "Monday first: the grid starts on 26 Jan and Sunday 1 Feb is in the month");
+  const crowded = days.find((c) => c.buttons("+2 more").length === 1);
+  check(crowded && crowded.all((n) => n.className === "e").length === 3, "three events and +2 more on the crowded day");
+  check(crowded.all((n) => n.className === "e")[0].textContent === "11:00 Talk 1", "event pill: time and title");
+  check(days.some((c) => c.all((n) => n.className === "e" && n.textContent === "Market").length === 1), "an all-day event shows its title only");
+  check(days.every((c) => c.all((n) => n.className === "more").length === (c === crowded ? 1 : 0)), "only the crowded day has +N more");
+  crowded.all((n) => n.className === "e")[1].click();
+  check(els["#hint"].textContent.includes("open Talk 2 there"), "an event pill gives the Edit hint");
+  routes.length = 0;
+  crowded.buttons("+2 more")[0].click();
+  await next();
+  const dq = routes[0].query;
+  check(dq.day === "2026-02-13" && dq.page === "1" && !("month" in dq) && dq.tab === "past", "+2 more lists that day: " + JSON.stringify(dq));
+  check(els["#chips"].text().includes("Day: 13 Feb") && els["#list"].hidden === false && els["#month"].hidden, "the Day chip and the list view");
+  check(els["#tab-past"].classes.has("on") && !els["#tab-upcoming"].classes.has("on"), "a past day switches to Past");
+  els["#chips"].children[0].click();
+  await next();
+  check(!("day" in routes[1].query) && els["#chips"].hidden, "clearing the Day chip lists every day again");
+
+  // month navigation
+  ({ els, routes } = await load({ tab: "upcoming" }));
+  els["#view-month"].click();
+  await next();
+  routes.length = 0;
+  els["#m-next"].click();
+  await next();
+  check(routes[0].query.month === "2026-03", "next asks for the month after the one shown: " + routes[0].query.month);
+  els["#m-prev"].click();
+  await next();
+  check(routes[1].query.month === "2026-01", "previous: " + routes[1].query.month);
+  els["#m-today"].click();
+  await next();
+  check(routes[2].query.month === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`, "Today returns to the current month");
+  els["#view-list"].click();
+  await next();
+  check(routes[3].query.page === "1" && !("month" in routes[3].query) && !els["#list"].hidden && els["#month"].hidden, "List returns to the list");
+  // filters and Drafts in month view
+  els["#view-month"].click();
+  await next();
+  els["#novenue"].checked = true;
+  els["#novenue"].fire("change");
+  await next();
+  check(routes[routes.length - 1].query.novenue === "1" && "month" in routes[routes.length - 1].query, "filters apply to the month");
+  els["#tab-drafts"].click();
+  await next();
+  const dr = routes[routes.length - 1].query;
+  check(dr.tab === "drafts" && !("month" in dr) && dr.page === "1" && els["#month"].hidden, "Drafts forces the list");
+  // truncated month
+  ({ els } = await load({ tab: "upcoming", events: { truncated: true } }));
+  els["#view-month"].click();
+  await next();
+  check(els["#m-total"].textContent === "6 events this month (first 1500 shown)", "truncated month: " + els["#m-total"].textContent);
 
   if (failures) process.exit(1);
   console.log("ok");

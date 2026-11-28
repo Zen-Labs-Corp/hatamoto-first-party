@@ -378,13 +378,17 @@ const HINT_EDIT = (name) => `Open Content, then the Calendar event list, in the 
 const HINT_NEW = "Open Content, then the Calendar event list, in the admin menu and press New.";
 
 const ev = {
-  tab: "upcoming", q: "", venue: "", category: "", novenue: false, day: "",
+  tab: "upcoming", view: "list", q: "", venue: "", category: "", novenue: false, day: "", month: "",
   page: 1, role: "", counts: {}, facetsLoaded: false, seq: 0,
 };
 
 // "2026-02-13" for a local date.
 function ymd(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function currentMonth() {
+  return ymd(new Date()).slice(0, 7);
 }
 
 // showCount writes a tab badge. warn colours it (pending work).
@@ -533,16 +537,76 @@ function renderList(data) {
   pager($("#ev-pager"), data.page || 1, data.per_page || PER_PAGE, total, (p) => { ev.page = p; loadEvents(); });
 }
 
+// ---- Month grid
+
+function monthCell(key, inMonth, items, count, today) {
+  const cell = el("div", { className: `c${inMonth ? "" : " out"}${key === today ? " today" : ""}` },
+    el("span", { className: "n", textContent: String(Number(key.slice(8))) }));
+  const shown = items.slice(0, 3);
+  for (const item of shown) {
+    const b = el("button", { type: "button", className: "e", textContent: item.all_day || !item.time ? item.name : `${item.time} ${item.name}` });
+    b.title = item.name;
+    b.addEventListener("click", () => say("#hint", HINT_EDIT(item.name)));
+    cell.append(b);
+  }
+  if (count > shown.length) {
+    const more = el("button", { type: "button", className: "more", textContent: `+${count - shown.length} more` });
+    more.addEventListener("click", () => showDay(key));
+    cell.append(more);
+  }
+  return cell;
+}
+
+// showDay lists one day of the month. A day before today is among the past
+// events, so the list switches to Past for it.
+function showDay(day) {
+  ev.view = "list";
+  ev.day = day;
+  ev.page = 1;
+  ev.tab = day < ymd(new Date()) ? "past" : "upcoming";
+  syncTabs();
+  loadEvents();
+}
+
+function renderMonth(data) {
+  const month = data.month || ev.month;
+  ev.month = month;
+  const [y, m] = month.split("-").map(Number);
+  $("#m-label").textContent = `${MONTH_NAMES[m - 1]} ${y}`;
+  const total = data.total || 0;
+  $("#m-total").textContent = `${plural(total, "event")} this month${data.truncated ? ` (first ${data.per_page || 1500} shown)` : ""}`;
+  const byDay = {};
+  for (const item of data.items || []) (byDay[item.day] = byDay[item.day] || []).push(item);
+  const first = Date.UTC(y, m - 1, 1);
+  const lead = (new Date(first).getUTCDay() + 6) % 7;
+  const today = ymd(new Date());
+  const cells = WEEK.map((d) => el("div", { className: "h", textContent: d }));
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(first + (i - lead) * 86400000);
+    const key = d.toISOString().slice(0, 10);
+    cells.push(monthCell(key, d.getUTCMonth() === m - 1, byDay[key] || [], (data.day_counts || {})[key] || 0, today));
+  }
+  $("#m-grid").replaceChildren(...cells);
+}
+
+function shiftMonth(by) {
+  const [y, m] = ev.month.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + by, 1));
+  ev.month = d.toISOString().slice(0, 7);
+  loadEvents();
+}
+
 // ---- Loading
 
 function eventsQuery() {
   const q = { tab: ev.tab };
-  q.page = String(ev.page);
+  if (ev.view === "month") q.month = ev.month || currentMonth();
+  else q.page = String(ev.page);
   if (ev.q) q.q = ev.q;
   if (ev.venue) q.venue = ev.venue;
   if (ev.category) q.category = ev.category;
   if (ev.novenue) q.novenue = "1";
-  if (ev.day) q.day = ev.day;
+  if (ev.day && ev.view === "list") q.day = ev.day;
   if (!ev.facetsLoaded) q.facets = "1";
   if (ev.counts.drafts === undefined) q.with_drafts = "1";
   return q;
@@ -553,10 +617,16 @@ function eventsQuery() {
 function syncTabs() {
   for (const name of TABS) $(`#tab-${name}`).classList.toggle("on", name === ev.tab);
   const drafts = ev.tab === "drafts";
+  if (drafts) ev.view = "list";
   $("#venue").disabled = drafts;
   $("#cat").disabled = drafts;
   $("#view-month").disabled = drafts;
-  $("#view-list").classList.toggle("on", true);
+  $("#view-list").classList.toggle("on", ev.view === "list");
+  $("#view-month").classList.toggle("on", ev.view === "month");
+  $("#list").hidden = ev.view === "month";
+  $("#ev-foot").hidden = ev.view === "month";
+  $("#month").hidden = ev.view !== "month";
+  if (ev.view === "month") note("#ev-state", "");
 }
 
 async function loadEvents() {
@@ -570,7 +640,8 @@ async function loadEvents() {
     applyRole(data.role);
     renderCounts(data.counts || {});
     if (data.facets) renderFacets(data.facets);
-    renderList(data);
+    if (ev.view === "month") renderMonth(data);
+    else renderList(data);
   } catch (e) {
     if (seq === ev.seq) say("#notice", e.message, true);
   }
@@ -627,6 +698,22 @@ $("#q").addEventListener("change", applySearch);
 $("#venue").addEventListener("change", () => { ev.venue = $("#venue").value; filterChanged(); });
 $("#cat").addEventListener("change", () => { ev.category = $("#cat").value; filterChanged(); });
 $("#novenue").addEventListener("change", () => { ev.novenue = $("#novenue").checked; filterChanged(); });
+
+$("#view-list").addEventListener("click", () => {
+  if (ev.view === "list") return;
+  ev.view = "list";
+  filterChanged();
+});
+$("#view-month").addEventListener("click", () => {
+  if (ev.view === "month") return;
+  ev.view = "month";
+  ev.day = "";
+  ev.month = ev.month || currentMonth();
+  loadEvents();
+});
+$("#m-prev").addEventListener("click", () => shiftMonth(-1));
+$("#m-next").addEventListener("click", () => shiftMonth(1));
+$("#m-today").addEventListener("click", () => { ev.month = currentMonth(); loadEvents(); });
 
 $("#ical").addEventListener("click", () => { $("#feed-row").hidden = !$("#feed-row").hidden; });
 $("#new-event").addEventListener("click", () => say("#hint", HINT_NEW));
