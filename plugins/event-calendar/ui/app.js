@@ -101,14 +101,58 @@ function editDate(ev, d, action, extra = {}) {
   return startRun({ event: ev.slug, action, date: d.day, start_at: "", end_at: "", shift_days: "", ...extra });
 }
 
-function button(text, onClick, canAct) {
-  const b = el("button", { type: "button", textContent: text });
+function button(text, onClick, canAct, className = "btn sm") {
+  const b = el("button", { type: "button", className, textContent: text });
   if (canAct) b.addEventListener("click", onClick);
   else {
     b.disabled = true;
     b.title = "Ask the site owner";
   }
   return b;
+}
+
+const PER_PAGE = 50;
+
+// showCount writes a tab badge. warn colours it (pending work).
+function showCount(name, n, warn) {
+  const badge = $(`#cnt-${name}`);
+  badge.textContent = n === undefined || n === null ? "" : String(n);
+  badge.classList.toggle("q", !(warn && n > 0));
+  badge.classList.toggle("warn", Boolean(warn && n > 0));
+}
+
+// pager draws "‹ 1 … 4 5 6 … 12 ›" for a page of a list and calls onPage with
+// the page a button names.
+function pager(node, page, perPage, total, onPage) {
+  node.replaceChildren();
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  if (pages < 2) return;
+  const go = (label, target, on) => {
+    const b = el("button", { type: "button", textContent: label, className: on ? "on" : "" });
+    if (target < 1 || target > pages) b.disabled = true;
+    else if (!on) b.addEventListener("click", () => onPage(target));
+    return b;
+  };
+  node.append(go("\u2039", page - 1, false));
+  let last = 0;
+  for (let p = 1; p <= pages; p++) {
+    if (p !== 1 && p !== pages && Math.abs(p - page) > 1) continue;
+    if (p - last > 1) node.append(el("span", { className: "muted gap", textContent: "\u2026" }));
+    node.append(go(String(p), p, p === page));
+    last = p;
+  }
+  node.append(go("\u203a", page + 1, false));
+}
+
+// "1-50 of 232" for the page of a list.
+function rangeText(page, perPage, total, capped) {
+  if (!total) return "";
+  const to = Math.min(total, page * perPage);
+  return `${(page - 1) * perPage + 1}-${to} of ${total}${capped ? "+" : ""}`;
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 function dateRow(ev, d, canAct) {
@@ -192,7 +236,9 @@ $("#dup-go").addEventListener("click", () => {
 
 // ---- Submissions
 
-const sub = { role: "", status: "pending" };
+const STATUS_BUTTONS = [["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]];
+const sub = { role: "", status: "pending", q: "", page: 1, counts: {} };
+const STATUS_PILL = { pending: ["pend", "Pending"], approved: ["pub", "Approved"], published: ["pub", "Approved"], rejected: ["rej", "Rejected"] };
 
 // "Fri 20 Feb 8:00 pm" from "2027-02-20T20:00:00+01:00": the clock the
 // submitter typed, so no zone conversion.
@@ -200,6 +246,22 @@ function submittedWhen(text) {
   const [date, rest] = String(text || "").split("T");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return text || "";
   return rest ? `${dayText(date)} ${clockText(rest.slice(0, 5))}` : dayText(date);
+}
+
+// The submissions the Approved filter lists include the older published ones.
+function statusCount(counts, status) {
+  if (status === "approved") return (counts.approved || 0) + (counts.published || 0);
+  return counts[status] || 0;
+}
+
+function renderStatusButtons() {
+  for (const [status, label] of STATUS_BUTTONS) {
+    const b = $(`#sub-${status}`);
+    const n = statusCount(sub.counts, status);
+    const warn = status === "pending" && n > 0;
+    b.replaceChildren(label, el("span", { className: warn ? "count" : "count q", textContent: String(n) }));
+    b.classList.toggle("on", status === sub.status);
+  }
 }
 
 function submissionActions(item) {
@@ -212,9 +274,9 @@ function submissionActions(item) {
     }, `submission ${item.id}`), owner));
   }
   if (item.status === "pending" || item.status === "approved") {
-    cell.append(button("Reject", () => submissionAction(item, "reject"), true));
+    cell.append(button("Reject", () => submissionAction(item, "reject"), true, "btn sm danger"));
   }
-  cell.append(button("Delete", () => submissionAction(item, "delete"), owner));
+  if (owner) cell.append(button("Delete", () => submissionAction(item, "delete"), true, "btn sm ghost"));
   return cell;
 }
 
@@ -228,29 +290,48 @@ async function submissionAction(item, what) {
   }
 }
 
-function renderSubmissions(data) {
-  sub.role = data.role || "";
-  $("#sub-off").hidden = data.enabled !== false;
-  $("#sub-reject-all").disabled = sub.role !== "owner";
-  const rows = $("#sub-rows");
-  rows.replaceChildren();
-  for (const item of data.items || []) {
-    rows.append(el("tr", {},
-      el("td", { textContent: item.title }),
-      el("td", { textContent: submittedWhen(item.start_at) }),
-      el("td", { textContent: item.venue || "-" }),
-      el("td", { textContent: item.email }),
-      submissionActions(item)));
-  }
-  const n = (data.items || []).length;
-  $("#sub-table").hidden = !n;
-  note("#sub-state", n ? "" : "No submissions here.");
-  showCount("submissions", (data.counts && data.counts.pending) || 0, true);
-  if (sub.role !== "owner" && n) note("#sub-state", "Ask the site owner to approve or delete a submission. You can reject one.");
+function submissionRow(item) {
+  const [cls, label] = STATUS_PILL[item.status] || ["draft", item.status];
+  const sent = /^\d{4}-\d{2}-\d{2}/.test(item.created_at || "") ? el("div", { className: "muted", textContent: `Sent ${dayText(item.created_at.slice(0, 10))}` }) : "";
+  return el("tr", {},
+    el("td", {}, el("span", { className: "t", textContent: item.title }), sent),
+    el("td", { textContent: submittedWhen(item.start_at) }),
+    el("td", { textContent: item.venue || "-" }),
+    el("td", { className: "muted", textContent: item.email }),
+    el("td", {}, el("span", { className: `st ${cls}`, textContent: label })),
+    submissionActions(item));
 }
 
 // Reject all pending asks for a second click: the rows are not listed again.
+// It is the owner's, and only on the Pending filter.
 let rejectAllAsked = false;
+function syncRejectAll() {
+  const b = $("#sub-reject-all");
+  rejectAllAsked = false;
+  b.textContent = "Reject all pending";
+  b.disabled = sub.role !== "owner" || sub.status !== "pending";
+  b.title = sub.role === "owner" ? "" : "Ask the site owner";
+}
+
+function renderSubmissions(data) {
+  sub.role = data.role || "";
+  sub.counts = data.counts || {};
+  $("#sub-off").hidden = data.enabled !== false;
+  renderStatusButtons();
+  syncRejectAll();
+  const rows = $("#sub-rows");
+  rows.replaceChildren();
+  const items = data.items || [];
+  for (const item of items) rows.append(submissionRow(item));
+  $("#sub-table").hidden = !items.length;
+  note("#sub-state", items.length ? "" : "No submissions here.");
+  showCount("submissions", sub.counts.pending || 0, true);
+  const page = data.page || 1;
+  const perPage = data.per_page || PER_PAGE;
+  $("#sub-range").textContent = rangeText(page, perPage, data.total || 0);
+  pager($("#sub-pager"), page, perPage, data.total || 0, (p) => { sub.page = p; loadSubmissions(); });
+}
+
 $("#sub-reject-all").addEventListener("click", async () => {
   const b = $("#sub-reject-all");
   if (!rejectAllAsked) {
@@ -263,6 +344,7 @@ $("#sub-reject-all").addEventListener("click", async () => {
   try {
     say("#notice", "");
     const r = await api("POST", "/admin/submissions/reject-all");
+    sub.page = 1;
     await loadSubmissions();
     say("#hint", `${r.rejected || 0} pending submissions rejected.`);
   } catch (e) {
@@ -273,11 +355,31 @@ $("#sub-reject-all").addEventListener("click", async () => {
 async function loadSubmissions() {
   try {
     say("#notice", "");
-    renderSubmissions(await api("GET", "/admin/submissions", { status: sub.status }));
+    const query = { status: sub.status, page: String(sub.page) };
+    if (sub.q) query.q = sub.q;
+    renderSubmissions(await api("GET", "/admin/submissions", query));
   } catch (e) {
     say("#notice", e.message, true);
   }
 }
+
+for (const [status] of STATUS_BUTTONS) {
+  $(`#sub-${status}`).addEventListener("click", () => {
+    sub.status = status;
+    sub.page = 1;
+    loadSubmissions();
+  });
+}
+
+function searchSubmissions() {
+  const q = $("#sub-q").value.trim();
+  if (q === sub.q) return;
+  sub.q = q;
+  sub.page = 1;
+  loadSubmissions();
+}
+$("#sub-q").addEventListener("keydown", (e) => { if (e.key === "Enter") searchSubmissions(); });
+$("#sub-q").addEventListener("change", searchSubmissions);
 
 // ---- Imports
 
@@ -373,7 +475,6 @@ $("#imp-go").addEventListener("click", () => {
 const WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const EVENT_TABS = ["upcoming", "past", "drafts"];
-const PER_PAGE = 50;
 const HINT_EDIT = (name) => `Open Content, then the Calendar event list, in the admin menu and open ${name} there.`;
 const HINT_NEW = "Open Content, then the Calendar event list, in the admin menu and press New.";
 
@@ -389,14 +490,6 @@ function ymd(d) {
 
 function currentMonth() {
   return ymd(new Date()).slice(0, 7);
-}
-
-// showCount writes a tab badge. warn colours it (pending work).
-function showCount(name, n, warn) {
-  const badge = $(`#cnt-${name}`);
-  badge.textContent = n === undefined || n === null ? "" : String(n);
-  badge.classList.toggle("q", !(warn && n > 0));
-  badge.classList.toggle("warn", Boolean(warn && n > 0));
 }
 
 function renderCounts(counts) {
@@ -416,36 +509,6 @@ function applyRole(role) {
   const owner = role === "owner";
   $("#tab-imports").disabled = !owner;
   $("#tab-imports").title = owner ? "" : "Owner only";
-}
-
-// pager draws "‹ 1 … 4 5 6 … 12 ›" for a page of a list and calls onPage with
-// the page a button names.
-function pager(node, page, perPage, total, onPage) {
-  node.replaceChildren();
-  const pages = Math.max(1, Math.ceil(total / perPage));
-  if (pages < 2) return;
-  const go = (label, target, on) => {
-    const b = el("button", { type: "button", textContent: label, className: on ? "on" : "" });
-    if (target < 1 || target > pages) b.disabled = true;
-    else if (!on) b.addEventListener("click", () => onPage(target));
-    return b;
-  };
-  node.append(go("\u2039", page - 1, false));
-  let last = 0;
-  for (let p = 1; p <= pages; p++) {
-    if (p !== 1 && p !== pages && Math.abs(p - page) > 1) continue;
-    if (p - last > 1) node.append(el("span", { className: "muted gap", textContent: "\u2026" }));
-    node.append(go(String(p), p, p === page));
-    last = p;
-  }
-  node.append(go("\u203a", page + 1, false));
-}
-
-// "1-50 of 232" for the page of a list.
-function rangeText(page, perPage, total, capped) {
-  if (!total) return "";
-  const to = Math.min(total, page * perPage);
-  return `${(page - 1) * perPage + 1}-${to} of ${total}${capped ? "+" : ""}`;
 }
 
 function setOptions(select, all, values) {
@@ -484,10 +547,6 @@ function renderChips() {
     b.addEventListener("click", () => { clear(); ev.page = 1; loadEvents(); });
     return b;
   }));
-}
-
-function plural(n, word) {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 function eventRow(item) {

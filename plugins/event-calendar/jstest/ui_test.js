@@ -58,9 +58,13 @@ const DATA = {
 
 const SUBS = {
   role: "owner",
-  counts: { pending: 2, approved: 0, published: 1, rejected: 0 },
+  enabled: true,
+  total: 3,
+  page: 1,
+  per_page: 50,
+  counts: { pending: 2, approved: 1, published: 1, rejected: 0, all: 4 },
   items: [
-    { id: 7, status: "pending", title: "Open mic night", start_at: "2027-02-20T20:00:00+01:00", end_at: "2027-02-20T22:00:00+01:00", venue: "The Anchor", description: "Bring a song.", email: "visitor@example.org" },
+    { id: 7, status: "pending", created_at: "2027-02-10T09:30:00Z", title: "Open mic night", start_at: "2027-02-20T20:00:00+01:00", end_at: "2027-02-20T22:00:00+01:00", venue: "The Anchor", description: "Bring a song.", email: "visitor@example.org" },
     { id: 8, status: "pending", title: "Charity quiz", start_at: "2027-02-27T19:00:00Z", end_at: "", venue: "", description: "", email: "quiz@example.org" },
     { id: 9, status: "approved", title: "Old news", start_at: "2027-01-02", end_at: "", venue: "Hall", description: "", email: "old@example.org" },
   ],
@@ -128,7 +132,7 @@ function eventsAnswer(q, { role = "owner", total = 232, capped = false, ready = 
 }
 
 // load runs the page and opens a tab (the repeating one unless told).
-async function load({ named = "old", data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS, events = {}, raw } = {}) {
+async function load({ named = "old", data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS, events = {}, raw, post } = {}) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   els["#dup-shift"].value = "7";
@@ -145,6 +149,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
       for (const [k, v] of Object.entries(query || {})) sent[k] = typeof v === "string" ? v : v == null ? "" : JSON.stringify(v);
       routes.push({ method, p, query: sent });
       if (raw !== undefined) return { status, body: raw };
+      if (method === "POST" && post) return { status: post.status, body: JSON.stringify(post.body) };
       const answer = bodies[p];
       return { status, body: JSON.stringify(method === "GET" ? (typeof answer === "function" ? answer(sent) : answer) : { ok: true }) };
     },
@@ -338,8 +343,9 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   // an editor: approve and delete disabled, reject works
   ({ els, calls, routes } = await load({ tab: "submissions", subs: { ...SUBS, role: "editor" } }));
   subRows = els["#sub-rows"];
-  const locked = [...subRows.buttons("Approve"), ...subRows.buttons("Delete")];
-  check(locked.length === 5 && locked.every((b) => b.disabled && b.title === "Ask the site owner"), "editor: approve and delete disabled");
+  const locked = subRows.buttons("Approve");
+  check(locked.length === 2 && locked.every((b) => b.disabled && b.title === "Ask the site owner"), "editor: approve disabled");
+  check(subRows.buttons("Delete").length === 0, "editor: no Delete button");
   check(subRows.buttons("Reject").every((b) => !b.disabled), "editor may reject");
   routes.length = 0;
   await subRows.buttons("Reject")[0].click();
@@ -416,6 +422,59 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && !els["#hint"].textContent.includes("type"), "refused import shows the Runs-tab hint");
   ({ els } = await load({ tab: "imports", imports: { role: "owner", sources: [] } }));
   check(els["#imp-table"].hidden && els["#imp-state"].textContent.includes("Settings tab"), "no sources");
+
+  // submissions: filters, paging, search, roles
+  const manySubs = (q) => {
+    const status = q.status || "pending";
+    const total = status === "all" ? 143 : 60;
+    const page = Number(q.page || 1);
+    const items = [];
+    for (let i = (page - 1) * 50; i < Math.min(total, page * 50); i++) {
+      items.push({ id: 100 + i, status: status === "all" ? "approved" : status, created_at: "2027-02-10T09:30:00Z", title: `Submission ${i + 1}`, start_at: "2027-03-01T19:00:00Z", end_at: "", venue: "", description: "", email: "a@example.org" });
+    }
+    return { role: "owner", enabled: true, total, page, per_page: 50, counts: { pending: 60, approved: 40, published: 3, rejected: 40, all: 143 }, items };
+  };
+  ({ els, calls, routes } = await load({ tab: "submissions", subs: manySubs }));
+  check(routes[0].query.status === "pending" && routes[0].query.page === "1" && !("q" in routes[0].query), "first request: " + JSON.stringify(routes[0].query));
+  check(els["#sub-pending"].classes.has("on") && els["#sub-pending"].text() === "Pending 60" && els["#sub-approved"].text() === "Approved 43" && els["#sub-all"].text() === "All 143", "status buttons carry counts (approved includes published): " + els["#sub-approved"].text());
+  check(els["#sub-pending"].children[1].className === "count" && els["#sub-approved"].children[1].className === "count q", "only Pending is highlighted");
+  check(els["#sub-rows"].text().includes("Sent Wed 10 Feb") && els["#sub-rows"].text().includes("Pending"), "sent date and status pill: " + els["#sub-rows"].children[0].text());
+  check(els["#sub-range"].textContent === "1-50 of 60", "range: " + els["#sub-range"].textContent);
+  routes.length = 0;
+  els["#sub-all"].click();
+  await next();
+  check(routes[0].query.status === "all" && routes[0].query.page === "1" && els["#sub-all"].classes.has("on") && !els["#sub-pending"].classes.has("on"), "All sends status all");
+  check(els["#sub-range"].textContent === "1-50 of 143" && els["#sub-rows"].children[0].text().includes("Approved"), "all shows the total: " + els["#sub-range"].textContent);
+  check(els["#sub-reject-all"].disabled, "Reject all pending is off outside the Pending filter");
+  els["#sub-pager"].buttons("3")[0].click();
+  await next();
+  check(routes[1].query.page === "3" && routes[1].query.status === "all" && els["#sub-range"].textContent === "101-143 of 143", "page 3: " + els["#sub-range"].textContent);
+  els["#sub-approved"].click();
+  await next();
+  check(routes[2].query.status === "approved" && routes[2].query.page === "1", "a filter goes back to page 1");
+  els["#sub-rejected"].click();
+  await next();
+  check(routes[3].query.status === "rejected", "Rejected sends status rejected");
+  els["#sub-q"].value = "quiz";
+  els["#sub-q"].fire("keydown", { key: "Enter" });
+  await next();
+  check(routes[4].query.q === "quiz" && routes[4].query.status === "rejected" && routes[4].query.page === "1", "Enter searches title or email: " + JSON.stringify(routes[4].query));
+  els["#sub-pending"].click();
+  await next();
+  check(!els["#sub-reject-all"].disabled, "Reject all pending is on for the Pending filter");
+
+  // an editor: no Delete, Approve disabled, Reject enabled, Reject all disabled
+  ({ els, routes } = await load({ tab: "submissions", subs: (q) => ({ ...manySubs(q), role: "editor" }) }));
+  check(els["#sub-rows"].buttons("Delete").length === 0, "editor sees no Delete");
+  check(els["#sub-rows"].buttons("Approve").every((b) => b.disabled && b.title === "Ask the site owner"), "editor: Approve disabled");
+  check(els["#sub-rows"].buttons("Reject").length === 50 && els["#sub-rows"].buttons("Reject").every((b) => !b.disabled), "editor: Reject enabled");
+  check(els["#sub-reject-all"].disabled && els["#sub-reject-all"].title === "Ask the site owner", "editor: Reject all disabled");
+
+  // a refused delete
+  ({ els, routes } = await load({ tab: "submissions", post: { status: 403, body: { error: "not allowed" } } }));
+  await els["#sub-rows"].buttons("Delete")[0].click();
+  await next();
+  check(els["#notice"].textContent === "not allowed" && els["#notice"].classes.has("error"), "a refused delete shows not allowed");
 
   // Events list: first load, counts, rows grouped by day
   ({ els, routes } = await load({ tab: "upcoming" }));
