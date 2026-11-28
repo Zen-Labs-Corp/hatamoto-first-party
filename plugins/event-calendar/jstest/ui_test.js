@@ -437,6 +437,13 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(routes.length === 1 && els["#imp-rows"].buttons("Import the next 200").length === 0 && els["#imp-next"].hidden, "a recent count is not repeated, and nothing is left to import");
   check(els["#imp-rows"].children[0].text().includes("200 of 200 imported"), "finished source: " + els["#imp-rows"].children[0].text());
 
+  // a capped count (the first page of a feed) is never finished and never reads "200 of 50+"
+  const capped = { ...IMPORTS, sources: [{ ...IMPORTS.sources[0], found: 50, found_capped: true, remaining: 0, finished: false, counted_at: new Date().toISOString() }] };
+  ({ els } = await load({ tab: "imports", imports: capped }));
+  check(els["#imp-rows"].buttons("Import the next 200").length === 1 && !els["#imp-next"].hidden, "a capped count still offers the next batch");
+  check(els["#imp-rows"].children[0].text().includes("200 imported, more may remain") && !els["#imp-rows"].text().includes("of 50"), "capped copy: " + els["#imp-rows"].children[0].text());
+  check(!els["#imp-next"].text().includes("50+") && els["#imp-next"].text().includes("more events"), "capped callout: " + els["#imp-next"].text());
+
   // any other iCal address: host confirmation, then the inputs
   ({ els, calls } = await load({ tab: "imports" }));
   els["#imp-url"].value = "webcal://Feeds.Example.org/cal/events.ics?token=abc";

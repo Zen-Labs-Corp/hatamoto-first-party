@@ -437,9 +437,11 @@ function scheduleText(src) {
   return src.scheduled_ok ? "Daily" : "Daily (Run now only)";
 }
 
-// "200 of 214 imported" once the feed was counted, "200 imported" before.
+// "200 of 214 imported" once the feed was counted, "200 imported" before. A
+// capped count (a first page only) is a floor: it never reads "200 of 50+".
 function progressText(src) {
   if (src.found === null || src.found === undefined) return `${src.imported} imported`;
+  if (src.found_capped && src.imported >= src.found) return `${src.imported} imported, more may remain`;
   return `${src.imported} of ${src.found}${src.found_capped ? "+" : ""} imported`;
 }
 
@@ -447,6 +449,7 @@ function progressText(src) {
 // count is not known yet.
 function hasMore(src) {
   if (!src.cursor) return false;
+  if (src.found_capped) return true;
   if (src.remaining !== null && src.remaining !== undefined) return src.remaining > 0;
   return src.imported >= imp.batch;
 }
@@ -492,7 +495,8 @@ function renderNext() {
   const src = imp.sources.find(hasMore);
   $("#imp-next").hidden = !src;
   if (!src) return;
-  const total = src.found === null || src.found === undefined ? "more events" : `${src.found}${src.found_capped ? "+" : ""} events`;
+  const unknown = src.found === null || src.found === undefined || src.found_capped && src.imported >= src.found;
+  const total = unknown ? "more events" : `${src.found}${src.found_capped ? "+" : ""} events`;
   const b = el("button", { type: "button", className: "link", textContent: `Import the next ${imp.batch}` });
   b.addEventListener("click", () => nextBatch(src));
   $("#imp-next").replaceChildren(`${src.name} has ${total} and the last runs brought in ${src.imported}. `, b);
