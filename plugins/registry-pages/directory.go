@@ -31,6 +31,7 @@ type snapshot struct {
 	Themes       themeDir  `json:"themes"`
 	Until        time.Time `json:"until"`         // serve without a refresh before this
 	IndexExpires time.Time `json:"index_expires"` // expires_at of the index behind the cards; zero when unavailable
+	DevOK        bool      `json:"dev_ok"`        // the developer index is merged in; false: its cards may be missing
 }
 
 // mem is this wasm instance's copy; kv shares the snapshot between instances.
@@ -92,13 +93,13 @@ func views() (s snapshot) {
 // until their own expiry and retried after failureTTL; without them both kinds
 // are unavailable.
 func refresh(t time.Time, last snapshot) snapshot {
-	idx, err := fetchDirectory(t.Add(fetchBudget))
+	idx, devOK, err := fetchDirectory(t.Add(fetchBudget))
 	if err == nil {
 		var exp time.Time
 		if exp, err = time.Parse(time.RFC3339, idx.ExpiresAt); err == nil {
 			t = now()
 			pd, td := buildDirs(idx)
-			return snapshot{Plugins: pd, Themes: td, Until: minTime(t.Add(dirTTL), exp), IndexExpires: exp}
+			return snapshot{Plugins: pd, Themes: td, Until: minTime(t.Add(dirTTL), exp), IndexExpires: exp, DevOK: devOK}
 		}
 	}
 	t = now()
@@ -110,17 +111,18 @@ func refresh(t time.Time, last snapshot) snapshot {
 }
 
 // fetchDirectory reads the main index and merges the developer index into it.
-func fetchDirectory(deadline time.Time) (idx *index, err error) {
+func fetchDirectory(deadline time.Time) (idx *index, devOK bool, err error) {
 	defer func() {
 		if p := recover(); p != nil {
-			idx, err = nil, fmt.Errorf("registry fetch panicked: %v", p)
+			idx, devOK, err = nil, false, fmt.Errorf("registry fetch panicked: %v", p)
 		}
 	}()
 	main, err := fetchIndex(registryURL, mainTrust, deadline)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return withDeveloper(main, deadline), nil
+	idx, devOK = withDeveloper(main, deadline)
+	return idx, devOK, nil
 }
 
 // fetchIndex GETs a signed index within the remaining budget and verifies it.
@@ -152,19 +154,20 @@ func fetchIndex(url string, trust trustSet, deadline time.Time) (*index, error) 
 }
 
 // withDeveloper adds the developer entries to main. The developer index is
-// optional: when it is unreadable or expired, main is returned as is.
-// Otherwise the result expires with the earlier of the two indexes.
-func withDeveloper(main *index, deadline time.Time) *index {
+// optional: when it is unreadable or expired, main is returned as is and ok is
+// false. Otherwise the result expires with the earlier of the two indexes.
+func withDeveloper(main *index, deadline time.Time) (merged *index, ok bool) {
 	dev, err := fetchIndex(developerURL, devTrust, deadline)
 	if err != nil {
-		return main
+		return main, false
 	}
 	mainExp, err1 := time.Parse(time.RFC3339, main.ExpiresAt)
 	devExp, err2 := time.Parse(time.RFC3339, dev.ExpiresAt)
 	if err1 != nil || err2 != nil || !devExp.After(now()) {
-		return main
+		return main, false
 	}
-	merged := *main
+	m := *main
+	merged = &m
 	merged.Packages = slices.Clone(main.Packages)
 	for _, e := range filterDeveloper(dev, main).Packages {
 		if !revoked(dev, e) {
@@ -174,7 +177,7 @@ func withDeveloper(main *index, deadline time.Time) *index {
 	if devExp.Before(mainExp) {
 		merged.ExpiresAt = dev.ExpiresAt
 	}
-	return &merged
+	return merged, true
 }
 
 // loadSnapshot reads the shared snapshot; any problem is "not found".

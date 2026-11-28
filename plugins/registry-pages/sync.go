@@ -242,7 +242,8 @@ func (s *syncer) delete(id string) {
 // registry. It writes only from a verified directory, so a registry outage
 // never removes pages.
 func syncCron(sdk.CronEvent) error {
-	ws, collisions, ok := desired(views())
+	snap := views()
+	ws, collisions, ok := desired(snap)
 	if !ok {
 		return nil
 	}
@@ -261,6 +262,9 @@ func syncCron(sdk.CronEvent) error {
 		if s.ready() {
 			s.update(u)
 		}
+	}
+	if !snap.DevOK {
+		deletes = nil // developer entries may be missing from the cards, not gone
 	}
 	for _, id := range deletes {
 		if s.ready() {

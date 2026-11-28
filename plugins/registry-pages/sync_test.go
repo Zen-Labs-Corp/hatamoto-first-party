@@ -17,6 +17,7 @@ func syncHost(t *testing.T) (*fakeHost, *entityStore) {
 		entry{Kind: kindPlugin, Name: "mailer", Description: "Sends mail", Tier: tierCommunity, Author: "acme"},
 		entry{Kind: kindTheme, Name: "boreal", Description: "Calm", Tier: tierFirstParty},
 	)
+	h.publish(developerURL, 24*time.Hour) // deletes need a merged developer index
 	return h, newEntityStore(h)
 }
 
@@ -294,5 +295,33 @@ func TestSyncListErrorIsReturned(t *testing.T) {
 	}
 	if err := runSync(t); err == nil || s.writes != 0 {
 		t.Fatalf("err %v, writes %d", err, s.writes)
+	}
+}
+
+func TestSyncKeepsEntriesWhileTheDeveloperIndexIsDown(t *testing.T) {
+	h, s := syncHost(t)
+	h.publish(developerURL, 24*time.Hour, devEntry("devplug", kindPlugin))
+	if err := runSync(t); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(s.slugs(), "devplug") {
+		t.Fatalf("developer entry not created: %v", s.slugs())
+	}
+	h.fail(developerURL)
+	h.advance(dirTTL)
+	s.counts = map[string]int{}
+	if err := runSync(t); err != nil {
+		t.Fatal(err)
+	}
+	if s.counts["entities.delete"] != 0 || !slices.Contains(s.slugs(), "devplug") {
+		t.Fatalf("deletes %d, slugs %v", s.counts["entities.delete"], s.slugs())
+	}
+	h.publish(developerURL, 24*time.Hour) // back, without the entry
+	h.advance(dirTTL)
+	if err := runSync(t); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(s.slugs(), "devplug") {
+		t.Fatalf("a real removal was not deleted: %v", s.slugs())
 	}
 }
