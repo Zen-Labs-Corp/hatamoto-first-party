@@ -248,3 +248,17 @@ func TestAdminImportsCountEventbriteReadsOnePage(t *testing.T) {
 		t.Errorf("args = %v", e)
 	}
 }
+
+func TestAdminImportsKeepsProgressWhenSettingsFail(t *testing.T) {
+	h := &adminHost{settingsErr: fmt.Errorf("settings down")}
+	h.install(t)
+	r := callRoute(t, "GET", "/admin/imports", owner, nil, nil)
+	if r.Status != 200 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	for _, e := range h.execs {
+		if strings.HasPrefix(e.sql, "DELETE FROM import_progress") {
+			t.Errorf("stored counts were pruned: %+v", e)
+		}
+	}
+}

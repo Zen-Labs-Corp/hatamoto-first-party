@@ -244,7 +244,7 @@ func serveImports(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 		Token   string           `json:"eventbrite_token"`
 		Sources []settingsSource `json:"import_sources"`
 	}
-	_ = callHost(sdk.FnSettingsGet, struct{}{}, &raw)
+	settingsErr := callHost(sdk.FnSettingsGet, struct{}{}, &raw)
 	hasToken := strings.TrimSpace(raw.Token) != ""
 	out := importList{Role: u.Role, DailyCap: 2 * scheduledCreateCap, RunCap: scheduledCreateCap, BatchCap: manualCreateCap, Sources: []importRow{}}
 	if len(raw.Sources) > maxSources {
@@ -267,7 +267,9 @@ func serveImports(u *sdk.HTTPUser, query map[string][]string) sdk.HTTPResponse {
 		}
 		stats = append(stats, st)
 	}
-	pruneProgress(keys)
+	if settingsErr == nil { // without the settings every source looks removed
+		pruneProgress(keys)
+	}
 	for i, st := range stats {
 		if st != nil {
 			storeProgress(keys[i], *st)

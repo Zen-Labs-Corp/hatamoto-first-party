@@ -14,20 +14,21 @@ import (
 // adminHost fakes settings and the submissions and events tables for the
 // Submissions and Imports routes.
 type adminHost struct {
-	settings string
-	rows     string // the submissions listing cell
-	counts   string
-	last     string // answer of the per-source stats query
-	progress string // answer of the stored-counts query, "{}" when empty
-	drafts   string // the drafts of the default type, a JSON array of entities
-	fetch    map[string]fakePage
-	fetched  []string
-	fetchMs  []any     // timeout_ms of each fetch
-	seeded   []subSeed // when set, the submissions page is cut from these, as the statement does
-	affected int
-	dbErr    error
-	queries  []sqlCall
-	execs    []sqlCall
+	settings    string
+	settingsErr error  // the settings read fails
+	rows        string // the submissions listing cell
+	counts      string
+	last        string // answer of the per-source stats query
+	progress    string // answer of the stored-counts query, "{}" when empty
+	drafts      string // the drafts of the default type, a JSON array of entities
+	fetch       map[string]fakePage
+	fetched     []string
+	fetchMs     []any     // timeout_ms of each fetch
+	seeded      []subSeed // when set, the submissions page is cut from these, as the statement does
+	affected    int
+	dbErr       error
+	queries     []sqlCall
+	execs       []sqlCall
 }
 
 func (h *adminHost) install(t *testing.T) {
@@ -39,6 +40,9 @@ func (h *adminHost) install(t *testing.T) {
 		call.args, _ = a["args"].([]any)
 		switch fn {
 		case sdk.FnSettingsGet:
+			if h.settingsErr != nil {
+				return h.settingsErr
+			}
 			s := h.settings
 			if s == "" {
 				s = `{}`
