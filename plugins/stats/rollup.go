@@ -31,19 +31,20 @@ func oldestMonthQuery(table string) string {
 // detail_daily or plugins_daily cannot keep installs_daily from folding, that
 // month or any later one. Each statement deletes and inserts together, so a
 // failed one loses nothing and the next run retries the same month. A monthly row keeps what was last seen that month (version, channel,
-// environment, theme, plugin versions); health counts are summed and
+// environment, theme, plugin versions, feature flags; the site address is not kept); health counts are summed and
 // report_days counts the days reported.
 const foldInstalls = `WITH moved AS (DELETE FROM installs_daily WHERE day >= $1::date AND day < ($1::date + interval '1 month') RETURNING install, day, version, channel) ` +
 	`INSERT INTO installs_monthly (install, month, version, channel) SELECT DISTINCT ON (install) install, $1::date, version, channel FROM moved ORDER BY install, day DESC ON CONFLICT (install, month) DO UPDATE SET version = EXCLUDED.version, channel = EXCLUDED.channel`
 
 const foldDetail = `WITH md AS (DELETE FROM detail_daily WHERE day >= $1::date AND day < ($1::date + interval '1 month') RETURNING *) ` +
-	`INSERT INTO detail_monthly (install, month, core_version, os, arch, postgres, age_months, worker, theme_name, theme_version, other_plugins, report_days, panics, http_5xx, render_errors, other_plugin_errors, update_failed, update_rolled_back, migration_failed) ` +
+	`INSERT INTO detail_monthly (install, month, core_version, os, arch, postgres, age_months, worker, theme_name, theme_version, other_plugins, report_days, panics, http_5xx, render_errors, other_plugin_errors, update_failed, update_rolled_back, migration_failed, comments_on, static_mode, sso_on, locales_bucket, forms_in_use, offsite_backups_on, csp_enforced, wp_imported) ` +
 	`SELECT DISTINCT ON (install) install, $1::date, core_version, os, arch, postgres, age_months, worker, theme_name, theme_version, other_plugins, ` +
-	`count(*) OVER w, sum(panics) OVER w, sum(http_5xx) OVER w, sum(render_errors) OVER w, sum(other_plugin_errors) OVER w, sum(update_failed) OVER w, sum(update_rolled_back) OVER w, sum(migration_failed) OVER w ` +
+	`count(*) OVER w, sum(panics) OVER w, sum(http_5xx) OVER w, sum(render_errors) OVER w, sum(other_plugin_errors) OVER w, sum(update_failed) OVER w, sum(update_rolled_back) OVER w, sum(migration_failed) OVER w, comments_on, static_mode, sso_on, locales_bucket, forms_in_use, offsite_backups_on, csp_enforced, wp_imported ` +
 	`FROM md WINDOW w AS (PARTITION BY install) ORDER BY install, day DESC ` +
 	`ON CONFLICT (install, month) DO UPDATE SET core_version = EXCLUDED.core_version, os = EXCLUDED.os, arch = EXCLUDED.arch, postgres = EXCLUDED.postgres, age_months = EXCLUDED.age_months, worker = EXCLUDED.worker, ` +
 	`theme_name = EXCLUDED.theme_name, theme_version = EXCLUDED.theme_version, other_plugins = EXCLUDED.other_plugins, report_days = EXCLUDED.report_days, panics = EXCLUDED.panics, http_5xx = EXCLUDED.http_5xx, ` +
-	`render_errors = EXCLUDED.render_errors, other_plugin_errors = EXCLUDED.other_plugin_errors, update_failed = EXCLUDED.update_failed, update_rolled_back = EXCLUDED.update_rolled_back, migration_failed = EXCLUDED.migration_failed`
+	`render_errors = EXCLUDED.render_errors, other_plugin_errors = EXCLUDED.other_plugin_errors, update_failed = EXCLUDED.update_failed, update_rolled_back = EXCLUDED.update_rolled_back, migration_failed = EXCLUDED.migration_failed, ` +
+	`comments_on = EXCLUDED.comments_on, static_mode = EXCLUDED.static_mode, sso_on = EXCLUDED.sso_on, locales_bucket = EXCLUDED.locales_bucket, forms_in_use = EXCLUDED.forms_in_use, offsite_backups_on = EXCLUDED.offsite_backups_on, csp_enforced = EXCLUDED.csp_enforced, wp_imported = EXCLUDED.wp_imported`
 
 const foldPlugins = `WITH mp AS (DELETE FROM plugins_daily WHERE day >= $1::date AND day < ($1::date + interval '1 month') RETURNING *) ` +
 	`INSERT INTO plugins_monthly (install, month, name, version, enabled, errors) ` +

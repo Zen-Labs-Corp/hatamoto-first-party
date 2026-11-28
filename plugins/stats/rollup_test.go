@@ -112,6 +112,14 @@ func TestFoldStatements(t *testing.T) {
 	if len(foldSteps) != 3 || foldSteps[0].fold != foldInstalls {
 		t.Fatal("Basic fold must be the first of three separate steps")
 	}
+	for _, part := range []string{"migration_failed, " + "comments_on, static_mode, sso_on, locales_bucket, forms_in_use, offsite_backups_on, csp_enforced, wp_imported) ", "wp_imported = EXCLUDED.wp_imported"} {
+		if !strings.Contains(foldDetail, part) {
+			t.Errorf("foldDetail missing %q", part)
+		}
+	}
+	if strings.Contains(foldDetail, "host") {
+		t.Error("foldDetail must not carry host")
+	}
 	for stmt, parts := range want {
 		if !sqlGuardOK(stmt) || !strings.HasPrefix(stmt, "WITH ") {
 			t.Fatal("not a single guarded WITH statement")

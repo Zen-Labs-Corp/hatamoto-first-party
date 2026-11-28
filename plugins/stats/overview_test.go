@@ -22,8 +22,8 @@ func fakeDB(t *testing.T, head, channels, versions string) *[]hostCall {
 func fakeDBWith(t *testing.T, cells map[string]string) *[]hostCall {
 	t.Helper()
 	canned := map[string]string{qHeadline: `[]`, qChannels: `[]`, qVersions: `[]`, qWeekly: `[]`, qPlugins: `[]`, qThemes: `[]`, qErrors: `[]`, qSites: `[]`,
-		qDetailed: `{"reports":0,"self_built":0}`,
-		qHealth:   `{"days":0,"panics":0,"http_5xx":0,"render_errors":0,"update_failed":0,"update_rolled_back":0,"migration_failed":0}`}
+		qDetailed: `{"reports":0,"self_built":0}`, qFeatures: `{}`,
+		qHealth: `{"days":0,"panics":0,"http_5xx":0,"render_errors":0,"update_failed":0,"update_rolled_back":0,"migration_failed":0}`}
 	for k, v := range cells {
 		canned[k] = v
 	}
@@ -61,7 +61,7 @@ func stubNow(t *testing.T) {
 }
 
 func TestOverviewQueriesPassGuard(t *testing.T) {
-	for _, q := range []string{qHeadline, qChannels, qVersions, qWeekly, qDetailed, qPlugins, qThemes, qHealth, qErrors, qSites, oldestMonthQuery("installs_daily"), oldestMonthQuery("detail_daily"), oldestMonthQuery("plugins_daily"), foldInstalls, foldDetail, foldPlugins} {
+	for _, q := range []string{qHeadline, qChannels, qVersions, qWeekly, qDetailed, qFeatures, qPlugins, qThemes, qHealth, qErrors, qSites, oldestMonthQuery("installs_daily"), oldestMonthQuery("detail_daily"), oldestMonthQuery("plugins_daily"), foldInstalls, foldDetail, foldPlugins} {
 		if !sqlGuardOK(q) {
 			t.Errorf("guard rejects %q", q)
 		}
@@ -82,7 +82,7 @@ func TestOverviewWindowAndShape(t *testing.T) {
 		if res.Status != 200 {
 			t.Fatalf("days=%s: %d", days, res.Status)
 		}
-		if len(*calls) != 10 { // headline, channels, versions, weekly trend, 6 detailed
+		if len(*calls) != 11 { // headline, channels, versions, weekly trend, 7 detailed
 			t.Fatalf("%d queries", len(*calls))
 		}
 		for _, c := range append((*calls)[:3:3], (*calls)[4:]...) {
@@ -227,6 +227,10 @@ func TestOverviewEmptyDetailedIsEmptyArrays(t *testing.T) {
 	if o.Health != (healthSums{}) {
 		t.Errorf("health %+v", o.Health)
 	}
+	var feat map[string]int
+	if err := json.Unmarshal(raw["features"], &feat); err != nil || feat["reports"] != 0 || len(feat) != 11 {
+		t.Errorf("features %s: %v", raw["features"], err)
+	}
 	if string(raw["sites"]) != `[]` || len(o.Sites) != 0 {
 		t.Errorf("sites %s", raw["sites"])
 	}
@@ -351,5 +355,38 @@ func TestBuildErrorsJumpRule(t *testing.T) {
 	o = buildErrors([]errRow{row("v1.0.0", 1, 5), row("v1.1.0", 1, 5), row("v1.2.0", 1, 5), row("v1.3.0", 1, 5), row("v1.4.0", 1, 5)})
 	if len(o.Cores) != 4 || o.Cores[3] != "v1.1.0" || len(o.Plugins[0].Cells) != 4 {
 		t.Errorf("cores %v, cells %d", o.Cores, len(o.Plugins[0].Cells))
+	}
+}
+
+func TestOverviewFeatures(t *testing.T) {
+	stubNow(t)
+	fakeDBWith(t, map[string]string{
+		qFeatures: `{"reports":41,"comments_on":12,"static_mode":3,"sso_on":2,"forms_in_use":9,"offsite_backups_on":5,"csp_enforced":1,"wp_imported":7,"locales_1":30,"locales_2_3":8,"locales_4_plus":3}`,
+	})
+	res, o := overviewGet(t, nil)
+	want := featureUse{Reports: 41, CommentsOn: 12, StaticMode: 3, SSOOn: 2, FormsInUse: 9, OffsiteBackupsOn: 5, CSPEnforced: 1, WPImported: 7, Locales1: 30, Locales2to3: 8, Locales4Plus: 3}
+	if res.Status != 200 || o.Features != want {
+		t.Fatalf("%d %+v", res.Status, o.Features)
+	}
+}
+
+func TestFeaturesQueryShape(t *testing.T) {
+	for _, part := range []string{"num_nonnulls(", "locales_bucket = '2-3'", "(" + latestDetail + ") l", "CROSS JOIN LATERAL"} {
+		if !strings.Contains(qFeatures, part) {
+			t.Errorf("qFeatures missing %q", part)
+		}
+	}
+	for _, col := range []string{"comments_on", "static_mode", "sso_on", "locales_bucket", "forms_in_use", "offsite_backups_on", "csp_enforced", "wp_imported"} {
+		if !strings.Contains(qFeatures, col) || !strings.Contains(latestDetail, "d."+col) {
+			t.Errorf("column %s missing", col)
+		}
+	}
+	stubNow(t)
+	calls := fakeDB(t, `[]`, `[]`, `[]`)
+	overviewGet(t, nil)
+	for _, c := range *calls {
+		if c.sql == qFeatures && (c.fn != "db.query" || c.args[0] != "2026-09-28" || c.args[1] != "2026-10-28") {
+			t.Errorf("window args %v", c.args)
+		}
 	}
 }

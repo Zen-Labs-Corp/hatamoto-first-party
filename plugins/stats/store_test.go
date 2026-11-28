@@ -124,7 +124,7 @@ func TestDetailedPingIsOneStatement(t *testing.T) {
 	if c.fn != "db.exec" || c.sql != upsertDetailed || !sqlGuardOK(c.sql) {
 		t.Fatalf("call %+v", c)
 	}
-	if len(c.args) != 22 || c.args[0] != goodID || c.args[1] != "2026-11-09" || c.args[2] != "v1.1.0" || c.args[3] != "stable" {
+	if len(c.args) != 30 || c.args[0] != goodID || c.args[1] != "2026-11-09" || c.args[2] != "v1.1.0" || c.args[3] != "stable" {
 		t.Fatalf("args %v", c.args)
 	}
 	list, _ := c.args[20].(string)
@@ -145,11 +145,35 @@ func TestDetailedHostArg(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := (*calls)[1]
-	if len(c.args) != 22 || c.args[21] != "example.com" || !sqlGuardOK(c.sql) {
+	if len(c.args) != 30 || c.args[21] != "example.com" || !sqlGuardOK(c.sql) {
 		t.Fatalf("args %v", c.args)
 	}
 	if n := strings.Count(upsertDetailed, ";"); n != 0 {
 		t.Fatalf("%d semicolons", n)
+	}
+}
+
+func TestDetailedFlagArgs(t *testing.T) {
+	calls := recordHost(t)
+	if err := recordDetailed(detailedPing{}, "2026-11-09"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 22; i < 30; i++ {
+		if got := (*calls)[0].args[i]; got != nil {
+			t.Errorf("absent flag arg %d is %#v, want nil", i, got)
+		}
+	}
+	yes, no, bucket := true, false, "2-3"
+	p := detailedPing{Flags: flags{CommentsOn: &yes, StaticMode: &no, SSOOn: &yes, LocalesBucket: &bucket,
+		FormsInUse: &no, OffsiteBackupsOn: &yes, CSPEnforced: &no, WPImported: &yes}}
+	if err := recordDetailed(p, "2026-11-09"); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{true, false, true, "2-3", false, true, false, true}
+	for i, w := range want {
+		if got := (*calls)[1].args[22+i]; got != w {
+			t.Errorf("flag arg %d is %#v, want %#v", 22+i, got, w)
+		}
 	}
 }
 
@@ -166,12 +190,36 @@ func TestDetailedWithoutPluginsSendsEmptyList(t *testing.T) {
 func TestDetailedSQLShape(t *testing.T) {
 	// A same-day report replaces that day's plugin rows, and no database clock
 	// is involved: the day is an argument.
-	for _, want := range []string{"NOT IN (SELECT name FROM jsonb_to_recordset($21::jsonb)", "ON CONFLICT (install, day, name) DO UPDATE", "host = COALESCE(EXCLUDED.host, detail_daily.host)", "migration_failed, host) ", "$20, $22)"} {
+	for _, want := range []string{"NOT IN (SELECT name FROM jsonb_to_recordset($21::jsonb)", "ON CONFLICT (install, day, name) DO UPDATE", "host = COALESCE(EXCLUDED.host, detail_daily.host)", "host, comments_on, static_mode, sso_on, locales_bucket, forms_in_use, offsite_backups_on, csp_enforced, wp_imported) ", "$22, $23, $24, $25, $26, $27, $28, $29, $30)", "COALESCE(EXCLUDED.comments_on, detail_daily.comments_on)", "COALESCE(EXCLUDED.static_mode, detail_daily.static_mode)", "COALESCE(EXCLUDED.sso_on, detail_daily.sso_on)", "COALESCE(EXCLUDED.locales_bucket, detail_daily.locales_bucket)", "COALESCE(EXCLUDED.forms_in_use, detail_daily.forms_in_use)", "COALESCE(EXCLUDED.offsite_backups_on, detail_daily.offsite_backups_on)", "COALESCE(EXCLUDED.csp_enforced, detail_daily.csp_enforced)", "COALESCE(EXCLUDED.wp_imported, detail_daily.wp_imported)"} {
 		if !strings.Contains(upsertDetailed, want) {
 			t.Errorf("missing %q", want)
 		}
 	}
 	if low := strings.ToLower(upsertDetailed); strings.Contains(low, "now()") || strings.Contains(low, "current_date") {
 		t.Error("database clock in upsertDetailed")
+	}
+}
+
+func TestMigration004Shape(t *testing.T) {
+	raw, err := os.ReadFile("migrations/004_flags_ip.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(raw)
+	for _, want := range []string{"DROP CONSTRAINT detail_daily_host_check,", "ADD CONSTRAINT detail_daily_host_check"} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	for _, col := range []string{"comments_on", "static_mode", "sso_on", "locales_bucket", "forms_in_use", "offsite_backups_on", "csp_enforced", "wp_imported"} {
+		if n := strings.Count(sql, "ADD COLUMN "+col+" "); n != 2 {
+			t.Errorf("ADD COLUMN %s appears %d times, want 2", col, n)
+		}
+	}
+	if n := strings.Count(sql, "IN ('1', '2-3', '4+')"); n != 2 {
+		t.Errorf("locales CHECK appears %d times, want 2", n)
+	}
+	if strings.Contains(strings.ToUpper(sql), "IF EXISTS") {
+		t.Error("must not use IF EXISTS")
 	}
 }

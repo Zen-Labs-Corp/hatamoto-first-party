@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -198,6 +201,11 @@ func withHost(raw string) string {
 	return strings.Replace(detailedBody, `"level":"detailed"`, `"level":"detailed","host":`+raw, 1)
 }
 
+// withFlags adds the raw JSON members (`"key":value,...`) to the valid body.
+func withFlags(raw string) string {
+	return strings.Replace(detailedBody, `"level":"detailed"`, `"level":"detailed",`+raw, 1)
+}
+
 // hostOfLen returns a valid-looking name of n characters: three 63-character
 // labels and a last label that takes the rest (n must be 252..253+).
 func hostOfLen(n int) string {
@@ -207,7 +215,8 @@ func hostOfLen(n int) string {
 
 func TestDetailedHost(t *testing.T) {
 	recordHost(t)
-	for _, h := range []string{"example.com", "blog.example.org", "xn--bcher-kva.example", "a.b-c.example.net", "2fa.example.com", strings.Repeat("a", 63) + ".com"} {
+	for _, h := range []string{"example.com", "blog.example.org", "xn--bcher-kva.example", "a.b-c.example.net", "2fa.example.com", strings.Repeat("a", 63) + ".com",
+		"8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2a00:1450:4001:80b::200e"} {
 		p, code := parseDetailed(withHost(`"` + h + `"`))
 		if code != 0 || !p.HostSet || p.Host != h {
 			t.Errorf("%s: code %d, %q set %v", h, code, p.Host, p.HostSet)
@@ -228,6 +237,89 @@ func TestDetailedHost(t *testing.T) {
 	}
 	if res := send(t, jsonReq(detailedBody)); res.Status != 204 {
 		t.Errorf("no host: got %d", res.Status)
+	}
+}
+
+func TestDetailedFlags(t *testing.T) {
+	recordHost(t)
+	p, code := parseDetailed(detailedBody)
+	if code != 0 || p.Flags != (flags{}) {
+		t.Fatalf("no flags: code %d, %+v", code, p.Flags)
+	}
+	one := map[string]func(flags) bool{
+		`"comments_on":true`:        func(f flags) bool { return f.CommentsOn != nil && *f.CommentsOn },
+		`"static_mode":false`:       func(f flags) bool { return f.StaticMode != nil && !*f.StaticMode },
+		`"sso_on":true`:             func(f flags) bool { return f.SSOOn != nil && *f.SSOOn },
+		`"forms_in_use":true`:       func(f flags) bool { return f.FormsInUse != nil && *f.FormsInUse },
+		`"offsite_backups_on":true`: func(f flags) bool { return f.OffsiteBackupsOn != nil && *f.OffsiteBackupsOn },
+		`"csp_enforced":false`:      func(f flags) bool { return f.CSPEnforced != nil && !*f.CSPEnforced },
+		`"wp_imported":true`:        func(f flags) bool { return f.WPImported != nil && *f.WPImported },
+		`"locales_bucket":"4+"`:     func(f flags) bool { return f.LocalesBucket != nil && *f.LocalesBucket == "4+" },
+	}
+	for raw, ok := range one {
+		p, code := parseDetailed(withFlags(raw))
+		if code != 0 || !ok(p.Flags) {
+			t.Errorf("%s: code %d, %+v", raw, code, p.Flags)
+		}
+		for other := range one {
+			if other != raw && one[other](p.Flags) {
+				t.Errorf("%s also set %s", raw, other)
+			}
+		}
+		if res := send(t, jsonReq(withFlags(raw))); res.Status != 204 {
+			t.Errorf("%s: got %d", raw, res.Status)
+		}
+	}
+	all := `"comments_on":true,"static_mode":false,"sso_on":true,"locales_bucket":"1","forms_in_use":false,"offsite_backups_on":true,"csp_enforced":false,"wp_imported":true`
+	p, code = parseDetailed(withFlags(all))
+	if code != 0 || *p.Flags.CommentsOn != true || *p.Flags.StaticMode != false || *p.Flags.LocalesBucket != "1" || *p.Flags.WPImported != true {
+		t.Errorf("all flags: code %d, %+v", code, p.Flags)
+	}
+	if res := send(t, jsonReq(withFlags(all))); res.Status != 204 {
+		t.Errorf("all flags: got %d", res.Status)
+	}
+	for _, b := range []string{"2-3", "1"} {
+		if _, code := parseDetailed(withFlags(`"locales_bucket":"` + b + `"`)); code != 0 {
+			t.Errorf("bucket %s: %d", b, code)
+		}
+	}
+}
+
+func TestRejectedDetailedFlags(t *testing.T) {
+	recordHost(t)
+	var bodies []string
+	for _, k := range []string{"comments_on", "static_mode", "sso_on", "forms_in_use", "offsite_backups_on", "csp_enforced", "wp_imported"} {
+		for _, v := range []string{`"x"`, `null`, `1`, `"true"`} {
+			bodies = append(bodies, withFlags(`"`+k+`":`+v))
+		}
+		bodies = append(bodies, withFlags(`"`+k+`":true,"`+k+`":true`))
+	}
+	for _, v := range []string{`true`, `""`, `"0"`, `"2"`, `"5+"`, `"4+ "`, `null`, `1`} {
+		bodies = append(bodies, withFlags(`"locales_bucket":`+v))
+	}
+	bodies = append(bodies, withFlags(`"locales_bucket":"1","locales_bucket":"1"`), withFlags(`"Comments_on":true`))
+	for _, b := range bodies {
+		if res := send(t, jsonReq(b)); res.Status != 422 {
+			t.Errorf("%s: got %d, want 422", b, res.Status)
+		}
+	}
+	basic := `{"install":"` + goodID + `","version":"v1.2.3","channel":"stable","comments_on":true}`
+	if res := send(t, jsonReq(basic)); res.Status != 400 {
+		t.Errorf("basic body with a flag: got %d, want 400", res.Status)
+	}
+}
+
+func TestHostPrefixesMirrorMigration(t *testing.T) {
+	raw, err := os.ReadFile("migrations/004_flags_ip.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := regexp.MustCompile(`[0-9a-f:.]+/[0-9]+`).FindAllString(string(raw), -1)
+	want := append(append([]string{globalV6}, blockedV4...), blockedV6...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("migration prefixes %v, Go %v", got, want)
 	}
 }
 
@@ -321,11 +413,30 @@ func TestRejectedDetailedPings(t *testing.T) {
 		{"host port", withHost(`"example.com:8080"`), 422},
 		{"host path", withHost(`"example.com/x"`), 422},
 		{"host space", withHost(`"a b.com"`), 422},
-		{"host ipv4", withHost(`"1.2.3.4"`), 422},
-		{"host ipv4 private", withHost(`"10.0.0.1"`), 422},
 		{"host ipv4 leading zero", withHost(`"1.2.3.04"`), 422},
 		{"host ipv6 bracket", withHost(`"[::1]"`), 422},
 		{"host ipv6", withHost(`"::1"`), 422},
+		{"host ip 0.0.0.0", withHost(`"0.0.0.0"`), 422},
+		{"host ip 10.0.0.1", withHost(`"10.0.0.1"`), 422},
+		{"host ip cgnat", withHost(`"100.64.0.1"`), 422},
+		{"host ip link-local", withHost(`"169.254.1.1"`), 422},
+		{"host ip 172.16", withHost(`"172.16.0.1"`), 422},
+		{"host ip 192.168", withHost(`"192.168.1.1"`), 422},
+		{"host ip doc", withHost(`"203.0.113.7"`), 422},
+		{"host ip multicast", withHost(`"224.0.0.1"`), 422},
+		{"host ip broadcast", withHost(`"255.255.255.255"`), 422},
+		{"host ip6 link-local", withHost(`"fe80::1"`), 422},
+		{"host ip6 ula", withHost(`"fc00::1"`), 422},
+		{"host ip6 zone", withHost(`"fe80::1%eth0"`), 422},
+		{"host ip6 v4-mapped", withHost(`"::ffff:8.8.8.8"`), 422},
+		{"host ip6 doc", withHost(`"2001:db8::1"`), 422},
+		{"host ip6 6to4", withHost(`"2002::1"`), 422},
+		{"host ip6 non-canonical", withHost(`"2606:4700:4700:0:0:0:0:1111"`), 422},
+		{"host ip6 upper", withHost(`"2606:4700:4700::ABCD"`), 422},
+		{"host ip port", withHost(`"8.8.8.8:80"`), 422},
+		{"host ip6 bracket port", withHost(`"[2606:4700:4700::1111]"`), 422},
+		{"host ip cidr", withHost(`"8.8.8.8/32"`), 422},
+		{"host ip short", withHost(`"1.2.3"`), 422},
 		{"host label 64", withHost(`"` + strings.Repeat("a", 64) + `.com"`), 422},
 		{"host dash edge", withHost(`"-a.example.com"`), 422},
 		{"host empty label", withHost(`"a..example.com"`), 422},

@@ -25,6 +25,26 @@ var (
 
 const maxVersionLen = 64
 
+// blockedV4 and blockedV6 are the address ranges that are not a public site
+// address; migrations/004_flags_ip.sql repeats them in the host CHECK
+// (TestHostPrefixesMirrorMigration keeps the two equal).
+var (
+	blockedV4 = []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
+		"192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4"}
+	blockedV6 = []string{"2001::/23", "2001:db8::/32", "2002::/16"}
+	globalV6  = "2000::/3"
+	blocked   = mustPrefixes(append(append([]string{}, blockedV4...), blockedV6...))
+	global6   = netip.MustParsePrefix(globalV6)
+)
+
+func mustPrefixes(list []string) []netip.Prefix {
+	out := make([]netip.Prefix, len(list))
+	for i, s := range list {
+		out[i] = netip.MustParsePrefix(s)
+	}
+	return out
+}
+
 // parsePing validates the body strictly: a JSON object with exactly the keys
 // install, version and channel (case-sensitive, once each), every value a
 // string, nothing after the object. It returns 0 when the ping is acceptable,
@@ -102,8 +122,16 @@ type detailedPing struct {
 	Plugins                 []pluginRow
 	OtherPlugins            int
 	Health                  health
-	Host                    string // the site's public domain name, when HostSet
+	Host                    string // the site's domain name or public IP, when HostSet
 	HostSet                 bool
+	Flags                   flags
+}
+
+// flags are the optional on/off and bucket keys of a Detailed report; nil
+// means the key was not sent.
+type flags struct {
+	CommentsOn, StaticMode, SSOOn, FormsInUse, OffsiteBackupsOn, CSPEnforced, WPImported *bool
+	LocalesBucket                                                                        *string
 }
 
 // pluginRow is one first-party-signed plugin; Errors is its plugin_errors count.
@@ -158,6 +186,15 @@ func parseDetailed(body string) (detailedPing, int) {
 	var p detailedPing
 	var level string
 	var errs map[string]int
+	optBool := func(dst **bool) func() error {
+		return func() error {
+			b, err := readBool(dec)
+			if err == nil {
+				*dst = &b
+			}
+			return err
+		}
+	}
 	err := readObject(dec, map[string]func() error{
 		"install":    func() (err error) { p.Install, err = readString(dec); return },
 		"version":    func() (err error) { p.Version, err = readString(dec); return },
@@ -178,7 +215,21 @@ func parseDetailed(body string) (detailedPing, int) {
 		"other_plugins": func() (err error) { p.OtherPlugins, err = readInt(dec, 0, maxOtherPlugins); return },
 		"health":        func() (err error) { p.Health, errs, err = readHealth(dec); return },
 	}, map[string]func() error{
-		"host": func() (err error) { p.Host, err = readString(dec); p.HostSet = err == nil; return },
+		"host":               func() (err error) { p.Host, err = readString(dec); p.HostSet = err == nil; return },
+		"comments_on":        optBool(&p.Flags.CommentsOn),
+		"static_mode":        optBool(&p.Flags.StaticMode),
+		"sso_on":             optBool(&p.Flags.SSOOn),
+		"forms_in_use":       optBool(&p.Flags.FormsInUse),
+		"offsite_backups_on": optBool(&p.Flags.OffsiteBackupsOn),
+		"csp_enforced":       optBool(&p.Flags.CSPEnforced),
+		"wp_imported":        optBool(&p.Flags.WPImported),
+		"locales_bucket": func() error {
+			s, err := readString(dec)
+			if err == nil {
+				p.Flags.LocalesBucket = &s
+			}
+			return err
+		},
 	})
 	if err != nil {
 		return detailedPing{}, http.StatusUnprocessableEntity
@@ -188,7 +239,8 @@ func parseDetailed(body string) (detailedPing, int) {
 	}
 	if level != "detailed" || !installRe.MatchString(p.Install) || len(p.Version) > maxVersionLen || !versionRe.MatchString(p.Version) ||
 		!osArchRe.MatchString(p.OS) || !osArchRe.MatchString(p.Arch) ||
-		!nameRe.MatchString(p.ThemeName) || !validSemver(p.ThemeVersion) || (p.HostSet && !validHost(p.Host)) {
+		!nameRe.MatchString(p.ThemeName) || !validSemver(p.ThemeVersion) || (p.HostSet && !validHost(p.Host)) ||
+		(p.Flags.LocalesBucket != nil && !validBucket(*p.Flags.LocalesBucket)) {
 		return detailedPing{}, http.StatusUnprocessableEntity
 	}
 	switch p.Channel {
@@ -217,19 +269,40 @@ func parseDetailed(body string) (detailedPing, int) {
 	return p, 0
 }
 
+func validBucket(s string) bool { return s == "1" || s == "2-3" || s == "4+" }
+
 func validSemver(v string) bool { return len(v) <= maxVersionLen && semverRe.MatchString(v) }
 
 // validHost reports whether h is a lowercase LDH domain name with at least one
-// dot that is not an IP literal (a TLD is never all digits).
+// dot (a TLD is never all digits) or a public IP literal in canonical form
+// (netip text: no zone, brackets, port or mask).
 func validHost(h string) bool {
-	if len(h) == 0 || len(h) > 253 || !hostRe.MatchString(h) {
+	if len(h) == 0 || len(h) > 253 {
 		return false
 	}
-	if _, err := netip.ParseAddr(h); err == nil {
+	if a, err := netip.ParseAddr(h); err == nil {
+		return publicIP(a, h)
+	}
+	if !hostRe.MatchString(h) {
 		return false
 	}
 	last := h[strings.LastIndexByte(h, '.')+1:]
 	return strings.Trim(last, "0123456789") != ""
+}
+
+func publicIP(a netip.Addr, h string) bool {
+	if a.Zone() != "" || a.Is4In6() || a.String() != h {
+		return false
+	}
+	if a.Is6() && !global6.Contains(a) {
+		return false
+	}
+	for _, p := range blocked {
+		if p.Contains(a) {
+			return false
+		}
+	}
+	return true
 }
 
 // readObject consumes one object whose keys are each of fields (all required)

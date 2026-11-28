@@ -54,7 +54,7 @@ func TestIndexLoadsOnlyBridgeAndApp(t *testing.T) {
 	if len(srcs) != 2 || srcs[0] != "/plugin-ui/_sdk/bridge.js" || srcs[1] != "app.js" {
 		t.Fatalf("scripts %v", srcs)
 	}
-	if !strings.Contains(html, "Stored: install ID, version, channel, day; with detailed reports also OS, architecture, plugin and theme names and versions, health counts, and the site address when sent. No IP addresses.") {
+	if !strings.Contains(html, "Stored: install ID, version, channel, day; with detailed reports also OS, architecture, plugin and theme names and versions, health counts, on/off feature flags and a language-count bucket, and the site address (domain or public IP) when the install sends it. The address a ping comes from is never stored.") {
 		t.Fatal("storage footer missing")
 	}
 	if !strings.Contains(html, `<option value="30" selected>`) {
@@ -137,9 +137,20 @@ func TestUIHasNoDuplicateTitle(t *testing.T) {
 // The detailed panels exist, show the empty state, and are built with textContent only.
 func TestUIDetailedPanels(t *testing.T) {
 	html, js := readUI(t, "index.html"), readUI(t, "app.js")
-	for _, id := range []string{"detailed-line", "plugins", "themes", "errors", "health", "self-built"} {
+	for _, id := range []string{"detailed-line", "plugins", "themes", "errors", "health", "features-line", "features", "self-built"} {
 		if !strings.Contains(html, `id="`+id+`"`) {
 			t.Errorf("index.html lacks #%s", id)
+		}
+	}
+	if h, f, s := strings.Index(html, `id="health"`), strings.Index(html, `id="features"`), strings.Index(html, `id="sites"`); !(h < f && f < s) {
+		t.Error("#features must sit after #health and before #sites")
+	}
+	if !strings.Contains(html, "<h2>Features in use</h2>") {
+		t.Error("index.html lacks the Features in use heading")
+	}
+	for _, want := range []string{`$("#features")`, "f.reports > 0"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("ui/app.js lacks %q", want)
 		}
 	}
 	for _, id := range []string{"sites"} {

@@ -186,6 +186,17 @@ function detailed(o) {
   renderTable($("#health"), ["Panics", "5xx", "Render errors", "Updates failed", "Updates rolled back", "Migrations failed"],
     [[rate(h.panics), rate(h.http_5xx), rate(h.render_errors), String(h.update_failed), String(h.update_rolled_back), String(h.migration_failed)]],
     "");
+  const FEATURES = [["comments_on", "Comments on"], ["static_mode", "Static mode"], ["sso_on", "Single sign-on"],
+    ["forms_in_use", "Forms in use"], ["offsite_backups_on", "Off-site backups"], ["csp_enforced", "CSP enforced"],
+    ["wp_imported", "WordPress import"]];
+  const f = o.features;
+  $("#features-line").textContent = `Installs reporting features in the window: ${f.reports}`;
+  const withShare = f.reports > 0;
+  const pct = (n) => `${Math.round((100 * n) / f.reports)}%`;
+  renderTable($("#features"), withShare ? ["Feature", "Installs", "Share"] : ["Feature", "Installs"],
+    [...FEATURES.map(([k, label]) => [label, String(f[k]), ...(withShare ? [pct(f[k])] : [])]),
+      ["Languages", `1: ${f.locales_1}  2-3: ${f.locales_2_3}  4+: ${f.locales_4_plus}`, ...(withShare ? [""] : [])]],
+    "");
 }
 
 async function load() {

@@ -3,7 +3,7 @@
 Receives the opt-in install stats ping that Hatamoto sends once a day
 (`POST /p/stats/v1/ping`, a Basic body of exactly `install`, `version` and `channel`,
 or a Detailed body with plugin, theme and health data, and optionally the site's
-address) and shows the totals to the
+address and on/off feature flags) and shows the totals to the
 site owner on the plugin's admin page. It is only useful on the
 site that receives the pings (hatamoto.dev).
 
@@ -19,11 +19,16 @@ site that receives the pings (hatamoto.dev).
   version and enabled flag of every installed plugin signed by a first-party key,
   the number of other (self-built or unsigned) plugins, and health counts since the
   last report: panics, 5xx responses, render errors, errors per listed plugin,
-  failed and rolled-back updates, failed migrations. An install may also send its
-  site's public domain name (`host`, for example `example.com`); it is stored
-  only when the install sends it.
-- **Never stored**: an IP address (the plugin host never passes one to a plugin;
-  `host` is a name the install chose to send, never derived from the connection),
+  failed and rolled-back updates, failed migrations. An install may also send
+  eight on/off or bucket feature flags (comments, static mode, single sign-on,
+  forms, off-site backups, CSP enforcement, WordPress import, and a language-count
+  bucket of 1, 2-3 or 4+; nothing about content or visitors), and its site's
+  address (`host`): the public domain name (for example `example.com`), or its
+  public IP address when it has no public domain. Each is stored only when the
+  install sends it.
+- **Never stored**: the address a ping comes from (the plugin host never passes
+  one to a plugin; `host` is an address the install chose to send, never derived
+  from the connection),
   request headers (including the User-Agent), cookies, or the request body. The
   plugin reads no header except `Content-Type`, and logs nothing. The names of
   self-built plugins are never sent, only their count.
@@ -32,16 +37,16 @@ site that receives the pings (hatamoto.dev).
   detailed table (environment, theme and health in one row, plus one row per plugin).
   After that the daily rows of a month are folded into one row per install and
   month, and the daily rows are deleted. The host lives only in the daily rows and
-  is dropped at that fold; monthly rows have no host. The monthly row holds the version, channel,
-  environment, theme and plugin versions last seen that month; health and error
+  is dropped at that fold, whether it is a domain or an IP; monthly rows have no host. The monthly row holds the version, channel,
+  environment, theme, plugin versions and feature flags last seen that month; health and error
   counts are summed over the month. The install IDs are kept in those monthly rows
   with no end date.
 - **Who sees it**: only the site owner, as totals on the plugin's admin page, plus
-  an Active installs table listing every install seen in the last 30 days (host
-  when one was reported, version, channel, last seen; no install ID). The host is self-reported and
-  unverified: any install can send any valid name. It is display-only; the plugin
-  never fetches or links a host. `host` is the name the install reports, which may
-  be a private name. There is no public stats page, no
+  an Active installs table listing every install seen in the last 30 days (host,
+  a domain or an IP, when one was reported, version, channel, last seen; no install
+  ID), and a Features in use table. The host is self-reported and
+  unverified: any install can send any valid domain or public IP. It is
+  display-only; the plugin never fetches or links a host. There is no public stats page, no
   per-install page, no export.
 - **Request log**: Hatamoto itself logs every request, including these. That log
   keeps method, path, time, status, size, duration, the address of the proxy in
@@ -71,11 +76,20 @@ stats documentation on https://hatamoto.dev/docs.
   - Detailed (at most 16 KiB): the three keys plus `"level":"detailed"`, `os`,
     `arch`, `postgres`, `age_months`, `worker`, `theme`, `plugins` (at most 100,
     unique, sorted by name), `other_plugins` and `health` (with `plugin_errors`
-    keyed by listed plugin name, or `other`), and an optional top-level `host`: a
-    lowercase domain name (letters, digits and hyphens), labels of 1-63
+    keyed by listed plugin name, or `other`), and these optional top-level keys:
+    `host`, a lowercase domain name (letters, digits and hyphens), labels of 1-63
     characters, at most 253 in all, at least one dot, no trailing dot, port or
-    path, and not an IP address. An invalid `host` answers `422`; a Basic body
-    with a `host` key still answers `400`. Every nested object is checked the
+    path, with an all-digit last label not allowed, or a public IP literal in
+    canonical form. An IP literal is rejected when it is private, loopback,
+    link-local, shared (CGNAT), documentation, multicast or reserved, an
+    IPv4-mapped IPv6 address, or written with a zone, brackets, a port, a mask or
+    leading zeros; IPv6 must be lowercase, compressed as RFC 5952 writes it and
+    inside `2000::/3`. The flags `comments_on`, `static_mode`, `sso_on`,
+    `forms_in_use`, `offsite_backups_on`, `csp_enforced` and `wp_imported` are
+    JSON booleans and `locales_bucket` is `"1"`, `"2-3"` or `"4+"`. An absent
+    flag is stored as NULL (not sent), a same-day report without a flag keeps the
+    value stored earlier. An invalid `host` or flag, a wrong type or `null`
+    answers `422`; a Basic body with a `host` or flag key still answers `400`. Every nested object is checked the
     same strict way: exact keys, once each, exact case, right types, counts in
     range. Any violation answers `422`; invalid JSON or trailing data answers `400`.
   A body over its cap answers `413`, another content type `415`. Rejected bodies
@@ -93,9 +107,13 @@ stats documentation on https://hatamoto.dev/docs.
   core version is its error count divided by the install-days that listed it. The
   jump flag marks a plugin on a core version when at least 3 installs report it
   there, its rate is above zero and at least twice the rate on the next lower
-  core version with data in the window. It also returns `sites`: every install
+  core version with data in the window. It returns `features`: among the installs
+  whose newest report in the window carries at least one flag, how many there are
+  (`reports`, the denominator of the page's percents; reports from cores that send
+  no flags are not counted), how many have each flag on and how many are in each
+  language bucket. It also returns `sites`: every install
   active in the last 30 days (whatever `days` says) with the version, channel and
-  day of its newest ping and the host of its newest report that carried one (`""`
+  day of its newest ping and the host (domain or IP) of its newest report that carried one (`""`
   when none did), newest first, installs with a host first, at most 1,000 rows.
 - **Rollup**: the `rollup` cron job (hourly) folds months older than the
   retention window, oldest first, up to 3 months per run. It is a cron job, so it
@@ -106,8 +124,8 @@ stats documentation on https://hatamoto.dev/docs.
 - **Permissions**: `db` only.
 - **Tables**: `installs_daily` (install, day, version, channel) and
   `installs_monthly` (install, month, version, channel); for detailed reports
-  `detail_daily` (with the optional `host`), `plugins_daily`, `detail_monthly` and
-  `plugins_monthly`.
+  `detail_daily` (with the optional `host` and the eight nullable flag columns),
+  `plugins_daily`, `detail_monthly` (the flag columns, no host) and `plugins_monthly`.
 
 ## Build, test, install
 
@@ -140,7 +158,7 @@ stable channel. It is not listed in the public plugin registry.
 
 ## Limits
 
-- The overview is ten queries (headline, channels, versions, trend, and six for
+- The overview is eleven queries (headline, channels, versions, trend, and seven for
   detailed reports, the last the Active installs list) and builds the splits and the jump flag in the plugin. The
   detailed queries return at most 1,000 rows each (the Active installs list too) and have not been measured at
   scale.

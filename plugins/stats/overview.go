@@ -29,12 +29,30 @@ type overview struct {
 	SelfBuiltInstalls int          `json:"self_built_installs"`
 	Themes            []themeUse   `json:"themes"`
 	Health            healthSums   `json:"health"`
+	Features          featureUse   `json:"features"`
 	Errors            errorsTable  `json:"errors"`
 	Sites             []siteRow    `json:"sites"`
 
 	// DetailedUnavailable is set when the Detailed queries failed; the Basic
 	// fields are still valid.
 	DetailedUnavailable bool `json:"detailed_unavailable"`
+}
+
+// featureUse counts, among the installs whose newest report in the window
+// carries at least one feature flag, how many have each flag on and how many
+// are in each language-count bucket. The page computes the percents.
+type featureUse struct {
+	Reports          int `json:"reports"`
+	CommentsOn       int `json:"comments_on"`
+	StaticMode       int `json:"static_mode"`
+	SSOOn            int `json:"sso_on"`
+	FormsInUse       int `json:"forms_in_use"`
+	OffsiteBackupsOn int `json:"offsite_backups_on"`
+	CSPEnforced      int `json:"csp_enforced"`
+	WPImported       int `json:"wp_imported"`
+	Locales1         int `json:"locales_1"`
+	Locales2to3      int `json:"locales_2_3"`
+	Locales4Plus     int `json:"locales_4_plus"`
 }
 
 // siteRow is one active install: its newest host ("" when it never reported
@@ -138,11 +156,17 @@ const qVersions = `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.count DESC, 
 
 // latestDetail is each install's newest Detailed report in the window, one
 // index probe per install like latestInWindow.
-const latestDetail = `SELECT w.install, l.day, l.theme_name, l.theme_version, l.other_plugins FROM (SELECT DISTINCT install FROM detail_daily WHERE day > $1::date AND day <= $2::date) w CROSS JOIN LATERAL (SELECT d.day, d.theme_name, d.theme_version, d.other_plugins FROM detail_daily d WHERE d.install = w.install AND d.day > $1::date AND d.day <= $2::date ORDER BY d.day DESC LIMIT 1) l`
+const latestDetail = `SELECT w.install, l.day, l.theme_name, l.theme_version, l.other_plugins, l.comments_on, l.static_mode, l.sso_on, l.locales_bucket, l.forms_in_use, l.offsite_backups_on, l.csp_enforced, l.wp_imported FROM (SELECT DISTINCT install FROM detail_daily WHERE day > $1::date AND day <= $2::date) w CROSS JOIN LATERAL (SELECT d.day, d.theme_name, d.theme_version, d.other_plugins, d.comments_on, d.static_mode, d.sso_on, d.locales_bucket, d.forms_in_use, d.offsite_backups_on, d.csp_enforced, d.wp_imported FROM detail_daily d WHERE d.install = w.install AND d.day > $1::date AND d.day <= $2::date ORDER BY d.day DESC LIMIT 1) l`
 
 // qDetailed: installs with a report and, of those, installs whose newest report
 // counts self-built plugins.
 const qDetailed = `SELECT jsonb_build_object('reports', count(*), 'self_built', count(*) FILTER (WHERE other_plugins > 0)) FROM (` + latestDetail + `) l`
+
+// qFeatures: installs whose newest report carries at least one flag, and per
+// flag how many of the newest reports have it on or in each locales bucket.
+const qFeatures = `SELECT jsonb_build_object('reports', count(*) FILTER (WHERE num_nonnulls(comments_on, static_mode, sso_on, locales_bucket, forms_in_use, offsite_backups_on, csp_enforced, wp_imported) > 0), ` +
+	`'comments_on', count(*) FILTER (WHERE comments_on), 'static_mode', count(*) FILTER (WHERE static_mode), 'sso_on', count(*) FILTER (WHERE sso_on), 'forms_in_use', count(*) FILTER (WHERE forms_in_use), 'offsite_backups_on', count(*) FILTER (WHERE offsite_backups_on), 'csp_enforced', count(*) FILTER (WHERE csp_enforced), 'wp_imported', count(*) FILTER (WHERE wp_imported), ` +
+	`'locales_1', count(*) FILTER (WHERE locales_bucket = '1'), 'locales_2_3', count(*) FILTER (WHERE locales_bucket = '2-3'), 'locales_4_plus', count(*) FILTER (WHERE locales_bucket = '4+')) FROM (` + latestDetail + `) l`
 
 // qPlugins and qThemes: installs per name and version in each install's newest
 // report, capped at 1,000 rows.
@@ -284,6 +308,10 @@ func buildDetailed(o *overview, start, end, sitesStart string) error {
 	if err := dbJSON(qHealth, &h, start, end); err != nil {
 		return err
 	}
+	var feat featureUse
+	if err := dbJSON(qFeatures, &feat, start, end); err != nil {
+		return err
+	}
 	var errRows []errRow
 	if err := dbJSON(qErrors, &errRows, start, end); err != nil {
 		return err
@@ -296,6 +324,7 @@ func buildDetailed(o *overview, start, end, sitesStart string) error {
 
 	o.Detailed = detailedInfo{Reports: det.Reports, Active: o.Active}
 	o.SelfBuiltInstalls = det.SelfBuilt
+	o.Features = feat
 	if sites != nil {
 		o.Sites = sites
 	}
