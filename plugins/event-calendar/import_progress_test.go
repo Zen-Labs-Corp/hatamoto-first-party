@@ -126,6 +126,12 @@ func TestAdminImportsProgress(t *testing.T) {
 	if !strings.Contains(r.Body, `"finished":true`) {
 		t.Errorf("not finished: %s", r.Body)
 	}
+	// events before the cursor that were never created: not finished
+	h.progress = `{"` + prefix + `":{"found":214,"remaining":0}}`
+	r = callRoute(t, "GET", "/admin/imports", owner, nil, nil)
+	if !strings.Contains(r.Body, `"finished":false`) {
+		t.Errorf("events left behind the cursor, finished: %s", r.Body)
+	}
 	// a capped count (the first page of a feed) never means finished
 	h.progress = `{"` + prefix + `":{"found":50,"found_capped":true,"remaining":0}}`
 	r = callRoute(t, "GET", "/admin/imports", owner, nil, nil)

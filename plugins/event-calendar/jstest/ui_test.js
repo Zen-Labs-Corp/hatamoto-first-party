@@ -437,6 +437,13 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(routes.length === 1 && els["#imp-rows"].buttons("Import the next 200").length === 0 && els["#imp-next"].hidden, "a recent count is not repeated, and nothing is left to import");
   check(els["#imp-rows"].children[0].text().includes("200 of 200 imported"), "finished source: " + els["#imp-rows"].children[0].text());
 
+  // events before the cursor were never created: the batch is offered without "after"
+  const behind = { ...IMPORTS, sources: [{ ...IMPORTS.sources[0], found: 214, remaining: 0, finished: false, counted_at: new Date().toISOString() }] };
+  ({ els, calls } = await load({ tab: "imports", imports: behind }));
+  check(els["#imp-rows"].buttons("Import the next 200").length === 1, "events left behind the cursor still offer a batch");
+  await els["#imp-rows"].buttons("Import the next 200")[0].click();
+  check(calls.length === 1 && JSON.stringify(calls[0]) === JSON.stringify({ action: "import_source", name: "Town council" }), "and the batch has no after: " + JSON.stringify(calls[0]));
+
   // a capped count (the first page of a feed) is never finished and never reads "200 of 50+"
   const capped = { ...IMPORTS, sources: [{ ...IMPORTS.sources[0], found: 50, found_capped: true, remaining: 0, finished: false, counted_at: new Date().toISOString() }] };
   ({ els } = await load({ tab: "imports", imports: capped }));
