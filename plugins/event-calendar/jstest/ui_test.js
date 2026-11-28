@@ -15,6 +15,8 @@ class Node {
     this.handlers = {};
     this.hidden = false;
     this.disabled = false;
+    this.checked = false;
+    this.title = "";
     this.value = "";
     this.classes = new Set();
     this.classList = { toggle: (c, on) => (on ? this.classes.add(c) : this.classes.delete(c)) };
@@ -23,6 +25,7 @@ class Node {
   replaceChildren(...kids) { this.children = kids; }
   addEventListener(type, fn) { this.handlers[type] = fn; }
   click() { return this.handlers.click && this.handlers.click(); }
+  fire(type, event) { return this.handlers[type] && this.handlers[type](event || {}); }
   text() {
     return (this.textContent || "") + this.children.map((c) => (typeof c === "string" ? c : c.text())).join(" ");
   }
@@ -76,14 +79,46 @@ const IMPORTS = {
   run_cap: 100,
 };
 
+// The element ids ui/index.html defines and app.js reads.
 const IDS = [
-  "#notice", "#hint", "#state", "#events", "#rows", "#duplicate", "#dup-event", "#dup-shift", "#dup-go",
-  "#tab-submissions", "#tab-imports", "#tab-repeating", "#panel-submissions", "#panel-imports", "#panel-repeating",
-  "#sub-status", "#sub-off", "#sub-reject-all", "#sub-state", "#sub-table", "#sub-rows", "#imp-state", "#imp-table", "#imp-rows", "#imp-detail", "#imp-add", "#imp-url", "#imp-go", "#imp-confirm",
+  "#notice", "#hint", "#feed-row", "#feed-url",
+  "#tab-upcoming", "#tab-past", "#tab-drafts", "#tab-submissions", "#tab-imports", "#tab-repeating",
+  "#cnt-upcoming", "#cnt-past", "#cnt-drafts", "#cnt-submissions", "#cnt-repeating", "#ical", "#new-event",
+  "#panel-events", "#q", "#venue", "#cat", "#novenue", "#view-list", "#view-month", "#chips", "#ev-state", "#list", "#ev-rows",
+  "#month", "#m-prev", "#m-label", "#m-next", "#m-today", "#m-total", "#m-grid", "#ev-foot", "#ev-range", "#ev-pager",
+  "#panel-submissions", "#sub-off", "#sub-pending", "#sub-approved", "#sub-rejected", "#sub-all", "#sub-q", "#sub-reject-all",
+  "#sub-state", "#sub-table", "#sub-rows", "#sub-range", "#sub-pager",
+  "#panel-imports", "#imp-owner-only", "#imp-state", "#imp-table", "#imp-rows", "#imp-next", "#imp-add", "#imp-detail", "#imp-url", "#imp-go", "#imp-confirm",
+  "#panel-repeating", "#rep-q", "#state", "#events", "#rows", "#rep-range", "#rep-pager", "#duplicate", "#dup-event", "#dup-shift", "#dup-go",
+  "#help",
 ];
 
+// eventsAnswer is /admin/events for a query: 5 events a day, 50 to a page.
+function eventsAnswer(q, { role = "owner", total = 232, capped = false, ready = true } = {}) {
+  const page = Number(q.page || 1);
+  const from = (page - 1) * 50;
+  const items = [];
+  const day_counts = {};
+  for (let i = from; i < Math.min(total, from + 50); i++) {
+    const day = new Date(Date.UTC(2027, 2, 1 + Math.floor(i / 5))).toISOString().slice(0, 10);
+    items.push({
+      id: `e${i}`, slug: `event-${i}`, name: `Event ${i + 1}`, day, time: "09:00", all_day: i % 7 === 6,
+      venue: i % 4 === 0 ? "" : "Town hall", city: i % 4 === 0 ? "" : "Brighton", no_venue: i % 4 === 0,
+      categories: ["Music"], price: i % 3 === 0 ? "Free" : "", status: q.tab === "drafts" ? "draft" : "published",
+      repeating: i === 1, imported: i === 2,
+    });
+    day_counts[day] = 5;
+  }
+  const counts = { upcoming: 232, past: 155, submissions_pending: 14, repeating: 55 };
+  if (q.with_drafts || q.tab === "drafts") Object.assign(counts, capped ? { drafts: 500, drafts_capped: true } : { drafts: 93 });
+  const out = { ready, role, items, total, day_counts, page, per_page: 50, counts };
+  if (capped) out.total_capped = true;
+  if (q.facets) out.facets = { venues: ["Blue Room", "Town hall"], categories: ["Music", "Talk"] };
+  return out;
+}
+
 // load runs the page and opens a tab (the repeating one unless told).
-async function load({ named = "old", data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS } = {}) {
+async function load({ named = "old", data = DATA, refuse = false, status = 200, tab = "repeating", subs = SUBS, imports = IMPORTS, events = {}, raw } = {}) {
   const els = {};
   for (const id of IDS) els[id] = new Node(id);
   els["#dup-shift"].value = "7";
@@ -91,7 +126,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   const named_calls = [];
   const routes = [];
   const document = { querySelector: (s) => els[s], createElement: (t) => new Node(t) };
-  const bodies = { "/admin/repeating": data, "/admin/submissions": subs, "/admin/imports": imports };
+  const bodies = { "/admin/repeating": data, "/admin/submissions": subs, "/admin/imports": imports, "/admin/events": (q) => eventsAnswer(q, events) };
   const hatamoto = {
     ready: Promise.resolve(),
     route: async (method, p, body, query) => {
@@ -99,7 +134,9 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
       const sent = {};
       for (const [k, v] of Object.entries(query || {})) sent[k] = typeof v === "string" ? v : v == null ? "" : JSON.stringify(v);
       routes.push({ method, p, query: sent });
-      return { status, body: JSON.stringify(method === "GET" ? bodies[p] : { ok: true }) };
+      if (raw !== undefined) return { status, body: raw };
+      const answer = bodies[p];
+      return { status, body: JSON.stringify(method === "GET" ? (typeof answer === "function" ? answer(sent) : answer) : { ok: true }) };
     },
     // named is how the core answers runInputs("edit_dates", values): "old" throws, as an older core does
     runInputs: (...args) => {
@@ -114,9 +151,11 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
       return refuse ? Promise.reject(new Error("no run form on this page")) : Promise.resolve();
     },
   };
+  els["#feed-row"].hidden = true;
   vm.runInNewContext(src, { document, hatamoto, Object, Number, Math, Date, String, Set, JSON, Error, Boolean });
   await new Promise((r) => setTimeout(r, 10));
-  if (tab !== "submissions") {
+  if (tab !== "upcoming") {
+    routes.length = 0;
     els[`#tab-${tab}`].click();
     await new Promise((r) => setTimeout(r, 10));
   }
@@ -240,24 +279,27 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(els["#notice"].textContent === "nope" && els["#notice"].classes.has("error"), "error shown");
 
   // tabs: the first one loads on start, the others lazily and once
-  ({ els, calls, routes } = await load({ tab: "submissions" }));
-  check(routes.length === 1 && routes[0].p === "/admin/submissions", "only the Submissions tab loads at first");
-  check(!els["#panel-submissions"].hidden && els["#panel-imports"].hidden && els["#panel-repeating"].hidden, "Submissions panel shown first");
+  ({ els, calls, routes } = await load({ tab: "upcoming" }));
+  check(routes.length === 1 && routes[0].p === "/admin/events", "only the Events list loads at first");
+  check(!els["#panel-events"].hidden && els["#panel-submissions"].hidden && els["#panel-imports"].hidden && els["#panel-repeating"].hidden, "Events panel shown first");
   els["#tab-imports"].click();
   await next();
-  check(els["#panel-submissions"].hidden && !els["#panel-imports"].hidden && els["#tab-imports"].classes.has("active") && !els["#tab-submissions"].classes.has("active"), "tab switch");
+  check(els["#panel-events"].hidden && !els["#panel-imports"].hidden && els["#tab-imports"].classes.has("on") && !els["#tab-upcoming"].classes.has("on"), "tab switch");
   check(routes.length === 2 && routes[1].p === "/admin/imports", "Imports loads on first show");
   els["#tab-submissions"].click();
   els["#tab-imports"].click();
   await next();
-  check(routes.length === 2, "a tab loads once");
+  check(routes.length === 3 && routes[2].p === "/admin/submissions", "a legacy tab loads once");
   els["#tab-repeating"].click();
   await next();
-  check(routes.length === 3 && routes[2].p === "/admin/repeating" && !els["#panel-repeating"].hidden, "Repeating loads on first show");
+  check(routes.length === 4 && routes[3].p === "/admin/repeating" && !els["#panel-repeating"].hidden, "Repeating loads on first show");
+  els["#tab-past"].click();
+  await next();
+  check(!els["#panel-events"].hidden && els["#panel-repeating"].hidden && routes[4].query.tab === "past", "Past reloads the shared Events panel");
 
   // submissions: rows, count, approve fills exactly the seven inputs
   ({ els, calls, routes } = await load({ tab: "submissions" }));
-  check(els["#tab-submissions"].textContent === "Submissions (2)", "pending count on the tab: " + els["#tab-submissions"].textContent);
+  check(els["#cnt-submissions"].textContent === "2" && els["#cnt-submissions"].classes.has("warn"), "pending count on the tab: " + els["#cnt-submissions"].textContent);
   let subRows = els["#sub-rows"];
   check(subRows.children.length === 3, "one row per submission");
   check(subRows.text().includes("Open mic night") && subRows.text().includes("Sat 20 Feb 8:00 pm") && subRows.text().includes("visitor@example.org") && subRows.text().includes("The Anchor"), "title, when as typed, venue and sender shown");
@@ -283,13 +325,6 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   await next();
   check(routes[0].method === "POST" && routes[0].p === "/admin/submissions/8/delete", "delete posts");
 
-  // the filter
-  routes.length = 0;
-  els["#sub-status"].value = "rejected";
-  els["#sub-status"].handlers.change();
-  await next();
-  check(routes[0].query.status === "rejected", "changing the filter reloads with it");
-
   // an editor: approve and delete disabled, reject works
   ({ els, calls, routes } = await load({ tab: "submissions", subs: { ...SUBS, role: "editor" } }));
   subRows = els["#sub-rows"];
@@ -309,7 +344,7 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
 
   // empty and failing lists
   ({ els } = await load({ tab: "submissions", subs: { role: "owner", counts: {}, items: [] } }));
-  check(els["#sub-table"].hidden && els["#sub-state"].textContent === "No submissions here." && els["#tab-submissions"].textContent === "Submissions", "no submissions");
+  check(els["#sub-table"].hidden && els["#sub-state"].textContent === "No submissions here." && els["#cnt-submissions"].textContent === "0", "no submissions");
   // the form is off: the tab says so; on, it does not
   ({ els } = await load({ tab: "submissions", subs: { ...SUBS, enabled: false } }));
   check(!els["#sub-off"].hidden, "a hint when submissions are off");
@@ -371,6 +406,104 @@ async function load({ named = "old", data = DATA, refuse = false, status = 200, 
   check(els["#hint"].textContent.includes("same button") && els["#hint"].textContent.includes("Runs tab") && !els["#hint"].textContent.includes("type"), "refused import shows the Runs-tab hint");
   ({ els } = await load({ tab: "imports", imports: { role: "owner", sources: [] } }));
   check(els["#imp-table"].hidden && els["#imp-state"].textContent.includes("Settings tab"), "no sources");
+
+  // Events list: first load, counts, rows grouped by day
+  ({ els, routes } = await load({ tab: "upcoming" }));
+  check(routes.length === 1 && routes[0].p === "/admin/events", "the Events list loads first");
+  const first = routes[0].query;
+  check(first.tab === "upcoming" && first.facets === "1" && first.with_drafts === "1" && first.page === "1" && !("month" in first), "first request: " + JSON.stringify(first));
+  check(els["#cnt-upcoming"].textContent === "232" && els["#cnt-past"].textContent === "155" && els["#cnt-drafts"].textContent === "93" && els["#cnt-repeating"].textContent === "55", "tab counts");
+  check(els["#cnt-submissions"].textContent === "14" && els["#cnt-submissions"].classes.has("warn") && !els["#cnt-submissions"].classes.has("q"), "pending submissions count is highlighted");
+  check(els["#venue"].children.length === 3 && els["#cat"].children.length === 3, "facets fill the selects");
+  check(els["#tab-upcoming"].classes.has("on") && !els["#tab-imports"].disabled, "Upcoming is active, Imports open for the owner");
+  let evRows = els["#ev-rows"];
+  check(evRows.children.length === 60, "50 events and 10 day headers: " + evRows.children.length);
+  check(evRows.children[0].className === "day" && evRows.children[0].text().includes("Mon 01 Mar") && evRows.children[0].text().includes("5 events"), "day header with the day's count: " + evRows.children[0].text());
+  check(evRows.children[1].text().includes("Free") && evRows.children[1].text().includes("No venue") && evRows.children[1].text().includes("Published"), "row: price, no venue, status: " + evRows.children[1].text());
+  check(evRows.children[2].text().includes("Repeats") && evRows.children[3].text().includes("Imported") && evRows.children[2].text().includes("Town hall") && evRows.children[2].text().includes("Brighton"), "row: tags, venue and city");
+  check(els["#ev-range"].textContent === "1-50 of 232", "range: " + els["#ev-range"].textContent);
+  check(els["#ev-state"].hidden && !els["#list"].hidden, "no empty state");
+
+  // paging
+  const pagerNode = els["#ev-pager"];
+  check(pagerNode.children[0].disabled && pagerNode.children[1].className === "on", "pager starts on page 1 with Previous disabled");
+  check(pagerNode.children.map((c) => c.textContent).join(" ") === "\u2039 1 2 \u2026 5 \u203a", "pager: " + pagerNode.children.map((c) => c.textContent).join(" "));
+  routes.length = 0;
+  pagerNode.buttons("2")[0].click();
+  await next();
+  check(routes[0].query.page === "2" && routes[0].query.tab === "upcoming" && !("facets" in routes[0].query) && !("with_drafts" in routes[0].query), "page 2 request: " + JSON.stringify(routes[0].query));
+  check(els["#ev-range"].textContent === "51-100 of 232", "page 2 range: " + els["#ev-range"].textContent);
+
+  // search, chips
+  routes.length = 0;
+  els["#q"].value = "jazz";
+  els["#q"].fire("keydown", { key: "Escape" });
+  await next();
+  check(routes.length === 0, "only Enter searches");
+  els["#q"].fire("keydown", { key: "Enter" });
+  await next();
+  check(routes.length === 1 && routes[0].query.q === "jazz" && routes[0].query.page === "1", "Enter searches from page 1");
+  els["#q"].fire("change");
+  await next();
+  check(routes.length === 1, "the same search is not sent twice");
+  check(!els["#chips"].hidden && els["#chips"].children.length === 1 && els["#chips"].text().includes("jazz"), "a chip for the search: " + els["#chips"].text());
+  els["#chips"].children[0].click();
+  await next();
+  check(!("q" in routes[1].query) && els["#chips"].hidden && els["#q"].value === "", "the chip clears the search");
+
+  // venue, category and no venue
+  els["#venue"].value = "Town hall";
+  els["#venue"].fire("change");
+  await next();
+  els["#cat"].value = "Talk";
+  els["#cat"].fire("change");
+  await next();
+  const both = routes[routes.length - 1].query;
+  check(both.venue === "Town hall" && both.category === "Talk" && els["#chips"].children.length === 2, "venue and category filters: " + JSON.stringify(both));
+  els["#novenue"].checked = true;
+  els["#novenue"].fire("change");
+  await next();
+  check(routes[routes.length - 1].query.novenue === "1" && els["#chips"].text().includes("No venue set"), "the checkbox sends novenue 1");
+  els["#novenue"].checked = false;
+  els["#novenue"].fire("change");
+  await next();
+  check(!("novenue" in routes[routes.length - 1].query), "unticked sends no novenue");
+
+  // Drafts: list only, no venue or category, capped count
+  ({ els, routes } = await load({ tab: "upcoming", events: { capped: true } }));
+  els["#tab-drafts"].click();
+  await next();
+  check(routes[1].query.tab === "drafts" && els["#venue"].disabled && els["#cat"].disabled && els["#view-month"].disabled, "Drafts disables venue, category and Month");
+  check(els["#cnt-drafts"].textContent === "500+" && els["#ev-range"].textContent === "1-50 of 232+", "capped drafts show 500+: " + els["#cnt-drafts"].textContent + " / " + els["#ev-range"].textContent);
+  check(els["#ev-rows"].children[1].text().includes("Draft"), "draft status pill");
+  els["#tab-past"].click();
+  await next();
+  check(!els["#venue"].disabled && !els["#view-month"].disabled, "Past enables them again");
+
+  // empty and not ready
+  ({ els } = await load({ tab: "upcoming", events: { total: 0 } }));
+  check(els["#list"].hidden && els["#ev-state"].textContent === "No events match these filters." && !els["#ev-state"].hidden, "empty state");
+  ({ els } = await load({ tab: "upcoming", events: { total: 0, ready: false } }));
+  check(els["#ev-state"].textContent.includes("being prepared"), "not ready state");
+
+  // an editor cannot open Imports
+  ({ els } = await load({ tab: "upcoming", events: { role: "editor" } }));
+  check(els["#tab-imports"].disabled && els["#tab-imports"].title === "Owner only", "editor: Imports disabled as owner only");
+  // core's 403 has no JSON body
+  ({ els } = await load({ tab: "upcoming", status: 403, raw: "forbidden" }));
+  check(els["#notice"].textContent === "not allowed" && els["#notice"].classes.has("error"), "a 403 without JSON reads as not allowed");
+
+  // hints and the feed row
+  ({ els } = await load({ tab: "upcoming" }));
+  els["#ev-rows"].children[1].buttons("Edit")[0].click();
+  check(els["#hint"].textContent.includes("Open Content") && els["#hint"].textContent.includes("open Event 1 there") && !els["#hint"].hidden, "Edit hint: " + els["#hint"].textContent);
+  els["#new-event"].click();
+  check(els["#hint"].textContent.includes("press New"), "New event hint");
+  check(els["#feed-row"].hidden, "the feed row starts hidden");
+  els["#ical"].click();
+  check(!els["#feed-row"].hidden, "iCal feed shows the row");
+  els["#ical"].click();
+  check(els["#feed-row"].hidden, "and hides it again");
 
   if (failures) process.exit(1);
   console.log("ok");
